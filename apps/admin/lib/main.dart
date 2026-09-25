@@ -1,1 +1,532 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíïž{N‹Z–‹­¦ëeŠw¬Õ¥µÁ½ÉÐ€Á…­…”é™±ÕÑÑ•È½µ…Ñ•É¥…°¹‘…ÉÐœì4(4)¥µÁ½ÉÐ€…Ñ…±½}…Á¤¹‘…ÉÐœì4(4)Ù½¥µ…¥¸ ¤€ôøÉÕ¹ÁÀ¡½¹ÍÐ5…é•‘Õ¹•¡‘µ¥¹ÁÀ ¤¤ì4(4)±…ÍÌ5…é•‘Õ¹•¡‘µ¥¹ÁÀ•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ5…é•‘Õ¹•¡‘µ¥¹ÁÀ¡íÍÕÁ•È¹­•åô¤ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø5…Ñ•É¥…±ÁÀ 4(€€€€€€€‘•‰ÕM¡½Ý¡•­•‘5½‘•	…¹¹•Èè™…±Í”°4(€€€€€€€Ñ¥Ñ±”è€Ÿfb¿n3bÇn3b¨ƒfbËfŠ3b¿f#ffœ°4(€€€€€€€±½…±”è½¹ÍÐ1½…±” ™„œ¤°4(€€€€€€€Ñ¡•µ”èQ¡•µ•…Ñ„ 4(€€€€€€€€€ÕÍ•5…Ñ•É¥…°ÌèÑÉÕ”°4(€€€€€€€€€½±½ÉM¡•µ”è½±½ÉM¡•µ”¹™É½µM••¡Í••‘½±½Èè½¹ÍÐ½±½È ÁáÌÄÔàÑ¤¤°4(€€€€€€€€€Í…™™½±‘	…­É½Õ¹‘½±½Èè½¹ÍÐ½±½È ÁáÝ¤°4(€€€€€€€€€…É‘Q¡•µ”è½¹ÍÐ…É‘Q¡•µ•…Ñ„ 4(€€€€€€€€€€€•±•Ù…Ñ¥½¸è€À°4(€€€€€€€€€€€½±½Èè½±½ÉÌ¹Ý¡¥Ñ”°4(€€€€€€€€€€€Í¡…Á”èI½Õ¹‘•‘I•Ñ…¹±•	½É‘•È 4(€€€€€€€€€€€€€‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹…±°¡I…‘¥ÕÌ¹¥ÉÕ±…È ÈÀ¤¤°4(€€€€€€€€€€€€€Í¥‘”è	½É‘•ÉM¥‘”¡½±½Èè½±½È ÁáÍáÄ¤¤°4(€€€€€€€€€€€€¤°4(€€€€€€€€€€¤°4(€€€€€€€€€¥¹ÁÕÑ•½É…Ñ¥½¹Q¡•µ”è½¹ÍÐ%¹ÁÕÑ•½É…Ñ¥½¹Q¡•µ” 4(€€€€€€€€€€€™¥±±•èÑÉÕ”°4(€€€€€€€€€€€™¥±±½±½Èè½±½ÉÌ¹Ý¡¥Ñ”°4(€€€€€€€€€€€‰½É‘•Èè=ÕÑ±¥¹•%¹ÁÕÑ	½É‘•È¡‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹…±°¡I…‘¥ÕÌ¹¥ÉÕ±…È ÄÐ¤¤¤°4(€€€€€€€€€€¤°4(€€€€€€€€¤°4(€€€€€€€¡½µ”è½¹ÍÐ¥É•Ñ¥½¹…±¥Ñä¡Ñ•áÑ¥É•Ñ¥½¸èQ•áÑ¥É•Ñ¥½¸¹ÉÑ°°¡¥±è‘µ¥¹M¡•±° ¤¤°4(€€€€€€¤ì4)ô4(4)±…ÍÌ‘µ¥¹M¡•±°•áÑ•¹‘ÌMÑ…Ñ•™Õ±]¥‘•Ðì4(€½¹ÍÐ‘µ¥¹M¡•±°¡íÍÕÁ•È¹­•åô¤ì4(4(€½Ù•ÉÉ¥‘”4(€MÑ…Ñ”ñ‘µ¥¹M¡•±°øÉ•…Ñ•MÑ…Ñ” ¤€ôø}‘µ¥¹M¡•±±MÑ…Ñ” ¤ì4)ô4(4)±…ÍÌ}‘µ¥¹M¡•±±MÑ…Ñ”•áÑ•¹‘ÌMÑ…Ñ”ñ‘µ¥¹M¡•±°øì4(€Ù…È¥¹‘•à€ô€Àì4(€™¥¹…°…Ñ…±½-•ä€ô±½‰…±-•äñ…Ñ…±½A…•MÑ…Ñ”ø ¤ì4(€ÍÑ…Ñ¥Œ½¹ÍÐ¥Ñ•µÌ€ôl4(€€€€ Ÿb¿bŸbÓb£f#bÇb¼œ°%½¹Ì¹ÍÁ…•}‘…Í¡‰½…É‘}É½Õ¹‘•¤°4(€€€€ ŸbÏfbŸbÇbÓŠ3fbœœ°%½¹Ì¹É••¥ÁÑ}±½¹}É½Õ¹‘•¤°4(€€€€ Ÿfb·b×f#fbŸb¨œ°%½¹Ì¹¥¹Ù•¹Ñ½Éå|É}É½Õ¹‘•¤°4(€€€€ ŸbŸfb£bŸbÄœ°%½¹Ì¹Ý…É•¡½ÕÍ•}É½Õ¹‘•¤°4(€€€€ Ÿj¿bËbŸbÇbÓŠ3fbœœ°%½¹Ì¹ÅÕ•Éå}ÍÑ…ÑÍ}É½Õ¹‘•¤°4(€tì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤ì4(€€€™¥¹…°‘•Í­Ñ½À€ô5•‘¥…EÕ•Éä¹Í¥é•=˜¡½¹Ñ•áÐ¤¹Ý¥‘Ñ €øô€äÀÀì4(€€€™¥¹…°Á…•Ì€ôl4(€€€€€½¹ÍÐ…Í¡‰½…É‘A…” ¤°4(€€€€€½¹ÍÐA±…•¡½±‘•ÉA…” ŸbÏfbŸbÇbÓŠ3fbœœ°%½¹Ì¹É••¥ÁÑ}±½¹}É½Õ¹‘•¤°4(€€€€€…Ñ…±½A…”¡­•äè…Ñ…±½-•ä¤°4(€€€€€½¹ÍÐA±…•¡½±‘•ÉA…” Ÿfb¿n3bÇn3b¨ƒbŸfb£bŸbÄœ°%½¹Ì¹Ý…É•¡½ÕÍ•}É½Õ¹‘•¤°4(€€€€€½¹ÍÐA±…•¡½±‘•ÉA…” Ÿj¿bËbŸbÇbÓŠ3fbœœ°%½¹Ì¹ÅÕ•Éå}ÍÑ…ÑÍ}É½Õ¹‘•¤°4(€€€tì4(€€€É•ÑÕÉ¸M…™™½± 4(€€€€€…ÁÁ	…Èè‘•Í­Ñ½À€ü¹Õ±°€èÁÁ	…È¡Ñ¥Ñ±”è½¹ÍÐ	É…¹ ¤¤°4(€€€€€‰½ÑÑ½µ9…Ù¥…Ñ¥½¹	…Èè‘•Í­Ñ½À4(€€€€€€€€€€ü¹Õ±°4(€€€€€€€€€€è9…Ù¥…Ñ¥½¹	…È 4(€€€€€€€€€€€€€Í•±•Ñ•‘%¹‘•àè¥¹‘•à°4(€€€€€€€€€€€€€½¹•ÍÑ¥¹…Ñ¥½¹M•±•Ñ•è€¡Ù…±Õ”¤€ôøÍ•ÑMÑ…Ñ”  ¤€ôø¥¹‘•à€ôÙ…±Õ”¤°4(€€€€€€€€€€€€€‘•ÍÑ¥¹…Ñ¥½¹Ìèm™½È€¡™¥¹…°¥Ñ•´¥¸¥Ñ•µÌ¤9…Ù¥…Ñ¥½¹•ÍÑ¥¹…Ñ¥½¸¡¥½¸è%½¸¡¥Ñ•´¸È¤°±…‰•°è¥Ñ•´¸Ä¥t°4(€€€€€€€€€€€€¤°4(€€€€€‰½‘äèI½Ü¡¡¥±‘É•¸èl4(€€€€€€€¥˜€¡‘•Í­Ñ½À¤4(€€€€€€€€€½¹Ñ…¥¹•È 4(€€€€€€€€€€€Ý¥‘Ñ è€ÈÐÔ°4(€€€€€€€€€€€µ…É¥¸è½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÄØ¤°4(€€€€€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÄÐ¤°4(€€€€€€€€€€€‘•½É…Ñ¥½¸è	½á•½É…Ñ¥½¸¡½±½Èè½¹ÍÐ½±½È ÁáÈÀÍÌÐ¤°‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹¥ÉÕ±…È ÈÐ¤¤°4(€€€€€€€€€€€¡¥±è½±Õµ¸¡¡¥±‘É•¸èl4(€€€€€€€€€€€€€½¹ÍÐA…‘‘¥¹œ¡Á…‘‘¥¹œè‘•%¹Í•ÑÌ¹…±° ÄÈ¤°¡¥±è	É…¹¡‘…É¬èÑÉÕ”¤¤°4(€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÈÀ¤°4(€€€€€€€€€€€€€™½È€¡Ù…È¤€ô€Àì¤€ð¥Ñ•µÌ¹±•¹Ñ ì¤¬¬¤4(€€€€€€€€€€€€€€€A…‘‘¥¹œ 4(€€€€€€€€€€€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹½¹±ä¡‰½ÑÑ½´è€Ø¤°4(€€€€€€€€€€€€€€€€€¡¥±è1¥ÍÑQ¥±” 4(€€€€€€€€€€€€€€€€€€€Í•±•Ñ•è¥¹‘•à€ôô¤°4(€€€€€€€€€€€€€€€€€€€Í•±•Ñ•‘Q¥±•½±½Èè½¹ÍÐ½±½È ÁáÌÄÔàÑ¤°4(€€€€€€€€€€€€€€€€€€€Í¡…Á”èI½Õ¹‘•‘I•Ñ…¹±•	½É‘•È¡‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹¥ÉÕ±…È ÄÐ¤¤°4(€€€€€€€€€€€€€€€€€€€±•…‘¥¹œè%½¸¡¥Ñ•µÍm¥t¸È°½±½Èè¥¹‘•à€ôô¤€ü½±½ÉÌ¹Ý¡¥Ñ”€è½¹ÍÐ½±½È ÁáÕØ¤¤°4(€€€€€€€€€€€€€€€€€€€Ñ¥Ñ±”èQ•áÐ¡¥Ñ•µÍm¥t¸Ä°ÍÑå±”èQ•áÑMÑå±”¡½±½Èè¥¹‘•à€ôô¤€ü½±½ÉÌ¹Ý¡¥Ñ”€è½¹ÍÐ½±½È ÁáÕØ¤¤¤°4(€€€€€€€€€€€€€€€€€€€½¹Q…Àè€ ¤€ôøÍ•ÑMÑ…Ñ”  ¤€ôø¥¹‘•à€ô¤¤°4(€€€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€½¹ÍÐMÁ…•È ¤°4(€€€€€€€€€€€€€½¹ÍÐ1¥ÍÑQ¥±” 4(€€€€€€€€€€€€€€€±•…‘¥¹œè¥É±•Ù…Ñ…È¡‰…­É½Õ¹‘½±½Èè½±½È ÁáÝÔá¤°¡¥±èQ•áÐ Ÿb´œ¤¤°4(€€€€€€€€€€€€€€€Ñ¥Ñ±”èQ•áÐ Ÿb·fn3b¿bÇbÛbœœ°ÍÑå±”èQ•áÑMÑå±”¡½±½Èè½±½ÉÌ¹Ý¡¥Ñ”¤¤°4(€€€€€€€€€€€€€€€ÍÕ‰Ñ¥Ñ±”èQ•áÐ Ÿfb¿n3bÄƒbŸb×fn0œ°ÍÑå±”èQ•áÑMÑå±”¡½±½Èè½±½È ÁáåÄ¤¤¤°4(€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€t¤°4(€€€€€€€€€€¤°4(€€€€€€€áÁ…¹‘•¡¡¥±èM…™•É•„¡¡¥±è%¹‘•á•‘MÑ…¬¡¥¹‘•àè¥¹‘•à°¡¥±‘É•¸èÁ…•Ì¤¤¤°4(€€€€€t¤°4(€€€€€™±½…Ñ¥¹Ñ¥½¹	ÕÑÑ½¸è¥¹‘•à€ôô€È4(€€€€€€€€€€ü±½…Ñ¥¹Ñ¥½¹	ÕÑÑ½¸¹•áÑ•¹‘• 4(€€€€€€€€€€€€€½¹AÉ•ÍÍ•è€ ¤€ôø…Ñ…±½-•ä¹ÕÉÉ•¹ÑMÑ…Ñ”ü¹½Á•¹É•…Ñ•¥…±½œ ¤°4(€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹…‘‘}É½Õ¹‘•¤°4(€€€€€€€€€€€€€±…‰•°è½¹ÍÐQ•áÐ Ÿfb·b×f#fƒb³b¿n3b¼œ¤°4(€€€€€€€€€€€€¤4(€€€€€€€€€€è¹Õ±°°4(€€€€¤ì4(€ô4)ô4(4)±…ÍÌ	É…¹•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ	É…¹¡íÍÕÁ•È¹­•ä°Ñ¡¥Ì¹‘…É¬€ô™…±Í•ô¤ì4(€™¥¹…°‰½½°‘…É¬ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôøI½Ü¡µ…¥¹á¥ÍM¥é”è5…¥¹á¥ÍM¥é”¹µ¥¸°¡¥±‘É•¸èl4(€€€€€€€½¹Ñ…¥¹•È 4(€€€€€€€€€Ý¥‘Ñ è€ÐÔ°4(€€€€€€€€€¡•¥¡Ðè€ÐÔ°4(€€€€€€€€€…±¥¹µ•¹Ðè±¥¹µ•¹Ð¹•¹Ñ•È°4(€€€€€€€€€‘•½É…Ñ¥½¸è	½á•½É…Ñ¥½¸¡½±½Èè½¹ÍÐ½±½È ÁáÌÄÔàÑ¤°‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹¥ÉÕ±…È ÄÔ¤¤°4(€€€€€€€€€¡¥±è½¹ÍÐQ•áÐ Ÿfœ°ÍÑå±”èQ•áÑMÑå±”¡½±½Èè½±½ÉÌ¹Ý¡¥Ñ”°™½¹ÑM¥é”è€ÈÈ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€€¤°4(€€€€€€€½¹ÍÐM¥é•‘	½à¡Ý¥‘Ñ è€ÄÀ¤°4(€€€€€€€½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€€€Q•áÐ Ÿfb¿n3bÇn3b¨ƒfbËfŠ3b¿f#ffœ°ÍÑå±”èQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜàÀÀ°½±½Èè‘…É¬€ü½±½ÉÌ¹Ý¡¥Ñ”€è¹Õ±°¤¤°4(€€€€€€€€€Q•áÐ Ÿj§bŸb«bŸff#j¼ƒbËfb¿fƒfbÇf#bÓj¿bŸfœ°ÍÑå±”èQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÀ°½±½Èè‘…É¬€ü½¹ÍÐ½±½È Ááåá	¤€è½±½ÉÌ¹É•ä¤¤°4(€€€€€€€t¤°4(€€€€€t¤ì4)ô4(4)±…ÍÌ…Í¡‰½…É‘A…”•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ…Í¡‰½…É‘A…”¡íÍÕÁ•È¹­•åô¤ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø1¥ÍÑY¥•Ü 4(€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÈÐ¤°4(€€€€€€€¡¥±‘É•¸èl4(€€€€€€€€€Q•áÐ ŸbÏfbŸfƒb·fn3b¿bÇbÛbœƒÂ~2üœ°ÍÑå±”èQ¡•µ”¹½˜¡½¹Ñ•áÐ¤¹Ñ•áÑQ¡•µ”¹¡•…‘±¥¹•5•‘¥Õ´ü¹½Áå]¥Ñ ¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ø¤°4(€€€€€€€€€½¹ÍÐQ•áÐ ŸfbÏb«fƒbçffn3bŸb«n0ƒfbÇf#bÓj¿bŸfƒb¿bÄƒb·bŸfƒbŸb«b×bŸfƒb£fƒb¿bŸb¿fŠ3fbŸn0ƒf#bŸfbçn0ƒbŸbÏb¨¸œ¤°4(€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÈÐ¤°4(€€€€€€€€€]É…À¡ÍÁ…¥¹œè€ÄÈ°ÉÕ¹MÁ…¥¹œè€ÄÈ°¡¥±‘É•¸è½¹ÍÐl4(€€€€€€€€€€€5•ÑÉ¥…É ŸfbÇf#bÐƒbŸfbÇf#bÈœ°€Ÿb‹bËfbŸn3bÓn0œ°%½¹Ì¹Á…åµ•¹ÑÍ}É½Õ¹‘•¤°4(€€€€€€€€€€€5•ÑÉ¥…É ŸbÏfbŸbÇbÐƒb³b¿n3b¼œ°€ŸnÀœ°%½¹Ì¹Í¡½ÁÁ¥¹}‰…}É½Õ¹‘•¤°4(€€€€€€€€€€€5•ÑÉ¥…É Ÿj§bŸb«bŸff#j¼œ°€Ÿfb«b×fƒb£fA$œ°%½¹Ì¹±½Õ‘}‘½¹•}É½Õ¹‘•¤°4(€€€€€€€€€€€5•ÑÉ¥…É Ÿf#bÛbçn3b¨ƒfûbÇb¿bŸb»b¨œ°€Ÿbën3bÇfbçbŸfœ°%½¹Ì¹±½­}É½Õ¹‘•¤°4(€€€€€€€€€t¤°4(€€€€€€€t°4(€€€€€€¤ì4)ô4(4)±…ÍÌ5•ÑÉ¥…É•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ5•ÑÉ¥…É¡Ñ¡¥Ì¹Ñ¥Ñ±”°Ñ¡¥Ì¹Ù…±Õ”°Ñ¡¥Ì¹¥½¸°íÍÕÁ•È¹­•åô¤ì4(€™¥¹…°MÑÉ¥¹œÑ¥Ñ±”ì4(€™¥¹…°MÑÉ¥¹œÙ…±Õ”ì4(€™¥¹…°%½¹…Ñ„¥½¸ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôøM¥é•‘	½à 4(€€€€€€€Ý¥‘Ñ è€ÈÔÀ°4(€€€€€€€¡•¥¡Ðè€ÄÌÔ°4(€€€€€€€¡¥±è…É 4(€€€€€€€€€¡¥±èA…‘‘¥¹œ 4(€€€€€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° Äà¤°4(€€€€€€€€€€€¡¥±è½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€€€€€€€%½¸¡¥½¸°½±½Èè½¹ÍÐ½±½È ÁáÌÄÔàÑ¤¤°4(€€€€€€€€€€€€€½¹ÍÐMÁ…•È ¤°4(€€€€€€€€€€€€€Q•áÐ¡Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè½±½ÉÌ¹É•ä¤¤°4(€€€€€€€€€€€€€Q•áÐ¡Ù…±Õ”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ°™½¹ÑM¥é”è€Äà¤¤°4(€€€€€€€€€€€t¤°4(€€€€€€€€€€¤°4(€€€€€€€€¤°4(€€€€€€¤ì4)ô4(7nyîÚ$z{-®éÜj×öåV&Æ–6F–öå&W76VBÀÐ¢–6öã¢V&Æ–6F–öä'W7Ð¢ò6öç7B6—¦VD&÷‚‡v–GFƒ¢bÂ†V–v‡C¢bÂ6†–ÆC¢6—&7VÆ%&öw&W74–æF–6F÷"‡7G&ö¶Uv–GFƒ¢"’Ð¢¢–6öâ‡&öGV7Bæ—5V&Æ—6†VBò–6öç2çf—6–&–Æ—G•ööfe÷&÷VæFVB¢–6öç2çV&Æ–5÷&÷VæFVB’ÀÐ¢Æ&VÃ¢FW‡B‡&öGV7Bæ—5V&Æ—6†VBò}Ší‹˜ŠÂŠ}‹"˜‹˜‹Br¢}Š}˜mŠ­‹MŠ}‹r’ÀÐ¢’ÀÐ¢Ò’ÀÐ¢Ò’ÀÐ¢’ÀÐ¢“°Ð§ÐÐ Ð¦6Æ72õV&Æ–6F–öä&FvRW‡FVæG27FFVÆW75v–FvWB°Ð¢6öç7BõV&Æ–6F–öä&FvR‡F†—2æ—5V&Æ—6†VB“°Ð¢f–æÂ&ööÂ—5V&Æ—6†VC°Ð Ð¢÷fW'&–FPÐ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’Óâ6öçF–æW"€Ð¢FF–æs¢6öç7BVFvT–ç6WG2ç7–ÖÖWG&–2††÷&—¦öçFÃ¢’ÂfW'F–6Ã¢R’ÀÐ¢FV6÷&F–öã¢&÷„FV6÷&F–öâ€Ð¢6öÆ÷#¢—5V&Æ—6†VBò6öç7B6öÆ÷"ƒ„ddStcS"’¢6öç7B6öÆ÷"ƒ„ddddS„3‚’ÀÐ¢&÷&FW%&F—W3¢&÷&FW%&F—W2æ6—&7VÆ"ƒ““’’ÀÐ¢’ÀÐ¢6†–ÆC¢FW‡B€Ð¢—5V&Æ—6†VBò}˜]˜mŠ­‹M‹‹MŠý˜rr¢}›í¸Í‹N(Í˜m˜¸Í‹2rÀÐ¢7G–ÆS¢6öç7BFW‡E7G–ÆR†föçE6—¦S¢ÂföçEvV–v‡C¢föçEvV–v‡Bçsƒ’ÀÐ¢’ÀÐ¢“°Ð§ÐÐ Ð¦6Æ72&öGV7DF–ÆörW‡FVæG27FFVgVÅv–FvWB°Ð¢6öç7B&öGV7DF–Æör‡·7WW"æ¶W—Ò“°Ð Ð¢÷fW'&–FPÐ¢7FFSÅ&öGV7DF–Æösâ7&VFU7FFR‚’Óâõ&öGV7DF–Æöu7FFR‚“°Ð§ÐÐ Ð¦6Æ72õ&öGV7DF–Æöu7FFRW‡FVæG27FFSÅ&öGV7DF–Æösâ°Ð¢f–æÂf÷&Ô¶W’ÒvÆö&Ä¶W“Äf÷&Õ7FFSâ‚“°Ð¢f–æÂF—FÆRÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢f–æÂ6ÇVrÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢f–æÂ÷&–v–âÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢f–æÂ6·RÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢f–æÂ&–6RÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢f–æÂ7Fö6²ÒFW‡DVF—F–æt6öçG&öÆÆW"‚“°Ð¢7G&–ærVæ—EG—RÒuvV–v‡Bs°Ð¢7G&–ær6FVv÷'’Ò}Š-ŠÍ¸Í˜B˜‚˜]‹­‹-˜}Šrs°Ð¢çVÒVçF—G’Ò#S°Ð Ð¢÷fW'&–FPÐ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’ÓâÆW'DF–Æör€Ð¢F—FÆS¢6öç7BFW‡B‚}˜]ŠÝ‹]˜˜BŠÍŠý¸ÍŠòr’ÀÐ¢6öçFVçC¢6—¦VD&÷‚€Ð¢v–GFƒ¢ScÀÐ¢6†–ÆC¢f÷&Ò€Ð¢¶W“¢f÷&Ô¶W’ÀÐ¢6†–ÆC¢6–ævÆT6†–ÆE67&öÆÅf–Wr€Ð¢6†–ÆC¢6öÇVÖâ†6†–ÆG&Vã¢°Ð¢6öç7BÆ—7EF–ÆR€Ð¢ÆVF–æs¢–6öâ„–6öç2æ–æfõö÷WFÆ–æU÷&÷VæFVB’ÀÐ¢F—FÆS¢FW‡B‚}˜]ŠÝ‹]˜˜BŠ}ŠŠ­ŠýŠrŠ˜~(Í‹]˜‹Š¢›í¸Í‹N(Í˜m˜¸Í‹2‹Ší¸Í‹˜r˜]¸Î(Í‹M˜Šòâr’ÀÐ¢7V'F—FÆS¢FW‡B‚}Š‹ŠòŠ}‹"Š­ª˜]¸Í˜BŠ}‹}˜MŠ}‹Š}Š­ˆÂŠ-˜b‹ŠrŠÍŠýŠ}ªýŠ}˜m˜r˜]˜mŠ­‹M‹ª˜m¸ÍŠòâr’ÀÐ¢’ÀÐ¢FW‡Df÷&Ôf–VÆB†6öçG&öÆÆW#¢F—FÆRÂFV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}˜mŠ}˜R˜]ŠÝ‹]˜˜Br’ÂfÆ–FF÷#¢&WV—&VB’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢FW‡Df÷&Ôf–VÆB†6öçG&öÆÆW#¢6ÇVrÂFV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}‹M˜mŠ}‹=˜rŠ}˜mªý˜M¸Í‹=¸ÂU$Âr’ÂfÆ–FF÷#¢&WV—&VB’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢G&÷F÷vä'WGFöäf÷&Ôf–VÆCÅ7G&–æsâ€Ð¢fÇVS¢6FVv÷'’ÀÐ¢FV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}Šý‹=Š­˜~(ÍŠ˜mŠý¸Âr’ÀÐ¢—FV×3¢6öç7B°Ð¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}Š-ŠÍ¸Í˜B˜‚˜]‹­‹-˜}ŠrrÂ6†–ÆC¢FW‡B‚}Š-ŠÍ¸Í˜B˜‚˜]‹­‹-˜}Šrr’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}˜]¸Í˜˜rŠí‹Mª’rÂ6†–ÆC¢FW‡B‚}˜]¸Í˜˜rŠí‹Mª’r’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}˜M˜Š}‹Mª’˜‚Š­‹‹N(Í˜]‹-˜rrÂ6†–ÆC¢FW‡B‚}˜M˜Š}‹Mª’˜‚Š­‹‹N(Í˜]‹-˜rr’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}ª˜ª¸Â˜‚‹M¸Í‹¸Í˜m¸ÂrÂ6†–ÆC¢FW‡B‚}ª˜ª¸Â˜‚‹M¸Í‹¸Í˜m¸Âr’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}ª˜^(Í‹Mª‹˜‚›í‹˜Š­Šm¸Í˜m¸ÂrÂ6†–ÆC¢FW‡B‚}ª˜^(Í‹Mª‹˜‚›í‹˜Š­Šm¸Í˜m¸Âr’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}˜}Šý¸Í˜rrÂ6†–ÆC¢FW‡B‚}˜}Šý¸Í˜rr’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}›í‹=Š­˜r˜‚˜]‹­‹-¸ÍŠÍŠ}Š¢rÂ6†–ÆC¢FW‡B‚}›í‹=Š­˜r˜‚˜]‹­‹-¸ÍŠÍŠ}Š¢r’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}Š­Ší˜]˜r˜‚Š­˜m˜-˜MŠ}Š¢rÂ6†–ÆC¢FW‡B‚}Š­Ší˜]˜r˜‚Š­˜m˜-˜MŠ}Š¢r’’ÀÐ¢G&÷F÷väÖVçT—FVÒ‡fÇVS¢}ª˜ª¸Â˜‚ª¸Íª’‹=Š}˜M˜RrÂ6†–ÆC¢FW‡B‚}ª˜ª¸Â˜‚ª¸Íª’‹=Š}˜M˜Rr’’ÀÐ¢ÒÀÐ¢öä6†ævVC¢‡fÇVR’Óâ6FVv÷'’ÒfÇVRÀÐ¢’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢FW‡Df÷&Ôf–VÆB†6öçG&öÆÆW#¢÷&–v–âÂFV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}˜]ŠŠýŠ2¸ÍŠrŠ‹˜mŠòr’ÂfÆ–FF÷#¢&WV—&VB’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢6VvÖVçFVD'WGFöãÅ7G&–æsâ€Ð¢6VvÖVçG3¢6öç7B°Ð¢'WGFöå6VvÖVçB‡fÇVS¢uvV–v‡BrÂÆ&VÃ¢FW‡B‚}˜‹-˜m¸Âr’’ÀÐ¢'WGFöå6VvÖVçB‡fÇVS¢t6÷VçBrÂÆ&VÃ¢FW‡B‚}‹ŠýŠý¸Âr’’ÀÐ¢ÒÀÐ¢6VÆV7FVC¢·Væ—EG—WÒÀÐ¢öå6VÆV7F–öä6†ævVC¢‡fÇVR’Óâ6WE7FFR‚‚’°Ð¢Væ—EG—RÒfÇVRæf—'7C°Ð¢VçF—G’ÒVæ—EG—RÓÒuvV–v‡Brò#S¢°Ð¢Ò’ÀÐ¢’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢FW‡Df÷&Ôf–VÆB†6öçG&öÆÆW#¢6·RÂFV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢u4µRr’ÂfÆ–FF÷#¢&WV—&VB’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢FW‡Df÷&Ôf–VÆB€Ð¢6öçG&öÆÆW#¢&–6RÀÐ¢¶W–&ö&EG—S¢FW‡D–çWEG—RæçVÖ&W"ÀÐ¢FV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}˜-¸Í˜]Š¢‹¸ÍŠ}˜Br’ÀÐ¢fÆ–FF÷#¢çVÖ&W%&WV—&VBÀÐ¢’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢FW‡Df÷&Ôf–VÆB€Ð¢6öçG&öÆÆW#¢7Fö6²ÀÐ¢¶W–&ö&EG—S¢FW‡D–çWEG—RæçVÖ&W"ÀÐ¢FV6÷&F–öã¢6öç7B–çWDFV6÷&F–öâ†Æ&VÅFW‡C¢}Š­‹ŠýŠ}ŠòŠ‹=Š­˜r˜]˜ŠÍ˜Šòr’ÀÐ¢fÆ–FF÷#¢çVÖ&W%&WV—&VBÀÐ¢’ÀÐ¢Ò’ÀÐ¢’ÀÐ¢’ÀÐ¢’ÀÐ¢7F–öç3¢°Ð¢FW‡D'WGFöâ†öå&W76VC¢‚’Óâæf–vF÷"ç÷†6öçFW‡B’Â6†–ÆC¢6öç7BFW‡B‚}Š}˜m‹]‹Š}˜r’’ÀÐ¢f–ÆÆVD'WGFöâ†öå&W76VC¢7V&Ö—BÂ6†–ÆC¢6öç7BFW‡B‚}‹Ší¸Í‹˜r›í¸Í‹N(Í˜m˜¸Í‹2r’’ÀÐ¢ÒÀÐ¢“°Ð Ð¢7G&–æsò&WV—&VB…7G&–æsòfÇVR’ÓâfÇVRÓÒçVÆÂÇÂfÇVRçG&–Ò‚’æ—4V×G’ò}Š}¸Í˜b˜¸Í˜MŠòŠ}˜M‹-Š}˜]¸ÂŠ}‹=Š¢âr¢çVÆÃ°Ð¢7G&–æsòçVÖ&W%&WV—&VB…7G&–æsòfÇVR’ÓâçVÒçG'•'6R‡fÇVRóòrr’ÓÒçVÆÂò}‹ŠýŠò˜]‹Š­Š‹˜Š}‹Šòª˜m¸ÍŠòâr¢çVÆÃ°Ð Ð¢fö–B7V&Ö—B‚’°Ð¢–b‚f÷&Ô¶W’æ7W'&VçE7FFRçfÆ–FFR‚’’&WGW&ã°Ð¢f–æÂÆ&VÂÒVæ—EG—RÓÒuvV–v‡BròrG·VçF—G’çFô–çB‚—Òªý‹˜Rr¢rG·VçF—G’çFô–çB‚—Ò‹ŠýŠòs°Ð¢æf–vF÷"ç÷€Ð¢6öçFW‡BÀÐ¢7&VFU&öGV7D6öÖÖæB€Ð¢F—FÆS¢F—FÆRçFW‡BÀÐ¢6ÇVs¢6ÇVrçFW‡BÀÐ¢6FVv÷'“¢6FVv÷'’ÀÐ¢÷&–v–ã¢÷&–v–âçFW‡BÀÐ¢Væ—EG—S¢Væ—EG—RÀÐ¢—5V&Æ—6†VC¢fÇ6RÀÐ¢f&–çG3¢°Ð¢7&VFUf&–çD6öÖÖæB€Ð¢6·S¢6·RçFW‡BÀÐ¢VçF—G“¢VçF—G’ÀÐ¢F—7Æ”Æ&VÃ¢Æ&VÂÀÐ¢&–6S¢çVÒç'6R‡&–6RçFW‡B’ÀÐ¢f–Æ&ÆU6¶vW3¢–çBç'6R‡7Fö6²çFW‡B’ÀÐ¢’ÀÐ¢ÒÀÐ¢’ÀÐ¢“°Ð¢ÐÐ§ÐÐ Ð¦6Æ72Æ6V†öÆFW%vRW‡FVæG27FFVÆW75v–FvWB°Ð¢6öç7BÆ6V†öÆFW%vR‡F†—2çF—FÆRÂF†—2æ–6öâÂ·7WW"æ¶W—Ò“°Ð¢f–æÂ7G&–ærF—FÆS°Ð¢f–æÂ–6öäFF–6öã°Ð Ð¢÷fW'&–FPÐ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’Óâ6VçFW"€Ð¢6†–ÆC¢6öÇVÖâ†Ö–ä†—56—¦S¢Ö–ä†—56—¦RæÖ–âÂ6†–ÆG&Vã¢°Ð¢–6öâ†–6öâÂ6—¦S¢cBÂ6öÆ÷#¢6öç7B6öÆ÷"ƒ„dc“„b’’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢"’ÀÐ¢FW‡B‡F—FÆRÂ7G–ÆS¢F†VÖRæöb†6öçFW‡B’çFW‡EF†VÖRæ†VFÆ–æU6ÖÆÂ’ÀÐ¢6öç7BFW‡B‚}Šý‹fW'F–6Â6Æ–6RŠ‹Šý¸Â‹˜]˜M¸ÍŠ}Š­¸Â˜]¸Î(Í‹M˜Šòâr’ÀÐ¢Ò’ÀÐ¢“°Ð§ÐÐ 
+import 'package:flutter/material.dart';
+
+import 'catalog_api.dart';
+
+void main() => runApp(const MazedunehAdminApp());
+
+class MazedunehAdminApp extends StatelessWidget {
+  const MazedunehAdminApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡',
+        locale: const Locale('fa'),
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF31584A)),
+          scaffoldBackgroundColor: const Color(0xFFFAF7EF),
+          cardTheme: const CardThemeData(
+            elevation: 0,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(20)),
+              side: BorderSide(color: Color(0xFFE3E8E1)),
+            ),
+          ),
+          inputDecorationTheme: const InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+          ),
+        ),
+        home: const Directionality(textDirection: TextDirection.rtl, child: AdminShell()),
+      );
+}
+
+class AdminShell extends StatefulWidget {
+  const AdminShell({super.key});
+
+  @override
+  State<AdminShell> createState() => _AdminShellState();
+}
+
+class _AdminShellState extends State<AdminShell> {
+  var index = 0;
+  final catalogKey = GlobalKey<CatalogPageState>();
+  static const items = [
+    ('Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯', Icons.space_dashboard_rounded),
+    ('Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§', Icons.receipt_long_rounded),
+    ('Ù…Ø­ØµÙˆÙ„Ø§Øª', Icons.inventory_2_rounded),
+    ('Ø§Ù†Ø¨Ø§Ø±', Icons.warehouse_rounded),
+    ('Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§', Icons.query_stats_rounded),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final desktop = MediaQuery.sizeOf(context).width >= 900;
+    final pages = [
+      const DashboardPage(),
+      const PlaceholderPage('Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§', Icons.receipt_long_rounded),
+      CatalogPage(key: catalogKey),
+      const PlaceholderPage('Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ù†Ø¨Ø§Ø±', Icons.warehouse_rounded),
+      const PlaceholderPage('Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§', Icons.query_stats_rounded),
+    ];
+    return Scaffold(
+      appBar: desktop ? null : AppBar(title: const Brand()),
+      bottomNavigationBar: desktop
+          ? null
+          : NavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: (value) => setState(() => index = value),
+              destinations: [for (final item in items) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
+            ),
+      body: Row(children: [
+        if (desktop)
+          Container(
+            width: 245,
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: const Color(0xFF203E34), borderRadius: BorderRadius.circular(24)),
+            child: Column(children: [
+              const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
+              const SizedBox(height: 20),
+              for (var i = 0; i < items.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: ListTile(
+                    selected: index == i,
+                    selectedTileColor: const Color(0xFF31584A),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFD5DFD6)),
+                    title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFD5DFD6))),
+                    onTap: () => setState(() => index = i),
+                  ),
+                ),
+              const Spacer(),
+              const ListTile(
+                leading: CircleAvatar(backgroundColor: Color(0xFFF7C58B), child: Text('Ø­')),
+                title: Text('Ø­Ù…ÛŒØ¯Ø±Ø¶Ø§', style: TextStyle(color: Colors.white)),
+                subtitle: Text('Ù…Ø¯ÛŒØ± Ø§ØµÙ„ÛŒ', style: TextStyle(color: Color(0xFF9EACA1))),
+              ),
+            ]),
+          ),
+        Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
+      ]),
+      floatingActionButton: index == 2
+          ? FloatingActionButton.extended(
+              onPressed: () => catalogKey.currentState?.openCreateDialog(),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Ù…Ø­ØµÙˆÙ„ Ø¬Ø¯ÛŒØ¯'),
+            )
+          : null,
+    );
+  }
+}
+
+class Brand extends StatelessWidget {
+  const Brand({super.key, this.dark = false});
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Image.asset('assets/mazedooneh-mark.png', width: 45, height: 45, fit: BoxFit.cover),
+        ),
+        const SizedBox(width: 10),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
+          Text('Ú©Ø§ØªØ§Ù„ÙˆÚ¯ Ø²Ù†Ø¯Ù‡ ÙØ±ÙˆØ´Ú¯Ø§Ù‡', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
+        ]),
+      ]);
+}
+
+class DashboardPage extends StatelessWidget {
+  const DashboardPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text('Ø³Ù„Ø§Ù… Ø­Ù…ÛŒØ¯Ø±Ø¶Ø§ ðŸŒ¿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          const Text('Ù‡Ø³ØªÙ‡ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ø¯Ø± Ø­Ø§Ù„ Ø§ØªØµØ§Ù„ Ø¨Ù‡ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ ÙˆØ§Ù‚Ø¹ÛŒ Ø§Ø³Øª.'),
+          const SizedBox(height: 24),
+          Wrap(spacing: 12, runSpacing: 12, children: const [
+            MetricCard('ÙØ±ÙˆØ´ Ø§Ù…Ø±ÙˆØ²', 'Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ', Icons.payments_rounded),
+            MetricCard('Ø³ÙØ§Ø±Ø´ Ø¬Ø¯ÛŒØ¯', 'Û°', Icons.shopping_bag_rounded),
+            MetricCard('Ú©Ø§ØªØ§Ù„ÙˆÚ¯', 'Ù…ØªØµÙ„ Ø¨Ù‡ API', Icons.cloud_done_rounded),
+            MetricCard('ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª', 'ØºÛŒØ±ÙØ¹Ø§Ù„', Icons.lock_rounded),
+          ]),
+        ],
+      );
+}
+
+class MetricCard extends StatelessWidget {
+  const MetricCard(this.title, this.value, this.icon, {super.key});
+  final String title;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 250,
+        height: 135,
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(icon, color: const Color(0xFF31584A)),
+              const Spacer(),
+              Text(title, style: const TextStyle(color: Colors.grey)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+            ]),
+          ),
+        ),
+      );
+}
+
+class CatalogPage extends StatefulWidget {
+  const CatalogPage({super.key, this.api});
+  final CatalogApiClient? api;
+
+  @override
+  State<CatalogPage> createState() => CatalogPageState();
+}
+
+class CatalogPageState extends State<CatalogPage> {
+  late final CatalogApiClient api = widget.api ?? CatalogApiClient();
+  List<Product> products = const [];
+  final Set<String> changingPublication = {};
+  bool loading = true;
+  String? error;
+  bool showDrafts = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await api.fetchProducts(includeDrafts: true);
+      if (mounted) setState(() => products = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> openCreateDialog() async {
+    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => const ProductDialog());
+    if (command == null) return;
+    try {
+      await api.createProduct(command);
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ù…Ø­ØµÙˆÙ„ Ø¨Ù‡â€ŒØµÙˆØ±Øª Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³ Ø«Ø¨Øª Ø´Ø¯.')));
+      }
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    }
+  }
+
+  Future<void> changePublication(Product product) async {
+    final target = !product.isPublished;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(target ? Icons.public_rounded : Icons.visibility_off_rounded),
+        title: Text(target ? 'Ø§Ù†ØªØ´Ø§Ø± Ù…Ø­ØµÙˆÙ„ØŸ' : 'Ø®Ø±ÙˆØ¬ Ù…Ø­ØµÙˆÙ„ Ø§Ø² ÙØ±ÙˆØ´ØŸ'),
+        content: Text(target
+            ? 'Â«${product.title}Â» Ù¾Ø³ Ø§Ø² ØªØ£ÛŒÛŒØ¯ Ø¯Ø± ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ù‚Ø§Ø¨Ù„ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø®ÙˆØ§Ù‡Ø¯ Ø¨ÙˆØ¯.'
+            : 'Â«${product.title}Â» Ø§Ø² ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ù…Ø®ÙÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯ØŒ Ø§Ù…Ø§ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ùˆ Ø³Ø§Ø¨Ù‚Ù‡ Ø¢Ù† Ø­Ø°Ù Ù†Ø®ÙˆØ§Ù‡Ø¯ Ø´Ø¯.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ø§Ù†ØµØ±Ø§Ù')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(target ? 'Ø§Ù†ØªØ´Ø§Ø±' : 'Ø®Ø±ÙˆØ¬ Ø§Ø² ÙØ±ÙˆØ´')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => changingPublication.add(product.slug));
+    try {
+      await api.setPublication(product.slug, target);
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(target ? 'Ù…Ø­ØµÙˆÙ„ Ù…Ù†ØªØ´Ø± Ø´Ø¯.' : 'Ù…Ø­ØµÙˆÙ„ Ø§Ø² ÙØ±ÙˆØ´ Ø®Ø§Ø±Ø¬ Ø´Ø¯.'),
+        ));
+      }
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => changingPublication.remove(product.slug));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Ù…Ø­ØµÙˆÙ„Ø§Øª', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+                const Text('Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³â€ŒÙ‡Ø§ ÙÙ‚Ø· Ø¯Ø± Ù¾Ù†Ù„ Ø¯ÛŒØ¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ]),
+            ),
+            FilterChip(
+              label: const Text('Ù†Ù…Ø§ÛŒØ´ Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³â€ŒÙ‡Ø§'),
+              selected: showDrafts,
+              onSelected: (value) => setState(() => showDrafts = value),
+            ),
+            const SizedBox(width: 8),
+            IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ø¬Ø¯Ø¯'),
+          ]),
+          const SizedBox(height: 18),
+          Expanded(child: _body()),
+        ]),
+      );
+
+  Widget _body() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(error!, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('ØªÙ„Ø§Ø´ Ø¯ÙˆØ¨Ø§Ø±Ù‡')),
+        ]),
+      );
+    }
+    final visible = showDrafts ? products : products.where((item) => item.isPublished).toList();
+    if (visible.isEmpty) return const Center(child: Text('Ù…Ø­ØµÙˆÙ„ÛŒ Ø¨Ø§ Ø§ÛŒÙ† ÙˆØ¶Ø¹ÛŒØª ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯.'));
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
+      return GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisExtent: 285,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemCount: visible.length,
+        itemBuilder: (_, index) {
+          final product = visible[index];
+          return ProductCard(
+            product,
+            publicationBusy: changingPublication.contains(product.slug),
+            onPublicationPressed: () => changePublication(product),
+          );
+        },
+      );
+    });
+  }
+}
+
+class ProductCard extends StatelessWidget {
+  const ProductCard(
+    this.product, {
+    super.key,
+    required this.publicationBusy,
+    required this.onPublicationPressed,
+  });
+
+  final Product product;
+  final bool publicationBusy;
+  final VoidCallback onPublicationPressed;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(17),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              CircleAvatar(backgroundColor: const Color(0xFFE7F1E2), child: Text(product.isWeight ? 'âš–' : 'â—')),
+              const SizedBox(width: 10),
+              Expanded(child: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900))),
+              _PublicationBadge(product.isPublished),
+            ]),
+            const SizedBox(height: 8),
+            Text('${product.category} Â· ${product.origin}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            const Spacer(),
+            Wrap(spacing: 5, runSpacing: 5, children: [
+              for (final variant in product.variants)
+                Chip(label: Text('${variant.displayLabel} Â· ${variant.availablePackages} Ø¨Ø³ØªÙ‡', style: const TextStyle(fontSize: 10))),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: Text(
+                  'Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ù„: ${product.totalStock} Ø¨Ø³ØªÙ‡',
+                  style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: publicationBusy ? null : onPublicationPressed,
+                icon: publicationBusy
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(product.isPublished ? Icons.visibility_off_rounded : Icons.public_rounded),
+                label: Text(product.isPublished ? 'Ø®Ø±ÙˆØ¬ Ø§Ø² ÙØ±ÙˆØ´' : 'Ø§Ù†ØªØ´Ø§Ø±'),
+              ),
+            ]),
+          ]),
+        ),
+      );
+}
+
+class _PublicationBadge extends StatelessWidget {
+  const _PublicationBadge(this.isPublished);
+  final bool isPublished;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: isPublished ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          isPublished ? 'Ù…Ù†ØªØ´Ø±Ø´Ø¯Ù‡' : 'Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³',
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+        ),
+      );
+}
+
+class ProductDialog extends StatefulWidget {
+  const ProductDialog({super.key});
+
+  @override
+  State<ProductDialog> createState() => _ProductDialogState();
+}
+
+class _ProductDialogState extends State<ProductDialog> {
+  final formKey = GlobalKey<FormState>();
+  final title = TextEditingController();
+  final slug = TextEditingController();
+  final origin = TextEditingController();
+  final sku = TextEditingController();
+  final price = TextEditingController();
+  final stock = TextEditingController();
+  String unitType = 'Weight';
+  String category = 'Ø¢Ø¬ÛŒÙ„ Ùˆ Ù…ØºØ²Ù‡Ø§';
+  num quantity = 250;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Ù…Ø­ØµÙˆÙ„ Ø¬Ø¯ÛŒØ¯'),
+        content: SizedBox(
+          width: 560,
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(children: [
+                const ListTile(
+                  leading: Icon(Icons.info_outline_rounded),
+                  title: Text('Ù…Ø­ØµÙˆÙ„ Ø§Ø¨ØªØ¯Ø§ Ø¨Ù‡â€ŒØµÙˆØ±Øª Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³ Ø°Ø®ÛŒØ±Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.'),
+                  subtitle: Text('Ø¨Ø¹Ø¯ Ø§Ø² ØªÚ©Ù…ÛŒÙ„ Ø§Ø·Ù„Ø§Ø¹Ø§ØªØŒ Ø¢Ù† Ø±Ø§ Ø¬Ø¯Ø§Ú¯Ø§Ù†Ù‡ Ù…Ù†ØªØ´Ø± Ú©Ù†ÛŒØ¯.'),
+                ),
+                TextFormField(controller: title, decoration: const InputDecoration(labelText: 'Ù†Ø§Ù… Ù…Ø­ØµÙˆÙ„'), validator: required),
+                const SizedBox(height: 10),
+                TextFormField(controller: slug, decoration: const InputDecoration(labelText: 'Ø´Ù†Ø§Ø³Ù‡ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ URL'), validator: required),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: category,
+                  decoration: const InputDecoration(labelText: 'Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ'),
+                  items: const [
+                    DropdownMenuItem(value: 'Ø¢Ø¬ÛŒÙ„ Ùˆ Ù…ØºØ²Ù‡Ø§', child: Text('Ø¢Ø¬ÛŒÙ„ Ùˆ Ù…ØºØ²Ù‡Ø§')),
+                    DropdownMenuItem(value: 'Ù…ÛŒÙˆÙ‡ Ø®Ø´Ú©', child: Text('Ù…ÛŒÙˆÙ‡ Ø®Ø´Ú©')),
+                    DropdownMenuItem(value: 'Ù„ÙˆØ§Ø´Ú© Ùˆ ØªØ±Ø´â€ŒÙ…Ø²Ù‡', child: Text('Ù„ÙˆØ§Ø´Ú© Ùˆ ØªØ±Ø´â€ŒÙ…Ø²Ù‡')),
+                    DropdownMenuItem(value: 'Ú©ÙˆÚ©ÛŒ Ùˆ Ø´ÛŒØ±ÛŒÙ†ÛŒ', child: Text('Ú©ÙˆÚ©ÛŒ Ùˆ Ø´ÛŒØ±ÛŒÙ†ÛŒ')),
+                    DropdownMenuItem(value: 'Ú©Ù…â€ŒØ´Ú©Ø± Ùˆ Ù¾Ø±ÙˆØªØ¦ÛŒÙ†ÛŒ', child: Text('Ú©Ù…â€ŒØ´Ú©Ø± Ùˆ Ù¾Ø±ÙˆØªØ¦ÛŒÙ†ÛŒ')),
+                    DropdownMenuItem(value: 'Ù‡Ø¯ÛŒÙ‡', child: Text('Ù‡Ø¯ÛŒÙ‡')),
+                    DropdownMenuItem(value: 'Ù¾Ø³ØªÙ‡ Ùˆ Ù…ØºØ²ÛŒØ¬Ø§Øª', child: Text('Ù¾Ø³ØªÙ‡ Ùˆ Ù…ØºØ²ÛŒØ¬Ø§Øª')),
+                    DropdownMenuItem(value: 'ØªØ®Ù…Ù‡ Ùˆ ØªÙ†Ù‚Ù„Ø§Øª', child: Text('ØªØ®Ù…Ù‡ Ùˆ ØªÙ†Ù‚Ù„Ø§Øª')),
+                    DropdownMenuItem(value: 'Ú©ÙˆÚ©ÛŒ Ùˆ Ú©ÛŒÚ© Ø³Ø§Ù„Ù…', child: Text('Ú©ÙˆÚ©ÛŒ Ùˆ Ú©ÛŒÚ© Ø³Ø§Ù„Ù…')),
+                  ],
+                  onChanged: (value) => category = value!,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(controller: origin, decoration: const InputDecoration(labelText: 'Ù…Ø¨Ø¯Ø£ ÛŒØ§ Ø¨Ø±Ù†Ø¯'), validator: required),
+                const SizedBox(height: 10),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'Weight', label: Text('ÙˆØ²Ù†ÛŒ')),
+                    ButtonSegment(value: 'Count', label: Text('Ø¹Ø¯Ø¯ÛŒ')),
+                  ],
+                  selected: {unitType},
+                  onSelectionChanged: (value) => setState(() {
+                    unitType = value.first;
+                    quantity = unitType == 'Weight' ? 250 : 1;
+                  }),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(controller: sku, decoration: const InputDecoration(labelText: 'SKU'), validator: required),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: price,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Ù‚ÛŒÙ…Øª Ø±ÛŒØ§Ù„'),
+                  validator: numberRequired,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: stock,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'ØªØ¹Ø¯Ø§Ø¯ Ø¨Ø³ØªÙ‡ Ù…ÙˆØ¬ÙˆØ¯'),
+                  validator: numberRequired,
+                ),
+              ]),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Ø§Ù†ØµØ±Ø§Ù')),
+          FilledButton(onPressed: submit, child: const Text('Ø°Ø®ÛŒØ±Ù‡ Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³')),
+        ],
+      );
+
+  String? required(String? value) => value == null || value.trim().isEmpty ? 'Ø§ÛŒÙ† ÙÛŒÙ„Ø¯ Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª.' : null;
+  String? numberRequired(String? value) => num.tryParse(value ?? '') == null ? 'Ø¹Ø¯Ø¯ Ù…Ø¹ØªØ¨Ø± ÙˆØ§Ø±Ø¯ Ú©Ù†ÛŒØ¯.' : null;
+
+  void submit() {
+    if (!formKey.currentState!.validate()) return;
+    final label = unitType == 'Weight' ? '${quantity.toInt()} Ú¯Ø±Ù…' : '${quantity.toInt()} Ø¹Ø¯Ø¯';
+    Navigator.pop(
+      context,
+      CreateProductCommand(
+        title: title.text,
+        slug: slug.text,
+        category: category,
+        origin: origin.text,
+        unitType: unitType,
+        isPublished: false,
+        variants: [
+          CreateVariantCommand(
+            sku: sku.text,
+            quantity: quantity,
+            displayLabel: label,
+            price: num.parse(price.text),
+            availablePackages: int.parse(stock.text),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PlaceholderPage extends StatelessWidget {
+  const PlaceholderPage(this.title, this.icon, {super.key});
+  final String title;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 64, color: const Color(0xFF90A08F)),
+          const SizedBox(height: 12),
+          Text(title, style: Theme.of(context).textTheme.headlineSmall),
+          const Text('Ø¯Ø± Vertical Slice Ø¨Ø¹Ø¯ÛŒ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯.'),
+        ]),
+      );
+}

@@ -50,15 +50,13 @@
 .brandMark {
   width: 48px;
   height: 48px;
-  border-radius: 16px 16px 16px 5px;
-  display: grid;
-  place-items: center;
-  color: white;
-  background: linear-gradient(145deg, #567964, #31584a);
-  box-shadow: 0 12px 26px rgba(36,75,53,.2);
-  font-size: 25px;
-  font-weight: 950;
+  display: block;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 16px;
+  filter: drop-shadow(0 9px 15px rgba(36,75,53,.2));
 }
+.brandMark img { display:block; width:100%; height:100%; object-fit:contain; }
 .brandType { display: grid; line-height: 1.05; }
 .brandType b { font-size: 21px; letter-spacing: -.5px; }
 .brandType small { margin-top: 7px; color: #849087; font-size: 9px; }
@@ -163,6 +161,7 @@
 .productsSection, .qualitySection, .storySection { width: min(1240px, calc(100% - 40px)); margin: 0 auto 96px; }
 .sectionHeading { margin-bottom: 24px; display: flex; align-items: end; justify-content: space-between; gap: 30px; }
 .sectionHeading > div > span, .qualityIntro > span, .giftCopy > span, .storyQuote > span { color: #73906f; font-size: 10px; font-weight: 900; letter-spacing: .4px; }
+.sectionHeading > a { color: #31584a; font-size: 11px; font-weight: 900; text-decoration: none; white-space: nowrap; }
 .sectionHeading h2 { margin: 7px 0 0; font-size: clamp(28px, 4vw, 42px); letter-spacing: -1px; }
 .sectionHeading > p { max-width: 380px; margin: 0; color: #89938c; font-size: 10px; line-height: 1.9; }
 .catalogToolbar { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
@@ -270,8 +269,9 @@
 .cartSummary > div { margin-bottom: 10px; display: flex; justify-content: space-between; color: #6b796f; font-size: 9px; }
 .cartSummary > small { display: block; margin: 2px 0 15px; color: #929b94; font-size: 7px; line-height: 1.7; }
 .cartSummary .payableRow { margin: 0 0 15px; padding-top: 15px; border-top: 1px solid #dfe4dc; color: var(--ink); font-size: 12px; }
-.checkoutButton { width: 100%; min-height: 47px; border: 0; border-radius: 14px; color: white; background: var(--forest); cursor: pointer; font-size: 10px; font-weight: 900; }
-.checkoutButton:disabled { opacity: .38; cursor: not-allowed; }
+.checkoutButton { width: 100%; min-height: 47px; display:flex; align-items:center; justify-content:center; border: 0; border-radius: 14px; color: white; background: var(--forest); cursor: pointer; text-align:center; text-decoration:none; font-size: 10px; font-weight: 900; }
+.checkoutButton[aria-disabled="true"] { opacity: .38; cursor: not-allowed; }
+.fullCartLink { margin-top:10px; display:block; color:var(--forest); text-align:center; font-size:9px; font-weight:800; text-decoration:none; }
 
 .modalOverlay { padding: 24px; display: grid; place-items: center; overflow: auto; }
 .checkoutModal, .successModal { width: min(680px, 100%); overflow: hidden; border-radius: 27px; background: #fffdf8; box-shadow: 0 30px 90px rgba(13,29,19,.28); }
@@ -341,7 +341,7 @@
   .demoBar span:last-child { width: 100%; }
   .header, .hero, .productsSection, .qualitySection, .giftSection, .storySection { width: min(100% - 24px, 1240px); }
   .header { gap: 10px; }
-  .brandMark { width: 42px; height: 42px; border-radius: 14px 14px 14px 5px; }
+  .brandMark { width: 42px; height: 42px; border-radius: 14px; }
   .brandType b { font-size: 18px; }
   .brandType small { display: none; }
   .headerActions { margin-inline-start: auto; }
