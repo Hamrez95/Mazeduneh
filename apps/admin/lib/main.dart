@@ -10,12 +10,12 @@ class NooshoraAdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'مدیریت نوشورا',
+        title: 'مدیریت مزه‌دونه',
         locale: const Locale('fa'),
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3F6B45)),
-          scaffoldBackgroundColor: const Color(0xFFF6F8F4),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF31584A)),
+          scaffoldBackgroundColor: const Color(0xFFFAF7EF),
           cardTheme: const CardThemeData(
             elevation: 0,
             color: Colors.white,
@@ -77,7 +77,7 @@ class _AdminShellState extends State<AdminShell> {
             width: 245,
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: const Color(0xFF243127), borderRadius: BorderRadius.circular(24)),
+            decoration: BoxDecoration(color: const Color(0xFF203E34), borderRadius: BorderRadius.circular(24)),
             child: Column(children: [
               const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
               const SizedBox(height: 20),
@@ -86,10 +86,10 @@ class _AdminShellState extends State<AdminShell> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: ListTile(
                     selected: index == i,
-                    selectedTileColor: const Color(0xFF3F6B45),
+                    selectedTileColor: const Color(0xFF31584A),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFC6D1C8)),
-                    title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFC6D1C8))),
+                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFD5DFD6)),
+                    title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFD5DFD6))),
                     onTap: () => setState(() => index = i),
                   ),
                 ),
@@ -124,12 +124,12 @@ class Brand extends StatelessWidget {
           width: 45,
           height: 45,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: const Color(0xFF3F6B45), borderRadius: BorderRadius.circular(15)),
-          child: const Text('ن', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+          decoration: BoxDecoration(color: const Color(0xFF31584A), borderRadius: BorderRadius.circular(15)),
+          child: const Text('م', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
         ),
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('مدیریت نوشورا', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
+          Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
           Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
         ]),
       ]);
@@ -170,7 +170,7 @@ class MetricCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: const Color(0xFF3F6B45)),
+              Icon(icon, color: const Color(0xFF31584A)),
               const Spacer(),
               Text(title, style: const TextStyle(color: Colors.grey)),
               Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
@@ -362,7 +362,7 @@ class ProductCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'موجودی کل: ${product.totalStock} بسته',
-                  style: const TextStyle(color: Color(0xFF3F6B45), fontWeight: FontWeight.w700),
+                  style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
                 ),
               ),
               FilledButton.tonalIcon(
@@ -412,7 +412,7 @@ class _ProductDialogState extends State<ProductDialog> {
   final price = TextEditingController();
   final stock = TextEditingController();
   String unitType = 'Weight';
-  String category = 'پسته و مغزیجات';
+  String category = 'آجیل و مغزها';
   num quantity = 250;
 
   @override
@@ -437,6 +437,12 @@ class _ProductDialogState extends State<ProductDialog> {
                   value: category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
                   items: const [
+                    DropdownMenuItem(value: 'آجیل و مغزها', child: Text('آجیل و مغزها')),
+                    DropdownMenuItem(value: 'میوه خشک', child: Text('میوه خشک')),
+                    DropdownMenuItem(value: 'لواشک و ترش‌مزه', child: Text('لواشک و ترش‌مزه')),
+                    DropdownMenuItem(value: 'کوکی و شیرینی', child: Text('کوکی و شیرینی')),
+                    DropdownMenuItem(value: 'کم‌شکر و پروتئینی', child: Text('کم‌شکر و پروتئینی')),
+                    DropdownMenuItem(value: 'هدیه', child: Text('هدیه')),
                     DropdownMenuItem(value: 'پسته و مغزیجات', child: Text('پسته و مغزیجات')),
                     DropdownMenuItem(value: 'تخمه و تنقلات', child: Text('تخمه و تنقلات')),
                     DropdownMenuItem(value: 'کوکی و کیک سالم', child: Text('کوکی و کیک سالم')),

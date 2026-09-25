@@ -62,8 +62,8 @@ export function ProductArtwork({
             <path d="M121 86h186" stroke="#d9d2c5" strokeWidth="5" strokeLinecap="round" />
             <rect x="137" y="119" width="154" height="92" rx="24" fill={`url(#label-${id})`} />
             <circle cx="214" cy="150" r="18" fill="#fff8e8" opacity=".95" />
-            <text x="214" y="158" textAnchor="middle" fontSize="22" fontWeight="900" fill={colors[1]}>ن</text>
-            <text x="214" y="186" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">NOOSHORA</text>
+            <text x="214" y="158" textAnchor="middle" fontSize="22" fontWeight="900" fill={colors[1]}>م</text>
+            <text x="214" y="186" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff">MAZEDOONE</text>
             <rect x="165" y="225" width="98" height="23" rx="11" fill="#e8e1d5" />
           </>
         )}

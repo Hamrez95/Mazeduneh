@@ -1,51 +1,39 @@
-# NOOSHORA design system
+# Mazeduneh design system
 
-The visual direction is inspired by the supplied reference: generous whitespace, rounded product cards, botanical line art, clear product photography, and soft pastel campaign panels. The implementation must remain original and must not copy the reference layout or assets.
+## Brand
 
-## Brand attributes
+- Persian name: مزه‌دونه
+- Latin name: Mazeduneh
+- Working line: خوش‌خوراکِ هر روز
+- Brand traits: warm, fresh, handmade, calm, and easy to trust.
+- The name is a working choice pending official trademark and `.ir` domain checks.
 
-- Fresh
-- Trustworthy
-- Warm
-- Modern Iranian
-- Giftable
-- Calm rather than crowded
+## Palette
 
-## Core palette
-
-- Pistachio 700: `#3F6B45`
-- Pistachio 500: `#6E9B67`
-- Pistachio 100: `#E7F1E2`
-- Cream: `#FFF9EF`
-- Sand: `#F2E7D6`
-- Apricot: `#F7C58B`
-- Peach: `#F8DDD0`
-- Lilac: `#E8E1F3`
-- Ink: `#243127`
-- Muted ink: `#667168`
+- Cedar green: `#31584A`
+- Deep cedar: `#203E34`
+- Cream: `#FAF7EF`
+- Paper: `#FFFDF8`
+- Sage: `#93A891`
+- Dried-apricot: `#D7AB61`
+- Soft peach: `#F4E5D9`
+- Ink: `#23332D`
+- Muted ink: `#78847D`
 
 ## Typography
 
-Use a readable Persian variable font loaded locally or through an approved provider. Headings should be distinctive but highly legible. Body text and prices must prioritize clarity.
+Use Vazirmatn as the primary Persian font. Keep prices, weights, and badges legible at mobile sizes.
 
-## UI principles
+## Experience principles
 
-- Mobile-first and RTL-first.
-- One primary action per section.
-- Product imagery is the visual hero.
-- Weight variants are visible buttons, not hidden selects on mobile.
-- Price, freshness, origin, grade, allergens, and delivery promise are above the fold.
-- Pastels support hierarchy; they do not reduce contrast.
-- Minimum 44×44 px touch targets.
-- WCAG AA contrast for meaningful text and controls.
+- RTL-first and responsive at mobile, tablet, and desktop sizes.
+- Make products easy to discover by category and search.
+- Give almonds and other nuts, dried fruit, handmade fruit leather, low-sugar cookies, protein snacks, and gift boxes equal room in the catalog.
+- Show freshness, package size, price, and preparation notes on the product card.
+- Use calm cream surfaces and cedar green actions, with muted sage, apricot, and fruit tones for category artwork.
+- Keep touch targets comfortable and preserve keyboard focus and reduced-motion preferences.
+- Admin runs as a Flutter web app with an installable manifest and mobile bottom navigation.
 
-## Layout tokens
+## Reference
 
-- Content width: 1200 px
-- Radius: 16 px cards, 999 px chips/buttons when appropriate
-- Spacing scale: 4, 8, 12, 16, 24, 32, 48, 72
-- Shadows: low contrast, used sparingly
-
-## Seasonal theming
-
-Theme settings are data, not hardcoded pages. Campaigns may override hero artwork, accent colors, featured collections, and announcement text while preserving accessibility and layout stability.
+The category discovery, best-seller merchandising, dietary cues, and gift bundles take inspiration from the supplied Nutty Delights reference while using original copy and artwork: https://www.nuttydelights.ie/

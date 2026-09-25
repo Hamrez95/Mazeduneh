@@ -2,7 +2,7 @@
 
 ## Promise
 
-NOOSHORA helps customers discover and buy trustworthy nuts, dried fruit, healthy snacks, and gifts with a fast, calm, mobile-first journey.
+Mazeduneh (مزه‌دونه) helps customers discover and buy fresh nuts, dried fruit, handmade fruit leather, lower-sugar homemade sweets, protein snacks, and gifts in a fast, calm, mobile-first journey.
 
 ## Primary outcomes
 
@@ -13,10 +13,10 @@ NOOSHORA helps customers discover and buy trustworthy nuts, dried fruit, healthy
 
 ## Initial customer segments
 
-1. Household buyers seeking fresh daily products.
+1. Household buyers seeking fresh daily products, including nuts and homemade snacks.
 2. Gift buyers for Nowruz, Yalda, Ramadan, birthdays, and celebrations.
 3. Corporate buyers requiring branded bulk gift packs.
-4. Health-conscious customers seeking low-salt, raw, unsweetened, or portioned products.
+4. Health-conscious customers seeking low-salt nuts, no-added-sugar dried fruit, and portioned protein snacks.
 
 ## MVP scope
 

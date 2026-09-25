@@ -62,7 +62,7 @@ export default function ProfessionalStorefront() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const customer = String(form.get("customer") ?? "مشتری دمو");
-    const code = `NS-${new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
+    const code = `DN-${new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
       Math.floor(100000 + Math.random() * 900000),
     )}`;
     setOrder({
@@ -83,23 +83,23 @@ export default function ProfessionalStorefront() {
     <main className={styles.page}>
       <div className={styles.demoBar}>
         <span className={styles.demoDot} />
-        <strong>پیش‌نمایش تعاملی نوشورا</strong>
-        <span>داده‌ها آزمایشی‌اند و پرداخت واقعی انجام نمی‌شود.</span>
+        <strong>پیش‌نمایش تعاملی مزه‌دونه</strong>
+        <span>سبد و سفارش نمایشی‌اند؛ پرداخت واقعی انجام نمی‌شود.</span>
       </div>
 
       <header className={styles.header}>
-        <a href="#top" className={styles.brand} aria-label="نوشورا؛ صفحه نخست">
-          <span className={styles.brandMark}>ن</span>
+        <a href="#top" className={styles.brand} aria-label="مزه‌دونه؛ صفحه نخست">
+          <span className={styles.brandMark}>م</span>
           <span className={styles.brandType}>
-            <b>نوشورا</b>
-            <small>دست‌چینِ لحظه‌های خوش</small>
+            <b>مزه‌دونه</b>
+            <small>خوش‌خوراکِ هر روز</small>
           </span>
         </a>
 
         <nav className={`${styles.nav} ${menuOpen ? styles.navOpen : ""}`} aria-label="ناوبری اصلی">
           <a href="#products" onClick={() => setMenuOpen(false)}>فروشگاه</a>
-          <a href="#quality" onClick={() => setMenuOpen(false)}>چرا نوشورا</a>
-          <a href="#gift" onClick={() => setMenuOpen(false)}>هدیه سازمانی</a>
+          <a href="#quality" onClick={() => setMenuOpen(false)}>چرا مزه‌دونه</a>
+          <a href="#gift" onClick={() => setMenuOpen(false)}>جعبه‌های هدیه</a>
           <a href="#story" onClick={() => setMenuOpen(false)}>داستان برند</a>
           <a className={styles.mobileAdminLink} href={ADMIN_URL} target="_blank" rel="noreferrer">ورود به پنل مدیریت</a>
         </nav>
@@ -134,24 +134,24 @@ export default function ProfessionalStorefront() {
 
       <section className={styles.hero} id="top">
         <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>انتخاب دقیق از مبدأ تا بسته‌بندی</span>
-          <h1>خشکبارِ خوب،<br /><em>واضح انتخاب می‌شود.</em></h1>
+          <span className={styles.eyebrow}>یه مشت حالِ خوب، هر روز</span>
+          <h1>خوشمزه‌هایی که<br /><em>حالِ دلت را خوب می‌کنند.</em></h1>
           <p>
-            منشأ، درجه کیفی، تاریخ بسته‌بندی و موجودی هر انتخاب را شفاف می‌بینی؛ بعد همان محصول با بسته‌بندی تمیز و قابل‌پیگیری به دستت می‌رسد.
+            از مغزهای تازه تا میوه‌های آفتاب‌خورده و شیرینی‌های خونگیِ کم‌شکر؛ چیزهای ساده‌ای که روزت را خوش‌طعم می‌کنند.
           </p>
           <div className={styles.heroButtons}>
-            <a href="#products" className={styles.primaryButton}>خرید از محصولات منتخب <span>←</span></a>
-            <a href="#quality" className={styles.secondaryButton}>فرایند کنترل کیفیت</a>
+            <a href="#products" className={styles.primaryButton}>خوشمزه‌هامون رو ببین <span>←</span></a>
+            <a href="#quality" className={styles.secondaryButton}>قصه‌ی خوشمزگی</a>
           </div>
           <div className={styles.heroProof}>
-            <div><b>۴</b><span>مرحله کنترل کیفیت</span></div>
-            <div><b>۸</b><span>محصول در دموی تعاملی</span></div>
-            <div><b>۲۴/۷</b><span>مشاهده وضعیت سفارش</span></div>
+            <div><b>تازه</b><span>آماده‌سازی روزانه</span></div>
+            <div><b>کم‌شکر</b><span>انتخاب‌های شیرین‌تر</span></div>
+            <div><b>با عشق</b><span>بسته‌بندی مزه‌دونه</span></div>
           </div>
         </div>
 
         <div className={styles.heroVisual}>
-          <span className={styles.heroCaption}>بسته منتخب این هفته</span>
+          <span className={styles.heroCaption}>پرفروشِ این هفته</span>
           <ProductArtwork product={demoProducts[0]} hero />
           <div className={styles.heroPriceCard}>
             <small>پسته اکبری ممتاز</small>
@@ -165,16 +165,16 @@ export default function ProfessionalStorefront() {
       </section>
 
       <section className={styles.promiseStrip} aria-label="مزیت‌های خرید">
-        <article><span>01</span><div><b>شفافیت محصول</b><small>مبدأ، وزن، موجودی و ویژگی‌ها</small></div></article>
-        <article><span>02</span><div><b>بسته‌بندی تمیز</b><small>ثبت سری و تاریخ آماده‌سازی</small></div></article>
-        <article><span>03</span><div><b>سفارش قابل پیگیری</b><small>از پرداخت تا تحویل در یک مسیر</small></div></article>
-        <article><span>04</span><div><b>هدیه قابل شخصی‌سازی</b><small>ترکیب، کارت و زمان تحویل</small></div></article>
+        <article><span>01</span><div><b>مواد اولیه ساده</b><small>خوش‌طعم و باکیفیت</small></div></article>
+        <article><span>02</span><div><b>تازه آماده می‌شه</b><small>کوکی و لواشک روزانه</small></div></article>
+        <article><span>03</span><div><b>کم‌شیرین و خوشمزه</b><small>برای میان‌وعده‌ی هر روز</small></div></article>
+        <article><span>04</span><div><b>هدیه‌ی خوشحال‌کننده</b><small>ترکیب دلخواه برای عزیزانت</small></div></article>
       </section>
 
       <section className={styles.productsSection} id="products">
         <div className={styles.sectionHeading}>
-          <div><span>کاتالوگ نوشورا</span><h2>برای هر لحظه، یک انتخاب روشن</h2></div>
-          <p>قیمت و موجودی این نسخه برای نمایش تجربه محصول است و تراکنش واقعی ندارد.</p>
+          <div><span>خوشمزه‌های مزه‌دونه</span><h2>یه طعم خوب برای هر حال‌وهوا</h2></div>
+          <p>محصول‌ها و قیمت‌ها در این پیش‌نمایش نمونه هستند.</p>
         </div>
 
         <div className={styles.catalogToolbar}>
@@ -232,47 +232,47 @@ export default function ProfessionalStorefront() {
 
       <section className={styles.qualitySection} id="quality">
         <div className={styles.qualityIntro}>
-          <span>فرایند نوشورا</span>
-          <h2>هر بسته باید داستانی قابل توضیح از تأمین تا تحویل داشته باشد.</h2>
-          <p>پنل مدیریتی نوشورا محصول، بچ انبار، بهای خرید، موجودی و سفارش را در یک زنجیره مشخص نگه می‌دارد.</p>
+          <span>از انتخاب تا بسته‌بندی</span>
+          <h2>خوشمزگی از مواد اولیه‌ی خوب شروع می‌شود.</h2>
+          <p>مغزها را تازه انتخاب می‌کنیم، خوراکی‌های خونگی را با دقت آماده می‌کنیم و هر بسته را با عشق می‌فرستیم.</p>
           <a href={ADMIN_URL} target="_blank" rel="noreferrer">دیدن پنل مدیریتی <span>←</span></a>
         </div>
         <div className={styles.qualitySteps}>
-          <article><b>۱</b><div><h3>تأمین و ثبت مبدأ</h3><p>تأمین‌کننده، سری ورود، درجه و قیمت خرید ثبت می‌شود.</p></div></article>
-          <article><b>۲</b><div><h3>کنترل و جداسازی</h3><p>کیفیت ظاهری، تازگی و شرایط نگهداری بررسی می‌شود.</p></div></article>
-          <article><b>۳</b><div><h3>بسته‌بندی قابل ردیابی</h3><p>وزن، SKU، موجودی و تاریخ مصرف به بسته فروش متصل است.</p></div></article>
-          <article><b>۴</b><div><h3>آماده‌سازی سفارش</h3><p>برداشت از موجودی، کنترل نهایی و تحویل به حمل ثبت می‌شود.</p></div></article>
+          <article><b>۱</b><div><h3>دانه‌های خوب را دست‌چین می‌کنیم</h3><p>برای آجیل و مغزها سراغ محصول تازه و خوش‌طعم می‌رویم.</p></div></article>
+          <article><b>۲</b><div><h3>با مواد ساده و خوش‌طعم</h3><p>در دستورهای خانگی، شیرینی را تا جای ممکن ملایم نگه می‌داریم.</p></div></article>
+          <article><b>۳</b><div><h3>هر روز با حوصله آماده می‌کنیم</h3><p>کوکی و لواشک تازه، با بسته‌بندی مناسب راهی خانه‌ات می‌شوند.</p></div></article>
+          <article><b>۴</b><div><h3>تا رسیدن به دست تو</h3><p>سفارش را مرتب و با دقت آماده می‌کنیم تا تجربه‌اش هم خوشمزه باشد.</p></div></article>
         </div>
       </section>
 
       <section className={styles.giftSection} id="gift">
         <div className={styles.giftVisual}>
-          <ProductArtwork product={demoProducts[7]} hero />
+          <ProductArtwork product={demoProducts[demoProducts.length - 1]} hero />
           <span className={styles.giftTag}>قابل شخصی‌سازی</span>
         </div>
         <div className={styles.giftCopy}>
           <span>هدیه شخصی و سازمانی</span>
           <h2>یک هدیه خوش‌ساخت، نه یک بسته آماده تکراری</h2>
           <p>ترکیب محصولات، بودجه، رنگ بسته، کارت تبریک و زمان تحویل را مشخص کن؛ درخواست از پنل پیگیری و قیمت‌گذاری می‌شود.</p>
-          <div className={styles.giftOptions}><span>ترکیب اختصاصی</span><span>کارت برندشده</span><span>ارسال چندمقصدی</span></div>
-          <button type="button" onClick={() => addToCart(demoProducts[7])}>افزودن جعبه نمونه به سبد</button>
+          <div className={styles.giftOptions}><span>ترکیب اختصاصی</span><span>کارت با نشان دلخواه</span><span>ارسال چندمقصدی</span></div>
+          <button type="button" onClick={() => addToCart(demoProducts[demoProducts.length - 1])}>افزودن جعبه نمونه به سبد</button>
         </div>
       </section>
 
       <section className={styles.storySection} id="story">
         <div className={styles.storyQuote}>
-          <span>چرا نوشورا؟</span>
-          <blockquote>«قرار نیست مشتری برای فهمیدن تازگی، وزن واقعی یا وضعیت سفارش حدس بزند.»</blockquote>
+          <span>چرا مزه‌دونه؟</span>
+          <blockquote>«یه میان‌وعده‌ی خوش‌طعم می‌تونه حالِ یک روز معمولی رو عوض کنه.»</blockquote>
         </div>
         <div className={styles.storyCopy}>
-          <p>نوشورا یک ویترین نمایشی صرف نیست؛ زیر این تجربه، مدل محصول، سفارش، موجودی و گزارش مدیریتی طراحی شده تا کسب‌وکار با داده واقعی رشد کند.</p>
-          <a href={ADMIN_URL} target="_blank" rel="noreferrer">ورود به دموی پنل مدیریت</a>
+          <p>مزه‌دونه برای لحظه‌های کوچیک و خوشمزه ساخته شده؛ از مشت آجیل سرِ کار تا کوکی خونگی کنار چای.</p>
+          <a href={ADMIN_URL} target="_blank" rel="noreferrer">دیدن پنل مدیریت مزه‌دونه</a>
         </div>
       </section>
 
       <footer className={styles.footer}>
-        <div className={styles.footerBrand}><span className={styles.brandMark}>ن</span><div><b>نوشورا</b><small>دست‌چینِ لحظه‌های خوش</small></div></div>
-        <div className={styles.footerLinks}><a href="#products">محصولات</a><a href="#quality">فرایند کیفیت</a><a href="#gift">هدیه سازمانی</a></div>
+        <div className={styles.footerBrand}><span className={styles.brandMark}>م</span><div><b>مزه‌دونه</b><small>خوش‌خوراکِ هر روز</small></div></div>
+        <div className={styles.footerLinks}><a href="#products">محصولات</a><a href="#quality">خوشمزه‌های کم‌شکر</a><a href="#gift">جعبه‌های هدیه</a></div>
         <div className={styles.footerNote}><b>نسخه دموی تعاملی</b><small>بدون پرداخت، ارسال یا ثبت داده واقعی</small></div>
       </footer>
 
