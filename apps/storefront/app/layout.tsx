@@ -3,19 +3,19 @@ import "./globals.css";
 import "./commerce.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://nooshora.ir"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://nooshora-storefront.vercel.app"),
   title: {
-    default: "نوشورا | دست‌چین لحظه‌های خوش",
-    template: "%s | نوشورا",
+    default: "مزه‌دونه | خوش‌خوراکِ هر روز",
+    template: "%s | مزه‌دونه",
   },
   description:
     "فروشگاه آنلاین آجیل، خشکبار، میوه خشک و هدیه‌های خوش‌طعم با انتخاب شفاف و ارسال مطمئن.",
   openGraph: {
     type: "website",
     locale: "fa_IR",
-    siteName: "نوشورا",
-    title: "نوشورا | دست‌چین لحظه‌های خوش",
-    description: "آجیل و خشکبار تازه، شفاف و خوش‌هدیه.",
+    siteName: "مزه‌دونه",
+    title: "مزه‌دونه | خوش‌خوراکِ هر روز",
+    description: "آجیل تازه، میوه خشک و شیرینی‌های خانگی کم‌شکر.",
   },
 };
 
