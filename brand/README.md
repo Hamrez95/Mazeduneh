@@ -2,7 +2,7 @@
 
 ## Current status
 
-The Persian consumer brand is **مزه‌دونه (Mazeduneh)**. These files are the first digital identity direction for the storefront, admin icon, and campaign previews. They are not a final print-production package. The repository keeps its existing `NOOSHORA` technical name during this design slice.
+The Persian consumer brand is **مزه‌دونه (Mazeduneh)**. These files guide the digital identity for the storefront, admin icon, and campaign previews. They are not a final print-production package.
 
 ## Files
 

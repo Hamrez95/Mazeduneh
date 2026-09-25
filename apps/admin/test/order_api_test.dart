@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:nooshora_admin/auth_session.dart';
-import 'package:nooshora_admin/order_api.dart';
+import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/order_api.dart';
 
 void main() {
   setUp(() {

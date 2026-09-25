@@ -28,11 +28,11 @@ jobs:
       - name: Production static preview build
         run: npm run build
         env:
-          NOOSHORA_STATIC_EXPORT: 'true'
+          MAZEDUNEH_STATIC_EXPORT: 'true'
       - name: Upload storefront preview artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nooshora-storefront-preview
+          name: mazeduneh-storefront-preview
           path: apps/storefront/out
 
   api:
@@ -42,21 +42,21 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: nooshora
-          POSTGRES_PASSWORD: nooshora_ci
-          POSTGRES_DB: nooshora
+          POSTGRES_USER: mazeduneh
+          POSTGRES_PASSWORD: mazeduneh_ci
+          POSTGRES_DB: mazeduneh
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U nooshora -d nooshora"
+          --health-cmd "pg_isready -U mazeduneh -d mazeduneh"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=nooshora;Username=nooshora;Password=nooshora_ci
-      Admin__Email: ci-owner@nooshora.test
+      ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_ci
+      Admin__Email: ci-owner@mazeduneh.test
       Admin__PasswordHash: 9fe9a5e4ddf44437229cb7ba4cae41523e828be21439246eaeb995ebd58741b1
-      Admin__TokenSigningKey: nooshora-ci-signing-key-must-be-long-and-private
+      Admin__TokenSigningKey: mazeduneh-ci-signing-key-must-be-long-and-private
       Payments__SandboxEnabled: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -64,22 +64,22 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - name: Restore
-        run: dotnet restore services/api/Nooshora.Api.csproj
+        run: dotnet restore services/api/Mazeduneh.Api.csproj
       - name: Build
-        run: dotnet build services/api/Nooshora.Api.csproj --configuration Release --no-restore
+        run: dotnet build services/api/Mazeduneh.Api.csproj --configuration Release --no-restore
       - name: Durable checkout payment and order operations contract
         shell: bash
         run: |
           set -euo pipefail
           start_api() {
-            dotnet run --project services/api/Nooshora.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/nooshora-api.log 2>&1 &
+            dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/mazeduneh-api.log 2>&1 &
             API_PID=$!
             export API_PID
             for attempt in $(seq 1 40); do
               if curl -fsS http://127.0.0.1:5099/health > /dev/null; then return 0; fi
               sleep 1
             done
-            cat /tmp/nooshora-api.log
+            cat /tmp/mazeduneh-api.log
             return 1
           }
           stop_api() {
@@ -141,7 +141,7 @@ jobs:
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
-            --data '{"email":"ci-owner@nooshora.test","password":"Nooshora-CI-Owner-Password!"}' > /tmp/login.json
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
 
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders)" = "401"
@@ -195,7 +195,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate platform runners
-        run: flutter create --platforms=android,web --project-name nooshora_admin .
+        run: flutter create --platforms=android,web --project-name mazeduneh_admin .
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
@@ -209,10 +209,10 @@ jobs:
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nooshora-admin-web
+          name: mazeduneh-admin-web
           path: apps/admin/build/web
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nooshora-admin-apk-debug
+          name: mazeduneh-admin-apk-debug
           path: apps/admin/build/app/outputs/flutter-apk/app-debug.apk

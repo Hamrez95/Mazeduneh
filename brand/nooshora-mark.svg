@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">نشان نوشورا</title>
-  <desc id="desc">نشان انتزاعی دانه و برگ همراه حرف ن</desc>
-  <rect width="512" height="512" rx="150" fill="#31543A"/>
-  <path d="M151 316c0-105 62-174 169-174 22 0 42 3 59 8-10 119-71 207-181 218-28 3-47-16-47-52Z" fill="#E8F1E4"/>
-  <path d="M205 325c33-48 74-87 128-119" fill="none" stroke="#31543A" stroke-width="27" stroke-linecap="round"/>
-  <path d="M160 152c46 3 77 24 92 65-52 4-84-17-92-65Z" fill="#F5C783"/>
-  <text x="252" y="334" text-anchor="middle" font-family="Arial, sans-serif" font-size="155" font-weight="800" fill="#31543A">ن</text>
-</svg>

@@ -25,13 +25,13 @@ if ($Component -in @('all','storefront')) {
   Assert-Command 'node'
   Assert-Command 'npm'
   $Path = Join-Path $Root 'apps/storefront'
-  Start-Terminal 'NOOSHORA Storefront' $Path 'npm install; npm run dev'
+  Start-Terminal 'MAZEDUNEH Storefront' $Path 'npm install; npm run dev'
 }
 
 if ($Component -in @('all','api')) {
   Assert-Command 'dotnet'
   $Path = Join-Path $Root 'services/api'
-  Start-Terminal 'NOOSHORA API' $Path 'dotnet watch run'
+  Start-Terminal 'MAZEDUNEH API' $Path 'dotnet watch run'
 }
 
 if ($Component -in @('all','admin')) {
@@ -40,13 +40,13 @@ if ($Component -in @('all','admin')) {
   if (-not (Test-Path (Join-Path $Path 'android'))) {
     Push-Location $Path
     try {
-      flutter create --platforms=android,web --project-name nooshora_admin .
+      flutter create --platforms=android,web --project-name mazeduneh_admin .
     }
     finally {
       Pop-Location
     }
   }
-  Start-Terminal 'NOOSHORA Admin' $Path 'flutter pub get; flutter run -d chrome'
+  Start-Terminal 'MAZEDUNEH Admin' $Path 'flutter pub get; flutter run -d chrome'
 }
 
-Write-Host 'NOOSHORA development processes have been launched.' -ForegroundColor Cyan
+Write-Host 'MAZEDUNEH development processes have been launched.' -ForegroundColor Cyan

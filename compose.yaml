@@ -1,21 +1,21 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: nooshora-postgres
+    container_name: mazeduneh-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: nooshora
-      POSTGRES_USER: nooshora
-      POSTGRES_PASSWORD: nooshora_local_only
+      POSTGRES_DB: mazeduneh
+      POSTGRES_USER: mazeduneh
+      POSTGRES_PASSWORD: mazeduneh_local_only
     ports:
       - "5432:5432"
     volumes:
-      - nooshora_postgres_data:/var/lib/postgresql/data
+      - mazeduneh_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nooshora -d nooshora"]
+      test: ["CMD-SHELL", "pg_isready -U mazeduneh -d mazeduneh"]
       interval: 5s
       timeout: 3s
       retries: 10
 
 volumes:
-  nooshora_postgres_data:
+  mazeduneh_postgres_data:

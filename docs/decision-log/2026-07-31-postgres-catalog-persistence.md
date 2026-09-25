@@ -39,7 +39,7 @@
 ## اجرای محلی
 ```bash
 docker compose up -d postgres
-ConnectionStrings__Catalog='Host=localhost;Port=5432;Database=nooshora;Username=nooshora;Password=nooshora_local_only' dotnet run --project services/api
+ConnectionStrings__Catalog='Host=localhost;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_local_only' dotnet run --project services/api
 ```
 
 رمز داخل compose فقط برای توسعه محلی است و در Production استفاده نمی‌شود.

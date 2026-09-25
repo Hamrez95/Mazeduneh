@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'auth_session.dart';
 
 const defaultApiBaseUrl = String.fromEnvironment(
-  'NOOSHORA_API_BASE_URL',
+  'MAZEDUNEH_API_BASE_URL',
   defaultValue: 'http://localhost:5000',
 );
 
