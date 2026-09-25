@@ -1,4 +1,4 @@
-# NOOSHORA roadmap
+# MAZEDUNEH roadmap
 
 ## Milestone 0 — Product and platform foundation
 

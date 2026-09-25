@@ -1,358 +1,1 @@
-"use client";
-
-import { FormEvent, useMemo, useState } from "react";
-import { categories, demoProducts, toman, type DemoProduct } from "./catalog";
-import { ProductArtwork } from "./ProductArtwork";
-import styles from "./professional-storefront.module.css";
-
-type CartLine = DemoProduct & { quantity: number };
-type DemoOrder = { code: string; customer: string; payable: number; createdAt: string };
-
-const ADMIN_URL = process.env.NEXT_PUBLIC_NOOSHORA_ADMIN_URL ?? "https://nooshora-admin.vercel.app";
-
-export default function ProfessionalStorefront() {
-  const [category, setCategory] = useState("Ù‡Ù…Ù‡");
-  const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [order, setOrder] = useState<DemoOrder | null>(null);
-
-  const products = useMemo(() => {
-    const normalized = query.trim();
-    return demoProducts.filter((product) => {
-      const matchesCategory = category === "Ù‡Ù…Ù‡" || product.category === category;
-      const matchesQuery = !normalized || `${product.title} ${product.subtitle} ${product.origin}`.includes(normalized);
-      return matchesCategory && matchesQuery;
-    });
-  }, [category, query]);
-
-  const cartCount = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
-  const shipping = subtotal === 0 || subtotal >= 1500000 ? 0 : 75000;
-  const payable = subtotal + shipping;
-
-  function addToCart(product: DemoProduct) {
-    setCart((current) => {
-      const existing = current.find((line) => line.id === product.id);
-      if (!existing) return [...current, { ...product, quantity: 1 }];
-      return current.map((line) =>
-        line.id === product.id
-          ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) }
-          : line,
-      );
-    });
-    setCartOpen(true);
-  }
-
-  function changeQuantity(id: string, delta: number) {
-    setCart((current) =>
-      current
-        .map((line) =>
-          line.id === id
-            ? { ...line, quantity: Math.max(0, Math.min(line.quantity + delta, line.stock)) }
-            : line,
-        )
-        .filter((line) => line.quantity > 0),
-    );
-  }
-
-  function submitDemoOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const customer = String(form.get("customer") ?? "Ù…Ø´ØªØ±ÛŒ Ø¯Ù…Ùˆ");
-    const code = `DN-${new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
-      Math.floor(100000 + Math.random() * 900000),
-    )}`;
-    setOrder({
-      code,
-      customer,
-      payable,
-      createdAt: new Intl.DateTimeFormat("fa-IR", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date()),
-    });
-    setCart([]);
-    setCheckoutOpen(false);
-    setCartOpen(false);
-  }
-
-  return (
-    <main className={styles.page}>
-      <div className={styles.demoBar}>
-        <span className={styles.demoDot} />
-        <strong>Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ ØªØ¹Ø§Ù…Ù„ÛŒ Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</strong>
-        <span>Ø³Ø¨Ø¯ Ùˆ Ø³ÙØ§Ø±Ø´ Ù†Ù…Ø§ÛŒØ´ÛŒâ€ŒØ§Ù†Ø¯Ø› Ù¾Ø±Ø¯Ø§Ø®Øª ÙˆØ§Ù‚Ø¹ÛŒ Ø§Ù†Ø¬Ø§Ù… Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.</span>
-      </div>
-
-      <header className={styles.header}>
-        <a href="#top" className={styles.brand} aria-label="Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡Ø› ØµÙØ­Ù‡ Ù†Ø®Ø³Øª">
-          <span className={styles.brandMark}>Ù…</span>
-          <span className={styles.brandType}>
-            <b>Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</b>
-            <small>Ø®ÙˆØ´â€ŒØ®ÙˆØ±Ø§Ú©Ù Ù‡Ø± Ø±ÙˆØ²</small>
-          </span>
-        </a>
-
-        <nav className={`${styles.nav} ${menuOpen ? styles.navOpen : ""}`} aria-label="Ù†Ø§ÙˆØ¨Ø±ÛŒ Ø§ØµÙ„ÛŒ">
-          <a href="#products" onClick={() => setMenuOpen(false)}>ÙØ±ÙˆØ´Ú¯Ø§Ù‡</a>
-          <a href="#quality" onClick={() => setMenuOpen(false)}>Ú†Ø±Ø§ Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</a>
-          <a href="#gift" onClick={() => setMenuOpen(false)}>Ø¬Ø¹Ø¨Ù‡â€ŒÙ‡Ø§ÛŒ Ù‡Ø¯ÛŒÙ‡</a>
-          <a href="#story" onClick={() => setMenuOpen(false)}>Ø¯Ø§Ø³ØªØ§Ù† Ø¨Ø±Ù†Ø¯</a>
-          <a className={styles.mobileAdminLink} href={ADMIN_URL} target="_blank" rel="noreferrer">ÙˆØ±ÙˆØ¯ Ø¨Ù‡ Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª</a>
-        </nav>
-
-        <div className={styles.headerActions}>
-          <label className={styles.searchBox}>
-            <span aria-hidden="true">âŒ•</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Ø¬Ø³Øªâ€ŒÙˆØ¬ÙˆÛŒ Ù…Ø­ØµÙˆÙ„"
-              aria-label="Ø¬Ø³Øªâ€ŒÙˆØ¬ÙˆÛŒ Ù…Ø­ØµÙˆÙ„"
-            />
-          </label>
-          <a className={styles.adminLink} href={ADMIN_URL} target="_blank" rel="noreferrer">Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª</a>
-          <button className={styles.cartButton} type="button" onClick={() => setCartOpen(true)} aria-label={`Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯ØŒ ${cartCount} Ú©Ø§Ù„Ø§`}>
-            <span aria-hidden="true">â–¢</span>
-            <span className={styles.cartText}>Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯</span>
-            <b>{toman(cartCount)}</b>
-          </button>
-          <button
-            className={styles.menuButton}
-            type="button"
-            aria-label={menuOpen ? "Ø¨Ø³ØªÙ† Ù…Ù†Ùˆ" : "Ø¨Ø§Ø² Ú©Ø±Ø¯Ù† Ù…Ù†Ùˆ"}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((current) => !current)}
-          >
-            <span /><span />
-          </button>
-        </div>
-      </header>
-
-      <section className={styles.hero} id="top">
-        <div className={styles.heroCopy}>
-          <span className={styles.eyebrow}>ÛŒÙ‡ Ù…Ø´Øª Ø­Ø§Ù„Ù Ø®ÙˆØ¨ØŒ Ù‡Ø± Ø±ÙˆØ²</span>
-          <h1>Ø®ÙˆØ´Ù…Ø²Ù‡â€ŒÙ‡Ø§ÛŒÛŒ Ú©Ù‡<br /><em>Ø­Ø§Ù„Ù Ø¯Ù„Øª Ø±Ø§ Ø®ÙˆØ¨ Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯.</em></h1>
-          <p>
-            Ø§Ø² Ù…ØºØ²Ù‡Ø§ÛŒ ØªØ§Ø²Ù‡ ØªØ§ Ù…ÛŒÙˆÙ‡â€ŒÙ‡Ø§ÛŒ Ø¢ÙØªØ§Ø¨â€ŒØ®ÙˆØ±Ø¯Ù‡ Ùˆ Ø´ÛŒØ±ÛŒÙ†ÛŒâ€ŒÙ‡Ø§ÛŒ Ø®ÙˆÙ†Ú¯ÛŒÙ Ú©Ù…â€ŒØ´Ú©Ø±Ø› Ú†ÛŒØ²Ù‡Ø§ÛŒ Ø³Ø§Ø¯Ù‡â€ŒØ§ÛŒ Ú©Ù‡ Ø±ÙˆØ²Øª Ø±Ø§ Ø®ÙˆØ´â€ŒØ·Ø¹Ù… Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯.
-          </p>
-          <div className={styles.heroButtons}>
-            <a href="#products" className={styles.primaryButton}>Ø®ÙˆØ´Ù…Ø²Ù‡â€ŒÙ‡Ø§Ù…ÙˆÙ† Ø±Ùˆ Ø¨Ø¨ÛŒÙ† <span>â†</span></a>
-            <a href="#quality" className={styles.secondaryButton}>Ù‚ØµÙ‡â€ŒÛŒ Ø®ÙˆØ´Ù…Ø²Ú¯ÛŒ</a>
-          </div>
-          <div className={styles.heroProof}>
-            <div><b>ØªØ§Ø²Ù‡</b><span>Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø±ÙˆØ²Ø§Ù†Ù‡</span></div>
-            <div><b>Ú©Ù…â€ŒØ´Ú©Ø±</b><span>Ø§Ù†ØªØ®Ø§Ø¨â€ŒÙ‡Ø§ÛŒ Ø´ÛŒØ±ÛŒÙ†â€ŒØªØ±</span></div>
-            <div><b>Ø¨Ø§ Ø¹Ø´Ù‚</b><span>Ø¨Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</span></div>
-          </div>
-        </div>
-
-        <div className={styles.heroVisual}>
-          <span className={styles.heroCaption}>Ù¾Ø±ÙØ±ÙˆØ´Ù Ø§ÛŒÙ† Ù‡ÙØªÙ‡</span>
-          <ProductArtwork product={demoProducts[0]} hero />
-          <div className={styles.heroPriceCard}>
-            <small>Ù¾Ø³ØªÙ‡ Ø§Ú©Ø¨Ø±ÛŒ Ù…Ù…ØªØ§Ø²</small>
-            <b>{toman(demoProducts[0].price)} <span>ØªÙˆÙ…Ø§Ù†</span></b>
-            <button type="button" onClick={() => addToCart(demoProducts[0])}>Ø§ÙØ²ÙˆØ¯Ù† Ø¨Ù‡ Ø³Ø¨Ø¯</button>
-          </div>
-          <div className={styles.heroOriginCard}>
-            <span>Ù…Ø¨Ø¯Ø£</span><b>Ø±ÙØ³Ù†Ø¬Ø§Ù†</b><small>Ø³Ø±ÛŒ Ù†Ù…Ø§ÛŒØ´ÛŒ NS-26</small>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.promiseStrip} aria-label="Ù…Ø²ÛŒØªâ€ŒÙ‡Ø§ÛŒ Ø®Ø±ÛŒØ¯">
-        <article><span>01</span><div><b>Ù…ÙˆØ§Ø¯ Ø§ÙˆÙ„ÛŒÙ‡ Ø³Ø§Ø¯Ù‡</b><small>Ø®ÙˆØ´â€ŒØ·Ø¹Ù… Ùˆ Ø¨Ø§Ú©ÛŒÙÛŒØª</small></div></article>
-        <article><span>02</span><div><b>ØªØ§Ø²Ù‡ Ø¢Ù…Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´Ù‡</b><small>Ú©ÙˆÚ©ÛŒ Ùˆ Ù„ÙˆØ§Ø´Ú© Ø±ÙˆØ²Ø§Ù†Ù‡</small></div></article>
-        <article><span>03</span><div><b>Ú©Ù…â€ŒØ´ÛŒØ±ÛŒÙ† Ùˆ Ø®ÙˆØ´Ù…Ø²Ù‡</b><small>Ø¨Ø±Ø§ÛŒ Ù…ÛŒØ§Ù†â€ŒÙˆØ¹Ø¯Ù‡â€ŒÛŒ Ù‡Ø± Ø±ÙˆØ²</small></div></article>
-        <article><span>04</span><div><b>Ù‡Ø¯ÛŒÙ‡â€ŒÛŒ Ø®ÙˆØ´Ø­Ø§Ù„â€ŒÚ©Ù†Ù†Ø¯Ù‡</b><small>ØªØ±Ú©ÛŒØ¨ Ø¯Ù„Ø®ÙˆØ§Ù‡ Ø¨Ø±Ø§ÛŒ Ø¹Ø²ÛŒØ²Ø§Ù†Øª</small></div></article>
-      </section>
-
-      <section className={styles.productsSection} id="products">
-        <div className={styles.sectionHeading}>
-          <div><span>Ø®ÙˆØ´Ù…Ø²Ù‡â€ŒÙ‡Ø§ÛŒ Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</span><h2>ÛŒÙ‡ Ø·Ø¹Ù… Ø®ÙˆØ¨ Ø¨Ø±Ø§ÛŒ Ù‡Ø± Ø­Ø§Ù„â€ŒÙˆÙ‡ÙˆØ§</h2></div>
-          <p>Ù…Ø­ØµÙˆÙ„â€ŒÙ‡Ø§ Ùˆ Ù‚ÛŒÙ…Øªâ€ŒÙ‡Ø§ Ø¯Ø± Ø§ÛŒÙ† Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ Ù†Ù…ÙˆÙ†Ù‡ Ù‡Ø³ØªÙ†Ø¯.</p>
-        </div>
-
-        <div className={styles.catalogToolbar}>
-          <div className={styles.categories} aria-label="ÙÛŒÙ„ØªØ± Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ">
-            {categories.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={category === item ? styles.activeCategory : ""}
-                onClick={() => setCategory(item)}
-              >{item}</button>
-            ))}
-          </div>
-          <span className={styles.resultCount}>{toman(products.length)} Ù…Ø­ØµÙˆÙ„</span>
-        </div>
-
-        {products.length > 0 ? (
-          <div className={styles.productGrid}>
-            {products.map((product) => (
-              <article className={styles.productCard} key={product.id}>
-                <div className={`${styles.productVisual} ${styles[product.accent]}`}>
-                  {product.badge && <span className={styles.badge}>{product.badge}</span>}
-                  <ProductArtwork product={product} />
-                  <span className={styles.originPill}>{product.origin}</span>
-                </div>
-                <div className={styles.productBody}>
-                  <div className={styles.productMeta}><span>{product.category}</span><small>{product.packageLabel}</small></div>
-                  <h3>{product.title}</h3>
-                  <p>{product.subtitle}</p>
-                  <div className={styles.productNote}>{product.note}</div>
-                  <div className={styles.stockLine}>
-                    <span><i style={{ width: `${Math.min(product.stock * 4, 100)}%` }} /></span>
-                    <small>{toman(product.stock)} Ø¨Ø³ØªÙ‡ Ø¢Ù…Ø§Ø¯Ù‡ Ø§Ø±Ø³Ø§Ù„</small>
-                  </div>
-                  <div className={styles.priceRow}>
-                    <div>
-                      {product.oldPrice && <del>{toman(product.oldPrice)}</del>}
-                      <b>{toman(product.price)} <small>ØªÙˆÙ…Ø§Ù†</small></b>
-                    </div>
-                    <button type="button" onClick={() => addToCart(product)} aria-label={`Ø§ÙØ²ÙˆØ¯Ù† ${product.title} Ø¨Ù‡ Ø³Ø¨Ø¯`}>
-                      <span>Ø§ÙØ²ÙˆØ¯Ù†</span><b>+</b>
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className={styles.emptyResults}>
-            <b>Ù…Ø­ØµÙˆÙ„ÛŒ Ø¨Ø§ Ø§ÛŒÙ† Ø¬Ø³Øªâ€ŒÙˆØ¬Ùˆ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯.</b>
-            <button type="button" onClick={() => { setQuery(""); setCategory("Ù‡Ù…Ù‡"); }}>Ù†Ù…Ø§ÛŒØ´ Ù‡Ù…Ù‡ Ù…Ø­ØµÙˆÙ„Ø§Øª</button>
-          </div>
-        )}
-      </section>
-
-      <section className={styles.qualitySection} id="quality">
-        <div className={styles.qualityIntro}>
-          <span>Ø§Ø² Ø§Ù†ØªØ®Ø§Ø¨ ØªØ§ Ø¨Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ</span>
-          <h2>Ø®ÙˆØ´Ù…Ø²Ú¯ÛŒ Ø§Ø² Ù…ÙˆØ§Ø¯ Ø§ÙˆÙ„ÛŒÙ‡â€ŒÛŒ Ø®ÙˆØ¨ Ø´Ø±ÙˆØ¹ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</h2>
-          <p>Ù…ØºØ²Ù‡Ø§ Ø±Ø§ ØªØ§Ø²Ù‡ Ø§Ù†ØªØ®Ø§Ø¨ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…ØŒ Ø®ÙˆØ±Ø§Ú©ÛŒâ€ŒÙ‡Ø§ÛŒ Ø®ÙˆÙ†Ú¯ÛŒ Ø±Ø§ Ø¨Ø§ Ø¯Ù‚Øª Ø¢Ù…Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ… Ùˆ Ù‡Ø± Ø¨Ø³ØªÙ‡ Ø±Ø§ Ø¨Ø§ Ø¹Ø´Ù‚ Ù…ÛŒâ€ŒÙØ±Ø³ØªÛŒÙ….</p>
-          <a href={ADMIN_URL} target="_blank" rel="noreferrer">Ø¯ÛŒØ¯Ù† Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØªÛŒ <span>â†</span></a>
-        </div>
-        <div className={styles.qualitySteps}>
-          <article><b>Û±</b><div><h3>Ø¯Ø§Ù†Ù‡â€ŒÙ‡Ø§ÛŒ Ø®ÙˆØ¨ Ø±Ø§ Ø¯Ø³Øªâ€ŒÚ†ÛŒÙ† Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…</h3><p>Ø¨Ø±Ø§ÛŒ Ø¢Ø¬ÛŒÙ„ Ùˆ Ù…ØºØ²Ù‡Ø§ Ø³Ø±Ø§Øº Ù…Ø­ØµÙˆÙ„ ØªØ§Ø²Ù‡ Ùˆ Ø®ÙˆØ´â€ŒØ·Ø¹Ù… Ù…ÛŒâ€ŒØ±ÙˆÛŒÙ….</p></div></article>
-          <article><b>Û²</b><div><h3>Ø¨Ø§ Ù…ÙˆØ§Ø¯ Ø³Ø§Ø¯Ù‡ Ùˆ Ø®ÙˆØ´â€ŒØ·Ø¹Ù…</h3><p>Ø¯Ø± Ø¯Ø³ØªÙˆØ±Ù‡Ø§ÛŒ Ø®Ø§Ù†Ú¯ÛŒØŒ Ø´ÛŒØ±ÛŒÙ†ÛŒ Ø±Ø§ ØªØ§ Ø¬Ø§ÛŒ Ù…Ù…Ú©Ù† Ù…Ù„Ø§ÛŒÙ… Ù†Ú¯Ù‡ Ù…ÛŒâ€ŒØ¯Ø§Ø±ÛŒÙ….</p></div></article>
-          <article><b>Û³</b><div><h3>Ù‡Ø± Ø±ÙˆØ² Ø¨Ø§ Ø­ÙˆØµÙ„Ù‡ Ø¢Ù…Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ…</h3><p>Ú©ÙˆÚ©ÛŒ Ùˆ Ù„ÙˆØ§Ø´Ú© ØªØ§Ø²Ù‡ØŒ Ø¨Ø§ Ø¨Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ Ù…Ù†Ø§Ø³Ø¨ Ø±Ø§Ù‡ÛŒ Ø®Ø§Ù†Ù‡â€ŒØ§Øª Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.</p></div></article>
-          <article><b>Û´</b><div><h3>ØªØ§ Ø±Ø³ÛŒØ¯Ù† Ø¨Ù‡ Ø¯Ø³Øª ØªÙˆ</h3><p>Ø³ÙØ§Ø±Ø´ Ø±Ø§ Ù…Ø±ØªØ¨ Ùˆ Ø¨Ø§ Ø¯Ù‚Øª Ø¢Ù…Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†ÛŒÙ… ØªØ§ ØªØ¬Ø±Ø¨Ù‡â€ŒØ§Ø´ Ù‡Ù… Ø®ÙˆØ´Ù…Ø²Ù‡ Ø¨Ø§Ø´Ø¯.</p></div></article>
-        </div>
-      </section>
-
-      <section className={styles.giftSection} id="gift">
-        <div className={styles.giftVisual}>
-          <ProductArtwork product={demoProducts[demoProducts.length - 1]} hero />
-          <span className={styles.giftTag}>Ù‚Ø§Ø¨Ù„ Ø´Ø®ØµÛŒâ€ŒØ³Ø§Ø²ÛŒ</span>
-        </div>
-        <div className={styles.giftCopy}>
-          <span>Ù‡Ø¯ÛŒÙ‡ Ø´Ø®ØµÛŒ Ùˆ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ</span>
-          <h2>ÛŒÚ© Ù‡Ø¯ÛŒÙ‡ Ø®ÙˆØ´â€ŒØ³Ø§Ø®ØªØŒ Ù†Ù‡ ÛŒÚ© Ø¨Ø³ØªÙ‡ Ø¢Ù…Ø§Ø¯Ù‡ ØªÚ©Ø±Ø§Ø±ÛŒ</h2>
-          <p>ØªØ±Ú©ÛŒØ¨ Ù…Ø­ØµÙˆÙ„Ø§ØªØŒ Ø¨ÙˆØ¯Ø¬Ù‡ØŒ Ø±Ù†Ú¯ Ø¨Ø³ØªÙ‡ØŒ Ú©Ø§Ø±Øª ØªØ¨Ø±ÛŒÚ© Ùˆ Ø²Ù…Ø§Ù† ØªØ­ÙˆÛŒÙ„ Ø±Ø§ Ù…Ø´Ø®Øµ Ú©Ù†Ø› Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø§Ø² Ù¾Ù†Ù„ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ùˆ Ù‚ÛŒÙ…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</p>
-          <div className={styles.giftOptions}><span>ØªØ±Ú©ÛŒØ¨ Ø§Ø®ØªØµØ§ØµÛŒ</span><span>Ú©Ø§Ø±Øª Ø¨Ø§ Ù†Ø´Ø§Ù† Ø¯Ù„Ø®ÙˆØ§Ù‡</span><span>Ø§Ø±Ø³Ø§Ù„ Ú†Ù†Ø¯Ù…Ù‚ØµØ¯ÛŒ</span></div>
-          <button type="button" onClick={() => addToCart(demoProducts[demoProducts.length - 1])}>Ø§ÙØ²ÙˆØ¯Ù† Ø¬Ø¹Ø¨Ù‡ Ù†Ù…ÙˆÙ†Ù‡ Ø¨Ù‡ Ø³Ø¨Ø¯</button>
-        </div>
-      </section>
-
-      <section className={styles.storySection} id="story">
-        <div className={styles.storyQuote}>
-          <span>Ú†Ø±Ø§ Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡ØŸ</span>
-          <blockquote>Â«ÛŒÙ‡ Ù…ÛŒØ§Ù†â€ŒÙˆØ¹Ø¯Ù‡â€ŒÛŒ Ø®ÙˆØ´â€ŒØ·Ø¹Ù… Ù…ÛŒâ€ŒØªÙˆÙ†Ù‡ Ø­Ø§Ù„Ù ÛŒÚ© Ø±ÙˆØ² Ù…Ø¹Ù…ÙˆÙ„ÛŒ Ø±Ùˆ Ø¹ÙˆØ¶ Ú©Ù†Ù‡.Â»</blockquote>
-        </div>
-        <div className={styles.storyCopy}>
-          <p>Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡ Ø¨Ø±Ø§ÛŒ Ù„Ø­Ø¸Ù‡â€ŒÙ‡Ø§ÛŒ Ú©ÙˆÚ†ÛŒÚ© Ùˆ Ø®ÙˆØ´Ù…Ø²Ù‡ Ø³Ø§Ø®ØªÙ‡ Ø´Ø¯Ù‡Ø› Ø§Ø² Ù…Ø´Øª Ø¢Ø¬ÛŒÙ„ Ø³Ø±Ù Ú©Ø§Ø± ØªØ§ Ú©ÙˆÚ©ÛŒ Ø®ÙˆÙ†Ú¯ÛŒ Ú©Ù†Ø§Ø± Ú†Ø§ÛŒ.</p>
-          <a href={ADMIN_URL} target="_blank" rel="noreferrer">Ø¯ÛŒØ¯Ù† Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</a>
-        </div>
-      </section>
-
-      <footer className={styles.footer}>
-        <div className={styles.footerBrand}><span className={styles.brandMark}>Ù…</span><div><b>Ù…Ø²Ù‡â€ŒØ¯ÙˆÙ†Ù‡</b><small>Ø®ÙˆØ´â€ŒØ®ÙˆØ±Ø§Ú©Ù Ù‡Ø± Ø±ÙˆØ²</small></div></div>
-        <div className={styles.footerLinks}><a href="#products">Ù…Ø­ØµÙˆÙ„Ø§Øª</a><a href="#quality">Ø®ÙˆØ´Ù…Ø²Ù‡â€ŒÙ‡Ø§ÛŒ Ú©Ù…â€ŒØ´Ú©Ø±</a><a href="#gift">Ø¬Ø¹Ø¨Ù‡â€ŒÙ‡Ø§ÛŒ Ù‡Ø¯ÛŒÙ‡</a></div>
-        <div className={styles.footerNote}><b>Ù†Ø³Ø®Ù‡ Ø¯Ù…ÙˆÛŒ ØªØ¹Ø§Ù…Ù„ÛŒ</b><small>Ø¨Ø¯ÙˆÙ† Ù¾Ø±Ø¯Ø§Ø®ØªØŒ Ø§Ø±Ø³Ø§Ù„ ÛŒØ§ Ø«Ø¨Øª Ø¯Ø§Ø¯Ù‡ ÙˆØ§Ù‚Ø¹ÛŒ</small></div>
-      </footer>
-
-      {menuOpen && <button type="button" className={styles.mobileMenuBackdrop} aria-label="Ø¨Ø³ØªÙ† Ù…Ù†Ùˆ" onClick={() => setMenuOpen(false)} />}
-
-      {cartOpen && (
-        <div className={styles.overlay} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}>
-          <aside className={styles.cartDrawer} role="dialog" aria-modal="true" aria-labelledby="cart-title">
-            <div className={styles.drawerHeader}>
-              <div><small>Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯ Ø¯Ù…Ùˆ</small><h2 id="cart-title">Ø§Ù†ØªØ®Ø§Ø¨â€ŒÙ‡Ø§ÛŒ Ø´Ù…Ø§</h2></div>
-              <button type="button" onClick={() => setCartOpen(false)} aria-label="Ø¨Ø³ØªÙ† Ø³Ø¨Ø¯">Ã—</button>
-            </div>
-            <div className={styles.cartLines}>
-              {cart.length === 0 ? (
-                <div className={styles.emptyCart}>
-                  <span>Û°</span><b>Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯ Ù‡Ù†ÙˆØ² Ø®Ø§Ù„ÛŒ Ø§Ø³Øª.</b><p>ÛŒÚ© Ø¨Ø³ØªÙ‡ Ø±Ø§ Ø§Ø² Ù…Ø­ØµÙˆÙ„Ø§Øª Ù…Ù†ØªØ®Ø¨ Ø¨Ù‡ Ø³Ø¨Ø¯ Ø§Ø¶Ø§ÙÙ‡ Ú©Ù†.</p>
-                  <button type="button" onClick={() => setCartOpen(false)}>Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ ÙØ±ÙˆØ´Ú¯Ø§Ù‡</button>
-                </div>
-              ) : cart.map((line) => (
-                <article className={styles.cartLine} key={line.id}>
-                  <div className={`${styles.cartThumb} ${styles[line.accent]}`}><ProductArtwork product={line} /></div>
-                  <div className={styles.cartLineInfo}><b>{line.title}</b><small>{line.packageLabel}</small><span>{toman(line.price * line.quantity)} ØªÙˆÙ…Ø§Ù†</span></div>
-                  <div className={styles.quantityControl}>
-                    <button type="button" onClick={() => changeQuantity(line.id, 1)} aria-label="Ø§ÙØ²Ø§ÛŒØ´ ØªØ¹Ø¯Ø§Ø¯">+</button>
-                    <b>{toman(line.quantity)}</b>
-                    <button type="button" onClick={() => changeQuantity(line.id, -1)} aria-label="Ú©Ø§Ù‡Ø´ ØªØ¹Ø¯Ø§Ø¯">âˆ’</button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className={styles.cartSummary}>
-              <div><span>Ø¬Ù…Ø¹ Ù…Ø­ØµÙˆÙ„Ø§Øª</span><b>{toman(subtotal)} ØªÙˆÙ…Ø§Ù†</b></div>
-              <div><span>Ø§Ø±Ø³Ø§Ù„</span><b>{shipping === 0 ? "Ø±Ø§ÛŒÚ¯Ø§Ù†" : `${toman(shipping)} ØªÙˆÙ…Ø§Ù†`}</b></div>
-              <small>Ø§Ø±Ø³Ø§Ù„ Ø¨Ø±Ø§ÛŒ Ø®Ø±ÛŒØ¯ Ø¨Ø§Ù„Ø§ÛŒ Û±Ù¬ÛµÛ°Û°Ù¬Û°Û°Û° ØªÙˆÙ…Ø§Ù† Ø¯Ø± Ø§ÛŒÙ† Ø¯Ù…Ùˆ Ø±Ø§ÛŒÚ¯Ø§Ù† Ø§Ø³Øª.</small>
-              <div className={styles.payableRow}><span>Ù…Ø¨Ù„Øº Ù‚Ø§Ø¨Ù„ Ù¾Ø±Ø¯Ø§Ø®Øª</span><b>{toman(payable)} ØªÙˆÙ…Ø§Ù†</b></div>
-              <button className={styles.checkoutButton} type="button" disabled={cart.length === 0} onClick={() => setCheckoutOpen(true)}>
-                Ø§Ø¯Ø§Ù…Ù‡ Ùˆ Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ
-              </button>
-            </div>
-          </aside>
-        </div>
-      )}
-
-      {checkoutOpen && (
-        <div className={styles.modalOverlay} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setCheckoutOpen(false)}>
-          <form className={styles.checkoutModal} onSubmit={submitDemoOrder} role="dialog" aria-modal="true" aria-labelledby="checkout-title">
-            <div className={styles.drawerHeader}>
-              <div><small>Ù…Ø±Ø­Ù„Ù‡ Ù†Ù‡Ø§ÛŒÛŒ Ø¯Ù…Ùˆ</small><h2 id="checkout-title">Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªØ­ÙˆÛŒÙ„</h2></div>
-              <button type="button" onClick={() => setCheckoutOpen(false)} aria-label="Ø¨Ø³ØªÙ† ÙØ±Ù…">Ã—</button>
-            </div>
-            <div className={styles.formGrid}>
-              <label><span>Ù†Ø§Ù… Ùˆ Ù†Ø§Ù… Ø®Ø§Ù†ÙˆØ§Ø¯Ú¯ÛŒ</span><input name="customer" required placeholder="Ù…Ø«Ù„Ø§Ù‹ Ø­Ù…ÛŒØ¯Ø±Ø¶Ø§ Ù¾Ø§Ú©Ù¾ÙˆØ±" /></label>
-              <label><span>Ø´Ù…Ø§Ø±Ù‡ Ù…ÙˆØ¨Ø§ÛŒÙ„</span><input name="mobile" required inputMode="tel" pattern="09[0-9]{9}" placeholder="Û°Û¹Û±Û²Û±Û²Û³Û´ÛµÛ¶Û·" /></label>
-              <label><span>Ø´Ù‡Ø±</span><input name="city" required placeholder="ØªÙ‡Ø±Ø§Ù†" /></label>
-              <label><span>Ú©Ø¯ Ù¾Ø³ØªÛŒ</span><input name="postalCode" inputMode="numeric" placeholder="Û±Û²Û³Û´ÛµÛ¶Û·Û¸Û¹Û°" /></label>
-              <label className={styles.fullField}><span>Ù†Ø´Ø§Ù†ÛŒ ØªØ­ÙˆÛŒÙ„</span><textarea name="address" required rows={3} placeholder="Ù†Ø´Ø§Ù†ÛŒ Ú©Ø§Ù…Ù„ Ø¨Ø±Ø§ÛŒ Ø³Ù†Ø§Ø±ÛŒÙˆÛŒ Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ" /></label>
-              <label className={styles.fullField}><span>ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø³ÙØ§Ø±Ø´</span><input name="note" placeholder="Ø§Ø®ØªÛŒØ§Ø±ÛŒØ› Ù…Ø«Ù„Ø§Ù‹ Ú©Ø§Ø±Øª ØªØ¨Ø±ÛŒÚ© Ø¯Ø§Ø®Ù„ Ø¨Ø³ØªÙ‡ Ù‚Ø±Ø§Ø± Ú¯ÛŒØ±Ø¯" /></label>
-            </div>
-            <div className={styles.demoPaymentNotice}><b>Ù¾Ø±Ø¯Ø§Ø®Øª Ø´Ø¨ÛŒÙ‡â€ŒØ³Ø§Ø²ÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</b><span>Ù‡ÛŒÚ† Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø¨Ø§Ù†Ú©ÛŒ Ø¯Ø±ÛŒØ§ÙØª Ù†Ø®ÙˆØ§Ù‡Ø¯ Ø´Ø¯.</span></div>
-            <div className={styles.checkoutFooter}><div><small>Ù…Ø¨Ù„Øº Ø¯Ù…Ùˆ</small><b>{toman(payable)} ØªÙˆÙ…Ø§Ù†</b></div><button type="submit">Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ùˆ Ø´Ø¨ÛŒÙ‡â€ŒØ³Ø§Ø²ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øª</button></div>
-          </form>
-        </div>
-      )}
-
-      {order && (
-        <div className={styles.modalOverlay} role="presentation">
-          <section className={styles.successModal} role="dialog" aria-modal="true" aria-labelledby="success-title">
-            <span className={styles.successMark}>âœ“</span>
-            <small>Ø³ÙØ§Ø±Ø´ Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ Ø«Ø¨Øª Ø´Ø¯</small>
-            <h2 id="success-title">Ù…Ù…Ù†ÙˆÙ† {order.customer}</h2>
-            <p>Ø§ÛŒÙ† Ø³Ù†Ø§Ø±ÛŒÙˆ ÙÙ‚Ø· Ø¬Ø±ÛŒØ§Ù† ØªØ¬Ø±Ø¨Ù‡ Ù…Ø´ØªØ±ÛŒ Ø±Ø§ Ù†Ù…Ø§ÛŒØ´ Ù…ÛŒâ€ŒØ¯Ù‡Ø¯ Ùˆ Ù‡ÛŒÚ† ØªØ±Ø§Ú©Ù†Ø´ ÛŒØ§ Ø§Ø±Ø³Ø§Ù„ ÙˆØ§Ù‚Ø¹ÛŒ Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</p>
-            <div className={styles.orderReceipt}>
-              <div><span>Ú©Ø¯ Ø³ÙØ§Ø±Ø´</span><b>{order.code}</b></div>
-              <div><span>Ø²Ù…Ø§Ù† Ø«Ø¨Øª</span><b>{order.createdAt}</b></div>
-              <div><span>Ù…Ø¨Ù„Øº</span><b>{toman(order.payable)} ØªÙˆÙ…Ø§Ù†</b></div>
-            </div>
-            <div className={styles.successActions}><button type="button" onClick={() => setOrder(null)}>Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ ÙØ±ÙˆØ´Ú¯Ø§Ù‡</button><a href={ADMIN_URL} target="_blank" rel="noreferrer">Ø¯ÛŒØ¯Ù† Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ Ø¯Ø± Ù¾Ù†Ù„ Ø¯Ù…Ùˆ</a></div>
-          </section>
-        </div>
-      )}
-    </main>
-  );
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíï_8N‹Z–‹­¦ëeŠw¬Ô‰ÕÍ”±¥•¹Ðˆì4(4)¥µÁ½ÉÐì½ÉµÙ•¹Ð°ÕÍ•5•µ¼°ÕÍ•MÑ…Ñ”ô™É½´€‰É•…Ðˆì4)¥µÁ½ÉÐì…Ñ•½É¥•Ì°‘•µ½AÉ½‘ÕÑÌ°Ñ½µ…¸°ÑåÁ”•µ½AÉ½‘ÕÐô™É½´€ˆ¸½…Ñ…±½œˆì4)¥µÁ½ÉÐìAÉ½‘ÕÑÉÑÝ½É¬ô™É½´€ˆ¸½AÉ½‘ÕÑÉÑÝ½É¬ˆì4)¥µÁ½ÉÐÍÑå±•Ì™É½´€ˆ¸½ÁÉ½™•ÍÍ¥½¹…°µÍÑ½É•™É½¹Ð¹µ½‘Õ±”¹ÍÌˆì4(4)ÑåÁ”…ÉÑ1¥¹”€ô•µ½AÉ½‘ÕÐ€˜ìÅÕ…¹Ñ¥Ñäè¹Õµ‰•Èôì4)ÑåÁ”•µ½=É‘•È€ôì½‘”èÍÑÉ¥¹œìÕÍÑ½µ•ÈèÍÑÉ¥¹œìÁ…å…‰±”è¹Õµ‰•ÈìÉ•…Ñ•‘ÐèÍÑÉ¥¹œôì4(4)½¹ÍÐ5%9}UI0€ôÁÉ½•ÍÌ¹•¹Ø¹9aQ}AU	1%}5iU9!}5%9}UI0€üü€‰¡ÑÑÁÌè¼½µ…é•‘Õ¹• µ…‘µ¥¸¹Ù•É•°¹…ÁÀˆì4(4)•áÁ½ÉÐ‘•™…Õ±Ð™Õ¹Ñ¥½¸AÉ½™•ÍÍ¥½¹…±MÑ½É•™É½¹Ð ¤ì4(€½¹ÍÐm…Ñ•½Éä°Í•Ñ…Ñ•½Éåt€ôÕÍ•MÑ…Ñ” ‹fffˆ¤ì4(€½¹ÍÐmÅÕ•Éä°Í•ÑEÕ•Éåt€ôÕÍ•MÑ…Ñ” ˆˆ¤ì4(€½¹ÍÐm…ÉÐ°Í•Ñ…ÉÑt€ôÕÍ•MÑ…Ñ”ñ…ÉÑ1¥¹•mtø¡mt¤ì4(€½¹ÍÐm…ÉÑ=Á•¸°Í•Ñ…ÉÑ=Á•¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍÐm¡•­½ÕÑ=Á•¸°Í•Ñ¡•­½ÕÑ=Á•¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍÐmµ•¹Õ=Á•¸°Í•Ñ5•¹Õ=Á•¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍÐm½É‘•È°Í•Ñ=É‘•Ét€ôÕÍ•MÑ…Ñ”ñ•µ½=É‘•Èð¹Õ±°ø¡¹Õ±°¤ì4(4(€½¹ÍÐÁÉ½‘ÕÑÌ€ôÕÍ•5•µ¼  ¤€ôøì4(€€€½¹ÍÐ¹½Éµ…±¥é•€ôÅÕ•Éä¹ÑÉ¥´ ¤ì4(€€€É•ÑÕÉ¸‘•µ½AÉ½‘ÕÑÌ¹™¥±Ñ•È ¡ÁÉ½‘ÕÐ¤€ôøì4(€€€€€½¹ÍÐµ…Ñ¡•Í…Ñ•½Éä€ô…Ñ•½Éä€ôôô€‹fffˆñðÁÉ½‘ÕÐ¹…Ñ•½Éä€ôôô…Ñ•½Éäì4(€€€€€½¹ÍÐµ…Ñ¡•ÍEÕ•Éä€ô€…¹½Éµ…±¥é•ñð€‘íÁÉ½‘ÕÐ¹Ñ¥Ñ±•ô€‘íÁÉ½‘ÕÐ¹ÍÕ‰Ñ¥Ñ±•ô€‘íÁÉ½‘ÕÐ¹½É¥¥¹õ€¹¥¹±Õ‘•Ì¡¹½Éµ…±¥é•¤ì4(€€€€€É•ÑÕÉ¸µ…Ñ¡•Í…Ñ•½Éä€˜˜µ…Ñ¡•ÍEÕ•Éäì4(€€€ô¤ì4(€ô°m…Ñ•½Éä°ÅÕ•Éåt¤ì4(4(€½¹ÍÐ…ÉÑ½Õ¹Ð€ô…ÉÐ¹É•‘Õ” ¡ÍÕ´°±¥¹”¤€ôøÍÕ´€¬±¥¹”¹ÅÕ…¹Ñ¥Ñä°€À¤ì4(€½¹ÍÐÍÕ‰Ñ½Ñ…°€ô…ÉÐ¹É•‘Õ” ¡ÍÕ´°±¥¹”¤€ôøÍÕ´€¬±¥¹”¹ÁÉ¥”€¨±¥¹”¹ÅÕ…¹Ñ¥Ñä°€À¤ì4(€½¹ÍÐÍ¡¥ÁÁ¥¹œ€ôÍÕ‰Ñ½Ñ…°€ôôô€ÀñðÍÕ‰Ñ½Ñ…°€øô€ÄÔÀÀÀÀÀ€ü€À€è€ÜÔÀÀÀì4(€½¹ÍÐÁ…å…‰±”€ôÍÕ‰Ñ½Ñ…°€¬Í¡¥ÁÁ¥¹œì4(4(€™Õ¹Ñ¥½¸…‘‘Q½…ÉÐ¡ÁÉ½‘ÕÐè•µ½AÉ½‘ÕÐ¤ì4(€€€Í•Ñ…ÉÐ ¡ÕÉÉ•¹Ð¤€ôøì4(€€€€€½¹ÍÐ•á¥ÍÑ¥¹œ€ôÕÉÉ•¹Ð¹™¥¹ ¡±¥¹”¤€ôø±¥¹”¹¥€ôôôÁÉ½‘ÕÐ¹¥¤ì4(€€€€€¥˜€ …•á¥ÍÑ¥¹œ¤É•ÑÕÉ¸l¸¸¹ÕÉÉ•¹Ð°ì€¸¸¹ÁÉ½‘ÕÐ°ÅÕ…¹Ñ¥Ñäè€Äõtì4(€€€€€É•ÑÕÉ¸ÕÉÉ•¹Ð¹µ…À ¡±¥¹”¤€ôø4(€€€€€€€±¥¹”¹¥€ôôôÁÉ½‘ÕÐ¹¥4(€€€€€€€€€€üì€¸¸¹±¥¹”°ÅÕ…¹Ñ¥Ñäè5…Ñ ¹µ¥¸¡±¥¹”¹ÅÕ…¹Ñ¥Ñä€¬€Ä°ÁÉ½‘ÕÐ¹ÍÑ½¬¤ô4(€€€€€€€€€€è±¥¹”°4(€€€€€€¤ì4(€€€ô¤ì4(€€€Í•Ñ…ÉÑ=Á•¸¡ÑÉÕ”¤ì4(€ô4(4(€™Õ¹Ñ¥½¸¡…¹•EÕ…¹Ñ¥Ñä¡¥èÍÑÉ¥¹œ°‘•±Ñ„è¹Õµ‰•È¤ì4(€€€Í•Ñ…ÉÐ ¡ÕÉÉ•¹Ð¤€ôø4(€€€€€ÕÉÉ•¹Ð4(€€€€€€€€¹µ…À ¡±¥¹”¤€ôø4(€€€€€€€€€±¥¹”¹¥€ôôô¥4(€€€€€€€€€€€€üì€¸¸¹±¥¹”°ÅÕ…¹Ñ¥Ñäè5…Ñ ¹µ…à À°5…Ñ ¹µ¥¸¡±¥¹”¹ÅÕ…¹Ñ¥Ñä€¬‘•±Ñ„°±¥¹”¹ÍÑ½¬¤¤ô4(€€€€€€€€€€€€è±¥¹”°4(€€€€€€€€¤4(€€€€€€€€¹™¥±Ñ•È ¡±¥¹”¤€ôø±¥¹”¹ÅÕ…¹Ñ¥Ñä€ø€À¤°4(€€€€¤ì4(€ô4(4(€™Õ¹Ñ¥½¸ÍÕ‰µ¥Ñ•µ½=É‘•È¡•Ù•¹Ðè½ÉµÙ•¹Ðñ!Q51½Éµ±•µ•¹Ðø¤ì4(€€€•Ù•¹Ð¹ÁÉ•Ù•¹Ñ•™…Õ±Ð ¤ì4(€€€½¹ÍÐ™½É´€ô¹•Ü½Éµ…Ñ„¡•Ù•¹Ð¹ÕÉÉ•¹ÑQ…É•Ð¤ì4(€€€½¹ÍÐÕÍÑ½µ•È€ôMÑÉ¥¹œ¡™½É´¹•Ð ‰ÕÍÑ½µ•Èˆ¤€üü€‹fbÓb«bÇn0ƒb¿ff ˆ¤ì4(€€€½¹ÍÐ½‘”€ô8´‘í¹•Ü%¹Ñ°¹9Õµ‰•É½Éµ…Ð ‰™„µ%Hˆ°ìÕÍ•É½ÕÁ¥¹œè™…±Í”ô¤¹™½Éµ…Ð 4(€€€€€5…Ñ ¹™±½½È ÄÀÀÀÀÀ€¬5…Ñ ¹É…¹‘½´ ¤€¨€äÀÀÀÀÀ¤°4(€€€€¥õ€ì4(€€€Í•Ñ=É‘•È¡ì4(€€€€€½‘”°4(€€€€€ÕÍÑ½µ•È°4(€€€€€Á…å…‰±”°4(€€€€€É•…Ñ•‘Ðè¹•Ü%¹Ñ°¹…Ñ•Q¥µ•½Éµ…Ð ‰™„µ%Hˆ°ì4(€€€€€€€‘…Ñ•MÑå±”è€‰µ•‘¥Õ´ˆ°4(€€€€€€€Ñ¥µ•MÑå±”è€‰Í¡½ÉÐˆ°4(€€€€€ô¤¹™½Éµ…Ð¡¹•Ü…Ñ” ¤¤°4(€€€ô¤ì4(€€€Í•Ñ…ÉÐ¡mt¤ì4(€€€Í•Ñ¡•­½ÕÑ=Á•¸¡™…±Í”¤ì4(€€€Í•Ñ…ÉÑ=Á•¸¡™…±Í”¤ì4(€ô4(4(€É•ÑÕÉ¸€ 4(€€€€ñµ…¥¸±…ÍÍ9…µ”õíÍÑå±•Ì¹Á…•ôø4(€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹‘•µ½	…Éôø4(€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹‘•µ½½Ñô€¼ø4(€€€€€€€€ñÍÑÉ½¹œûfûn3bÓŠ3ffbŸn3bÐƒb«bçbŸffn0ƒfbËfŠ3b¿f#ffð½ÍÑÉ½¹œø4(€€€€€€€€ñÍÁ…¸ûbÏb£b¼ƒf ƒbÏfbŸbÇbÐƒffbŸn3bÓn3Š3bŸfb¿blƒfûbÇb¿bŸb»b¨ƒf#bŸfbçn0ƒbŸfb³bŸfƒffn3Š3bÓf#b¼¸ð½ÍÁ…¸ø4(€€€€€€ð½‘¥Øø4(4(€€€€€€ñ¡•…‘•È±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•…‘•Éôø4(€€€€€€€€ñ„¡É•˜ôˆÑ½Àˆ±…ÍÍ9…µ”õíÍÑå±•Ì¹‰É…¹‘ô…É¥„µ±…‰•°ô‹fbËfŠ3b¿f#ffblƒb×fb·fƒfb»bÏb¨ˆø4(€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹‰É…¹‘5…É­ôûfð½ÍÁ…¸ø4(€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹‰É…¹‘QåÁ•ôø4(€€€€€€€€€€€€ñˆûfbËfŠ3b¿f#ffð½ˆø4(€€€€€€€€€€€€ñÍµ…±°ûb»f#bÓŠ3b»f#bÇbŸj§f@ƒfbÄƒbÇf#bÈð½Íµ…±°ø4(€€€€€€€€€€ð½ÍÁ…¸ø4(€€€€€€€€ð½„ø4(4(€€€€€€€€ñ¹…Ø±…ÍÍ9…µ”õí€‘íÍÑå±•Ì¹¹…Ùô€‘íµ•¹Õ=Á•¸€üÍÑå±•Ì¹¹…Ù=Á•¸€è€ˆ‰õô…É¥„µ±…‰•°ô‹fbŸf#b£bÇn0ƒbŸb×fn0ˆø4(€€€€€€€€€€ñ„¡É•˜ôˆÁÉ½‘ÕÑÌˆ½¹±¥¬õì ¤€ôøÍ•Ñ5•¹Õ=Á•¸¡™…±Í”¥ôûfbÇf#bÓj¿bŸfð½„ø4(€€€€€€€€€€ñ„¡É•˜ôˆÅÕ…±¥Ñäˆ½¹±¥¬õì ¤€ôøÍ•Ñ5•¹Õ=Á•¸¡™…±Í”¥ôûjbÇbœƒfbËfŠ3b¿f#ffð½„ø4(€€€€€€€€€€ñ„¡É•˜ôˆ¥™Ðˆ½¹±¥¬õì ¤€ôøÍ•Ñ5•¹Õ=Á•¸¡™…±Í”¥ôûb³bçb£fŠ3fbŸn0ƒfb¿n3fð½„ø4(€€€€€€€€€€ñ„¡É•˜ôˆÍÑ½Éäˆ½¹±¥¬õì ¤€ôøÍ•Ñ5•¹Õ=Á•¸¡™…±Í”¥ôûb¿bŸbÏb«bŸfƒb£bÇfb¼ð½„ø4(€€€€€€€€€€ñ„±…ÍÍ9…µ”õíÍÑå±•Ì¹µ½‰¥±•‘µ¥¹1¥¹­ô¡É•˜õí5%9}UI1ôÑ…É•Ðô‰}‰±…¹¬ˆÉ•°ô‰¹½É•™•ÉÉ•Èˆûf#bÇf#b¼ƒb£fƒfûffƒfb¿n3bÇn3b¨ð½„ø4(€€€€€€€€ð½¹…Øø4(4(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•…‘•ÉÑ¥½¹Íôø4(€€€€€€€€€€ñ±…‰•°±…ÍÍ9…µ”õíÍÑå±•Ì¹Í•…É¡	½áôø4(€€€€€€€€€€€€ñÍÁ…¸…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆûŠ2Tð½ÍÁ…¸ø4(€€€€€€€€€€€€ñ¥¹ÁÕÐ4(€€€€€€€€€€€€€Ù…±Õ”õíÅÕ•Éåô4(€€€€€€€€€€€€€½¹¡…¹”õì¡•Ù•¹Ð¤€ôøÍ•ÑEÕ•Éä¡•Ù•¹Ð¹Ñ…É•Ð¹Ù…±Õ”¥ô4(€€€€€€€€€€€€€Á±…•¡½±‘•Èô‹b³bÏb«Š3f#b³f#n0ƒfb·b×f#fˆ4(€€€€€€€€€€€€€…É¥„µ±…‰•°ô‹b³bÏb«Š3f#b³f#n0ƒfb·b×f#fˆ4(€€€€€€€€€€€€¼ø4(€€€€€€€€€€ð½±…‰•°ø4(€€€€€€€€€€ñ„±…ÍÍ9…µ”õíÍÑå±•Ì¹…‘µ¥¹1¥¹­ô¡É•˜õí5%9}UI1ôÑ…É•Ðô‰}‰±…¹¬ˆÉ•°ô‰¹½É•™•ÉÉ•Èˆûfûffƒfb¿n3bÇn3b¨ð½„ø4(€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”õíÍÑå±•Ì¹…ÉÑ	ÕÑÑ½¹ôÑåÁ”ô‰‰ÕÑÑ½¸ˆ½¹±¥¬õì ¤€ôøÍ•Ñ…ÉÑ=Á•¸¡ÑÉÕ”¥ô…É¥„µ±…‰•°õíƒbÏb£b¼ƒb»bÇn3b¿b0€‘í…ÉÑ½Õ¹Ñôƒj§bŸfbôø4(€€€€€€€€€€€€ñÍÁ…¸…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆûŠZˆð½ÍÁ…¸ø4(€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹…ÉÑQ•áÑôûbÏb£b¼ƒb»bÇn3b¼ð½ÍÁ…¸ø4(€€€€€€€€€€€€ñˆùíÑ½µ…¸¡…ÉÑ½Õ¹Ð¥ôð½ˆø4(€€€€€€€€€€ð½‰ÕÑÑ½¸ø4(€€€€€€€€€€ñ‰ÕÑÑ½¸4(€€€€€€€€€€€±…ÍÍ9…µ”õíÍÑå±•Ì¹µ•¹Õ	ÕÑÑ½¹ô4(€€€€€€€€€€€ÑåÁ”ô‰‰ÕÑÑ½¸ˆ4(€€€€€€€€€€€…É¥„µ±…‰•°õíµ•¹Õ=Á•¸€ü€‹b£bÏb«fƒfff ˆ€è€‹b£bŸbÈƒj§bÇb¿fƒfff ‰ô4(€€€€€€€€€€€…É¥„µ•áÁ…¹‘•õíµ•¹Õ=Á•¹ô4(€€€€€€€€€€€½¹±¥¬õì ¤€ôøÍ•Ñ5•¹Õ=Á•¸ ¡ÕÉÉ•¹Ð¤€ôø€…ÕÉÉ•¹Ð¥ô4(€€€€€€€€€€ø4(€€€€€€€€€€€€ñÍÁ…¸€¼øñÍÁ…¸€¼ø4(€€€€€€€€€€ð½‰ÕÑÑ½¸ø4(€€€€€€€€ð½‘¥Øø4(€€€€€€ð½¡•…‘•Èø4(4(€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½ô¥ô‰Ñ½Àˆø4(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½½Áåôø4(€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹•å•‰É½Ýôûn3fƒfbÓb¨ƒb·bŸff@ƒb»f#b£b0ƒfbÄƒbÇf#bÈð½ÍÁ…¸ø4(€€€€€€€€€€ñ Äûb»f#bÓfbËfŠ3fbŸn3n0ƒj§fñ‰È€¼øñ•´ûb·bŸff@ƒb¿fb¨ƒbÇbœƒb»f#b ƒfn3Š3j§ffb¼¸ð½•´øð½ Äø4(€€€€€€€€€€ñÀø4(€€€€€€€€€€€ƒbŸbÈƒfbëbËfbŸn0ƒb«bŸbËfƒb«bœƒfn3f#fŠ3fbŸn0ƒb‹fb«bŸb£Š3b»f#bÇb¿fƒf ƒbÓn3bÇn3fn3Š3fbŸn0ƒb»f#fj¿n3f@ƒj§fŠ3bÓj§bÇblƒjn3bËfbŸn0ƒbÏbŸb¿fŠ3bŸn0ƒj§fƒbÇf#bËb¨ƒbÇbœƒb»f#bÓŠ3bßbçfƒfn3Š3j§ffb¼¸4(€€€€€€€€€€ð½Àø4(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½	ÕÑÑ½¹Íôø4(€€€€€€€€€€€€ñ„¡É•˜ôˆÁÉ½‘ÕÑÌˆ±…ÍÍ9…µ”õíÍÑå±•Ì¹ÁÉ¥µ…Éå	ÕÑÑ½¹ôûb»f#bÓfbËfŠ3fbŸff#fƒbÇf ƒb£b£n3f€ñÍÁ…¸ûŠ@ð½ÍÁ…¸øð½„ø4(€€€€€€€€€€€€ñ„¡É•˜ôˆÅÕ…±¥Ñäˆ±…ÍÍ9…µ”õíÍÑå±•Ì¹Í•½¹‘…Éå	ÕÑÑ½¹ôûfb×fŠ3n0ƒb»f#bÓfbËj¿n0ð½„ø4(€€€€€€€€€€ð½‘¥Øø4(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½AÉ½½™ôø4(€€€€€€€€€€€€ñ‘¥Øøñˆûb«bŸbËfð½ˆøñÍÁ…¸ûb‹fbŸb¿fŠ3bÏbŸbËn0ƒbÇf#bËbŸffð½ÍÁ…¸øð½‘¥Øø4(€€€€€€€€€€€€ñ‘¥Øøñˆûj§fŠ3bÓj§bÄð½ˆøñÍÁ…¸ûbŸfb«b»bŸb£Š3fbŸn0ƒbÓn3bÇn3fŠ3b«bÄð½ÍÁ…¸øð½‘¥Øø4(€€€€€€€€€€€€ñ‘¥Øøñˆûb£bœƒbçbÓfð½ˆøñÍÁ…¸ûb£bÏb«fŠ3b£fb¿n0ƒfbËfŠ3b¿f#ffð½ÍÁ…¸øð½‘¥Øø4(€€€€€€€€€€ð½‘¥Øø4(€€€€€€€€ð½‘¥Øø4(4(€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½Y¥ÍÕ…±ôø4(€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½…ÁÑ¥½¹ôûfûbÇfbÇf#bÓf@ƒbŸn3fƒffb«fð½ÍÁ…¸ø4(€€€€€€€€€€ñAÉ½‘ÕÑÉÑÝ½É¬ÁÉ½‘ÕÐõí‘•µ½AÉ½‘ÕÑÍlÁuô¡•É¼€¼ø4(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½AÉ¥•…É‘ôø4(€€€€€€€€€€€€ñÍµ…±°ûfûbÏb«fƒbŸj§b£bÇn0ƒffb«bŸbÈð½Íµ…±°ø4(€€€€€€€€€€€€ñˆùíÑ½µ…¸¡‘•µ½AÉ½‘ÕÑÍlÁt¹ÁÉ¥”¥ô€ñÍÁ…¸ûb«f#fbŸfð½ÍÁ…¸øð½ˆø4(€€€€€€€€€€€€ñ‰ÕÑÑ½¸ÑåÁ”ô‰‰ÕÑÑ½¸ˆ½¹±¥¬õì ¤€ôø…‘‘Q½…ÉÐ¡‘•µ½AÉ½‘ÕÑÍlÁt¥ôûbŸfbËf#b¿fƒb£fƒbÏb£b¼ð½‰ÕÑÑ½¸ø4(€€€€€€€€€€ð½‘¥Øø4(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”õíÍÑå±•Ì¹¡•É½=É¥¥¹…É‘ôø4(€€€€€€€€€€€€ñÍÁ…¸ûfb£b¿bŒð½ÍÁ…¸øñˆûbÇfbÏfb³bŸfð½ˆøñÍµ…±°ûbÏbÇn0ƒffbŸn3bÓn09L´ÈØð½Íµ…±³m|âÚ$z{-®éÜj×¢Ç7ãí¨m‹Šr˜]‹-˜~(ÍŠý˜˜m˜}‰óÂ÷7ãàÐ¢Æ&Æö6·V÷FSì*½¸Í˜r˜]¸ÍŠ}˜n(Í˜‹Šý˜~(Í¸ÂŠí˜‹N(Í‹}‹˜R˜]¸Î(ÍŠ­˜˜m˜rŠÝŠ}˜M™¸Íª’‹˜‹"˜]‹˜]˜˜M¸Â‹˜‚‹˜‹bª˜m˜rì+³Âö&Æö6·V÷FSàÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2ç7F÷'”6÷—ÓàÐ¢Çí˜]‹-˜~(ÍŠý˜˜m˜rŠ‹Š}¸Â˜MŠÝ‹˜~(Í˜}Š}¸Âª˜¨m¸Íª’˜‚Ší˜‹M˜]‹-˜r‹=Š}ŠíŠ­˜r‹MŠý˜}‰²Š}‹"˜]‹MŠ¢Š-ŠÍ¸Í˜B‹=‹™ªŠ}‹Š­Šrª˜ª¸ÂŠí˜˜mªý¸Âª˜mŠ}‹¨mŠ}¸ÂãÂ÷àÐ¢Æ‡&Vc×´DÔ”åõU$ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W"#íŠý¸ÍŠý˜b›í˜m˜B˜]Šý¸Í‹¸ÍŠ¢˜]‹-˜~(ÍŠý˜˜m˜sÂöàÐ¢ÂöF—càÐ¢Â÷6V7F–öãàÐ Ð¢Æfö÷FW"6Æ74æÖS×·7G–ÆW2æfö÷FW'ÓàÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æfö÷FW$'&æGÓãÇ7â6Æ74æÖS×·7G–ÆW2æ'&æDÖ&·Óí˜SÂ÷7ããÆF—cãÆ#í˜]‹-˜~(ÍŠý˜˜m˜sÂö#ãÇ6ÖÆÃíŠí˜‹N(ÍŠí˜‹Š}ª™˜}‹‹˜‹#Â÷6ÖÆÃãÂöF—cãÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æfö÷FW$Æ–æ·7ÓãÆ‡&VcÒ"7&öGV7G2#í˜]ŠÝ‹]˜˜MŠ}Š£ÂöãÆ‡&VcÒ"7VÆ—G’#íŠí˜‹M˜]‹-˜~(Í˜}Š}¸Âª˜^(Í‹Mª‹ÂöãÆ‡&VcÒ"6v–gB#íŠÍ‹Š˜~(Í˜}Š}¸Â˜}Šý¸Í˜sÂöãÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æfö÷FW$æ÷FWÓãÆ#í˜m‹=Ší˜rŠý˜]˜¸ÂŠ­‹Š}˜]˜M¸ÃÂö#ãÇ6ÖÆÃíŠŠý˜˜b›í‹ŠýŠ}ŠíŠ­ˆÂŠ}‹‹=Š}˜B¸ÍŠrŠ½ŠŠ¢ŠýŠ}Šý˜r˜Š}˜-‹¸ÃÂ÷6ÖÆÃãÂöF—càÐ¢Âöfö÷FW#àÐ Ð¢¶ÖVçT÷VâbbÆ'WGFöâG—SÒ&'WGFöâ"6Æ74æÖS×·7G–ÆW2æÖö&–ÆTÖVçT&6¶G&÷Ò&–ÖÆ&VÃÒ-Š‹=Š­˜b˜]˜m˜‚"öä6Æ–6³×²‚’Óâ6WDÖVçT÷Vâ†fÇ6R—ÒóçÐÐ Ð¢¶6'D÷Vâbb€Ð¢ÆF—b6Æ74æÖS×·7G–ÆW2æ÷fW&Æ—Ò&öÆSÒ'&W6VçFF–öâ"öäÖ÷W6TF÷vã×²†WfVçB’ÓâWfVçBçF&vWBÓÓÒWfVçBæ7W'&VçEF&vWBbb6WD6'D÷Vâ†fÇ6R—ÓàÐ¢Æ6–FR6Æ74æÖS×·7G–ÆW2æ6'DG&vW'Ò&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÆÆVF'“Ò&6'B×F—FÆR#àÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æG&vW$†VFW'ÓàÐ¢ÆF—cãÇ6ÖÆÃí‹=ŠŠòŠí‹¸ÍŠòŠý˜]˜ƒÂ÷6ÖÆÃãÆƒ"–CÒ&6'B×F—FÆR#íŠ}˜mŠ­ŠíŠ}ŠŽ(Í˜}Š}¸Â‹M˜]ŠsÂöƒ#ãÂöF—càÐ¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WD6'D÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ-Š‹=Š­˜b‹=ŠŠò#ì9sÂö'WGFöãàÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6'DÆ–æW7ÓàÐ¢¶6'BæÆVæwF‚ÓÓÒò€Ð¢ÆF—b6Æ74æÖS×·7G–ÆW2æV×G”6'GÓàÐ¢Ç7ãí»Â÷7ããÆ#í‹=ŠŠòŠí‹¸ÍŠò˜}˜m˜‹"ŠíŠ}˜M¸ÂŠ}‹=Š¢ãÂö#ãÇí¸Íª’Š‹=Š­˜r‹ŠrŠ}‹"˜]ŠÝ‹]˜˜MŠ}Š¢˜]˜mŠ­ŠíŠ‚Š˜r‹=ŠŠòŠ}‹mŠ}˜˜rª˜bãÂ÷àÐ¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WD6'D÷Vâ†fÇ6R—ÓíŠŠ}‹-ªý‹MŠ¢Š˜r˜‹˜‹MªýŠ}˜sÂö'WGFöãàÐ¢ÂöF—càÐ¢’¢6'BæÖ‚†Æ–æR’Óâ€Ð¢Æ'F–6ÆR6Æ74æÖS×·7G–ÆW2æ6'DÆ–æWÒ¶W“×¶Æ–æRæ–GÓàÐ¢ÆF—b6Æ74æÖS×¶G·7G–ÆW2æ6'EF‡VÖ'ÒG·7G–ÆW5¶Æ–æRæ66VçE×ÖÓãÅ&öGV7D'Gv÷&²&öGV7C×¶Æ–æWÒóãÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6'DÆ–æT–æf÷ÓãÆ#ç¶Æ–æRçF—FÆWÓÂö#ãÇ6ÖÆÃç¶Æ–æRç6¶vTÆ&VÇÓÂ÷6ÖÆÃãÇ7ãç·FöÖâ†Æ–æRç&–6R¢Æ–æRçVçF—G’—ÒŠ­˜˜]Š}˜cÂ÷7ããÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2çVçF—G”6öçG&öÇÓàÐ¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6†ævUVçF—G’†Æ–æRæ–BÂ—Ò&–ÖÆ&VÃÒ-Š}˜‹-Š}¸Í‹BŠ­‹ŠýŠ}Šò#â³Âö'WGFöãàÐ¢Æ#ç·FöÖâ†Æ–æRçVçF—G’—ÓÂö#àÐ¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6†ævUVçF—G’†Æ–æRæ–BÂÓ—Ò&–ÖÆ&VÃÒ-ªŠ}˜}‹BŠ­‹ŠýŠ}Šò#î(‰#Âö'WGFöãàÐ¢ÂöF—càÐ¢Âö'F–6ÆSàÐ¢’—ÐÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6'E7VÖÖ'—ÓàÐ¢ÆF—cãÇ7ãíŠÍ˜]‹’˜]ŠÝ‹]˜˜MŠ}Š£Â÷7ããÆ#ç·FöÖâ‡7V'F÷FÂ—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—càÐ¢ÆF—cãÇ7ãíŠ}‹‹=Š}˜CÂ÷7ããÆ#ç·6†—–ærÓÓÒò-‹Š}¸ÍªýŠ}˜b"¢G·FöÖâ‡6†—–ær—ÒŠ­˜˜]Š}˜fÓÂö#ãÂöF—càÐ¢Ç6ÖÆÃíŠ}‹‹=Š}˜BŠ‹Š}¸ÂŠí‹¸ÍŠòŠŠ}˜MŠ}¸Â»šÍ»]»»šÍ»»»Š­˜˜]Š}˜bŠý‹Š}¸Í˜bŠý˜]˜‚‹Š}¸ÍªýŠ}˜bŠ}‹=Š¢ãÂ÷6ÖÆÃàÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2ç–&ÆU&÷wÓãÇ7ãí˜]Š˜M‹¢˜-Š}Š˜B›í‹ŠýŠ}ŠíŠ£Â÷7ããÆ#ç·FöÖâ‡–&ÆR—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—càÐ¢Æ'WGFöâ6Æ74æÖS×·7G–ÆW2æ6†V6¶÷WD'WGFöçÒG—SÒ&'WGFöâ"F—6&ÆVC×¶6'BæÆVæwF‚ÓÓÒÒöä6Æ–6³×²‚’Óâ6WD6†V6¶÷WD÷Vâ‡G'VR—ÓàÐ¢Š}ŠýŠ}˜]˜r˜‚Š½ŠŠ¢‹=˜Š}‹‹BŠ-‹-˜]Š}¸Í‹M¸ÀÐ¢Âö'WGFöãàÐ¢ÂöF—càÐ¢Âö6–FSàÐ¢ÂöF—càÐ¢—ÐÐ Ð¢¶6†V6¶÷WD÷Vâbb€Ð¢ÆF—b6Æ74æÖS×·7G–ÆW2æÖöFÄ÷fW&Æ—Ò&öÆSÒ'&W6VçFF–öâ"öäÖ÷W6TF÷vã×²†WfVçB’ÓâWfVçBçF&vWBÓÓÒWfVçBæ7W'&VçEF&vWBbb6WD6†V6¶÷WD÷Vâ†fÇ6R—ÓàÐ¢Æf÷&Ò6Æ74æÖS×·7G–ÆW2æ6†V6¶÷WDÖöFÇÒöå7V&Ö—C×·7V&Ö—DFVÖô÷&FW'Ò&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÆÆVF'“Ò&6†V6¶÷WB×F—FÆR#àÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æG&vW$†VFW'ÓàÐ¢ÆF—cãÇ6ÖÆÃí˜]‹ŠÝ˜M˜r˜m˜}Š}¸Í¸ÂŠý˜]˜ƒÂ÷6ÖÆÃãÆƒ"–CÒ&6†V6¶÷WB×F—FÆR#íŠ}‹}˜MŠ}‹Š}Š¢Š­ŠÝ˜¸Í˜CÂöƒ#ãÂöF—càÐ¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WD6†V6¶÷WD÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ-Š‹=Š­˜b˜‹˜R#ì9sÂö'WGFöãàÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æf÷&Ôw&–GÓàÐ¢ÆÆ&VÃãÇ7ãí˜mŠ}˜R˜‚˜mŠ}˜RŠíŠ}˜m˜Š}Šýªý¸ÃÂ÷7ããÆ–çWBæÖSÒ&7W7FöÖW""&WV—&VBÆ6V†öÆFW#Ò-˜]Š½˜MŠ}˜²ŠÝ˜]¸ÍŠý‹‹mŠr›íŠ}ª›í˜‹"óãÂöÆ&VÃàÐ¢ÆÆ&VÃãÇ7ãí‹M˜]Š}‹˜r˜]˜ŠŠ}¸Í˜CÂ÷7ããÆ–çWBæÖSÒ&Öö&–ÆR"&WV—&VB–çWDÖöFSÒ'FVÂ"GFW&ãÒ#•³Ó•×³—Ò"Æ6V†öÆFW#Ò-»»»»-»»-»=»M»]»m»r"óãÂöÆ&VÃàÐ¢ÆÆ&VÃãÇ7ãí‹M˜}‹Â÷7ããÆ–çWBæÖSÒ&6—G’"&WV—&VBÆ6V†öÆFW#Ò-Š­˜}‹Š}˜b"óãÂöÆ&VÃàÐ¢ÆÆ&VÃãÇ7ãíªŠò›í‹=Š­¸ÃÂ÷7ããÆ–çWBæÖSÒ'÷7FÄ6öFR"–çWDÖöFSÒ&çVÖW&–2"Æ6V†öÆFW#Ò-»»-»=»M»]»m»}»»»"óãÂöÆ&VÃàÐ¢ÆÆ&VÂ6Æ74æÖS×·7G–ÆW2ægVÆÄf–VÆGÓãÇ7ãí˜m‹MŠ}˜m¸ÂŠ­ŠÝ˜¸Í˜CÂ÷7ããÇFW‡F&VæÖSÒ&FG&W72"&WV—&VB&÷w3×³7ÒÆ6V†öÆFW#Ò-˜m‹MŠ}˜m¸ÂªŠ}˜]˜BŠ‹Š}¸Â‹=˜mŠ}‹¸Í˜¸ÂŠ-‹-˜]Š}¸Í‹M¸Â"óãÂöÆ&VÃàÐ¢ÆÆ&VÂ6Æ74æÖS×·7G–ÆW2ægVÆÄf–VÆGÓãÇ7ãí¸ÍŠ}ŠýŠýŠ}‹MŠ¢‹=˜Š}‹‹CÂ÷7ããÆ–çWBæÖSÒ&æ÷FR"Æ6V†öÆFW#Ò-Š}ŠíŠ­¸ÍŠ}‹¸Í‰²˜]Š½˜MŠ}˜²ªŠ}‹Š¢Š­Š‹¸Íª’ŠýŠ}Ší˜BŠ‹=Š­˜r˜-‹Š}‹ªý¸Í‹Šò"óãÂöÆ&VÃàÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æFVÖõ–ÖVçDæ÷F–6WÓãÆ#í›í‹ŠýŠ}ŠíŠ¢‹MŠ¸Í˜~(Í‹=Š}‹-¸Â˜]¸Î(Í‹M˜ŠòãÂö#ãÇ7ãí˜}¸Í¨bŠ}‹}˜MŠ}‹Š}Š¢ŠŠ}˜mª¸ÂŠý‹¸ÍŠ}˜Š¢˜mŠí˜Š}˜}Šò‹MŠòãÂ÷7ããÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ6†V6¶÷WDfö÷FW'ÓãÆF—cãÇ6ÖÆÃí˜]Š˜M‹¢Šý˜]˜ƒÂ÷6ÖÆÃãÆ#ç·FöÖâ‡–&ÆR—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—cãÆ'WGFöâG—SÒ'7V&Ö—B#íŠ½ŠŠ¢‹=˜Š}‹‹B˜‚‹MŠ¸Í˜~(Í‹=Š}‹-¸Â›í‹ŠýŠ}ŠíŠ£Âö'WGFöããÂöF—càÐ¢Âöf÷&ÓàÐ¢ÂöF—càÐ¢—ÐÐ Ð¢¶÷&FW"bb€Ð¢ÆF—b6Æ74æÖS×·7G–ÆW2æÖöFÄ÷fW&Æ—Ò&öÆSÒ'&W6VçFF–öâ#àÐ¢Ç6V7F–öâ6Æ74æÖS×·7G–ÆW2ç7V66W74ÖöFÇÒ&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÆÆVF'“Ò'7V66W72×F—FÆR#àÐ¢Ç7â6Æ74æÖS×·7G–ÆW2ç7V66W74Ö&·Óî)É3Â÷7ãàÐ¢Ç6ÖÆÃí‹=˜Š}‹‹BŠ-‹-˜]Š}¸Í‹M¸ÂŠ½ŠŠ¢‹MŠóÂ÷6ÖÆÃàÐ¢Æƒ"–CÒ'7V66W72×F—FÆR#í˜]˜]˜m˜˜b¶÷&FW"æ7W7FöÖW'ÓÂöƒ#àÐ¢ÇíŠ}¸Í˜b‹=˜mŠ}‹¸Í˜‚˜˜-‹rŠÍ‹¸ÍŠ}˜bŠ­ŠÍ‹Š˜r˜]‹MŠ­‹¸Â‹Šr˜m˜]Š}¸Í‹B˜]¸Î(ÍŠý˜}Šò˜‚˜}¸Í¨bŠ­‹Š}ª˜m‹B¸ÍŠrŠ}‹‹=Š}˜B˜Š}˜-‹¸ÂŠ}˜mŠÍŠ}˜R˜m‹MŠý˜rŠ}‹=Š¢ãÂ÷àÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2æ÷&FW%&V6V—GÓàÐ¢ÆF—cãÇ7ãíªŠò‹=˜Š}‹‹CÂ÷7ããÆ#ç¶÷&FW"æ6öFWÓÂö#ãÂöF—càÐ¢ÆF—cãÇ7ãí‹-˜]Š}˜bŠ½ŠŠ£Â÷7ããÆ#ç¶÷&FW"æ7&VFVDGÓÂö#ãÂöF—càÐ¢ÆF—cãÇ7ãí˜]Š˜M‹£Â÷7ããÆ#ç·FöÖâ†÷&FW"ç–&ÆR—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—càÐ¢ÂöF—càÐ¢ÆF—b6Æ74æÖS×·7G–ÆW2ç7V66W747F–öç7ÓãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WD÷&FW"†çVÆÂ—ÓíŠŠ}‹-ªý‹MŠ¢Š˜r˜‹˜‹MªýŠ}˜sÂö'WGFöããÆ‡&Vc×´DÔ”åõU$ÇÒF&vWCÒ%ö&Ææ²"&VÃÒ&æ÷&VfW'&W"#íŠý¸ÍŠý˜b‹=˜Š}‹‹N(Í˜}ŠrŠý‹›í˜m˜BŠý˜]˜ƒÂöãÂöF—càÐ¢Â÷6V7F–öãàÐ¢ÂöF—càÐ¢—ÐÐ¢ÂöÖ–ãàÐ¢“°Ð§ÐÐ 

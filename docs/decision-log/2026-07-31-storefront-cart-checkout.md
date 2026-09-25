@@ -15,7 +15,7 @@
 
 ## تصمیم
 
-- کاتالوگ در Runtime از `NEXT_PUBLIC_NOOSHORA_API_BASE_URL` خوانده می‌شود.
+- کاتالوگ در Runtime از `NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL` خوانده می‌شود.
 - در نبود یا خرابی API، داده نمونه با برچسب صریح Preview نمایش داده می‌شود.
 - انتخاب Variant، افزودن، کاهش/افزایش تعداد و ذخیره Cart در Local Storage پیاده شد.
 - فرم Checkout اطلاعات تحویل را همراه SKU و تعداد به Backend ارسال می‌کند.

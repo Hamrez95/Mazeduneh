@@ -1,4 +1,4 @@
-# دموی حرفه‌ای شریک تجاری نوشورا
+# دموی حرفه‌ای شریک تجاری مزه‌دونه
 
 این دمو برای نمایش تجربه کامل و قابل ارائه فروشگاه و پنل مدیریت، بدون وابستگی به API عمومی، دیتابیس، درگاه یا داده واقعی ساخته شده است.
 
@@ -12,8 +12,8 @@
 ## اطلاعات ورود پنل دمو
 
 ```text
-Email: admin@nooshora.ir
-Password: Nooshora1405
+Email: admin@mazeduneh.ir
+Password: Mazeduneh1405
 ```
 
 این اطلاعات فقط برای Build نمایشی هستند. ورود Production همچنان از `secure_main.dart` و API احراز هویت استفاده می‌کند.
@@ -35,7 +35,7 @@ Build:
 
 ```bash
 cd apps/storefront
-NEXT_PUBLIC_NOOSHORA_DEMO_MODE=true NOOSHORA_STATIC_EXPORT=true npm run build
+NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE=true MAZEDUNEH_STATIC_EXPORT=true npm run build
 ```
 
 خروجی در `apps/storefront/out` ساخته می‌شود.
@@ -72,9 +72,9 @@ flutter build web --release --target lib/professional_demo_main.dart
 در محیط Production این متغیرها تنظیم می‌شوند:
 
 ```text
-NEXT_PUBLIC_NOOSHORA_DEMO_MODE=false
-NEXT_PUBLIC_NOOSHORA_API_BASE_URL=https://api.example.com
-NEXT_PUBLIC_NOOSHORA_ADMIN_URL=https://admin.example.com
+NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE=false
+NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL=https://api.example.com
+NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL=https://admin.example.com
 ```
 
 وقتی Demo Mode برابر `false` باشد، صفحه اصلی به `StorefrontApp` متصل به API سوئیچ می‌کند.
@@ -86,7 +86,7 @@ NEXT_PUBLIC_NOOSHORA_ADMIN_URL=https://admin.example.com
 ```bash
 flutter build web --release \
   --target lib/secure_main.dart \
-  --dart-define=NOOSHORA_API_BASE_URL=https://api.example.com
+  --dart-define=MAZEDUNEH_API_BASE_URL=https://api.example.com
 ```
 
 نسخه Android نیز از همین Entry Point ساخته می‌شود:
@@ -94,7 +94,7 @@ flutter build web --release \
 ```bash
 flutter build apk --release \
   --target lib/secure_main.dart \
-  --dart-define=NOOSHORA_API_BASE_URL=https://api.example.com
+  --dart-define=MAZEDUNEH_API_BASE_URL=https://api.example.com
 ```
 
 ورود مدیر، محصولات، سفارش‌ها و گزارش‌های واقعی در این حالت از API دریافت می‌شوند.

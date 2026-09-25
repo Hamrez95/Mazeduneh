@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:nooshora_admin/auth_session.dart';
-import 'package:nooshora_admin/catalog_api.dart';
+import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/catalog_api.dart';
 
 void main() {
   setUp(() {
@@ -75,7 +75,7 @@ void main() {
 
   test('new products default to draft', () {
     const command = CreateProductCommand(
-      title: 'کوکی', slug: 'cookie', category: 'سالم', origin: 'نوشورا', unitType: 'Count',
+      title: 'کوکی', slug: 'cookie', category: 'سالم', origin: 'مزه‌دونه', unitType: 'Count',
       variants: [CreateVariantCommand(sku: 'CK-1', quantity: 1, displayLabel: '۱ عدد', price: 1000, availablePackages: 2)],
     );
     expect(command.toJson()['isPublished'], isFalse);
@@ -90,7 +90,7 @@ void main() {
 
     final api = CatalogApiClient(client: client, baseUrl: 'https://api.test');
     const command = CreateProductCommand(
-      title: 'کوکی', slug: 'cookie', category: 'سالم', origin: 'نوشورا', unitType: 'Count',
+      title: 'کوکی', slug: 'cookie', category: 'سالم', origin: 'مزه‌دونه', unitType: 'Count',
       variants: [CreateVariantCommand(sku: 'CK-1', quantity: 1, displayLabel: '۱ عدد', price: 1000, availablePackages: 2)],
     );
 

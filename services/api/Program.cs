@@ -58,7 +58,7 @@ app.MapGet("/health", async (
     return Results.Ok(new
     {
         status = databaseStatus == "unhealthy" ? "degraded" : "healthy",
-        service = "nooshora-api",
+        service = "mazeduneh-api",
         database = databaseStatus,
         adminAuthentication = adminTokens.IsConfigured ? "configured" : "not-configured",
         paymentSandbox = paymentDatabase.SandboxEnabled ? "enabled" : "disabled",
@@ -151,7 +151,7 @@ public sealed class ProductCatalog
             [V("NU-ALM-250",250,"۲۵۰ گرم",1_750_000,25),V("NU-ALM-500",500,"۵۰۰ گرم",3_300_000,16),V("NU-ALM-1000",1000,"۱۰۰۰ گرم",6_400_000,8)]));
         Add(Seed("مغز گردوی ایرانی", "iranian-walnut-kernel", "پسته و مغزیجات", "تویسرکان", ProductUnitType.Weight,
             [V("NU-WAL-250",250,"۲۵۰ گرم",1_620_000,18),V("NU-WAL-500",500,"۵۰۰ گرم",3_050_000,10),V("NU-WAL-1000",1000,"۱۰۰۰ گرم",5_900_000,5)]));
-        Add(Seed("کوکی پروتئینی نوشورا", "nooshora-protein-cookie", "کوکی و کیک سالم", "تولید روز", ProductUnitType.Count,
+        Add(Seed("کوکی پروتئینی مزه‌دونه", "mazeduneh-protein-cookie", "کوکی و کیک سالم", "تولید روز", ProductUnitType.Count,
             [V("CK-PRO-1",1,"۱ عدد",950_000,48,"piece"),V("CK-PRO-4",4,"پک ۴ عددی",3_600_000,20,"piece"),V("CK-PRO-8",8,"پک ۸ عددی",6_900_000,10,"piece")]));
     }
 

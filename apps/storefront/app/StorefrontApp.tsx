@@ -1,439 +1,2 @@
-"use client";
-
-import { FormEvent, useEffect, useMemo, useState } from "react";
-
-type UnitType = "Weight" | "Count";
-
-type ProductVariant = {
-  sku: string;
-  quantity: number;
-  baseUnit: "gram" | "piece";
-  displayLabel: string;
-  price: number;
-  availablePackages: number;
-};
-
-type Product = {
-  id: string;
-  title: string;
-  slug: string;
-  category: string;
-  origin: string;
-  currency: string;
-  unitType: UnitType;
-  isPublished: boolean;
-  variants: ProductVariant[];
-};
-
-type CartItem = {
-  sku: string;
-  productTitle: string;
-  variantLabel: string;
-  unitPrice: number;
-  quantity: number;
-  maxQuantity: number;
-};
-
-type CheckoutOrder = {
-  id: string;
-  receiptToken: string;
-  customerName: string;
-  currency: string;
-  subtotal: number;
-  shipping: number;
-  discount: number;
-  payable: number;
-  state: string;
-  reservationExpiresAt: string;
-};
-
-type CheckoutForm = {
-  customerName: string;
-  mobile: string;
-  province: string;
-  city: string;
-  address: string;
-  postalCode: string;
-};
-
-const API_BASE = (process.env.NEXT_PUBLIC_NOOSHORA_API_BASE_URL ?? "").replace(/\/$/, "");
-const CART_KEY = "nooshora-cart-v1";
-
-const previewProducts: Product[] = [
-  {
-    id: "preview-pistachio",
-    title: "Ù¾Ø³ØªÙ‡ Ø§Ú©Ø¨Ø±ÛŒ Ù…Ù…ØªØ§Ø²",
-    slug: "pistachio-akbari-premium",
-    category: "Ù¾Ø³ØªÙ‡ Ùˆ Ù…ØºØ²ÛŒØ¬Ø§Øª",
-    origin: "Ø±ÙØ³Ù†Ø¬Ø§Ù†",
-    currency: "IRR",
-    unitType: "Weight",
-    isPublished: true,
-    variants: [
-      { sku: "PI-AKB-250", quantity: 250, baseUnit: "gram", displayLabel: "Û²ÛµÛ° Ú¯Ø±Ù…", price: 2_450_000, availablePackages: 18 },
-      { sku: "PI-AKB-500", quantity: 500, baseUnit: "gram", displayLabel: "ÛµÛ°Û° Ú¯Ø±Ù…", price: 4_650_000, availablePackages: 12 },
-      { sku: "PI-AKB-1000", quantity: 1000, baseUnit: "gram", displayLabel: "Û±Û°Û°Û° Ú¯Ø±Ù…", price: 8_900_000, availablePackages: 6 },
-    ],
-  },
-  {
-    id: "preview-seeds",
-    title: "ØªØ®Ù…Ù‡ Ú©Ø¯Ùˆ Ú¯ÙˆØ´ØªÛŒ",
-    slug: "pumpkin-seeds",
-    category: "ØªØ®Ù…Ù‡ Ùˆ ØªÙ†Ù‚Ù„Ø§Øª",
-    origin: "Ø§ÛŒØ±Ø§Ù†",
-    currency: "IRR",
-    unitType: "Weight",
-    isPublished: true,
-    variants: [
-      { sku: "SE-PUM-250", quantity: 250, baseUnit: "gram", displayLabel: "Û²ÛµÛ° Ú¯Ø±Ù…", price: 950_000, availablePackages: 22 },
-      { sku: "SE-PUM-500", quantity: 500, baseUnit: "gram", displayLabel: "ÛµÛ°Û° Ú¯Ø±Ù…", price: 1_800_000, availablePackages: 14 },
-      { sku: "SE-PUM-1000", quantity: 1000, baseUnit: "gram", displayLabel: "Û±Û°Û°Û° Ú¯Ø±Ù…", price: 3_400_000, availablePackages: 7 },
-    ],
-  },
-  {
-    id: "preview-almond",
-    title: "Ø¨Ø§Ø¯Ø§Ù… Ø¯Ø±Ø®ØªÛŒ Ø®Ø§Ù…",
-    slug: "raw-almond",
-    category: "Ù¾Ø³ØªÙ‡ Ùˆ Ù…ØºØ²ÛŒØ¬Ø§Øª",
-    origin: "Ú†Ù‡Ø§Ø±Ù…Ø­Ø§Ù„",
-    currency: "IRR",
-    unitType: "Weight",
-    isPublished: true,
-    variants: [
-      { sku: "NU-ALM-250", quantity: 250, baseUnit: "gram", displayLabel: "Û²ÛµÛ° Ú¯Ø±Ù…", price: 1_750_000, availablePackages: 25 },
-      { sku: "NU-ALM-500", quantity: 500, baseUnit: "gram", displayLabel: "ÛµÛ°Û° Ú¯Ø±Ù…", price: 3_300_000, availablePackages: 16 },
-      { sku: "NU-ALM-1000", quantity: 1000, baseUnit: "gram", displayLabel: "Û±Û°Û°Û° Ú¯Ø±Ù…", price: 6_400_000, availablePackages: 8 },
-    ],
-  },
-  {
-    id: "preview-cookie",
-    title: "Ú©ÙˆÚ©ÛŒ Ù¾Ø±ÙˆØªØ¦ÛŒÙ†ÛŒ Ù†ÙˆØ´ÙˆØ±Ø§",
-    slug: "nooshora-protein-cookie",
-    category: "Ú©ÙˆÚ©ÛŒ Ùˆ Ú©ÛŒÚ© Ø³Ø§Ù„Ù…",
-    origin: "ØªÙˆÙ„ÛŒØ¯ Ø±ÙˆØ²",
-    currency: "IRR",
-    unitType: "Count",
-    isPublished: true,
-    variants: [
-      { sku: "CK-PRO-1", quantity: 1, baseUnit: "piece", displayLabel: "Û± Ø¹Ø¯Ø¯", price: 950_000, availablePackages: 48 },
-      { sku: "CK-PRO-4", quantity: 4, baseUnit: "piece", displayLabel: "Ù¾Ú© Û´ Ø¹Ø¯Ø¯ÛŒ", price: 3_600_000, availablePackages: 20 },
-      { sku: "CK-PRO-8", quantity: 8, baseUnit: "piece", displayLabel: "Ù¾Ú© Û¸ Ø¹Ø¯Ø¯ÛŒ", price: 6_900_000, availablePackages: 10 },
-    ],
-  },
-];
-
-const emptyForm: CheckoutForm = {
-  customerName: "",
-  mobile: "",
-  province: "",
-  city: "",
-  address: "",
-  postalCode: "",
-};
-
-function formatToman(irr: number) {
-  return new Intl.NumberFormat("fa-IR").format(Math.round(irr / 10));
-}
-
-function productIcon(product: Product) {
-  if (product.unitType === "Count") return "ğŸª";
-  if (product.title.includes("Ù¾Ø³ØªÙ‡")) return "ğŸŸ¢";
-  if (product.title.includes("ØªØ®Ù…Ù‡")) return "ğŸƒ";
-  if (product.title.includes("Ú¯Ø±Ø¯Ùˆ")) return "ğŸ§ ";
-  return "ğŸŒ°";
-}
-
-function createIdempotencyKey() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `checkout-${crypto.randomUUID()}`;
-  }
-  return `checkout-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-export default function StorefrontApp() {
-  const [products, setProducts] = useState<Product[]>(previewProducts);
-  const [catalogMode, setCatalogMode] = useState<"loading" | "live" | "preview" | "error">(
-    API_BASE ? "loading" : "preview",
-  );
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [form, setForm] = useState<CheckoutForm>(emptyForm);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [order, setOrder] = useState<CheckoutOrder | null>(null);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(CART_KEY);
-      if (stored) setCart(JSON.parse(stored) as CartItem[]);
-    } catch {
-      localStorage.removeItem(CART_KEY);
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  }, [cart]);
-
-  useEffect(() => {
-    if (!API_BASE) return;
-    const controller = new AbortController();
-    fetch(`${API_BASE}/api/v1/products`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`catalog-${response.status}`);
-        return (await response.json()) as Product[];
-      })
-      .then((items) => {
-        setProducts(items);
-        setCatalogMode("live");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setProducts(previewProducts);
-        setCatalogMode("error");
-      });
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    setSelectedVariants((current) => {
-      const next = { ...current };
-      for (const product of products) {
-        if (!next[product.id] && product.variants.length > 0) next[product.id] = product.variants[0].sku;
-      }
-      return next;
-    });
-  }, [products]);
-
-  const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const estimatedSubtotal = cart.reduce((total, item) => total + item.unitPrice * item.quantity, 0);
-  const estimatedShipping = estimatedSubtotal >= 15_000_000 || estimatedSubtotal === 0 ? 0 : 750_000;
-  const estimatedPayable = estimatedSubtotal + estimatedShipping;
-
-  const categories = useMemo(() => Array.from(new Set(products.map((item) => item.category))), [products]);
-
-  function addToCart(product: Product) {
-    const sku = selectedVariants[product.id] ?? product.variants[0]?.sku;
-    const variant = product.variants.find((item) => item.sku === sku);
-    if (!variant || variant.availablePackages <= 0) return;
-
-    setCart((items) => {
-      const existing = items.find((item) => item.sku === variant.sku);
-      if (existing) {
-        return items.map((item) =>
-          item.sku === variant.sku
-            ? { ...item, quantity: Math.min(item.quantity + 1, item.maxQuantity) }
-            : item,
-        );
-      }
-      return [
-        ...items,
-        {
-          sku: variant.sku,
-          productTitle: product.title,
-          variantLabel: variant.displayLabel,
-          unitPrice: variant.price,
-          quantity: 1,
-          maxQuantity: variant.availablePackages,
-        },
-      ];
-    });
-    setCartOpen(true);
-  }
-
-  function updateQuantity(sku: string, quantity: number) {
-    setCart((items) =>
-      items
-        .map((item) => (item.sku === sku ? { ...item, quantity: Math.max(0, Math.min(quantity, item.maxQuantity)) } : item))
-        .filter((item) => item.quantity > 0),
-    );
-  }
-
-  async function submitCheckout(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage(null);
-    setOrder(null);
-
-    if (!API_BASE || catalogMode !== "live") {
-      setMessage("Ø§ÛŒÙ† Ù†Ø³Ø®Ù‡ Ø¯Ø± Ø­Ø§Ù„Øª Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ Ø§Ø³ØªØ› Ø¨Ø±Ø§ÛŒ Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø¨Ø§ÛŒØ¯ API Ø¢Ù†Ù„Ø§ÛŒÙ† Ù†ÙˆØ´ÙˆØ±Ø§ ØªÙ†Ø¸ÛŒÙ… Ø´ÙˆØ¯.");
-      return;
-    }
-    if (cart.length === 0) {
-      setMessage("Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const response = await fetch(`${API_BASE}/api/v1/checkout/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": createIdempotencyKey(),
-        },
-        body: JSON.stringify({
-          ...form,
-          lines: cart.map((item) => ({ sku: item.sku, quantity: item.quantity })),
-        }),
-      });
-
-      const payload = (await response.json()) as CheckoutOrder & { message?: string; errors?: Record<string, string[]> };
-      if (!response.ok) {
-        const validation = payload.errors ? Object.values(payload.errors).flat().join(" ") : null;
-        throw new Error(validation || payload.message || "Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯.");
-      }
-
-      setOrder(payload);
-      setCart([]);
-      setForm(emptyForm);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ø§Ø±ØªØ¨Ø§Ø· Ø¨Ø§ Ø³Ø±ÙˆØ± Ø¨Ø±Ù‚Ø±Ø§Ø± Ù†Ø´Ø¯.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <main>
-      <div className="announcement">Ø§Ø±Ø³Ø§Ù„ Ø¨Ù‡ Ø³Ø±Ø§Ø³Ø± Ø§ÛŒØ±Ø§Ù† Â· Ø§Ø±Ø³Ø§Ù„ Ø±Ø§ÛŒÚ¯Ø§Ù† Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ù„Ø§ÛŒ Û±Ù¬ÛµÛ°Û°Ù¬Û°Û°Û° ØªÙˆÙ…Ø§Ù†</div>
-
-      <header className="siteHeader shell">
-        <a className="brand" href="#top" aria-label="ØµÙØ­Ù‡ Ø§ØµÙ„ÛŒ Ù†ÙˆØ´ÙˆØ±Ø§">
-          <span className="brandMark" aria-hidden="true">Ù†</span>
-          <span><strong>Ù†ÙˆØ´ÙˆØ±Ø§</strong><small>Ø¯Ø³Øªâ€ŒÚ†ÛŒÙ† Ù„Ø­Ø¸Ù‡â€ŒÙ‡Ø§ÛŒ Ø®ÙˆØ´</small></span>
-        </a>
-        <nav aria-label="Ù…Ù†ÙˆÛŒ Ø§ØµÙ„ÛŒ">
-          <a href="#products">ÙØ±ÙˆØ´Ú¯Ø§Ù‡</a>
-          <a href="#gift">Ù‡Ø¯ÛŒÙ‡</a>
-          <a href="#story">Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯ Ú©ÛŒÙÛŒØª</a>
-        </nav>
-        <div className="headerActions">
-          <button className="cartButton" type="button" onClick={() => setCartOpen(true)}>
-            Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯ <span>{new Intl.NumberFormat("fa-IR").format(cartCount)}</span>
-          </button>
-        </div>
-      </header>
-
-      <section className="hero shell" id="top">
-        <div className="heroCopy">
-          <span className="eyebrow">ØªØ§Ø²Ù‡ØŒ Ø´ÙØ§ÙØŒ Ø®ÙˆØ´â€ŒÙ‡Ø¯ÛŒÙ‡</span>
-          <h1>Ù‡Ø± Ø¯Ø§Ù†Ù‡ØŒ ÛŒÚ© Ø§Ù†ØªØ®Ø§Ø¨ Ø®ÙˆØ¨</h1>
-          <p>Ø¢Ø¬ÛŒÙ„ØŒ Ù…ØºØ²ÛŒØ¬Ø§Øª Ùˆ Ø®ÙˆØ±Ø§Ú©ÛŒâ€ŒÙ‡Ø§ÛŒ Ø³Ø§Ù„Ù… Ø¨Ø§ ÙˆØ§Ø­Ø¯ ÙØ±ÙˆØ´ Ø´ÙØ§ÙØŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù‚Ø§Ø¨Ù„ Ú©Ù†ØªØ±Ù„ Ùˆ Ø³ÙØ§Ø±Ø´ Ø§Ù…Ù†.</p>
-          <div className="heroActions">
-            <a className="primaryButton" href="#products">Ø®Ø±ÛŒØ¯ Ù…Ø­ØµÙˆÙ„Ø§Øª</a>
-            <button className="secondaryButton" type="button" onClick={() => setCartOpen(true)}>Ø¯ÛŒØ¯Ù† Ø³Ø¨Ø¯</button>
-          </div>
-          <ul className="trustList"><li>Ø¶Ù…Ø§Ù†Øª ØªØ§Ø²Ú¯ÛŒ</li><li>Ù‚ÛŒÙ…Øª Ù†Ù‡Ø§ÛŒÛŒ Ø¯Ø± Ø³Ø±ÙˆØ±</li><li>Ø±Ø²Ø±Ùˆ Ø§Ù…Ù† Ù…ÙˆØ¬ÙˆØ¯ÛŒ</li></ul>
-        </div>
-        <div className="heroVisual" aria-label="ØªØµÙˆÛŒØ± Ù…ÙÙ‡ÙˆÙ…ÛŒ Ù…ØºØ²ÛŒØ¬Ø§Øª Ù†ÙˆØ´ÙˆØ±Ø§">
-          <div className="sun" />
-          <div className="bowl"><span>ğŸ¥œ</span><span>ğŸŒ°</span><span>ğŸª</span><span>ğŸƒ</span></div>
-        </div>
-      </section>
-
-      <section className="catalogStatus shell" role="status">
-        <span className={`statusDot ${catalogMode}`} />
-        {catalogMode === "live" && "Ú©Ø§ØªØ§Ù„ÙˆÚ¯ Ø²Ù†Ø¯Ù‡ Ùˆ Ù…ØªØµÙ„ Ø¨Ù‡ API"}
-        {catalogMode === "loading" && "Ø¯Ø± Ø­Ø§Ù„ Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§ØªØ§Ù„ÙˆÚ¯ Ø²Ù†Ø¯Ù‡â€¦"}
-        {catalogMode === "preview" && "Ø­Ø§Ù„Øª Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´Ø› Ù‚ÛŒÙ…Øª Ùˆ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù†Ù…ÙˆÙ†Ù‡ Ù‡Ø³ØªÙ†Ø¯"}
-        {catalogMode === "error" && "API Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†Ø¨ÙˆØ¯Ø› Ø¯Ø§Ø¯Ù‡ Ù†Ù…ÙˆÙ†Ù‡ Ø¨Ø±Ø§ÛŒ Ø¨Ø§Ø²Ø¨ÛŒÙ†ÛŒ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯"}
-      </section>
-
-      <section className="section shell" aria-labelledby="category-title">
-        <div className="sectionHeading"><div><span className="eyebrow">Ø§Ù†ØªØ®Ø§Ø¨ Ø³Ø±ÛŒØ¹</span><h2 id="category-title">Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒâ€ŒÙ‡Ø§</h2></div></div>
-        <div className="categoryGrid">
-          {categories.map((category, index) => (
-            <a className="categoryCard" href="#products" key={category}>
-              <span className="categoryIcon">{["ğŸ¥œ", "ğŸƒ", "ğŸª", "ğŸ"][index % 4]}</span>
-              <strong>{category}</strong><small>Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¨Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù‚Ø§Ø¨Ù„ ÙØ±ÙˆØ´</small><span className="roundArrow">â†</span>
-            </a>
-          ))}
-        </div>
-      </section>
-
-      <section className="section shell" id="products" aria-labelledby="products-title">
-        <div className="sectionHeading">
-          <div><span className="eyebrow">Ú©Ø§ØªØ§Ù„ÙˆÚ¯ Ù†ÙˆØ´ÙˆØ±Ø§</span><h2 id="products-title">Ù…Ø­ØµÙˆÙ„Ø§Øª Ù‚Ø§Ø¨Ù„ Ø³ÙØ§Ø±Ø´</h2></div>
-          <small>Ù…Ø¨Ø§Ù„Øº Ø¨Ù‡ ØªÙˆÙ…Ø§Ù† Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯</small>
-        </div>
-        <div className="productGrid">
-          {products.map((product) => {
-            const selectedSku = selectedVariants[product.id] ?? product.variants[0]?.sku;
-            const variant = product.variants.find((item) => item.sku === selectedSku) ?? product.variants[0];
-            return (
-              <article className="productCard" key={product.id}>
-                <div className="productImage">
-                  <span className="badge">{product.unitType === "Weight" ? "ÙˆØ²Ù†ÛŒ" : "Ø¹Ø¯Ø¯ÛŒ"}</span>
-                  <span className="productEmoji" aria-hidden="true">{productIcon(product)}</span>
-                </div>
-                <div className="productBody">
-                  <small>{product.origin} Â· {product.category}</small>
-                  <h3>{product.title}</h3>
-                  <div className="weightRow" aria-label={`Ø§Ù†ØªØ®Ø§Ø¨ Ø¨Ø³ØªÙ‡ ${product.title}`}>
-                    {product.variants.map((item) => (
-                      <button
-                        className={item.sku === selectedSku ? "selected" : ""}
-                        type="button"
-                        key={item.sku}
-                        disabled={item.availablePackages <= 0}
-                        onClick={() => setSelectedVariants((current) => ({ ...current, [product.id]: item.sku }))}
-                      >
-                        {item.displayLabel}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="stockLine">
-                    {variant?.availablePackages ? `${new Intl.NumberFormat("fa-IR").format(variant.availablePackages)} Ø¨Ø³ØªÙ‡ Ù…ÙˆØ¬ÙˆØ¯` : "Ù†Ø§Ù…ÙˆØ¬ÙˆØ¯"}
-                  </div>
-                  <div className="priceRow">
-                    <p><strong>{variant ? formatToman(variant.price) : "â€”"}</strong> ØªÙˆÙ…Ø§Ù†</p>
-                    <button className="addButton" type="button" disabled={!variant || variant.availablePackages <= 0} onClick={() => addToCart(product)} aria-label={`Ø§ÙØ²ÙˆØ¯Ù† ${product.title} Ø¨Ù‡ Ø³Ø¨Ø¯`}>ï¼‹</button>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="story shell" id="story">
-        <div className="storyCopy"><span className="eyebrow">Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯ Ù†ÙˆØ´ÙˆØ±Ø§</span><h2>ÙØ§Ú©ØªÙˆØ± Ø¨Ø§ÛŒØ¯ Ø«Ø§Ø¨Øª Ùˆ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø¨Ø§ÛŒØ¯ Ù‚Ø§Ø¨Ù„ Ø§Ø¹ØªÙ…Ø§Ø¯ Ø¨Ø§Ø´Ø¯</h2><p>Ù‚ÛŒÙ…Øª Ù†Ù‡Ø§ÛŒÛŒ Ø§Ø² Backend Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯ØŒ Ø³ÙØ§Ø±Ø´ ØªÚ©Ø±Ø§Ø±ÛŒ Ø³Ø§Ø®ØªÙ‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ùˆ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù‡Ø± Ø¨Ø³ØªÙ‡ Ø¨Ø±Ø§ÛŒ Ù…Ø¯Øª Ù…Ø­Ø¯ÙˆØ¯ Ø±Ø²Ø±Ùˆ Ù…ÛŒâ€ŒÙ…Ø§Ù†Ø¯.</p></div>
-        <div className="qualityCard"><div><strong>Û²Û° Ø¯Ù‚ÛŒÙ‚Ù‡</strong><span>Ù…Ù‡Ù„Øª Ø±Ø²Ø±Ùˆ Ø³ÙØ§Ø±Ø´</span></div><div><strong>Û±Û°Û°Ùª</strong><span>Ù‚ÛŒÙ…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ø³Ù…Øª Ø³Ø±ÙˆØ±</span></div><div><strong>Ø³Ø±Ø§Ø³Ø±ÛŒ</strong><span>Ø§Ø±Ø³Ø§Ù„ Ø§ÙˆÙ„ÛŒÙ‡ Ø¯Ø± Ø§ÛŒØ±Ø§Ù†</span></div></div>
-      </section>
-
-      <section className="campaignGrid shell" id="gift">
-        <article className="campaign giftCampaign"><span>Ù†ÙˆØ´ÙˆØ±Ø§ Ù‡Ø¯ÛŒÙ‡</span><h2>Ù¾Ú©â€ŒÙ‡Ø§ÛŒ Ù…Ù†Ø§Ø³Ø¨ØªÛŒ Ùˆ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ</h2><p>Ø²ÛŒØ±Ø³Ø§Ø®Øª Ù…Ø­ØµÙˆÙ„ Ùˆ Ø³ÙØ§Ø±Ø´ Ø¢Ù…Ø§Ø¯Ù‡ ØªÙˆØ³Ø¹Ù‡ Ù¾Ú©â€ŒÙ‡Ø§ÛŒ Ø³ÙØ§Ø±Ø´ÛŒ Ø§Ø³Øª.</p></article>
-        <article className="campaign healthCampaign"><span>Ù†ÙˆØ´ÙˆØ±Ø§ Ø³Ù„Ø§Ù…Øª</span><h2>Ú©ÛŒÚ© Ùˆ Ú©ÙˆÚ©ÛŒ Ø±Ú˜ÛŒÙ…ÛŒ</h2><p>ÙØ±ÙˆØ´ Ø¹Ø¯Ø¯ÛŒ Ùˆ Ù¾Ú© Ú†Ù†Ø¯ØªØ§ÛŒÛŒ Ø¯Ø± Ù‡Ù…Ø§Ù† Ø³Ø¨Ø¯ Ù…ØºØ²ÛŒØ¬Ø§Øª Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</p></article>
-      </section>
-
-      <footer><div className="footerInner shell"><div className="footerBrand"><a className="brand" href="#top"><span className="brandMark">Ù†</span><span><strong>Ù†ÙˆØ´ÙˆØ±Ø§</strong><small>Ø¯Ø³Øªâ€ŒÚ†ÛŒÙ† Ù„Ø­Ø¸Ù‡â€ŒÙ‡Ø§ÛŒ Ø®ÙˆØ´</small></span></a><p>ÙØ±ÙˆØ´ Ø¢Ù†Ù„Ø§ÛŒÙ† Ø¢Ø¬ÛŒÙ„ØŒ Ù…ØºØ²ÛŒØ¬Ø§Øª Ùˆ Ø®ÙˆØ±Ø§Ú©ÛŒ Ø³Ø§Ù„Ù… Ø¨Ø§ Ù…Ø¯Ù„ Ø´ÙØ§Ù ÙˆØ§Ø­Ø¯ Ùˆ Ø¨Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ.</p></div><div><strong>Ø®Ø±ÛŒØ¯</strong><a href="#products">Ù…Ø­ØµÙˆÙ„Ø§Øª</a><a href="#gift">Ù¾Ú© Ù‡Ø¯ÛŒÙ‡</a></div><div><strong>Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ</strong><a href="mailto:Hamidrezapakpour95@gmail.com">Ø§Ø±ØªØ¨Ø§Ø· Ø¨Ø§ Ù…Ø¯ÛŒØ±</a></div></div><div className="copyright shell">Â© Û²Û°Û²Û¶ Ù†ÙˆØ´ÙˆØ±Ø§ â€” Ù†Ø³Ø®Ù‡ ØªÙˆØ³Ø¹Ù‡ Ù…ØªØµÙ„</div></footer>
-
-      {cartOpen && <div className="drawerBackdrop" onMouseDown={() => setCartOpen(false)}><aside className="cartDrawer" onMouseDown={(event) => event.stopPropagation()} aria-label="Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯">
-        <div className="drawerHeader"><div><small>Ø³Ø¨Ø¯ Ø®Ø±ÛŒØ¯</small><h2>{cartCount ? `${new Intl.NumberFormat("fa-IR").format(cartCount)} Ú©Ø§Ù„Ø§` : "Ø³Ø¨Ø¯ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª"}</h2></div><button type="button" onClick={() => setCartOpen(false)} aria-label="Ø¨Ø³ØªÙ†">Ã—</button></div>
-        <div className="cartItems">
-          {cart.map((item) => <article className="cartItem" key={item.sku}><div><strong>{item.productTitle}</strong><small>{item.variantLabel} Â· {item.sku}</small><b>{formatToman(item.unitPrice * item.quantity)} ØªÙˆÙ…Ø§Ù†</b></div><div className="quantityControl"><button type="button" onClick={() => updateQuantity(item.sku, item.quantity - 1)}>âˆ’</button><span>{new Intl.NumberFormat("fa-IR").format(item.quantity)}</span><button type="button" onClick={() => updateQuantity(item.sku, item.quantity + 1)} disabled={item.quantity >= item.maxQuantity}>ï¼‹</button></div></article>)}
-          {!cart.length && <div className="emptyCart">Ù‡Ù†ÙˆØ² Ù…Ø­ØµÙˆÙ„ÛŒ Ø§Ù†ØªØ®Ø§Ø¨ Ù†Ú©Ø±Ø¯Ù‡â€ŒØ§ÛŒ.</div>}
-        </div>
-        <div className="cartSummary"><p><span>Ø¬Ù…Ø¹ Ú©Ø§Ù„Ø§Ù‡Ø§</span><b>{formatToman(estimatedSubtotal)} ØªÙˆÙ…Ø§Ù†</b></p><p><span>Ø§Ø±Ø³Ø§Ù„ ØªØ®Ù…ÛŒÙ†ÛŒ</span><b>{estimatedShipping ? `${formatToman(estimatedShipping)} ØªÙˆÙ…Ø§Ù†` : "Ø±Ø§ÛŒÚ¯Ø§Ù†"}</b></p><p className="total"><span>Ù…Ø¨Ù„Øº ØªØ®Ù…ÛŒÙ†ÛŒ</span><b>{formatToman(estimatedPayable)} ØªÙˆÙ…Ø§Ù†</b></p><small>Ø¹Ø¯Ø¯ Ù‚Ø·Ø¹ÛŒ Ù‡Ù†Ú¯Ø§Ù… Checkout ØªÙˆØ³Ø· Ø³Ø±ÙˆØ± Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</small><button className="checkoutButton" type="button" disabled={!cart.length} onClick={() => { setCartOpen(false); setCheckoutOpen(true); }}>Ø§Ø¯Ø§Ù…Ù‡ Ùˆ Ø«Ø¨Øª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø§Ø±Ø³Ø§Ù„</button></div>
-      </aside></div>}
-
-      {checkoutOpen && <div className="modalBackdrop"><section className="checkoutModal" aria-label="Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´">
-        <div className="drawerHeader"><div><small>Checkout Ø§Ù…Ù†</small><h2>{order ? "Ø³ÙØ§Ø±Ø´ Ø«Ø¨Øª Ø´Ø¯" : "Ø§Ø·Ù„Ø§Ø¹Ø§Øª ØªØ­ÙˆÛŒÙ„"}</h2></div><button type="button" onClick={() => { setCheckoutOpen(false); setMessage(null); setOrder(null); }} aria-label="Ø¨Ø³ØªÙ†">Ã—</button></div>
-        {order ? <div className="receipt"><span className="successMark">âœ“</span><h3>Ø³ÙØ§Ø±Ø´ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø±Ø²Ø±Ùˆ Ø´Ø¯</h3><p>Ø´Ù…Ø§Ø±Ù‡ Ø³ÙØ§Ø±Ø´: <b dir="ltr">{order.id}</b></p><div className="receiptGrid"><div><small>Ù…Ø¨Ù„Øº Ù‚Ø§Ø¨Ù„ Ù¾Ø±Ø¯Ø§Ø®Øª</small><strong>{formatToman(order.payable)} ØªÙˆÙ…Ø§Ù†</strong></div><div><small>ÙˆØ¶Ø¹ÛŒØª</small><strong>{order.state}</strong></div><div><small>Ø§Ù†Ù‚Ø¶Ø§ÛŒ Ø±Ø²Ø±Ùˆ</small><strong>{new Date(order.reservationExpiresAt).toLocaleString("fa-IR")}</strong></div></div><div className="previewNotice">Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª Ù‡Ù†ÙˆØ² ÙØ¹Ø§Ù„ Ù†ÛŒØ³ØªØ› Ø§ÛŒÙ† Ù…Ø±Ø­Ù„Ù‡ ÙÙ‚Ø· Ø±Ø²Ø±Ùˆ Ùˆ Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø±Ø§ Ø§Ø«Ø¨Ø§Øª Ù…ÛŒâ€ŒÚ©Ù†Ø¯.</div></div> : <form className="checkoutForm" onSubmit={submitCheckout}>
-          <label>Ù†Ø§Ù… ØªØ­ÙˆÛŒÙ„â€ŒÚ¯ÛŒØ±Ù†Ø¯Ù‡<input required value={form.customerName} onChange={(event) => setForm({ ...form, customerName: event.target.value })} /></label>
-          <label>Ø´Ù…Ø§Ø±Ù‡ Ù…ÙˆØ¨Ø§ÛŒÙ„<input required inputMode="tel" dir="ltr" value={form.mobile} onChange={(event) => setForm({ ...form, mobile: event.target.value })} /></label>
-          <label>Ø§Ø³ØªØ§Ù†<input required value={form.province} onChange={(event) => setForm({ ...form, province: event.target.value })} /></label>
-          <label>Ø´Ù‡Ø±<input required value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
-          <label className="fullField">Ù†Ø´Ø§Ù†ÛŒ<textarea required rows={3} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></label>
-          <label>Ú©Ø¯Ù¾Ø³ØªÛŒ<input required inputMode="numeric" dir="ltr" value={form.postalCode} onChange={(event) => setForm({ ...form, postalCode: event.target.value })} /></label>
-          <div className="checkoutTotal"><span>Ù…Ø¨Ù„Øº ØªØ®Ù…ÛŒÙ†ÛŒ</span><b>{formatToman(estimatedPayable)} ØªÙˆÙ…Ø§Ù†</b></div>
-          {message && <div className="formError" role="alert">{message}</div>}
-          <button className="checkoutButton fullField" type="submit" disabled={submitting}>{submitting ? "Ø¯Ø± Ø­Ø§Ù„ Ø«Ø¨Øª Ø§Ù…Ù† Ø³ÙØ§Ø±Ø´â€¦" : "Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ùˆ Ø±Ø²Ø±Ùˆ Ù…ÙˆØ¬ÙˆØ¯ÛŒ"}</button>
-          <small className="fullField">Ù¾Ø±Ø¯Ø§Ø®Øª ÙˆØ§Ù‚Ø¹ÛŒ Ø¯Ø± Ø§ÛŒÙ† Ù†Ø³Ø®Ù‡ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³Øª. Ù‡ÛŒÚ† Ù…Ø¨Ù„ØºÛŒ Ø§Ø² Ø´Ù…Ø§ Ø¯Ø±ÛŒØ§ÙØª Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.</small>
-        </form>}
-      </section></div>}
-    </main>
-  );
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíï½6N‹Z–‹­¦ëeŠw¬Ô‰ÕÍ”±¥•¹Ğˆì4(4)¥µÁ½ÉĞì½ÉµÙ•¹Ğ°ÕÍ•™™•Ğ°ÕÍ•5•µ¼°ÕÍ•MÑ…Ñ”ô™É½´€‰É•…Ğˆì4(4)ÑåÁ”U¹¥ÑQåÁ”€ô€‰]•¥¡Ğˆğ€‰½Õ¹Ğˆì4(4)ÑåÁ”AÉ½‘ÕÑY…É¥…¹Ğ€ôì4(€Í­ÔèÍÑÉ¥¹œì4(€ÅÕ…¹Ñ¥Ñäè¹Õµ‰•Èì4(€‰…Í•U¹¥Ğè€‰É…´ˆğ€‰Á¥•”ˆì4(€‘¥ÍÁ±…å1…‰•°èÍÑÉ¥¹œì4(€ÁÉ¥”è¹Õµ‰•Èì4(€…Ù…¥±…‰±•A…­…•Ìè¹Õµ‰•Èì4)ôì4(4)ÑåÁ”AÉ½‘ÕĞ€ôì4(€¥èÍÑÉ¥¹œì4(€Ñ¥Ñ±”èÍÑÉ¥¹œì4(€Í±ÕœèÍÑÉ¥¹œì4(€…Ñ•½ÉäèÍÑÉ¥¹œì4(€½É¥¥¸èÍÑÉ¥¹œì4(€ÕÉÉ•¹äèÍÑÉ¥¹œì4(€Õ¹¥ÑQåÁ”èU¹¥ÑQåÁ”ì4(€¥ÍAÕ‰±¥Í¡•è‰½½±•…¸ì4(€Ù…É¥…¹ÑÌèAÉ½‘ÕÑY…É¥…¹Ñmtì4)ôì4(4)ÑåÁ”…ÉÑ%Ñ•´€ôì4(€Í­ÔèÍÑÉ¥¹œì4(€ÁÉ½‘ÕÑQ¥Ñ±”èÍÑÉ¥¹œì4(€Ù…É¥…¹Ñ1…‰•°èÍÑÉ¥¹œì4(€Õ¹¥ÑAÉ¥”è¹Õµ‰•Èì4(€ÅÕ…¹Ñ¥Ñäè¹Õµ‰•Èì4(€µ…áEÕ…¹Ñ¥Ñäè¹Õµ‰•Èì4)ôì4(4)ÑåÁ”¡•­½ÕÑ=É‘•È€ôì4(€¥èÍÑÉ¥¹œì4(€É••¥ÁÑQ½­•¸èÍÑÉ¥¹œì4(€ÕÍÑ½µ•É9…µ”èÍÑÉ¥¹œì4(€ÕÉÉ•¹äèÍÑÉ¥¹œì4(€ÍÕ‰Ñ½Ñ…°è¹Õµ‰•Èì4(€Í¡¥ÁÁ¥¹œè¹Õµ‰•Èì4(€‘¥Í½Õ¹Ğè¹Õµ‰•Èì4(€Á…å…‰±”è¹Õµ‰•Èì4(€ÍÑ…Ñ”èÍÑÉ¥¹œì4(€É•Í•ÉÙ…Ñ¥½¹áÁ¥É•ÍĞèÍÑÉ¥¹œì4)ôì4(4)ÑåÁ”¡•­½ÕÑ½É´€ôì4(€ÕÍÑ½µ•É9…µ”èÍÑÉ¥¹œì4(€µ½‰¥±”èÍÑÉ¥¹œì4(€ÁÉ½Ù¥¹”èÍÑÉ¥¹œì4(€¥ÑäèÍÑÉ¥¹œì4(€…‘‘É•ÍÌèÍÑÉ¥¹œì4(€Á½ÍÑ…±½‘”èÍÑÉ¥¹œì4)ôì4(4)½¹ÍĞA%}	M€ô€¡ÁÉ½•ÍÌ¹•¹Ø¹9aQ}AU	1%}5iU9!}A%}	M}UI0€üü€ˆˆ¤¹É•Á±…” ½p¼¼°€ˆˆ¤ì4)½¹ÍĞIQ}-d€ô€‰µ…é•‘Õ¹• µ…ÉĞµØÄˆì4(4)½¹ÍĞÁÉ•Ù¥•İAÉ½‘ÕÑÌèAÉ½‘ÕÑmt€ôl4(€ì4(€€€¥è€‰ÁÉ•Ù¥•ÜµÁ¥ÍÑ…¡¥¼ˆ°4(€€€Ñ¥Ñ±”è€‹fûbÏb«fƒbŸj§b£bÇn0ƒffb«bŸbÈˆ°4(€€€Í±Õœè€‰Á¥ÍÑ…¡¥¼µ…­‰…É¤µÁÉ•µ¥Õ´ˆ°4(€€€…Ñ•½Éäè€‹fûbÏb«fƒf ƒfbëbËn3b³bŸb¨ˆ°4(€€€½É¥¥¸è€‹bÇfbÏfb³bŸfˆ°4(€€€ÕÉÉ•¹äè€‰%IHˆ°4(€€€Õ¹¥ÑQåÁ”è€‰]•¥¡Ğˆ°4(€€€¥ÍAÕ‰±¥Í¡•èÑÉÕ”°4(€€€Ù…É¥…¹ÑÌèl4(€€€€€ìÍ­Ôè€‰A$µ-´ÈÔÀˆ°ÅÕ…¹Ñ¥Ñäè€ÈÔÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nËn×nÀƒj¿bÇfˆ°ÁÉ¥”è€É|ĞÔÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€Äàô°4(€€€€€ìÍ­Ôè€‰A$µ-´ÔÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÔÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹n×nÃnÀƒj¿bÇfˆ°ÁÉ¥”è€Ñ|ØÔÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÄÈô°4(€€€€€ìÍ­Ôè€‰A$µ-´ÄÀÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÄÀÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nÇnÃnÃnÀƒj¿bÇfˆ°ÁÉ¥”è€á|äÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€Øô°4(€€€t°4(€ô°4(€ì4(€€€¥è€‰ÁÉ•Ù¥•ÜµÍ••‘Ìˆ°4(€€€Ñ¥Ñ±”è€‹b«b»ffƒj§b¿f ƒj¿f#bÓb«n0ˆ°4(€€€Í±Õœè€‰ÁÕµÁ­¥¸µÍ••‘Ìˆ°4(€€€…Ñ•½Éäè€‹b«b»ffƒf ƒb«fffbŸb¨ˆ°4(€€€½É¥¥¸è€‹bŸn3bÇbŸfˆ°4(€€€ÕÉÉ•¹äè€‰%IHˆ°4(€€€Õ¹¥ÑQåÁ”è€‰]•¥¡Ğˆ°4(€€€¥ÍAÕ‰±¥Í¡•èÑÉÕ”°4(€€€Ù…É¥…¹ÑÌèl4(€€€€€ìÍ­Ôè€‰MµAU4´ÈÔÀˆ°ÅÕ…¹Ñ¥Ñäè€ÈÔÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nËn×nÀƒj¿bÇfˆ°ÁÉ¥”è€äÔÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÈÈô°4(€€€€€ìÍ­Ôè€‰MµAU4´ÔÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÔÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹n×nÃnÀƒj¿bÇfˆ°ÁÉ¥”è€Å|àÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÄĞô°4(€€€€€ìÍ­Ôè€‰MµAU4´ÄÀÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÄÀÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nÇnÃnÃnÀƒj¿bÇfˆ°ÁÉ¥”è€Í|ĞÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€Üô°4(€€€t°4(€ô°4(€ì4(€€€¥è€‰ÁÉ•Ù¥•Üµ…±µ½¹ˆ°4(€€€Ñ¥Ñ±”è€‹b£bŸb¿bŸfƒb¿bÇb»b«n0ƒb»bŸfˆ°4(€€€Í±Õœè€‰É…Üµ…±µ½¹ˆ°4(€€€…Ñ•½Éäè€‹fûbÏb«fƒf ƒfbëbËn3b³bŸb¨ˆ°4(€€€½É¥¥¸è€‹jfbŸbÇfb·bŸfˆ°4(€€€ÕÉÉ•¹äè€‰%IHˆ°4(€€€Õ¹¥ÑQåÁ”è€‰]•¥¡Ğˆ°4(€€€¥ÍAÕ‰±¥Í¡•èÑÉÕ”°4(€€€Ù…É¥…¹ÑÌèl4(€€€€€ìÍ­Ôè€‰9Tµ14´ÈÔÀˆ°ÅÕ…¹Ñ¥Ñäè€ÈÔÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nËn×nÀƒj¿bÇfˆ°ÁÉ¥”è€Å|ÜÔÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÈÔô°4(€€€€€ìÍ­Ôè€‰9Tµ14´ÔÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÔÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹n×nÃnÀƒj¿bÇfˆ°ÁÉ¥”è€Í|ÌÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÄØô°4(€€€€€ìÍ­Ôè€‰9Tµ14´ÄÀÀÀˆ°ÅÕ…¹Ñ¥Ñäè€ÄÀÀÀ°‰…Í•U¹¥Ğè€‰É…´ˆ°‘¥ÍÁ±…å1…‰•°è€‹nÇnÃnÃnÀƒj¿bÇfˆ°ÁÉ¥”è€Ù|ĞÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€àô°4(€€€t°4(€ô°4(€ì4(€€€¥è€‰ÁÉ•Ù¥•Üµ½½­¥”ˆ°4(€€€Ñ¥Ñ±”è€‹j§f#j§n0ƒfûbÇf#b«b›n3fn0ƒfbËfŠ3b¿f#ffˆ°4(€€€Í±Õœè€‰µ…é•‘Õ¹• µÁÉ½Ñ•¥¸µ½½­¥”ˆ°4(€€€…Ñ•½Éäè€‹j§f#j§n0ƒf ƒj§n3j¤ƒbÏbŸffˆ°4(€€€½É¥¥¸è€‹b«f#fn3b¼ƒbÇf#bÈˆ°4(€€€ÕÉÉ•¹äè€‰%IHˆ°4(€€€Õ¹¥ÑQåÁ”è€‰½Õ¹Ğˆ°4(€€€¥ÍAÕ‰±¥Í¡•èÑÉÕ”°4(€€€Ù…É¥…¹ÑÌèl4(€€€€€ìÍ­Ôè€‰,µAI<´Äˆ°ÅÕ…¹Ñ¥Ñäè€Ä°‰…Í•U¹¥Ğè€‰Á¥•”ˆ°‘¥ÍÁ±…å1…‰•°è€‹nÄƒbçb¿b¼ˆ°ÁÉ¥”è€äÔÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€Ğàô°4(€€€€€ìÍ­Ôè€‰,µAI<´Ğˆ°ÅÕ…¹Ñ¥Ñäè€Ğ°‰…Í•U¹¥Ğè€‰Á¥•”ˆ°‘¥ÍÁ±…å1…‰•°è€‹fûj¤ƒnĞƒbçb¿b¿n0ˆ°ÁÉ¥”è€Í|ØÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÈÀô°4(€€€€€ìÍ­Ôè€‰,µAI<´àˆ°ÅÕ…¹Ñ¥Ñäè€à°‰…Í•U¹¥Ğè€‰Á¥•”ˆ°‘¥ÍÁ±…å1…‰•°è€‹fûj¤ƒnàƒbçb¿b¿n0ˆ°ÁÉ¥”è€Ù|äÀÁ|ÀÀÀ°…Ù…¥±…‰±•A…­…•Ìè€ÄÀô°4(€€€t°4(€ô°4)tì4(4)½¹ÍĞ•µÁÑå½É´è¡•­½ÕÑ½É´€ôì4(€ÕÍÑ½µ•É9…µ”è€ˆˆ°4(€µ½‰¥±”è€ˆˆ°4(€ÁÉ½Ù¥¹”è€ˆˆ°4(€¥Ñäè€ˆˆ°4(€…‘‘É•ÍÌè€ˆˆ°4(€Á½ÍÑ…±½‘”è€ˆˆ°4)ôì4(4)™Õ¹Ñ¥½¸™½Éµ…ÑQ½µ…¸¡¥ÉÈè¹Õµ‰•È¤ì4(€É•ÑÕÉ¸¹•Ü%¹Ñ°¹9Õµ‰•É½Éµ…Ğ ‰™„µ%Hˆ¤¹™½Éµ…Ğ¡5…Ñ ¹É½Õ¹¡¥ÉÈ€¼€ÄÀ¤¤ì4)ô4(4)™Õ¹Ñ¥½¸ÁÉ½‘ÕÑ%½¸¡ÁÉ½‘ÕĞèAÉ½‘ÕĞ¤ì4(€¥˜€¡ÁÉ½‘ÕĞ¹Õ¹¥ÑQåÁ”€ôôô€‰½Õ¹Ğˆ¤É•ÑÕÉ¸€‹Â~6¨ˆì4(€¥˜€¡ÁÉ½‘ÕĞ¹Ñ¥Ñ±”¹¥¹±Õ‘•Ì ‹fûbÏb«fˆ¤¤É•ÑÕÉ¸€‹Â~~ˆˆì4(€¥˜€¡ÁÉ½‘ÕĞ¹Ñ¥Ñ±”¹¥¹±Õ‘•Ì ‹b«b»ffˆ¤¤É•ÑÕÉ¸€‹Â~:ˆì4(€¥˜€¡ÁÉ½‘ÕĞ¹Ñ¥Ñ±”¹¥¹±Õ‘•Ì ‹j¿bÇb¿f ˆ¤¤É•ÑÕÉ¸€‹Â~€ˆì4(€É•ÑÕÉ¸€‹Â~2Àˆì4)ô4(4)™Õ¹Ñ¥½¸É•…Ñ•%‘•µÁ½Ñ•¹å-•ä ¤ì4(€¥˜€¡ÑåÁ•½˜ÉåÁÑ¼€„ôô€‰Õ¹‘•™¥¹•ˆ€˜˜€‰É…¹‘½µUU%ˆ¥¸ÉåÁÑ¼¤ì4(€€€É•ÑÕÉ¸¡•­½ÕĞ´‘íÉåÁÑ¼¹É…¹‘½µUU% ¥õ€ì4(€ô4(€É•ÑÕÉ¸¡•­½ÕĞ´‘í…Ñ”¹¹½Ü ¥ô´‘í5…Ñ ¹É…¹‘½´ ¤¹Ñ½MÑÉ¥¹œ ÄØ¤¹Í±¥” È¥õ€ì4)ô4(4)•áÁ½ÉĞ‘•™…Õ±Ğ™Õ¹Ñ¥½¸MÑ½É•™É½¹ÑÁÀ ¤ì4(€½¹ÍĞmÁÉ½‘ÕÑÌ°Í•ÑAÉ½‘ÕÑÍt€ôÕÍ•MÑ…Ñ”ñAÉ½‘ÕÑmtø¡ÁÉ•Ù¥•İAÉ½‘ÕÑÌ¤ì4(€½¹ÍĞm…Ñ…±½5½‘”°Í•Ñ…Ñ…±½5½‘•t€ôÕÍ•MÑ…Ñ”ğ‰±½…‘¥¹œˆğ€‰±¥Ù”ˆğ€‰ÁÉ•Ù¥•Üˆğ€‰•ÉÉ½Èˆø 4(€€€A%}	M€ü€‰±½…‘¥¹œˆ€è€‰ÁÉ•Ù¥•Üˆ°4(€€¤ì4(€½¹ÍĞmÍ•±•Ñ•‘Y…É¥…¹ÑÌ°Í•ÑM•±•Ñ•‘Y…É¥…¹ÑÍt€ôÕÍ•MÑ…Ñ”ñI•½ÉñÍÑÉ¥¹œ°ÍÑÉ¥¹œøø¡íô¤ì4(€½¹ÍĞm…ÉĞ°Í•Ñ…ÉÑt€ôÕÍ•MÑ…Ñ”ñ…ÉÑ%Ñ•µmtø¡mt¤ì4(€½¹ÍĞm…ÉÑ=Á•¸°Í•Ñ…ÉÑ=Á•¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍĞm¡•­½ÕÑ=Á•¸°Í•Ñ¡•­½ÕÑ=Á•¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍĞm™½É´°Í•Ñ½Éµt€ôÕÍ•MÑ…Ñ”ñ¡•­½ÕÑ½É´ø¡•µÁÑå½É´¤ì4(€½¹ÍĞmÍÕ‰µ¥ÑÑ¥¹œ°Í•ÑMÕ‰µ¥ÑÑ¥¹t€ôÕÍ•MÑ…Ñ”¡™…±Í”¤ì4(€½¹ÍĞmµ•ÍÍ…”°Í•Ñ5•ÍÍ…•t€ôÕÍ•MÑ…Ñ”ñÍÑÉ¥¹œğ¹Õ±°ø¡¹Õ±°¤ì4(€½¹ÍĞm½É‘•È°Í•Ñ=É‘•Ét€ôÕÍ•MÑ…Ñ”ñ¡•­½ÕÑ=É‘•Èğ¹Õ±°ø¡¹Õ±°¤ì4(4(€ÕÍ•™™•Ğ  ¤€ôøì4(€€€ÑÉäì4(€€€€€½¹ÍĞÍÑ½É•€ô±½…±MÑ½É…”¹•Ñ%Ñ•´¡IQ}-d¤ì4(€€€€€¥˜€¡ÍÑ½É•¤Í•Ñ…ÉĞ¡)M=8¹Á…ÉÍ”¡ÍÑ½É•¤…Ì…ÉÑ%Ñ•µmt¤ì4(€€€ô…Ñ ì4(€€€€€±½…±MÑ½É…”¹É•µ½Ù•%Ñ•´¡IQ}-d¤ì4(€€€ô4(€ô°mt¤ì4(4(€ÕÍ•™™•Ğ  ¤€ôøì4(€€€±½…±MÑ½É…”¹Í•Ñ%Ñ•´¡IQ}-d°)M=8¹ÍÑÉ¥¹¥™ä¡…ÉĞ¤¤ì4(€ô°m…ÉÑt¤ì4(4(€ÕÍ•™™•Ğ  ¤€ôøì4(€€€¥˜€ …A%}	M¤É•ÑÕÉ¸ì4(€€€½¹ÍĞ½¹ÑÉ½±±•È€ô¹•Ü‰½ÉÑ½¹ÑÉ½±±•È ¤ì4(€€€™•Ñ ¡€‘íA%}	Mô½…Á¤½ØÄ½ÁÉ½‘ÕÑÍ€°ìÍ¥¹…°è½¹ÑÉ½±±•È¹Í¥¹…°ô¤4(€€€€€€¹Ñ¡•¸¡…Íå¹Œ€¡É•ÍÁ½¹Í”¤€ôøì4(€€€€€€€¥˜€ …É•ÍÁ½¹Í”¹½¬¤Ñ¡É½Ü¹•ÜÉÉ½È¡…Ñ…±½œ´‘íÉ•ÍÁ½¹Í”¹ÍÑ…ÑÕÍõ€¤ì4(€€€€€€€É•ÑÕÉ¸€¡…İ…¥ĞÉ•ÍÁ½¹Í”¹©Í½¸ ¤¤…ÌAÉ½‘ÕÑmtì4(€€€€€ô¤4(€€€€€€¹Ñ¡•¸ ¡¥Ñ•µÌ¤€ôøì4(€€€€€€€Í•ÑAÉ½‘ÕÑÌ¡¥Ñ•µÌ¤ì4(€€€€€€€Í•Ñ…Ñ…±½5½‘” ‰±¥Ù”ˆ¤ì4(€€€€€ô¤4(€€€€€€¹…Ñ  ¡•ÉÉ½ÈèÕ¹­¹½İ¸¤€ôøì4(€€€€€€€¥˜€¡•ÉÉ½È¥¹ÍÑ…¹•½˜=5á•ÁÑ¥½¸€˜˜•ÉÉ½È¹¹…µ”€ôôô€‰‰½ÉÑÉÉ½Èˆ¤É•ÑÕÉ¸ì4(€€€€€€€Í•ÑAÉ½‘ÕÑÌ¡ÁÉ•Ù¥•İAÉ½‘ÕÑÌ¤ì4(€€€€€€€Í•Ñ…Ñ…±½5½‘” ‰•ÉÉ½Èˆ¤ì4(€€€€€ô¤ì4(€€€É•ÑÕÉ¸€ ¤€ôø½¹ÑÉ½±±•È¹…‰½ÉĞ ¤ì4(€ô°mt¤ì4(4(€ÕÍ•™™•Ğ  ¤€ôøì4(€€€Í•ÑM•±•Ñ•‘Y…É¥…¹ÑÌ ¡ÕÉÉ•¹Ğ¤€ôøì4(€€€€€½¹ÍĞ¹•áĞ€ôì€¸¸¹ÕÉÉ•¹Ğôì4(€€€€€™½È€¡½¹ÍĞÁÉ½‘ÕĞ½˜ÁÉ½‘ÕÑÌ¤ì4(€€€€€€€¥˜€ …¹•áÑmÁÉ½‘ÕĞ¹¥‘t€˜˜ÁÉ½‘ÕĞ¹Ù…É¥…¹ÑÌ¹±•¹Ñ €ø€À¤¹•áÑmÁÉ½‘ÕĞ¹¥‘t€ôÁÉ½‘ÕĞ¹Ù…É¥…¹ÑÍlÁt¹Í­Ôì4(€€€€€ô4(€€€€€É•ÑÕÉ¸¹•áĞì4(€€€ô¤ì4(€ô°mÁÉ½‘ÕÑÍt¤ì4(4(€½¹ÍĞ…ÉÑ½Õ¹Ğ€ô…ÉĞ¹É•‘Õ” ¡Ñ½Ñ…°°¥Ñ•´¤€ôøÑ½Ñ…°€¬¥Ñ•´¹ÅÕ…¹Ñ¥Ñä°€À¤ì4(€½¹ÍĞ•ÍÑ¥µ…Ñ•‘MÕ‰Ñ½Ñ…°€ô…ÉĞ¹É•‘Õ” ¡Ñ½Ñ…°°¥Ñ•´¤€ôøÑ½Ñ…°€¬¥Ñ•´¹Õ¹¥ÑAÉ¥”€¨¥Ñ•´¹ÅÕ…¹Ñ¥Ñä°€À¤ì4(€½¹ÍĞ•ÍÑ¥µ…Ñ•‘M¡¥ÁÁ¥¹œ€ô•ÍÑ¥µ…Ñ•‘MÕ‰Ñ½Ñ…°€øô€ÄÕ|ÀÀÁ|ÀÀÀñğ•ÍÑ¥µ…Ñ•‘MÕ‰Ñ½Ñ…°€ôôô€À€ü€À€è€ÜÔÁ|ÀÀÀì4(€½¹ÍĞ•ÍÑ¥µ…Ñ•‘A…å…‰±”€ô•ÍÑ¥µ…Ñ•‘MÕ‰Ñ½Ñ…°€¬•ÍÑ¥µ…Ñ•‘M¡¥ÁÁ¥¹œì4(4(€½¹ÍĞ…Ñ•½É¥•Ì€ôÕÍ•5•µ¼  ¤€ôøÉÉ…ä¹™É½´¡¹•ÜM•Ğ¡ÁÉ½‘ÕÑÌ¹µ…À ¡¥Ñ•´¤€ôø¥Ñ•´¹…Ñ•½Éä¤¤¤°mÁÉ½‘ÕÑÍt¤ì4(4(€™Õ¹Ñ¥½¸…‘‘Q½…ÉĞ¡ÁÉ½‘ÕĞèAÉ½‘ÕĞ¤ì4(€€€½¹ÍĞÍ­Ô€ôÍ•±•Ñ•‘Y…É¥…¹ÑÍmÁÉ½‘ÕĞ¹¥‘t€üüÁÉ½‘ÕĞ¹Ù…É¥…¹ÑÍlÁtü¹Í­Ôì4(€€€½¹ÍĞÙ…É¥…¹Ğ€ôÁÉ½‘ÕĞ¹Ù…É§nôÚÚ$z{-®éÜj×r˜]˜ŠÍ˜Šö¢-˜mŠ}˜]˜ŠÍ˜Šò'ĞĞ¢ÂöF—càĞ¢ÆF—b6Æ74æÖSÒ'&–6U&÷r#àĞ¢ÇãÇ7G&öæsç·f&–çBòf÷&ÖEFöÖâ‡f&–çBç&–6R’¢.(	B'ÓÂ÷7G&öæsâŠ­˜˜]Š}˜cÂ÷àĞ¢Æ'WGFöâ6Æ74æÖSÒ&FD'WGFöâ"G—SÒ&'WGFöâ"F—6&ÆVC×²f&–çBÇÂf&–çBæf–Æ&ÆU6¶vW2ÃÒÒöä6Æ–6³×²‚’ÓâFEFô6'B‡&öGV7B—Ò&–ÖÆ&VÃ×¶Š}˜‹-˜Šı˜bG·&öGV7BçF—FÆWÒŠ˜r‹=ŠŠöÓîûÈ³Âö'WGFöãàĞ¢ÂöF—càĞ¢ÂöF—càĞ¢Âö'F–6ÆSàĞ¢“°Ğ¢Ò—ĞĞ¢ÂöF—càĞ¢Â÷6V7F–öãàĞ Ğ¢Ç6V7F–öâ6Æ74æÖSÒ'7F÷'’6†VÆÂ"–CÒ'7F÷'’#àĞ¢ÆF—b6Æ74æÖSÒ'7F÷'”6÷’#ãÇ7â6Æ74æÖSÒ&W–V'&÷r#íŠ}‹=Š­Š}˜mŠıŠ}‹Šò˜]‹-˜~(ÍŠı˜˜m˜sÂ÷7ããÆƒ#í˜Š}ªŠ­˜‹ŠŠ}¸ÍŠòŠ½Š}ŠŠ¢˜‚˜]˜ŠÍ˜Šı¸ÂŠŠ}¸ÍŠò˜-Š}Š˜BŠ}‹Š­˜]Š}ŠòŠŠ}‹MŠóÂöƒ#ãÇí˜-¸Í˜]Š¢˜m˜}Š}¸Í¸ÂŠ}‹"&6¶VæB˜]ŠİŠ}‹=Š˜r˜]¸Î(Í‹M˜ŠıˆÂ‹=˜Š}‹‹BŠ­ª‹Š}‹¸Â‹=Š}ŠíŠ­˜r˜m˜]¸Î(Í‹M˜Šò˜‚˜]˜ŠÍ˜Šı¸Â˜}‹Š‹=Š­˜rŠ‹Š}¸Â˜]ŠıŠ¢˜]ŠİŠı˜Šò‹‹-‹˜‚˜]¸Î(Í˜]Š}˜mŠòãÂ÷ãÂöF—càĞ¢ÆF—b6Æ74æÖSÒ'VÆ—G”6&B#ãÆF—cãÇ7G&öæsí»-»Šı˜-¸Í˜-˜sÂ÷7G&öæsãÇ7ãí˜]˜}˜MŠ¢‹‹-‹˜‚‹=˜Š}‹‹CÂ÷7ããÂöF—cãÆF—cãÇ7G&öæsí»»»š£Â÷7G&öæsãÇ7ãí˜-¸Í˜]Š®(Íªı‹Š}‹¸Â‹=˜]Š¢‹=‹˜‹Â÷7ããÂöF—cãÆF—cãÇ7G&öæsí‹=‹Š}‹=‹¸ÃÂ÷7G&öæsãÇ7ãíŠ}‹‹=Š}˜BŠ}˜˜M¸Í˜rŠı‹Š}¸Í‹Š}˜cÂ÷7ããÂöF—cãÂöF—càĞ¢Â÷6V7F–öãàĞ Ğ¢Ç6V7F–öâ6Æ74æÖSÒ&6×–väw&–B6†VÆÂ"–CÒ&v–gB#àĞ¢Æ'F–6ÆR6Æ74æÖSÒ&6×–vâv–gD6×–vâ#ãÇ7ãí˜]‹-˜~(ÍŠı˜˜m˜r˜}Šı¸Í˜sÂ÷7ããÆƒ#í›íª(Í˜}Š}¸Â˜]˜mŠ}‹=ŠŠ­¸Â˜‚‹=Š}‹-˜]Š}˜m¸ÃÂöƒ#ãÇí‹-¸Í‹‹=Š}ŠíŠ¢˜]Šİ‹]˜˜B˜‚‹=˜Š}‹‹BŠ-˜]Š}Šı˜rŠ­˜‹=‹˜r›íª(Í˜}Š}¸Â‹=˜Š}‹‹M¸ÂŠ}‹=Š¢ãÂ÷ãÂö'F–6ÆSàĞ¢Æ'F–6ÆR6Æ74æÖSÒ&6×–vâ†VÇF„6×–vâ#ãÇ7ãí˜]‹-˜~(ÍŠı˜˜m˜r‹=˜MŠ}˜]Š£Â÷7ããÆƒ#íª¸Íª’˜‚ª˜ª¸Â‹©¸Í˜]¸ÃÂöƒ#ãÇí˜‹˜‹B‹ŠıŠı¸Â˜‚›íª’¨m˜mŠıŠ­Š}¸Í¸ÂŠı‹˜}˜]Š}˜b‹=ŠŠò˜]‹­‹-¸ÍŠÍŠ}Š¢›í‹MŠ­¸ÍŠŠ}˜m¸Â˜]¸Î(Í‹M˜ŠòãÂ÷ãÂö'F–6ÆSàĞ¢Â÷6V7F–öãàĞ Ğ¢Æfö÷FW#ãÆF—b6Æ74æÖSÒ&fö÷FW$–ææW"6†VÆÂ#ãÆF—b6Æ74æÖSÒ&fö÷FW$'&æB#ãÆ6Æ74æÖSÒ&'&æB"‡&VcÒ"7F÷#ãÇ7â6Æ74æÖSÒ&'&æDÖ&²#í˜cÂ÷7ããÇ7ããÇ7G&öæsí˜]‹-˜~(ÍŠı˜˜m˜sÂ÷7G&öæsãÇ6ÖÆÃíŠı‹=Š®(Í¨m¸Í˜b˜MŠİ‹˜~(Í˜}Š}¸ÂŠí˜‹CÂ÷6ÖÆÃãÂ÷7ããÂöãÇí˜‹˜‹BŠ-˜m˜MŠ}¸Í˜bŠ-ŠÍ¸Í˜MˆÂ˜]‹­‹-¸ÍŠÍŠ}Š¢˜‚Ší˜‹Š}ª¸Â‹=Š}˜M˜RŠŠr˜]Šı˜B‹M˜Š}˜˜Š}ŠİŠò˜‚Š‹=Š­˜~(ÍŠ˜mŠı¸ÂãÂ÷ãÂöF—cãÆF—cãÇ7G&öæsíŠí‹¸ÍŠóÂ÷7G&öæsãÆ‡&VcÒ"7&öGV7G2#í˜]Šİ‹]˜˜MŠ}Š£ÂöãÆ‡&VcÒ"6v–gB#í›íª’˜}Šı¸Í˜sÂöãÂöF—cãÆF—cãÇ7G&öæsí›í‹MŠ­¸ÍŠŠ}˜m¸ÃÂ÷7G&öæsãÆ‡&VcÒ&Ö–ÇFó¤†Ö–G&W¦·÷W#“TvÖ–Âæ6öÒ#íŠ}‹Š­ŠŠ}‹rŠŠr˜]Šı¸Í‹ÂöãÂöF—cãÂöF—cãÆF—b6Æ74æÖSÒ&6÷—&–v‡B6†VÆÂ#ì*’»-»»-»b˜]‹-˜~(ÍŠı˜˜m˜r(	B˜m‹=Ší˜rŠ­˜‹=‹˜r˜]Š­‹]˜CÂöF—cãÂöfö÷FW#àĞ Ğ¢¶6'D÷VâbbÆF—b6Æ74æÖSÒ&G&vW$&6¶G&÷"öäÖ÷W6TF÷vã×²‚’Óâ6WD6'D÷Vâ†fÇ6R—ÓãÆ6–FR6Æ74æÖSÒ&6'DG&vW""öäÖ÷W6TF÷vã×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Ò&–ÖÆ&VÃÒ-‹=ŠŠòŠí‹¸ÍŠò#àĞ¢ÆF—b6Æ74æÖSÒ&G&vW$†VFW"#ãÆF—cãÇ6ÖÆÃí‹=ŠŠòŠí‹¸ÍŠóÂ÷6ÖÆÃãÆƒ#ç¶6'D6÷VçBòG¶æWr–çFÂäçVÖ&W$f÷&ÖB‚&fÔ•""’æf÷&ÖB†6'D6÷VçB—ÒªŠ}˜MŠv¢-‹=ŠŠòŠíŠ}˜M¸ÂŠ}‹=Š¢'ÓÂöƒ#ãÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WD6'D÷Vâ†fÇ6R—Ò&–ÖÆ&VÃÒ-Š‹=Š­˜b#ì9sÂö'WGFöããÂöF—càĞ¢ÆF—b6Æ74æÖSÒ&6'D—FV×2#àĞ¢¶6'BæÖ‚†—FVÒ’ÓâÆ'F–6ÆR6Æ74æÖSÒ&6'D—FVÒ"¶W“×¶—FVÒç6·WÓãÆF—cãÇ7G&öæsç¶—FVÒç&öGV7EF—FÆWÓÂ÷7G&öæsãÇ6ÖÆÃç¶—FVÒçf&–çDÆ&VÇÒ+r¶—FVÒç6·WÓÂ÷6ÖÆÃãÆ#ç¶f÷&ÖEFöÖâ†—FVÒçVæ—E&–6R¢—FVÒçVçF—G’—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—cãÆF—b6Æ74æÖSÒ'VçF—G”6öçG&öÂ#ãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’ÓâWFFUVçF—G’†—FVÒç6·RÂ—FVÒçVçF—G’Ò—Óî(‰#Âö'WGFöããÇ7ãç¶æWr–çFÂäçVÖ&W$f÷&ÖB‚&fÔ•""’æf÷&ÖB†—FVÒçVçF—G’—ÓÂ÷7ããÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’ÓâWFFUVçF—G’†—FVÒç6·RÂ—FVÒçVçF—G’²—ÒF—6&ÆVC×¶—FVÒçVçF—G’ãÒ—FVÒæÖ…VçF—G—ÓîûÈ³Âö'WGFöããÂöF—cãÂö'F–6ÆSâ—ĞĞ¢²6'BæÆVæwF‚bbÆF—b6Æ74æÖSÒ&V×G”6'B#í˜}˜m˜‹"˜]Šİ‹]˜˜M¸ÂŠ}˜mŠ­ŠíŠ}Š‚˜mª‹Šı˜~(ÍŠ}¸ÂãÂöF—cçĞĞ¢ÂöF—càĞ¢ÆF—b6Æ74æÖSÒ&6'E7VÖÖ'’#ãÇãÇ7ãíŠÍ˜]‹’ªŠ}˜MŠ}˜}ŠsÂ÷7ããÆ#ç¶f÷&ÖEFöÖâ†W7F–ÖFVE7V'F÷FÂ—ÒŠ­˜˜]Š}˜cÂö#ãÂ÷ãÇãÇ7ãíŠ}‹‹=Š}˜BŠ­Ší˜]¸Í˜m¸ÃÂ÷7ããÆ#ç¶W7F–ÖFVE6†—–æròG¶f÷&ÖEFöÖâ†W7F–ÖFVE6†—–ær—ÒŠ­˜˜]Š}˜f¢-‹Š}¸ÍªıŠ}˜b'ÓÂö#ãÂ÷ãÇ6Æ74æÖSÒ'F÷FÂ#ãÇ7ãí˜]Š˜M‹¢Š­Ší˜]¸Í˜m¸ÃÂ÷7ããÆ#ç¶f÷&ÖEFöÖâ†W7F–ÖFVE–&ÆR—ÒŠ­˜˜]Š}˜cÂö#ãÂ÷ãÇ6ÖÆÃí‹ŠıŠò˜-‹}‹¸Â˜}˜mªıŠ}˜R6†V6¶÷WBŠ­˜‹=‹r‹=‹˜‹˜]ŠİŠ}‹=Š˜r˜]¸Î(Í‹M˜ŠòãÂ÷6ÖÆÃãÆ'WGFöâ6Æ74æÖSÒ&6†V6¶÷WD'WGFöâ"G—SÒ&'WGFöâ"F—6&ÆVC×²6'BæÆVæwF‡Òöä6Æ–6³×²‚’Óâ²6WD6'D÷Vâ†fÇ6R“²6WD6†V6¶÷WD÷Vâ‡G'VR“²×ÓíŠ}ŠıŠ}˜]˜r˜‚Š½ŠŠ¢Š}‹}˜MŠ}‹Š}Š¢Š}‹‹=Š}˜CÂö'WGFöããÂöF—càĞ¢Âö6–FSãÂöF—cçĞĞ Ğ¢¶6†V6¶÷WD÷VâbbÆF—b6Æ74æÖSÒ&ÖöFÄ&6¶G&÷#ãÇ6V7F–öâ6Æ74æÖSÒ&6†V6¶÷WDÖöFÂ"&–ÖÆ&VÃÒ-Š½ŠŠ¢‹=˜Š}‹‹B#àĞ¢ÆF—b6Æ74æÖSÒ&G&vW$†VFW"#ãÆF—cãÇ6ÖÆÃä6†V6¶÷WBŠ}˜]˜cÂ÷6ÖÆÃãÆƒ#ç¶÷&FW"ò-‹=˜Š}‹‹BŠ½ŠŠ¢‹MŠò"¢-Š}‹}˜MŠ}‹Š}Š¢Š­Šİ˜¸Í˜B'ÓÂöƒ#ãÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ²6WD6†V6¶÷WD÷Vâ†fÇ6R“²6WDÖW76vR†çVÆÂ“²6WD÷&FW"†çVÆÂ“²×Ò&–ÖÆ&VÃÒ-Š‹=Š­˜b#ì9sÂö'WGFöããÂöF—càĞ¢¶÷&FW"òÆF—b6Æ74æÖSÒ'&V6V—B#ãÇ7â6Æ74æÖSÒ'7V66W74Ö&²#î)É3Â÷7ããÆƒ3í‹=˜Š}‹‹BŠŠr˜]˜˜˜-¸ÍŠ¢‹‹-‹˜‚‹MŠóÂöƒ3ãÇí‹M˜]Š}‹˜r‹=˜Š}‹‹C¢Æ"F—#Ò&ÇG"#ç¶÷&FW"æ–GÓÂö#ãÂ÷ãÆF—b6Æ74æÖSÒ'&V6V—Dw&–B#ãÆF—cãÇ6ÖÆÃí˜]Š˜M‹¢˜-Š}Š˜B›í‹ŠıŠ}ŠíŠ£Â÷6ÖÆÃãÇ7G&öæsç¶f÷&ÖEFöÖâ†÷&FW"ç–&ÆR—ÒŠ­˜˜]Š}˜cÂ÷7G&öæsãÂöF—cãÆF—cãÇ6ÖÆÃí˜‹m‹¸ÍŠ£Â÷6ÖÆÃãÇ7G&öæsç¶÷&FW"ç7FFWÓÂ÷7G&öæsãÂöF—cãÆF—cãÇ6ÖÆÃíŠ}˜m˜-‹mŠ}¸Â‹‹-‹˜ƒÂ÷6ÖÆÃãÇ7G&öæsç¶æWrFFR†÷&FW"ç&W6W'fF–öäW‡—&W4B’çFôÆö6ÆU7G&–ær‚&fÔ•""—ÓÂ÷7G&öæsãÂöF—cãÂöF—cãÆF—b6Æ74æÖSÒ'&Wf–Wtæ÷F–6R#íŠı‹ªıŠ}˜r›í‹ŠıŠ}ŠíŠ¢˜}˜m˜‹"˜‹Š}˜B˜m¸Í‹=Š­‰²Š}¸Í˜b˜]‹Šİ˜M˜r˜˜-‹r‹‹-‹˜‚˜‚Š½ŠŠ¢‹=˜Š}‹‹B‹ŠrŠ}Š½ŠŠ}Š¢˜]¸Î(Íª˜mŠòãÂöF—cãÂöF—câ¢Æf÷&Ò6Æ74æÖSÒ&6†V6¶÷WDf÷&Ò"öå7V&Ö—C×·7V&Ö—D6†V6¶÷WGÓàĞ¢ÆÆ&VÃí˜mŠ}˜RŠ­Šİ˜¸Í˜N(Íªı¸Í‹˜mŠı˜sÆ–çWB&WV—&VBfÇVS×¶f÷&Òæ7W7FöÖW$æÖWÒöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂ7W7FöÖW$æÖS¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆÆ&VÃí‹M˜]Š}‹˜r˜]˜ŠŠ}¸Í˜CÆ–çWB&WV—&VB–çWDÖöFSÒ'FVÂ"F—#Ò&ÇG""fÇVS×¶f÷&ÒæÖö&–ÆWÒöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂÖö&–ÆS¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆÆ&VÃíŠ}‹=Š­Š}˜cÆ–çWB&WV—&VBfÇVS×¶f÷&Òç&÷f–æ6WÒöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂ&÷f–æ6S¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆÆ&VÃí‹M˜}‹Æ–çWB&WV—&VBfÇVS×¶f÷&Òæ6—G—Òöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂ6—G“¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆÆ&VÂ6Æ74æÖSÒ&gVÆÄf–VÆB#í˜m‹MŠ}˜m¸ÃÇFW‡F&V&WV—&VB&÷w3×³7ÒfÇVS×¶f÷&ÒæFG&W77Òöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂFG&W73¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆÆ&VÃíªŠı›í‹=Š­¸ÃÆ–çWB&WV—&VB–çWDÖöFSÒ&çVÖW&–2"F—#Ò&ÇG""fÇVS×¶f÷&Òç÷7FÄ6öFWÒöä6†ævS×²†WfVçB’Óâ6WDf÷&Ò‡²ââæf÷&ÒÂ÷7FÄ6öFS¢WfVçBçF&vWBçfÇVRÒ—ÒóãÂöÆ&VÃàĞ¢ÆF—b6Æ74æÖSÒ&6†V6¶÷WEF÷FÂ#ãÇ7ãí˜]Š˜M‹¢Š­Ší˜]¸Í˜m¸ÃÂ÷7ããÆ#ç¶f÷&ÖEFöÖâ†W7F–ÖFVE–&ÆR—ÒŠ­˜˜]Š}˜cÂö#ãÂöF—càĞ¢¶ÖW76vRbbÆF—b6Æ74æÖSÒ&f÷&ÔW'&÷""&öÆSÒ&ÆW'B#ç¶ÖW76vWÓÂöF—cçĞĞ¢Æ'WGFöâ6Æ74æÖSÒ&6†V6¶÷WD'WGFöâgVÆÄf–VÆB"G—SÒ'7V&Ö—B"F—6&ÆVC×·7V&Ö—GF–æwÓç·7V&Ö—GF–ærò-Šı‹ŠİŠ}˜BŠ½ŠŠ¢Š}˜]˜b‹=˜Š}‹‹N(
+b"¢-Š½ŠŠ¢‹=˜Š}‹‹B˜‚‹‹-‹˜‚˜]˜ŠÍ˜Šı¸Â'ÓÂö'WGFöãàĞ¢Ç6ÖÆÂ6Æ74æÖSÒ&gVÆÄf–VÆB#í›í‹ŠıŠ}ŠíŠ¢˜Š}˜-‹¸ÂŠı‹Š}¸Í˜b˜m‹=Ší˜r‹­¸Í‹˜‹Š}˜BŠ}‹=Š¢â˜}¸Í¨b˜]Š˜M‹­¸ÂŠ}‹"‹M˜]ŠrŠı‹¸ÍŠ}˜Š¢˜m˜]¸Î(Í‹M˜ŠòãÂ÷6ÖÆÃàĞ¢Âöf÷&ÓçĞĞ¢Â÷6V7F–öããÂöF—cçĞĞ¢ÂöÖ–ãàĞ¢“°Ğ§ĞĞ

@@ -8,7 +8,7 @@
 
 یک Vertical Slice کامل برای کاتالوگ ساخته شد که شامل Client مستقل Flutter، مدل‌های Product/Variant، صفحه Responsive محصولات، وضعیت‌های Loading/Empty/Error، Retry و فرم ثبت محصول است.
 
-آدرس API با `NOOSHORA_API_BASE_URL` و `--dart-define` تنظیم می‌شود و هیچ Secret داخل اپ قرار نمی‌گیرد.
+آدرس API با `MAZEDUNEH_API_BASE_URL` و `--dart-define` تنظیم می‌شود و هیچ Secret داخل اپ قرار نمی‌گیرد.
 
 ## معیار پذیرش
 
@@ -32,7 +32,7 @@
 - **حسابدار:** قیمت فعلاً ریال است؛ قیمت خرید و حاشیه سود هنوز وارد نشده‌اند.
 - **متخصص خشکبار:** Grade، فرآوری، آلرژن و تاریخ بسته‌بندی در مدل Batch آینده افزوده شود.
 - **QA:** خطاهای 409 و Retry باید تست شوند؛ تست Client اضافه شد.
-- **گرافیست/برند:** فرم و کارت‌ها از سیستم رنگی سبز، کرم و پاستیلی نوشورا استفاده می‌کنند.
+- **گرافیست/برند:** فرم و کارت‌ها از سیستم رنگی سبز، کرم و پاستیلی مزه‌دونه استفاده می‌کنند.
 
 ## ریسک باقی‌مانده
 
@@ -43,5 +43,5 @@
 ## اجرای محیط
 
 ```bash
-flutter run -d chrome --dart-define=NOOSHORA_API_BASE_URL=http://localhost:5000
+flutter run -d chrome --dart-define=MAZEDUNEH_API_BASE_URL=http://localhost:5000
 ```

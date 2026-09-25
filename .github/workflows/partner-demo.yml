@@ -27,13 +27,13 @@ jobs:
       - name: Build professional partner demo
         run: npm run build
         env:
-          NOOSHORA_STATIC_EXPORT: 'true'
-          NEXT_PUBLIC_NOOSHORA_DEMO_MODE: 'true'
-          NEXT_PUBLIC_NOOSHORA_ADMIN_URL: 'https://nooshora-admin.vercel.app'
+          MAZEDUNEH_STATIC_EXPORT: 'true'
+          NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: 'true'
+          NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL: 'https://mazeduneh-admin.vercel.app'
       - name: Upload partner storefront
         uses: actions/upload-artifact@v4
         with:
-          name: nooshora-partner-storefront-v2
+          name: mazeduneh-partner-storefront-v2
           path: apps/storefront/out
 
   admin-demo:
@@ -50,7 +50,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate web runner
-        run: flutter create --platforms=web --project-name nooshora_admin .
+        run: flutter create --platforms=web --project-name mazeduneh_admin .
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze all demo and production sources
@@ -62,5 +62,5 @@ jobs:
       - name: Upload partner admin
         uses: actions/upload-artifact@v4
         with:
-          name: nooshora-partner-admin-v2
+          name: mazeduneh-partner-admin-v2
           path: apps/admin/build/web

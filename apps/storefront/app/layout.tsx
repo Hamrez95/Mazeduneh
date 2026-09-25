@@ -3,7 +3,7 @@ import "./globals.css";
 import "./commerce.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://nooshora-storefront.vercel.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://mazeduneh-storefront.vercel.app"),
   title: {
     default: "مزه‌دونه | خوش‌خوراکِ هر روز",
     template: "%s | مزه‌دونه",

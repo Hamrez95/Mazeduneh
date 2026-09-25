@@ -1,4 +1,4 @@
-# NOOSHORA decision log — 2026-07-31
+# MAZEDUNEH decision log — 2026-07-31
 
 This document records product decisions and their rationale. It is intentionally a concise decision record, not private chain-of-thought.
 
@@ -10,8 +10,8 @@ Product management, technical leadership, Next.js, ASP.NET Core, Flutter, UX/UI,
 
 **Decision:** Use two Vercel projects:
 
-- `nooshora-storefront`: customer-facing commerce experience.
-- `nooshora-admin`: installable admin preview/PWA.
+- `mazeduneh-storefront`: customer-facing commerce experience.
+- `mazeduneh-admin`: installable admin preview/PWA.
 
 **Why:** Independent domains, release cycles, access controls, environment variables, caching, and rollback.
 

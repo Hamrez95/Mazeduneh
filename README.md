@@ -1,6 +1,6 @@
-# NOOSHORA
+# MAZEDUNEH
 
-NOOSHORA is a modern commerce platform for premium nuts, dried fruits, gifts, and healthy snacks.
+MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, and healthy snacks.
 
 ## Product surfaces
 
@@ -40,7 +40,7 @@ dotnet watch run
 
 ```bash
 cd apps/admin
-flutter create --platforms=android,web --project-name nooshora_admin .
+flutter create --platforms=android,web --project-name mazeduneh_admin .
 flutter pub get
 flutter run -d chrome
 ```

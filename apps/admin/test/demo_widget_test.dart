@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nooshora_admin/demo_main.dart';
+import 'package:mazeduneh_admin/demo_main.dart';
 
 void main() {
   testWidgets('partner demo shows seeded dashboard and navigates to orders', (tester) async {
-    await tester.pumpWidget(const NooshoraPartnerDemoApp());
+    await tester.pumpWidget(const MazedunehPartnerDemoApp());
     await tester.pumpAndSettle();
 
     expect(find.text('سلام حمیدرضا 🌿'), findsOneWidget);
@@ -25,7 +25,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const NooshoraPartnerDemoApp());
+    await tester.pumpWidget(const MazedunehPartnerDemoApp());
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('محصولات').last);

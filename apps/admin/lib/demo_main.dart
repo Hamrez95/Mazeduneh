@@ -1,1166 +1,55 @@
-import 'package:flutter/material.dart';
-
-void main() => runApp(const NooshoraPartnerDemoApp());
-
-class NooshoraPartnerDemoApp extends StatelessWidget {
-  const NooshoraPartnerDemoApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Ø¯Ù…ÙˆÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ù†ÙˆØ´ÙˆØ±Ø§',
-      locale: const Locale('fa'),
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3F6B45)),
-        scaffoldBackgroundColor: const Color(0xFFF5F7F2),
-        cardTheme: const CardThemeData(
-          elevation: 0,
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(20)),
-            side: BorderSide(color: Color(0xFFE1E7DF)),
-          ),
-        ),
-      ),
-      home: const Directionality(
-        textDirection: TextDirection.rtl,
-        child: DemoAdminShell(),
-      ),
-    );
-  }
-}
-
-class DemoAdminShell extends StatefulWidget {
-  const DemoAdminShell({super.key});
-
-  @override
-  State<DemoAdminShell> createState() => _DemoAdminShellState();
-}
-
-class _DemoAdminShellState extends State<DemoAdminShell> {
-  int selectedIndex = 0;
-  late List<DemoOrder> orders = seedOrders();
-  late List<DemoProduct> products = seedProducts();
-  late List<DemoBatch> batches = seedBatches();
-
-  static const destinations = <({String title, IconData icon})>[
-    (title: 'Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯', icon: Icons.space_dashboard_rounded),
-    (title: 'Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§', icon: Icons.receipt_long_rounded),
-    (title: 'Ù…Ø­ØµÙˆÙ„Ø§Øª', icon: Icons.inventory_2_rounded),
-    (title: 'Ø§Ù†Ø¨Ø§Ø±', icon: Icons.warehouse_rounded),
-    (title: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§', icon: Icons.query_stats_rounded),
-  ];
-
-  void advanceOrder(String id) {
-    setState(() {
-      orders = orders.map((order) {
-        if (order.id != id) return order;
-        final next = switch (order.state) {
-          'Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒØ´Ø¯Ù‡' => 'Ø¯Ø± Ø­Ø§Ù„ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ',
-          'Ø¯Ø± Ø­Ø§Ù„ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ' => 'Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡',
-          'Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡' => 'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡',
-          _ => order.state,
-        };
-        return order.copyWith(state: next);
-      }).toList();
-    });
-  }
-
-  void toggleProduct(String sku) {
-    setState(() {
-      products = products
-          .map((product) => product.sku == sku
-              ? product.copyWith(published: !product.published)
-              : product)
-          .toList();
-    });
-  }
-
-  void addDemoProduct() {
-    final index = products.length + 1;
-    setState(() {
-      products = [
-        DemoProduct(
-          sku: 'DEMO-$index',
-          title: 'Ù…Ø­ØµÙˆÙ„ Ù†Ù…Ø§ÛŒØ´ÛŒ Ø¬Ø¯ÛŒØ¯ $index',
-          category: 'Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³',
-          packageLabel: 'Ø¨Ø³ØªÙ‡ ÛµÛ°Û° Ú¯Ø±Ù…ÛŒ',
-          priceToman: 285000,
-          stock: 9,
-          published: false,
-          icon: 'ğŸŒ°',
-        ),
-        ...products,
-      ];
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ÛŒÚ© Ù…Ø­ØµÙˆÙ„ Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³ Ù†Ù…ÙˆÙ†Ù‡ Ø§Ø¶Ø§ÙÙ‡ Ø´Ø¯.')),
-    );
-  }
-
-  void receiveBatch() {
-    final index = batches.length + 1;
-    setState(() {
-      batches = [
-        DemoBatch(
-          lot: 'LOT-DEMO-$index',
-          sku: 'PI-AKB-500',
-          supplier: 'ØªØ£Ù…ÛŒÙ†â€ŒÚ©Ù†Ù†Ø¯Ù‡ Ù†Ù…ÙˆÙ†Ù‡',
-          remaining: 18,
-          unitCostToman: 315000,
-          bestBefore: 'Û±Û´Û°Û¶/Û°Û²/Û±Ûµ',
-          status: 'ØªØ§Ø²Ù‡â€ŒÙˆØ§Ø±Ø¯',
-        ),
-        ...batches,
-      ];
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ø¨Ú† Ù†Ù…Ø§ÛŒØ´ÛŒ Ø¯Ø± Ø§Ù†Ø¨Ø§Ø± Ø«Ø¨Øª Ø´Ø¯.')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 960;
-    final page = switch (selectedIndex) {
-      0 => DashboardView(orders: orders, products: products, batches: batches),
-      1 => OrdersView(orders: orders, onAdvance: advanceOrder),
-      2 => ProductsView(
-          products: products,
-          onToggle: toggleProduct,
-          onAdd: addDemoProduct,
-        ),
-      3 => InventoryView(batches: batches, onReceive: receiveBatch),
-      _ => ReportsView(orders: orders),
-    };
-
-    return Scaffold(
-      appBar: wide
-          ? null
-          : AppBar(
-              title: const DemoBrand(),
-              bottom: const PreferredSize(
-                preferredSize: Size.fromHeight(32),
-                child: DemoBanner(),
-              ),
-            ),
-      bottomNavigationBar: wide
-          ? null
-          : NavigationBar(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (value) => setState(() => selectedIndex = value),
-              destinations: [
-                for (final item in destinations)
-                  NavigationDestination(icon: Icon(item.icon), label: item.title),
-              ],
-            ),
-      body: Row(
-        children: [
-          if (wide) _DesktopSidebar(
-            destinations: destinations,
-            selectedIndex: selectedIndex,
-            onSelected: (value) => setState(() => selectedIndex = value),
-          ),
-          Expanded(
-            child: SafeArea(
-              child: Padding(
-                padding: EdgeInsets.all(wide ? 24 : 14),
-                child: page,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DesktopSidebar extends StatelessWidget {
-  const _DesktopSidebar({
-    required this.destinations,
-    required this.selectedIndex,
-    required this.onSelected,
-  });
-
-  final List<({String title, IconData icon})> destinations;
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 252,
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF25372A),
-        borderRadius: BorderRadius.circular(26),
-      ),
-      child: Column(
-        children: [
-          const Padding(padding: EdgeInsets.all(12), child: DemoBrand(dark: true)),
-          const DemoBanner(dark: true),
-          const SizedBox(height: 18),
-          for (var index = 0; index < destinations.length; index++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
-                selected: selectedIndex == index,
-                selectedTileColor: const Color(0xFF4A7651),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                leading: Icon(
-                  destinations[index].icon,
-                  color: selectedIndex == index
-                      ? Colors.white
-                      : const Color(0xFFB9C8BC),
-                ),
-                title: Text(
-                  destinations[index].title,
-                  style: TextStyle(
-                    color: selectedIndex == index
-                        ? Colors.white
-                        : const Color(0xFFB9C8BC),
-                  ),
-                ),
-                onTap: () => onSelected(index),
-              ),
-            ),
-          const Spacer(),
-          const ListTile(
-            contentPadding: EdgeInsets.symmetric(horizontal: 8),
-            leading: CircleAvatar(
-              backgroundColor: Color(0xFFF1C792),
-              child: Text('Ø­'),
-            ),
-            title: Text('Ø­Ù…ÛŒØ¯Ø±Ø¶Ø§', style: TextStyle(color: Colors.white)),
-            subtitle: Text('Ù…Ø¯ÛŒØ± Ø¯Ù…Ùˆ', style: TextStyle(color: Color(0xFF9DAEA0))),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class DemoBrand extends StatelessWidget {
-  const DemoBrand({super.key, this.dark = false});
-
-  final bool dark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: const Color(0xFF4A7651),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: const Text(
-            'Ù†',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Ù…Ø¯ÛŒØ±ÛŒØª Ù†ÙˆØ´ÙˆØ±Ø§',
-              style: TextStyle(
-                fontWeight: FontWeight.w900,
-                color: dark ? Colors.white : null,
-              ),
-            ),
-            Text(
-              'Ø¯Ù…ÙˆÛŒ Ø§Ø±Ø§Ø¦Ù‡ Ø´Ø±ÛŒÚ© ØªØ¬Ø§Ø±ÛŒ',
-              style: TextStyle(
-                fontSize: 9,
-                color: dark ? const Color(0xFFB7C7BA) : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class DemoBanner extends StatelessWidget {
-  const DemoBanner({super.key, this.dark = false});
-
-  final bool dark;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: dark ? const Color(0xFF344A39) : const Color(0xFFFFE6C7),
-        borderRadius: BorderRadius.circular(11),
-      ),
-      child: Text(
-        'Ø¯Ø§Ø¯Ù‡ Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ Â· Ø¨Ø¯ÙˆÙ† ØªØ±Ø§Ú©Ù†Ø´ ÙˆØ§Ù‚Ø¹ÛŒ',
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          color: dark ? const Color(0xFFF4D2AA) : const Color(0xFF825328),
-          fontSize: 9,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class DashboardView extends StatelessWidget {
-  const DashboardView({
-    super.key,
-    required this.orders,
-    required this.products,
-    required this.batches,
-  });
-
-  final List<DemoOrder> orders;
-  final List<DemoProduct> products;
-  final List<DemoBatch> batches;
-
-  @override
-  Widget build(BuildContext context) {
-    final revenue = orders
-        .where((order) => order.state != 'Ù„ØºÙˆØ´Ø¯Ù‡')
-        .fold<int>(0, (sum, order) => sum + order.payableToman);
-    final active = orders
-        .where((order) => order.state != 'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡' && order.state != 'Ù„ØºÙˆØ´Ø¯Ù‡')
-        .length;
-    final lowStock = products.where((product) => product.stock <= 8).length;
-
-    return ListView(
-      children: [
-        const PageHeading(
-          title: 'Ø³Ù„Ø§Ù… Ø­Ù…ÛŒØ¯Ø±Ø¶Ø§ ğŸŒ¿',
-          subtitle: 'ØªØµÙˆÛŒØ± Ú©Ø§Ù…Ù„ ÙØ±ÙˆØ´ØŒ Ø³ÙØ§Ø±Ø´ Ùˆ Ø§Ù†Ø¨Ø§Ø± Ø¯Ø± Ø³Ù†Ø§Ø±ÛŒÙˆÛŒ Ù†Ù…Ø§ÛŒØ´ÛŒ Ø§Ù…Ø±ÙˆØ²',
-        ),
-        const SizedBox(height: 20),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            MetricCard(
-              title: 'ÙØ±ÙˆØ´ Ø§Ù…Ø±ÙˆØ²',
-              value: '${toman(revenue)} ØªÙˆÙ…Ø§Ù†',
-              icon: Icons.payments_rounded,
-              tone: const Color(0xFFE5F0DF),
-            ),
-            MetricCard(
-              title: 'Ø³ÙØ§Ø±Ø´ ÙØ¹Ø§Ù„',
-              value: '$active Ø³ÙØ§Ø±Ø´',
-              icon: Icons.shopping_bag_rounded,
-              tone: const Color(0xFFFFE5C8),
-            ),
-            MetricCard(
-              title: 'Ù‡Ø´Ø¯Ø§Ø± Ù…ÙˆØ¬ÙˆØ¯ÛŒ',
-              value: '$lowStock Ù…ÙˆØ±Ø¯',
-              icon: Icons.inventory_rounded,
-              tone: const Color(0xFFF5DCD0),
-            ),
-            MetricCard(
-              title: 'Ø¨Ú†â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„',
-              value: '${batches.length} Ø¨Ú†',
-              icon: Icons.qr_code_2_rounded,
-              tone: const Color(0xFFE8E0F2),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final recentOrders = RecentOrdersCard(orders: orders.take(5).toList());
-            final stock = LowStockCard(
-              products: products.where((product) => product.stock <= 10).toList(),
-            );
-            if (constraints.maxWidth < 850) {
-              return Column(children: [recentOrders, const SizedBox(height: 12), stock]);
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 3, child: recentOrders),
-                const SizedBox(width: 12),
-                Expanded(flex: 2, child: stock),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class OrdersView extends StatelessWidget {
-  const OrdersView({super.key, required this.orders, required this.onAdvance});
-
-  final List<DemoOrder> orders;
-  final ValueChanged<String> onAdvance;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const PageHeading(
-          title: 'Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§',
-          subtitle: 'Ú†Ø±Ø®Ù‡ Ø¯Ù…Ùˆ Ø§Ø² Ù¾Ø±Ø¯Ø§Ø®Øª ØªØ§ ØªØ­ÙˆÛŒÙ„ Ø±Ø§ Ø¨Ø§ Ø¯Ú©Ù…Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¨Ø¹Ø¯ Ù†Ù…Ø§ÛŒØ´ Ø¨Ø¯Ù‡.',
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: ListView.separated(
-            itemCount: orders.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (_, index) {
-              final order = orders[index];
-              final canAdvance = const {
-                'Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒØ´Ø¯Ù‡',
-                'Ø¯Ø± Ø­Ø§Ù„ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ',
-                'Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡',
-              }.contains(order.state);
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 18,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: 220,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(order.id, style: const TextStyle(fontWeight: FontWeight.w900)),
-                            Text(
-                              '${order.customer} Â· ${order.city}',
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        '${toman(order.payableToman)} ØªÙˆÙ…Ø§Ù†',
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      StateChip(order.state),
-                      Text(
-                        order.paymentReference,
-                        style: const TextStyle(fontSize: 10, color: Colors.grey),
-                      ),
-                      FilledButton.tonalIcon(
-                        onPressed: canAdvance ? () => onAdvance(order.id) : null,
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        label: Text(canAdvance ? 'Ù…Ø±Ø­Ù„Ù‡ Ø¨Ø¹Ø¯' : 'ØªÚ©Ù…ÛŒÙ„â€ŒØ´Ø¯Ù‡'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ProductsView extends StatelessWidget {
-  const ProductsView({
-    super.key,
-    required this.products,
-    required this.onToggle,
-    required this.onAdd,
-  });
-
-  final List<DemoProduct> products;
-  final ValueChanged<String> onToggle;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          spacing: 18,
-          runSpacing: 12,
-          children: [
-            const SizedBox(
-              width: 520,
-              child: PageHeading(
-                title: 'Ù…Ø­ØµÙˆÙ„Ø§Øª',
-                subtitle: 'Ø§Ù†ØªØ´Ø§Ø±ØŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒØŒ Ù‚ÛŒÙ…Øª Ùˆ Ø¨Ø³ØªÙ‡ ÙØ±ÙˆØ´ Ø¯Ø± ÛŒÚ© Ù†Ù…Ø§ÛŒ Ù‚Ø§Ø¨Ù„ Ø§Ø±Ø§Ø¦Ù‡',
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Ù…Ø­ØµÙˆÙ„ Ù†Ù…ÙˆÙ†Ù‡'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 1100
-                  ? 3
-                  : constraints.maxWidth >= 670
-                      ? 2
-                      : 1;
-              return GridView.builder(
-                itemCount: products.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  mainAxisExtent: 255,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemBuilder: (_, index) {
-                  final product = products[index];
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(17),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: const Color(0xFFE7F0E1),
-                                child: Text(product.icon),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  product.title,
-                                  style: const TextStyle(fontWeight: FontWeight.w900),
-                                ),
-                              ),
-                              Chip(label: Text(product.published ? 'Ù…Ù†ØªØ´Ø±' : 'Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³')),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            '${product.category} Â· ${product.sku}',
-                            style: const TextStyle(color: Colors.grey, fontSize: 10),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 7,
-                            runSpacing: 7,
-                            children: [
-                              InfoPill(product.packageLabel),
-                              InfoPill('${product.stock} Ø¨Ø³ØªÙ‡'),
-                              InfoPill('${toman(product.priceToman)} ØªÙˆÙ…Ø§Ù†'),
-                            ],
-                          ),
-                          const Spacer(),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  product.published ? 'Ù‚Ø§Ø¨Ù„ Ø®Ø±ÛŒØ¯ Ø¯Ø± Ø³Ø§ÛŒØª' : 'ÙÙ‚Ø· Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª',
-                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
-                                ),
-                              ),
-                              OutlinedButton(
-                                onPressed: () => onToggle(product.sku),
-                                child: Text(product.published ? 'Ø®Ø±ÙˆØ¬ Ø§Ø² ÙØ±ÙˆØ´' : 'Ø§Ù†ØªØ´Ø§Ø±'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class InventoryView extends StatelessWidget {
-  const InventoryView({super.key, required this.batches, required this.onReceive});
-
-  final List<DemoBatch> batches;
-  final VoidCallback onReceive;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          spacing: 18,
-          runSpacing: 12,
-          children: [
-            const SizedBox(
-              width: 520,
-              child: PageHeading(
-                title: 'Ø§Ù†Ø¨Ø§Ø± Ùˆ Ø¨Ú†â€ŒÙ‡Ø§',
-                subtitle: 'Ø±Ø¯ÛŒØ§Ø¨ÛŒ ØªØ£Ù…ÛŒÙ†â€ŒÚ©Ù†Ù†Ø¯Ù‡ØŒ Ù‚ÛŒÙ…Øª Ø®Ø±ÛŒØ¯ØŒ Ù…Ø§Ù†Ø¯Ù‡ Ùˆ ØªØ§Ø±ÛŒØ® Ù…ØµØ±Ù',
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: onReceive,
-              icon: const Icon(Icons.add_business_rounded),
-              label: const Text('Ø«Ø¨Øª ÙˆØ±ÙˆØ¯ Ù†Ù…ÙˆÙ†Ù‡'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: ListView.separated(
-            itemCount: batches.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 10),
-            itemBuilder: (_, index) {
-              final batch = batches[index];
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 20,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: 185,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(batch.lot, style: const TextStyle(fontWeight: FontWeight.w900)),
-                            Text(batch.sku, style: const TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                      Text(batch.supplier),
-                      InfoPill('${batch.remaining} Ø¨Ø³ØªÙ‡ Ù…Ø§Ù†Ø¯Ù‡'),
-                      Text('${toman(batch.unitCostToman)} ØªÙˆÙ…Ø§Ù† Ø®Ø±ÛŒØ¯'),
-                      Text(
-                        'Ù…ØµØ±Ù ØªØ§ ${batch.bestBefore}',
-                        style: const TextStyle(fontSize: 10),
-                      ),
-                      StateChip(batch.status),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ReportsView extends StatelessWidget {
-  const ReportsView({super.key, required this.orders});
-
-  final List<DemoOrder> orders;
-
-  @override
-  Widget build(BuildContext context) {
-    final validOrders = orders.where((order) => order.state != 'Ù„ØºÙˆØ´Ø¯Ù‡');
-    final revenue = validOrders.fold<int>(0, (sum, order) => sum + order.payableToman);
-    final cost = validOrders.fold<int>(0, (sum, order) => sum + order.estimatedCostToman);
-    final profit = revenue - cost;
-    final margin = revenue == 0 ? 0 : (profit / revenue * 100).round();
-
-    return ListView(
-      children: [
-        const PageHeading(
-          title: 'Ú¯Ø²Ø§Ø±Ø´ Ù…Ø¯ÛŒØ±ÛŒØªÛŒ',
-          subtitle: 'Ù†Ù…ÙˆÙ†Ù‡ Ú¯Ø²Ø§Ø±Ø´ ÙØ±ÙˆØ´ØŒ Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯ Ùˆ Ø³Ù„Ø§Ù…Øª Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ø¨Ø±Ø§ÛŒ Ø§Ø±Ø§Ø¦Ù‡ Ø´Ø±ÛŒÚ©',
-        ),
-        const SizedBox(height: 20),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            MetricCard(
-              title: 'ÙØ±ÙˆØ´ Ù†Ø§Ø®Ø§Ù„Øµ',
-              value: '${toman(revenue)} ØªÙˆÙ…Ø§Ù†',
-              icon: Icons.trending_up_rounded,
-              tone: const Color(0xFFE5F0DF),
-            ),
-            MetricCard(
-              title: 'Ø¨Ù‡Ø§ÛŒ ØªÙ‚Ø±ÛŒØ¨ÛŒ Ú©Ø§Ù„Ø§',
-              value: '${toman(cost)} ØªÙˆÙ…Ø§Ù†',
-              icon: Icons.price_check_rounded,
-              tone: const Color(0xFFFFE5C8),
-            ),
-            MetricCard(
-              title: 'Ø³ÙˆØ¯ Ù†Ø§Ø®Ø§Ù„Øµ',
-              value: '${toman(profit)} ØªÙˆÙ…Ø§Ù†',
-              icon: Icons.savings_rounded,
-              tone: const Color(0xFFE8E0F2),
-            ),
-            MetricCard(
-              title: 'Ø­Ø§Ø´ÛŒÙ‡ Ø³ÙˆØ¯',
-              value: '$marginÙª',
-              icon: Icons.pie_chart_rounded,
-              tone: const Color(0xFFF5DCD0),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        const WeeklyChart(),
-      ],
-    );
-  }
-}
-
-class WeeklyChart extends StatelessWidget {
-  const WeeklyChart({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    const data = [('Ø´', .42), ('ÛŒ', .58), ('Ø¯', .36), ('Ø³', .72), ('Ú†', .64), ('Ù¾', .9), ('Ø¬', .78)];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'ÙØ±ÙˆØ´ Ù‡ÙØª Ø±ÙˆØ² Ø§Ø®ÛŒØ± Â· Ø¯Ø§Ø¯Ù‡ Ø¯Ù…Ùˆ',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              height: 220,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  for (final item in data)
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: Align(
-                                alignment: Alignment.bottomCenter,
-                                child: FractionallySizedBox(
-                                  heightFactor: item.$2,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF5D865F),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(item.$1, style: const TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class PageHeading extends StatelessWidget {
-  const PageHeading({super.key, required this.title, required this.subtitle});
-
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-              ),
-        ),
-        const SizedBox(height: 4),
-        Text(subtitle, style: const TextStyle(color: Colors.grey)),
-      ],
-    );
-  }
-}
-
-class MetricCard extends StatelessWidget {
-  const MetricCard({
-    super.key,
-    required this.title,
-    required this.value,
-    required this.icon,
-    required this.tone,
-  });
-
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color tone;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 245,
-      height: 158,
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 19,
-                backgroundColor: tone,
-                child: Icon(icon, size: 20, color: const Color(0xFF3F6B45)),
-              ),
-              const Spacer(),
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.grey, fontSize: 10),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class RecentOrdersCard extends StatelessWidget {
-  const RecentOrdersCard({super.key, required this.orders});
-
-  final List<DemoOrder> orders;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ø¢Ø®Ø±ÛŒÙ† Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            for (final order in orders)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFE8EFE3),
-                  child: Text(order.customer.substring(0, 1)),
-                ),
-                title: Text(order.customer),
-                subtitle: Text('${order.id} Â· ${order.city}'),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${toman(order.payableToman)} ØªÙˆÙ…Ø§Ù†',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    Text(
-                      order.state,
-                      style: const TextStyle(fontSize: 9, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LowStockCard extends StatelessWidget {
-  const LowStockCard({super.key, required this.products});
-
-  final List<DemoProduct> products;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ ØªÙˆØ¬Ù‡',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            for (final product in products)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFFFE6C7),
-                  child: Text('${product.stock}'),
-                ),
-                title: Text(product.title),
-                subtitle: Text(product.sku),
-                trailing: const Icon(Icons.chevron_left_rounded),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class StateChip extends StatelessWidget {
-  const StateChip(this.label, {super.key});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (label) {
-      'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡' => const Color(0xFFDDEDD9),
-      'Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡' => const Color(0xFFE5DDF0),
-      'Ø¯Ø± Ø­Ø§Ù„ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ' => const Color(0xFFFFE4C5),
-      'Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒØ´Ø¯Ù‡' => const Color(0xFFDCE9E1),
-      'ØªØ§Ø²Ù‡â€ŒÙˆØ§Ø±Ø¯' => const Color(0xFFDDEDD9),
-      _ => const Color(0xFFF2E2D8),
-    };
-    return Chip(backgroundColor: color, label: Text(label));
-  }
-}
-
-class InfoPill extends StatelessWidget {
-  const InfoPill(this.text, {super.key});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F3EC),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 10)),
-    );
-  }
-}
-
-class DemoOrder {
-  const DemoOrder({
-    required this.id,
-    required this.customer,
-    required this.city,
-    required this.payableToman,
-    required this.estimatedCostToman,
-    required this.state,
-    required this.paymentReference,
-  });
-
-  final String id;
-  final String customer;
-  final String city;
-  final int payableToman;
-  final int estimatedCostToman;
-  final String state;
-  final String paymentReference;
-
-  DemoOrder copyWith({String? state}) {
-    return DemoOrder(
-      id: id,
-      customer: customer,
-      city: city,
-      payableToman: payableToman,
-      estimatedCostToman: estimatedCostToman,
-      state: state ?? this.state,
-      paymentReference: paymentReference,
-    );
-  }
-}
-
-class DemoProduct {
-  const DemoProduct({
-    required this.sku,
-    required this.title,
-    required this.category,
-    required this.packageLabel,
-    required this.priceToman,
-    required this.stock,
-    required this.published,
-    required this.icon,
-  });
-
-  final String sku;
-  final String title;
-  final String category;
-  final String packageLabel;
-  final int priceToman;
-  final int stock;
-  final bool published;
-  final String icon;
-
-  DemoProduct copyWith({bool? published}) {
-    return DemoProduct(
-      sku: sku,
-      title: title,
-      category: category,
-      packageLabel: packageLabel,
-      priceToman: priceToman,
-      stock: stock,
-      published: published ?? this.published,
-      icon: icon,
-    );
-  }
-}
-
-class DemoBatch {
-  const DemoBatch({
-    required this.lot,
-    required this.sku,
-    required this.supplier,
-    required this.remaining,
-    required this.unitCostToman,
-    required this.bestBefore,
-    required this.status,
-  });
-
-  final String lot;
-  final String sku;
-  final String supplier;
-  final int remaining;
-  final int unitCostToman;
-  final String bestBefore;
-  final String status;
-}
-
-List<DemoOrder> seedOrders() => const [
-      DemoOrder(
-        id: 'NS-1048',
-        customer: 'Ø³Ø§Ø±Ø§ Ø§Ø­Ù…Ø¯ÛŒ',
-        city: 'ØªÙ‡Ø±Ø§Ù†',
-        payableToman: 1005000,
-        estimatedCostToman: 682000,
-        state: 'Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒØ´Ø¯Ù‡',
-        paymentReference: 'DEMO-PAY-82413',
-      ),
-      DemoOrder(
-        id: 'NS-1047',
-        customer: 'Ù…Ø­Ù…Ø¯ Ø±Ø¶Ø§ÛŒÛŒ',
-        city: 'Ú©Ø±Ø¬',
-        payableToman: 1290000,
-        estimatedCostToman: 890000,
-        state: 'Ø¯Ø± Ø­Ø§Ù„ Ø¢Ù…Ø§Ø¯Ù‡â€ŒØ³Ø§Ø²ÛŒ',
-        paymentReference: 'DEMO-PAY-82402',
-      ),
-      DemoOrder(
-        id: 'NS-1046',
-        customer: 'Ù†Ú¯Ø§Ø± Ø§Ú©Ø¨Ø±ÛŒ',
-        city: 'Ø§ØµÙÙ‡Ø§Ù†',
-        payableToman: 775000,
-        estimatedCostToman: 498000,
-        state: 'Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡',
-        paymentReference: 'DEMO-PAY-82381',
-      ),
-      DemoOrder(
-        id: 'NS-1045',
-        customer: 'Ø¹Ù„ÛŒ Ù…ÙˆØ³ÙˆÛŒ',
-        city: 'Ø´ÛŒØ±Ø§Ø²',
-        payableToman: 1580000,
-        estimatedCostToman: 1030000,
-        state: 'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡',
-        paymentReference: 'DEMO-PAY-82340',
-      ),
-      DemoOrder(
-        id: 'NS-1044',
-        customer: 'Ù…Ø±ÛŒÙ… Ú©Ø±ÛŒÙ…ÛŒ',
-        city: 'Ø±Ø´Øª',
-        payableToman: 650000,
-        estimatedCostToman: 420000,
-        state: 'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡',
-        paymentReference: 'DEMO-PAY-82312',
-      ),
-      DemoOrder(
-        id: 'NS-1043',
-        customer: 'Ø±Ø¶Ø§ Ù†Ø§Ø¯Ø±ÛŒ',
-        city: 'ØªØ¨Ø±ÛŒØ²',
-        payableToman: 930000,
-        estimatedCostToman: 601000,
-        state: 'ØªØ­ÙˆÛŒÙ„â€ŒØ´Ø¯Ù‡',
-        paymentReference: 'DEMO-PAY-82298',
-      ),
-    ];
-
-List<DemoProduct> seedProducts() => const [
-      DemoProduct(sku: 'PI-AKB-500', title: 'Ù¾Ø³ØªÙ‡ Ø§Ú©Ø¨Ø±ÛŒ Ù…Ù…ØªØ§Ø²', category: 'Ù…ØºØ²ÛŒØ¬Ø§Øª', packageLabel: 'ÛµÛ°Û° Ú¯Ø±Ù…', priceToman: 465000, stock: 12, published: true, icon: 'ğŸ¥œ'),
-      DemoProduct(sku: 'PI-AHM-500', title: 'Ù¾Ø³ØªÙ‡ Ø§Ø­Ù…Ø¯Ø¢Ù‚Ø§ÛŒÛŒ', category: 'Ù…ØºØ²ÛŒØ¬Ø§Øª', packageLabel: 'ÛµÛ°Û° Ú¯Ø±Ù…', priceToman: 445000, stock: 10, published: true, icon: 'ğŸŸ¢'),
-      DemoProduct(sku: 'NU-ALM-500', title: 'Ø¨Ø§Ø¯Ø§Ù… Ø¯Ø±Ø®ØªÛŒ Ø®Ø§Ù…', category: 'Ù…ØºØ²ÛŒØ¬Ø§Øª', packageLabel: 'ÛµÛ°Û° Ú¯Ø±Ù…', priceToman: 330000, stock: 16, published: true, icon: 'ğŸŒ°'),
-      DemoProduct(sku: 'NU-WAL-500', title: 'Ù…ØºØ² Ú¯Ø±Ø¯ÙˆÛŒ Ø§ÛŒØ±Ø§Ù†ÛŒ', category: 'Ù…ØºØ²ÛŒØ¬Ø§Øª', packageLabel: 'ÛµÛ°Û° Ú¯Ø±Ù…', priceToman: 305000, stock: 8, published: true, icon: 'ğŸ§ '),
-      DemoProduct(sku: 'DF-MIX-300', title: 'Ù…ÛŒÚ©Ø³ Ù…ÛŒÙˆÙ‡ Ø®Ø´Ú©', category: 'Ù…ÛŒÙˆÙ‡ Ø®Ø´Ú©', packageLabel: 'Û³Û°Û° Ú¯Ø±Ù…', priceToman: 238000, stock: 21, published: true, icon: 'ğŸŠ'),
-      DemoProduct(sku: 'SE-PUM-500', title: 'ØªØ®Ù…Ù‡ Ú©Ø¯Ùˆ Ú¯ÙˆØ´ØªÛŒ', category: 'ØªÙ†Ù‚Ù„Ø§Øª', packageLabel: 'ÛµÛ°Û° Ú¯Ø±Ù…', priceToman: 180000, stock: 6, published: true, icon: 'ğŸƒ'),
-      DemoProduct(sku: 'CK-PRO-4', title: 'Ú©ÙˆÚ©ÛŒ Ù¾Ø±ÙˆØªØ¦ÛŒÙ†ÛŒ', category: 'Ø®ÙˆØ±Ø§Ú©ÛŒ Ø³Ø§Ù„Ù…', packageLabel: 'Ù¾Ú© Û´ Ø¹Ø¯Ø¯ÛŒ', priceToman: 360000, stock: 20, published: true, icon: 'ğŸª'),
-      DemoProduct(sku: 'GF-PARTY-12', title: 'Ø¬Ø¹Ø¨Ù‡ Ù‡Ø¯ÛŒÙ‡ Ø¯ÙˆØ±Ù‡Ù…ÛŒ', category: 'Ù‡Ø¯ÛŒÙ‡', packageLabel: 'Û±Ù«Û² Ú©ÛŒÙ„ÙˆÚ¯Ø±Ù…', priceToman: 1290000, stock: 7, published: true, icon: 'ğŸ'),
-      DemoProduct(sku: 'DR-APRICOT-250', title: 'Ø¨Ø±Ú¯Ù‡ Ø²Ø±Ø¯Ø¢Ù„Ùˆ', category: 'Ù…ÛŒÙˆÙ‡ Ø®Ø´Ú©', packageLabel: 'Û²ÛµÛ° Ú¯Ø±Ù…', priceToman: 195000, stock: 5, published: false, icon: 'ğŸ‘'),
-    ];
-
-List<DemoBatch> seedBatches() => const [
-      DemoBatch(lot: 'LOT-1405-071', sku: 'PI-AKB-500', supplier: 'ØªØ¹Ø§ÙˆÙ†ÛŒ Ø±ÙØ³Ù†Ø¬Ø§Ù†', remaining: 12, unitCostToman: 318000, bestBefore: 'Û±Û´Û°Û¶/Û°Û±/Û²Û°', status: 'ÙØ¹Ø§Ù„'),
-      DemoBatch(lot: 'LOT-1405-068', sku: 'PI-AHM-500', supplier: 'Ø®Ø´Ú©Ø¨Ø§Ø± Ú©Ø±Ù…Ø§Ù†', remaining: 10, unitCostToman: 302000, bestBefore: 'Û±Û´Û°Ûµ/Û±Û²/Û²Ûµ', status: 'ÙØ¹Ø§Ù„'),
-      DemoBatch(lot: 'LOT-1405-063', sku: 'NU-WAL-500', supplier: 'Ø¨Ø§ØºØ¯Ø§Ø±Ø§Ù† ØªÙˆÛŒØ³Ø±Ú©Ø§Ù†', remaining: 8, unitCostToman: 211000, bestBefore: 'Û±Û´Û°Ûµ/Û±Û°/Û±Û°', status: 'Ù†Ø²Ø¯ÛŒÚ© Ù…ØµØ±Ù'),
-      DemoBatch(lot: 'LOT-1405-060', sku: 'SE-PUM-500', supplier: 'Ø¨Ø§Ø²Ø±Ú¯Ø§Ù†ÛŒ Ø³Ø¨Ø²ÛŒÙ†Ù‡', remaining: 6, unitCostToman: 108000, bestBefore: 'Û±Û´Û°Ûµ/Û°Û¹/Û³Û°', status: 'Ú©Ù…â€ŒÙ…ÙˆØ¬ÙˆØ¯ÛŒ'),
-    ];
-
-String toman(num value) {
-  return value.round().toString().replaceAllMapped(
-        RegExp(r'\B(?=(\d{3})+(?!\d))'),
-        (_) => 'Ù¬',
-      );
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×~5ñ:-jZ.¶›­–)Ş³V–×÷'Bw6¶vS¦fÇWGFW"öÖFW&–ÂæF'Bs°Ğ Ğ§fö–BÖ–â‚’Óâ'Vä†6öç7BÖ¦VGVæV…'FæW$FVÖô‚’“°Ğ Ğ¦6Æ72Ö¦VGVæV…'FæW$FVÖôW‡FVæG27FFVÆW75v–FvWB°Ğ¢6öç7BÖ¦VGVæV…'FæW$FVÖô‡·7WW"æ¶W—Ò“°Ğ Ğ¢÷fW'&–FPĞ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’°Ğ¢&WGW&âÖFW&–Ä€Ğ¢FV'Vu6†÷t6†V6¶VDÖöFT&ææW#¢fÇ6RÀĞ¢F—FÆS¢}Šı˜]˜¸Â˜]Šı¸Í‹¸ÍŠ¢˜]‹-˜~(ÍŠı˜˜m˜rrÀĞ¢Æö6ÆS¢6öç7BÆö6ÆR‚vfr’ÀĞ¢F†VÖS¢F†VÖTFF€Ğ¢W6TÖFW&–Ã3¢G'VRÀĞ¢6öÆ÷%66†VÖS¢6öÆ÷%66†VÖRæg&öÕ6VVB‡6VVD6öÆ÷#¢6öç7B6öÆ÷"ƒ„dc4cd#CR’’ÀĞ¢66fföÆD&6¶w&÷VæD6öÆ÷#¢6öç7B6öÆ÷"ƒ„ddcTctc"’ÀĞ¢6&EF†VÖS¢6öç7B6&EF†VÖTFF€Ğ¢VÆWfF–öã¢ÀĞ¢6öÆ÷#¢6öÆ÷'2çv†—FRÀĞ¢6†S¢&÷VæFVE&V7FævÆT&÷&FW"€Ğ¢&÷&FW%&F—W3¢&÷&FW%&F—W2æÆÂ…&F—W2æ6—&7VÆ"ƒ#’’ÀĞ¢6–FS¢&÷&FW%6–FR†6öÆ÷#¢6öÆ÷"ƒ„ddSStDb’’ÀĞ¢’ÀĞ¢’ÀĞ¢’ÀĞ¢†öÖS¢6öç7BF—&V7F–öæÆ—G’€Ğ¢FW‡DF—&V7F–öã¢FW‡DF—&V7F–öâç'FÂÀĞ¢6†–ÆC¢FVÖôFÖ–å6†VÆÂ‚’ÀĞ¢’ÀĞ¢“°Ğ¢ĞĞ§ĞĞ Ğ¦6Æ72FVÖôFÖ–å6†VÆÂW‡FVæG27FFVgVÅv–FvWB°Ğ¢6öç7BFVÖôFÖ–å6†VÆÂ‡·7WW"æ¶W—Ò“°Ğ Ğ¢÷fW'&–FPĞ¢7FFSÄFVÖôFÖ–å6†VÆÃâ7&VFU7FFR‚’ÓâôFVÖôFÖ–å6†VÆÅ7FFR‚“°Ğ§ĞĞ Ğ¦6Æ72ôFVÖôFÖ–å6†VÆÅ7FFRW‡FVæG27FFSÄFVÖôFÖ–å6†VÆÃâ°Ğ¢–çB6VÆV7FVD–æFW‚Ò°Ğ¢ÆFRÆ—7CÄFVÖô÷&FW#â÷&FW'2Ò6VVD÷&FW'2‚“°Ğ¢ÆFRÆ—7CÄFVÖõ&öGV7Câ&öGV7G2Ò6VVE&öGV7G2‚“°Ğ¢ÆFRÆ—7CÄFVÖô&F6ƒâ&F6†W2Ò6VVD&F6†W2‚“°Ğ Ğ¢7FF–26öç7BFW7F–æF–öç2ÒÂ‡µ7G&–ærF—FÆRÂ–6öäFF–6öçÒ“å°Ğ¢‡F—FÆS¢}ŠıŠ}‹MŠ˜‹ŠòrÂ–6öã¢–6öç2ç76UöF6†&ö&E÷&÷VæFVB’ÀĞ¢‡F—FÆS¢}‹=˜Š}‹‹N(Í˜}ŠrrÂ–6öã¢–6öç2ç&V6V—EöÆöæu÷&÷VæFVB’ÀĞ¢‡F—FÆS¢}˜]Šİ‹]˜˜MŠ}Š¢rÂ–6öã¢–6öç2æ–çfVçF÷'•ó%÷&÷VæFVB’ÀĞ¢‡F—FÆS¢}Š}˜mŠŠ}‹rÂ–6öã¢–6öç2çv&V†÷W6U÷&÷VæFVB’ÀĞ¢‡F—FÆS¢}ªı‹-Š}‹‹N(Í˜}ŠrrÂ–6öã¢–6öç2çVW'•÷7FG5÷&÷VæFVB’ÀĞ¢Ó°Ğ Ğ¢fö–BGfæ6T÷&FW"…7G&–ær–B’°Ğ¢6WE7FFR‚‚’°Ğ¢÷&FW'2Ò÷&FW'2æÖ‚†÷&FW"’°Ğ¢–b†÷&FW"æ–BÒ–B’&WGW&â÷&FW#°Ğ¢f–æÂæW‡BÒ7v—F6‚†÷&FW"ç7FFR’°Ğ¢}›í‹ŠıŠ}ŠíŠ®(Í‹MŠı˜rrÓâ}Šı‹ŠİŠ}˜BŠ-˜]Š}Šı˜~(Í‹=Š}‹-¸ÂrÀĞ¢}Šı‹ŠİŠ}˜BŠ-˜]Š}Šı˜~(Í‹=Š}‹-¸ÂrÓâ}Š}‹‹=Š}˜N(Í‹MŠı˜rrÀĞ¢}Š}‹‹=Š}˜N(Í‹MŠı˜rrÓâ}Š­Šİ˜¸Í˜N(Í‹MŠı˜rrÀĞ¢òÓâ÷&FW"ç7FFRÀĞ¢Ó°Ğ¢&WGW&â÷&FW"æ6÷•v—F‚‡7FFS¢æW‡B“°Ğ¢Ò’çFôÆ—7B‚“°Ğ¢Ò“°Ğ¢ĞĞ Ğ¢fö–BFövvÆU&öGV7B…7G&–ær6·R’°Ğ¢6WE7FFR‚‚’°Ğ¢&öGV7G2Ò&öGV7G0Ğ¢æÖ‚‡&öGV7B’Óâ&öGV7Bç6·RÓÒ6·PĞ¢ò&öGV7Bæ6÷•v—F‚‡V&Æ—6†VC¢&öGV7BçV&Æ—6†VBĞ¢¢&öGV7BĞ¢çFôÆ—7B‚“°Ğ¢Ò“°Ğ¢ĞĞ Ğ¢fö–BFDFVÖõ&öGV7B‚’°Ğ¢f–æÂ–æFW‚Ò&öGV7G2æÆVæwF‚²°Ğ¢6WE7FFR‚‚’°Ğ¢&öGV7G2Ò°Ğ¢FVÖõ&öGV7B€Ğ¢6·S¢tDTÔòÒF–æFW‚rÀĞ¢F—FÆS¢}˜]Šİ‹]˜˜B˜m˜]Š}¸Í‹M¸ÂŠÍŠı¸ÍŠòF–æFW‚rÀĞ¢6FVv÷'“¢}›í¸Í‹N(Í˜m˜¸Í‹2rÀĞ¢6¶vTÆ&VÃ¢}Š‹=Š­˜r»]»»ªı‹˜]¸ÂrÀĞ¢&–6UFöÖã¢#ƒSÀĞ¢7Fö6³¢’ÀĞ¢V&Æ—6†VC¢fÇ6RÀĞ¢–6öã¢	øËrÀĞ¢’ÀĞ¢ââç&öGV7G2ÀĞ¢Ó°Ğ¢Ò“°Ğ¢66fföÆDÖW76VævW"æöb†6öçFW‡B’ç6†÷u6æ6´&"€Ğ¢6öç7B6æ6´&"†6öçFVçC¢FW‡B‚}¸Íª’˜]Šİ‹]˜˜B›í¸Í‹N(Í˜m˜¸Í‹2˜m˜]˜˜m˜rŠ}‹mŠ}˜˜r‹MŠòâr’’ÀĞ¢“°Ğ¢ĞĞ Ğ¢fö–B&V6V—fT&F6‚‚’°Ğ¢f–æÂ–æFW‚Ò&F6†W2æÆVæwF‚²°Ğ¢6WE7FFR‚‚’°Ğ¢&F6†W2Ò°Ğ¢FVÖô&F6‚€Ğ¢Æ÷C¢tÄõBÔDTÔòÒF–æFW‚rÀĞ¢6·S¢u’Ô´"ÓSrÀĞ¢7WÆ–W#¢}Š­Š=˜]¸Í˜n(Íª˜m˜mŠı˜r˜m˜]˜˜m˜rrÀĞ¢&VÖ–æ–æs¢‚ÀĞ¢Væ—D6÷7EFöÖã¢3SÀĞ¢&W7D&Vf÷&S¢}»»M»»bı»»"ı»»RrÀĞ¢7FGW3¢}Š­Š}‹-˜~(Í˜Š}‹ŠòrÀĞ¢’ÀĞ¢ââæ&F6†W2ÀĞ¢Ó°Ğ¢Ò“°Ğ¢66fföÆDÖW76VævW"æöb†6öçFW‡B’ç6†÷u6æ6´&"€Ğ¢6öç7B6æ6´&"†6öçFVçC¢FW‡B‚}Š¨b˜m˜]Š}¸Í‹M¸ÂŠı‹Š}˜mŠŠ}‹Š½ŠŠ¢‹MŠòâr’’ÀĞ¢“°Ğ¢ĞĞ Ğ¢÷fW'&–FPĞ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’°Ğ¢f–æÂv–FRÒÖVF–VW'’ç6—¦Töb†6öçFW‡B’çv–GF‚ãÒ“c°Ğ¢f–æÂvRÒ7v—F6‚‡6VÆV7FVD–æFW‚’°Ğ¢ÓâF6†&ö&Ef–Wr†÷&FW'3¢÷&FW'2Â&öGV7G3¢&öGV7G2Â&F6†W3¢&F6†W2’ÀĞ¢Óâ÷&FW'5f–Wr†÷&FW'3¢÷&FW'2ÂöäGfæ6S¢Gfæ6T÷&FW"’ÀĞ¢"Óâ&öGV7G5f–Wr€Ğ¢&öGV7G3¢&öGV7G2ÀĞ¢öåFövvÆS¢FövvÆU&öGV7BÀĞ¢öäFC¢FDFVÖõ&öGV7BÀĞ¢’ÀĞ¢2Óâ–çfVçF÷'•f–Wr†&F6†W3¢&F6†W2Âöå&V6V—fS¢&V6V—fT&F6‚’ÀĞ¢òÓâ&W÷'G5f–Wr†÷&FW'3¢÷&FW'2’ÀĞ¢Ó°Ğ Ğ¢&WGW&â66fföÆB€Ğ¢&#¢v–FPĞ¢òçVÆÀĞ¢¢&"€Ğ¢F—FÆS¢6öç7BFVÖô'&æB‚’ÀĞ¢&÷GFöÓ¢6öç7B&VfW'&VE6—¦R€Ğ¢&VfW'&VE6—¦S¢6—¦Ræg&öÔ†V–v‡Bƒ3"’ÀĞ¢6†–ÆC¢FVÖô&ææW"‚’ÀĞ¢’ÀĞ¢’ÀĞ¢&÷GFöÔæf–vF–öä&#¢v–FPĞ¢òçVÆÀĞ¢¢æf–vF–öä&"€Ğ¢6VÆV7FVD–æFWƒ¢6VÆV7FVD–æFW‚ÀĞ¢öäFW7F–æF–öå6VÆV7FVC¢‡fÇVR’Óâ6WE7FFR‚‚’Óâ6VÆV7FVD–æFW‚ÒfÇVR’ÀĞ¢FW7F–æF–öç3¢°Ğ¢f÷"†f–æÂ—FVÒ–âFW7F–æF–öç2Ğ¢æf–vF–öäFW7F–æF–öâ†–6öã¢–6öâ†—FVÒæ–6öâ’ÂÆ&VÃ¢—FVÒçF—FÆR’ÀĞ¢ÒÀĞ¢’ÀĞ¢&öG“¢&÷r€Ğ¢6†–ÆG&Vã¢°Ğ¢–b‡v–FR’ôFW6·F÷6–FV&"€Ğ¢FW7F–æF–öç3¢FW7F–æF–öç2ÀĞ¢6VÆV7FVD–æFWƒ¢6VÆV7FVD–æFW‚ÀĞ¢öå6VÆV7FVC¢‡fÇVR’Óâ6WE7FFR‚‚’Óâ6VÆV7FVD–æFW‚ÒfÇVR’ÀĞ¢’ÀĞ¢W‡æFVB€Ğ¢6†–ÆC¢6fT&V€Ğ¢6†–ÆC¢FF–ær€Ğ¢FF–æs¢VFvT–ç6WG2æÆÂ‡v–FRò#B¢B’ÀĞ¢6†–ÆC¢vRÀĞ¢’ÀĞ¢’ÀĞ¢’ÀĞ¢ÒÀĞ¢’ÀĞ¢“°Ğ¢ĞĞ§ĞĞ Ğ¦6Æ72ôFW6·F÷6–FV&"W‡FVæG27FFVÆW75v–FvWB°Ğ¢6öç7BôFW6·F÷6–FV&"‡°Ğ¢&WV—&VBF†—2æFW7F–æF–öç2ÀĞ¢&WV—&VBF†—2ç6VÆV7FVD–æFW‚ÀĞ¢&WV—&VBF†—2æöå6VÆV7FVBÀĞ¢Ò“°Ğ Ğ¢f–æÂÆ—7CÂ‡µ7G&–ærF—FÆRÂ–6öäFF–6öçÒ“âFW7F–æF–öç3°Ğ¢f–æÂ–çB6VÆV7FVD–æFWƒ°Ğ¢f–æÂfÇVT6†ævVCÆ–çCâöå6VÆV7FVC°Ğ Ğ¢÷fW'&–FPĞ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’°Ğ¢&WGW&â6öçF–æW"€Ğ¢v–GFƒ¢#S"ÀĞ¢Ö&v–ã¢6öç7BVFvT–ç6WG2æÆÂƒb’ÀĞ¢FF–æs¢6öç7BVFvT–ç6WG2æÆÂƒB’ÀĞ¢FV6÷&F–öã¢&÷„FV6÷&F–öâ€Ğ¢6öÆ÷#¢6öç7B6öÆ÷"ƒ„dc#S3s$’ÀĞ¢&÷&FW%&F—W3¢&÷&FW%&F—W2æ6—&7VÆ"ƒ#b’ÀĞ¢’ÀĞ¢6†–ÆC¢6öÇVÖâ€Ğ¢6†–ÆG&Vã¢°Ğ¢6öç7BFF–ær‡FF–æs¢VFvT–ç6WG2æÆÂƒ"’Â6†–ÆC¢FVÖô'&æB†F&³¢G'VR’’ÀĞ¢6öç7BFVÖô&ææW"†F&³¢G'VR’ÀĞ¢6öç7B6—¦VD&÷‚††V–v‡C¢‚’ÀĞ¢f÷"‡f"–æFW‚Ò²–æFW‚ÂFW7F–æF–öç2æÆVæwFƒ²–æFW‚²²Ğ¢FF–ær€Ğ¢FF–æs¢6öç7BVFvT–ç6WG2æöæÇ’†&÷GFöÓ¢b’ÀĞ¢6†–ÆC¢Æ—7EF–ÆR€Ğ¢6VÆV7FVC¢6VÆV7FVD–æFW‚ÓÒ–æFW‚ÀĞ¢6VÆV7FVEF–ÆT6öÆ÷#¢6öç7B6öÆ÷"ƒ„dcDscS’ÀĞ¢6†S¢&÷VæFVE&V7FævÆT&÷&FW"†&÷&FW%&F—W3¢&÷&FW%&F—W2æ6—&7VÆ"ƒB’’ÀĞ¢ÆVF–æs¢–6öâ€Ğ¢FW7F–æF–öç5¶–æFW…Òæ–6öâÀĞ¢6öÆ÷#¢6VÆV7FVD–æFW‚ÓÒ–æFW€Ğ¢ò6öÆ÷'2çv†—FPĞ¢¢6öç7B6öÆ÷"ƒ„dd#”3„$2’ÀĞ¢’ÀĞ¢F—FÆS¢FW‡B€Ğ¢FW7F–æF–öç5¶–æFW…ÒçF—FÆRÀĞ¢7G–ÆS¢FW‡E7G–ÆR€Ğ¢6öÆ÷#¢6VÆV7FVD–æFW‚ÓÒ–æFW€Ğ¢ò6öÆ÷'2çv†—FPĞ¢¢6öç7B6öÆ÷"ƒ„dd#”3„$2’ÀĞ¢’ÀĞ¢’ÀĞ¢öåF¢‚’Óâöå6VÆV7FVB†–æFW‚’ÀĞ¢’ÀĞ¢’ÀĞ¢6öç7B76W"‚’ÀĞ¢8×Ëh‘éì¶»§q«^vÃBƒBˆİ™\œšYCBˆÚYÙ]Z[
+Z[ÛÛ^ÛÛ^
+HÃBˆš[˜[ÛÛÜˆHİÚ]Ú
+X™[
+HÃBˆ	ö*¶+vb6ã6a8 #6-6+öaÉÈOˆÛÛœİÛÛÜŠ‘‘QJKBˆ	ö)ö,v,ö)öa8 #6-6+öaÉÈOˆÛÛœİÛÛÜŠ‘‘MQŒ
+KBˆ	ö+ö,H6+v)öa6(¶av)ö+öaø #6,ö)ö,¶ã	ÈOˆÛÛœİÛÛÜŠ‘‘‘‘MÍJKBˆ	öo¶,v+ö)ö+¶*¸ #6-6+öaÉÈOˆÛÛœİÛÛÜŠ‘‘ÑNQLJKBˆ	ö*¶)ö,¶aø #6b6)ö,v+ÉÈOˆÛÛœİÛÛÜŠ‘‘QJKBˆÈOˆÛÛœİÛÛÜŠ‘‘Œ‘L‘
+KBˆNÃBˆ™]\›ˆÚ\
+˜XÚÙÜ›İ[™ÛÛÜˆÛÛÜ‹X™[ˆ^
+X™[
+JNÃBˆCBŸCBƒB˜Û\ÜÈ[™›Ô[^[™Èİ][\ÜÕÚYÙ]ÃBˆÛÛœİ[™›Ô[
+\Ë^Üİ\\‹šÙ^_JNÃBƒBˆš[˜[İš[™È^ÃBƒBˆİ™\œšYCBˆÚYÙ]Z[
+Z[ÛÛ^ÛÛ^
+HÃBˆ™]\›ˆÛÛZ[™\ŠBˆY[™ÎˆÛÛœİYÙR[œÙ]ËœŞ[[Y]šXÊÜš^›Û[ˆL™\XØ[ˆÊKBˆXÛÜ˜][Ûˆ›ŞXÛÜ˜][ÛŠBˆÛÛÜˆÛÛœİÛÛÜŠ‘‘ŒŒÑPÊKBˆ›Ü™\”˜Y]\Îˆ›Ü™\”˜Y]\Ë˜Ú\˜İ[\ŠL
+KBˆ
+KBˆÚ[ˆ^
+^İ[NˆÛÛœİ^İ[J›ÛÚ^™NˆL
+JKBˆ
+NÃBˆCBŸCBƒB˜Û\ÜÈ[[ÓÜ™\ˆÃBˆÛÛœİ[[ÓÜ™\ŠÃBˆ™\]Z\™Y\ËšYBˆ™\]Z\™Y\Ë˜İ\İÛY\‹Bˆ™\]Z\™Y\Ë˜Ú]KBˆ™\]Z\™Y\Ëœ^XX›UÛX[‹Bˆ™\]Z\™Y\Ë™\İ[X]YÛÜİÛX[‹Bˆ™\]Z\™Y\Ëœİ]KBˆ™\]Z\™Y\Ëœ^[Y[™Y™\™[˜ÙKBˆJNÃBƒBˆš[˜[İš[™ÈYÃBˆš[˜[İš[™Èİ\İÛY\ÃBˆš[˜[İš[™ÈÚ]NÃBˆš[˜[[^XX›UÛX[ÃBˆš[˜[[\İ[X]YÛÜİÛX[ÃBˆš[˜[İš[™Èİ]NÃBˆš[˜[İš[™È^[Y[™Y™\™[˜ÙNÃBƒBˆ[[ÓÜ™\ˆÛÜUÚ]
+Ôİš[™ÏÈİ]_JHÃBˆ™]\›ˆ[[ÓÜ™\ŠBˆYˆYBˆİ\İÛY\ˆİ\İÛY\‹BˆÚ]NˆÚ]KBˆ^XX›UÛX[ˆ^XX›UÛX[‹Bˆ\İ[X]YÛÜİÛX[ˆ\İ[X]YÛÜİÛX[‹Bˆİ]Nˆİ]HÏÈ\Ëœİ]KBˆ^[Y[™Y™\™[˜ÙNˆ^[Y[™Y™\™[˜ÙKBˆ
+NÃBˆCBŸCBƒB˜Û\ÜÈ[[Ô›ÙXİÃBˆÛÛœİ[[Ô›ÙXİ
+ÃBˆ™\]Z\™Y\ËœÚİKBˆ™\]Z\™Y\Ë]KBˆ™\]Z\™Y\Ë˜Ø]YÛÜKBˆ™\]Z\™Y\ËœXÚØYÙSX™[Bˆ™\]Z\™Y\ËœšXÙUÛX[‹Bˆ™\]Z\™Y\ËœİØÚËBˆ™\]Z\™Y\ËœX›\ÚYBˆ™\]Z\™Y\ËšXÛÛ‹BˆJNÃBƒBˆš[˜[İš[™ÈÚİNÃBˆš[˜[İš[™È]NÃBˆš[˜[İš[™ÈØ]YÛÜNÃBˆš[˜[İš[™ÈXÚØYÙSX™[ÃBˆš[˜[[šXÙUÛX[ÃBˆš[˜[[İØÚÎÃBˆš[˜[›ÛÛX›\ÚYÃBˆš[˜[İš[™ÈXÛÛÃBƒBˆ[[Ô›ÙXİÛÜUÚ]
+Ø›ÛÛÈX›\ÚYJHÃBˆ™]\›ˆ[[Ô›ÙXİ
+BˆÚİNˆÚİKBˆ]Nˆ]KBˆØ]YÛÜNˆØ]YÛÜKBˆXÚØYÙSX™[ˆXÚØYÙSX™[BˆšXÙUÛX[ˆšXÙUÛX[‹BˆİØÚÎˆİØÚËBˆX›\ÚYˆX›\ÚYÏÈ\ËœX›\ÚYBˆXÛÛˆXÛÛ‹Bˆ
+NÃBˆCBŸCBƒB˜Û\ÜÈ[[Ğ˜]ÚÃBˆÛÛœİ[[Ğ˜]Ú
+ÃBˆ™\]Z\™Y\Ë›İBˆ™\]Z\™Y\ËœÚİKBˆ™\]Z\™Y\Ëœİ\Y\‹Bˆ™\]Z\™Y\Ëœ™[XZ[š[™ËBˆ™\]Z\™Y\Ë[š]ÛÜİÛX[‹Bˆ™\]Z\™Y\Ë˜™\İ™Y›Ü™KBˆ™\]Z\™Y\Ëœİ]\ËBˆJNÃBƒBˆš[˜[İš[™ÈİÃBˆš[˜[İš[™ÈÚİNÃBˆš[˜[İš[™Èİ\Y\ÃBˆš[˜[[™[XZ[š[™ÎÃBˆš[˜[[[š]ÛÜİÛX[ÃBˆš[˜[İš[™È™\İ™Y›Ü™NÃBˆš[˜[İš[™Èİ]\ÎÃBŸCBƒB“\İ[[ÓÜ™\ˆÙYYÜ™\œÊ
+HOˆÛÛœİÃBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLL	ËBˆİ\İÛY\ˆ	ö,ö)ö,v)È6)ö+vav+öã	ËBˆÚ]Nˆ	ö*¶aö,v)öa‰ËBˆ^XX›UÛX[ˆLLBˆ\İ[X]YÛÜİÛX[ˆŒBˆİ]Nˆ	öo¶,v+ö)ö+¶*¸ #6-6+öaÉËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKNLÉËBˆ
+KBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLLÉËBˆİ\İÛY\ˆ	öav+vav+È6,v-¶)öã6ã	ËBˆÚ]Nˆ	öªv,v+	ËBˆ^XX›UÛX[ˆLLBˆ\İ[X]YÛÜİÛX[ˆLBˆİ]Nˆ	ö+ö,H6+v)öa6(¶av)ö+öaø #6,ö)ö,¶ã	ËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKN‰ËBˆ
+KBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLL‰ËBˆİ\İÛY\ˆ	öa¶«ö)ö,H6)öªv*6,vã	ËBˆÚ]Nˆ	ö)ö-v`vaö)öa‰ËBˆ^XX›UÛX[ˆÍÍLBˆ\İ[X]YÛÜİÛX[ˆNBˆİ]Nˆ	ö)ö,v,ö)öa8 #6-6+öaÉËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKNŒÎIËBˆ
+KBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLLIËBˆİ\İÛY\ˆ	ö.va6ã6avb6,öb6ã	ËBˆÚ]Nˆ	ö-6ã6,v)ö,‰ËBˆ^XX›UÛX[ˆMNBˆ\İ[X]YÛÜİÛX[ˆLÌBˆİ]Nˆ	ö*¶+vb6ã6a8 #6-6+öaÉËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKNŒÍ	ËBˆ
+KBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLL	ËBˆİ\İÛY\ˆ	öav,vã6aH6ªv,vã6avã	ËBˆÚ]Nˆ	ö,v-6*‰ËBˆ^XX›UÛX[ˆLBˆ\İ[X]YÛÜİÛX[ˆŒBˆİ]Nˆ	ö*¶+vb6ã6a8 #6-6+öaÉËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKNŒÌL‰ËBˆ
+KBˆ[[ÓÜ™\ŠBˆYˆ	Ó”ËLLÉËBˆİ\İÛY\ˆ	ö,v-¶)È6a¶)ö+ö,vã	ËBˆÚ]Nˆ	ö*¶*6,vã6,‰ËBˆ^XX›UÛX[ˆLÌBˆ\İ[X]YÛÜİÛX[ˆŒLBˆİ]Nˆ	ö*¶+vb6ã6a8 #6-6+öaÉËBˆ^[Y[™Y™\™[˜ÙNˆ	ÑSSËTVKNŒN	ËBˆ
+KBˆNÃBƒB“\İ[[Ô›ÙXİˆÙYY›ÙXİÊ
+HOˆÛÛœİÃBˆ[[Ô›ÙXİ
+ÚİNˆ	ÔKPRĞ‹ML	Ë]Nˆ	öo¶,ö*¶aÈ6)öªv*6,vã6avav*¶)ö,‰ËØ]YÛÜNˆ	öav.¶,¶ã6+6)ö*‰ËXÚØYÙSX™[ˆ	öívì6ì6«ö,vaIËšXÙUÛX[ˆLİØÚÎˆL‹X›\ÚYˆYKXÛÛˆ	ü'ég	ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	ÔKPRKML	Ë]Nˆ	öo¶,ö*¶aÈ6)ö+vav+ö(¶`¶)öã6ã	ËØ]YÛÜNˆ	öav.¶,¶ã6+6)ö*‰ËXÚØYÙSX™[ˆ	öívì6ì6«ö,vaIËšXÙUÛX[ˆLİØÚÎˆLX›\ÚYˆYKXÛÛˆ	ü'çè‰ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	Ó•KPSKML	Ë]Nˆ	ö*6)ö+ö)öaH6+ö,v+¶*¶ã6+¶)öaIËØ]YÛÜNˆ	öav.¶,¶ã6+6)ö*‰ËXÚØYÙSX™[ˆ	öívì6ì6«ö,vaIËšXÙUÛX[ˆÌÌİØÚÎˆM‹X›\ÚYˆYKXÛÛˆ	ü'ã,	ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	Ó•KUĞSML	Ë]Nˆ	öav.¶,ˆ6«ö,v+öb6ã6)öã6,v)öa¶ã	ËØ]YÛÜNˆ	öav.¶,¶ã6+6)ö*‰ËXÚØYÙSX™[ˆ	öívì6ì6«ö,vaIËšXÙUÛX[ˆÌLİØÚÎˆX›\ÚYˆYKXÛÛˆ	ü'éè	ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	Ñ‹SRVLÌ	Ë]Nˆ	öavã6ªv,È6avã6b6aÈ6+¶-6ªIËØ]YÛÜNˆ	öavã6b6aÈ6+¶-6ªIËXÚØYÙSX™[ˆ	öìöì6ì6«ö,vaIËšXÙUÛX[ˆŒÎİØÚÎˆŒKX›\ÚYˆYKXÛÛˆ	ü'ãb‰ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	ÔÑKTSKML	Ë]Nˆ	ö*¶+¶avaÈ6ªv+öb6«öb6-6*¶ã	ËØ]YÛÜNˆ	ö*¶a¶`¶a6)ö*‰ËXÚØYÙSX™[ˆ	öívì6ì6«ö,vaIËšXÙUÛX[ˆNİØÚÎˆ‹X›\ÚYˆYKXÛÛˆ	ü'ã ÉÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	ĞÒËT“ËM	Ë]Nˆ	öªvb6ªvã6o¶,vb6*¶)¶ã6a¶ã	ËØ]YÛÜNˆ	ö+¶b6,v)öªvã6,ö)öa6aIËXÚØYÙSX™[ˆ	öo¶ªH6í6.v+ö+öã	ËšXÙUÛX[ˆÍŒİØÚÎˆŒX›\ÚYˆYKXÛÛˆ	ü'ãj‰ÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	ÑÑ‹TT•KLL‰Ë]Nˆ	ö+6.v*6aÈ6aö+öã6aÈ6+öb6,vaöavã	ËØ]YÛÜNˆ	öaö+öã6aÉËXÚØYÙSX™[ˆ	öìvjöìˆ6ªvã6a6b6«ö,vaIËšXÙUÛX[ˆLLİØÚÎˆËX›\ÚYˆYKXÛÛˆ	ü'ã IÊKBˆ[[Ô›ÙXİ
+ÚİNˆ	Ñ‹PT’PÓÕLL	Ë]Nˆ	ö*6,v«öaÈ6,¶,v+ö(¶a6b	ËØ]YÛÜNˆ	öavã6b6aÈ6+¶-6ªIËXÚØYÙSX™[ˆ	öì¶ívì6«ö,vaIËšXÙUÛX[ˆNMLİØÚÎˆKX›\ÚYˆ˜[ÙKXÛÛˆ	ü'ãdIÊKBˆNÃBƒB“\İ[[Ğ˜]ÚˆÙYY˜]Ú\Ê
+HOˆÛÛœİÃBˆ[[Ğ˜]Ú
+İˆ	ÓÕLMKLÌIËÚİNˆ	ÔKPRĞ‹ML	Ëİ\Y\ˆ	ö*¶.v)öb6a¶ã6,v`v,öa¶+6)öa‰Ë™[XZ[š[™ÎˆL‹[š]ÛÜİÛX[ˆÌN™\İ™Y›Ü™Nˆ	öìví6ì6í‹öì6ìKöì¶ì	Ëİ]\Îˆ	ö`v.v)öa	ÊKBˆ[[Ğ˜]Ú
+İˆ	ÓÕLMKL	ËÚİNˆ	ÔKPRKML	Ëİ\Y\ˆ	ö+¶-6ªv*6)ö,H6ªv,vav)öa‰Ë™[XZ[š[™ÎˆL[š]ÛÜİÛX[ˆÌŒ™\İ™Y›Ü™Nˆ	öìví6ì6íKöìvì‹öì¶íIËİ]\Îˆ	ö`v.v)öa	ÊKBˆ[[Ğ˜]Ú
+İˆ	ÓÕLMKLŒÉËÚİNˆ	Ó•KUĞSML	Ëİ\Y\ˆ	ö*6)ö.¶+ö)ö,v)öaˆ6*¶b6ã6,ö,vªv)öa‰Ë™[XZ[š[™Îˆ[š]ÛÜİÛX[ˆŒLL™\İ™Y›Ü™Nˆ	öìví6ì6íKöìvìöìvì	Ëİ]\Îˆ	öa¶,¶+öã6ªH6av-v,v`IÊKBˆ[[Ğ˜]Ú
+İˆ	ÓÕLMKLŒ	ËÚİNˆ	ÔÑKTSKML	Ëİ\Y\ˆ	ö*6)ö,¶,v«ö)öa¶ã6,ö*6,¶ã6a¶aÉË™[XZ[š[™Îˆ‹[š]ÛÜİÛX[ˆL™\İ™Y›Ü™Nˆ	öìví6ì6íKöì6îKöìöì	Ëİ]\Îˆ	öªvax #6avb6+6b6+öã	ÊKBˆNÃBƒB”İš[™ÈÛX[Š[H˜[YJHÃBˆ™]\›ˆ˜[YKœ›İ[™
+
+KÔİš[™Ê
+Kœ™\XÙP[X\Y
+Bˆ™YÑ^
+‰×ŠÏJÌßJJÊÈW
+JIÊKBˆ
+ÊHOˆ	ök	ËBˆ
+NÃBŸCB
