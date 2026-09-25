@@ -55,7 +55,7 @@ jobs:
     env:
       ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_ci
       Admin__Email: ci-owner@mazeduneh.test
-      Admin__PasswordHash: 9fe9a5e4ddf44437229cb7ba4cae41523e828be21439246eaeb995ebd58741b1
+      Admin__PasswordHash: e285b7f5f8dd444780a92a2831698caa12a03c5b12c66d4b4a4c6f4688216ea2
       Admin__TokenSigningKey: mazeduneh-ci-signing-key-must-be-long-and-private
       Payments__SandboxEnabled: 'true'
     steps:
