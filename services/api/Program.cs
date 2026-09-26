@@ -14,6 +14,7 @@ builder.Services.AddCors(options => options.AddPolicy("Storefront", policy =>
 }));
 builder.Services.AddSingleton<ProductCatalog>();
 builder.Services.AddSingleton<CatalogDatabase>();
+builder.Services.AddSingleton<InventoryLedgerDatabase>();
 builder.Services.AddAdminSecurity(builder.Configuration);
 builder.Services.AddCheckout();
 builder.Services.AddPayments();
@@ -28,12 +29,14 @@ app.MapAdminSecurity();
 app.MapCheckout();
 app.MapPayments();
 app.MapOrderManagement();
+app.MapInventoryLedger();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
 var database = app.Services.GetRequiredService<CatalogDatabase>();
 if (database.IsConfigured)
 {
     await database.InitializeAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
     if (persistedProducts.Count == 0)
     {
