@@ -160,7 +160,7 @@ export function LiveProductPage({ slug }: { slug: string }) {
   }, [slug]);
 
   if (loading && !product) {
-    return <ShopShell kicker="محصول" title="در حال دریافت اطلاعات…" description="اطلاعات محصول منتشرشده در حال بارگذاری است." />;
+    return <ShopShell kicker="محصول" title="در حال دریافت اطلاعات…" description="اطلاعات محصول منتشرشده در حال بارگذاری است."><span /></ShopShell>;
   }
   if (!product) {
     return <ShopShell kicker="محصول پیدا نشد" title="این محصول در کاتالوگ موجود نیست." description="ممکن است محصول از فروش خارج شده باشد یا نشانی آن اشتباه باشد."><section className={styles.content}><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></section></ShopShell>;
