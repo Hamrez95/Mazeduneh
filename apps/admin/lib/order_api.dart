@@ -40,6 +40,27 @@ class OrderApiClient {
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<AdminAnalytics> fetchAnalytics({int days = 30}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: {'days': '$days'}), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminAnalytics.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<AdminNotifications> fetchNotifications() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/notifications'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminNotifications.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<StockAdjustmentResult> adjustStock(String sku, int quantityDelta, String reason) async {
+    final response = await _client.post(Uri.parse('$baseUrl/api/v1/admin/inventory/adjust'), headers: _headers(json: true), body: jsonEncode({'sku': sku, 'quantityDelta': quantityDelta, 'reason': reason}));
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return StockAdjustmentResult.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<List<StockMovement>> fetchInventoryMovements({String? sku, int limit = 100}) async {
     final query = <String, String>{'limit': '$limit', if (sku != null && sku.isNotEmpty) 'sku': sku};
     final response = await _client.get(
@@ -135,6 +156,44 @@ class StockMovement {
         reason: json['reason'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
+}
+
+class AdminAnalytics {
+  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent});
+  final int days;
+  final int orderCount;
+  final int unitsSold;
+  final num revenue;
+  final num cost;
+  final num grossProfit;
+  final num grossMarginPercent;
+  factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(days: json['days'] as int, orderCount: json['orderCount'] as int, unitsSold: json['unitsSold'] as int, revenue: json['revenue'] as num, cost: json['cost'] as num, grossProfit: json['grossProfit'] as num, grossMarginPercent: json['grossMarginPercent'] as num);
+}
+
+class AdminNotification {
+  const AdminNotification({required this.type, required this.title, required this.detail});
+  final String type;
+  final String title;
+  final String detail;
+  factory AdminNotification.fromJson(Map<String, dynamic> json) => AdminNotification(type: json['type'] as String, title: json['title'] as String, detail: json['detail'] as String);
+}
+
+class AdminNotifications {
+  const AdminNotifications({required this.awaitingPayment, required this.lowStockItems, required this.items});
+  final int awaitingPayment;
+  final int lowStockItems;
+  final List<AdminNotification> items;
+  int get count => items.length;
+  factory AdminNotifications.fromJson(Map<String, dynamic> json) => AdminNotifications(awaitingPayment: json['awaitingPayment'] as int, lowStockItems: json['lowStockItems'] as int, items: (json['items'] as List<dynamic>).map((item) => AdminNotification.fromJson(item as Map<String, dynamic>)).toList());
+}
+
+class StockAdjustmentResult {
+  const StockAdjustmentResult({required this.isSuccess, this.sku, this.balanceAfter, this.message});
+  final bool isSuccess;
+  final String? sku;
+  final int? balanceAfter;
+  final String? message;
+  factory StockAdjustmentResult.fromJson(Map<String, dynamic> json) => StockAdjustmentResult(isSuccess: json['isSuccess'] as bool? ?? false, sku: json['sku'] as String?, balanceAfter: (json['balanceAfter'] as num?)?.toInt(), message: json['message'] as String?);
 }
 
 class AdminDashboard {
