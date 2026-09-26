@@ -80,12 +80,14 @@ const galleryByArt: Partial<Record<ProductArt, string[]>> = {
 };
 
 function imageFor(product: DemoProduct) {
-  return imageByProductId[product.id] ?? imageByArt[product.art];
+  return product.primaryImage || imageByProductId[product.id] || imageByArt[product.art];
 }
 
 export function getProductArtworkGallery(product: DemoProduct) {
   const primary = imageFor(product);
-  return Array.from(new Set([primary, ...(galleryByProductId[product.id] ?? galleryByArt[product.art] ?? [])]));
+  const managedGallery = product.galleryImages ?? [];
+  const fallbackGallery = galleryByProductId[product.id] ?? galleryByArt[product.art] ?? [];
+  return Array.from(new Set([primary, ...managedGallery, ...(managedGallery.length ? [] : fallbackGallery)]));
 }
 
 export function ProductArtwork({
