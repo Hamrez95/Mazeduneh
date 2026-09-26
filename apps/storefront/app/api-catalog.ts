@@ -9,6 +9,7 @@ type ApiProductVariant = {
   displayLabel: string;
   price: number;
   availablePackages: number;
+  costPrice?: number;
 };
 
 export type ApiProduct = {
@@ -21,6 +22,13 @@ export type ApiProduct = {
   unitType: "Weight" | "Count";
   isPublished: boolean;
   variants: ApiProductVariant[];
+  shortDescription?: string;
+  description?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  primaryImage?: string;
+  galleryImages?: string[];
+  specifications?: Record<string, string>;
 };
 
 export const API_BASE = (
@@ -83,6 +91,12 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     packageLabel: variant.displayLabel,
     stock: variant.availablePackages,
     note: `کد کالا: ${variant.sku}`,
+    description: product.description || product.shortDescription || `${product.title} با کیفیت و بسته‌بندی مزه‌دونه.`,
+    seoTitle: product.seoTitle || product.title,
+    seoDescription: product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`,
+    primaryImage: product.primaryImage || undefined,
+    galleryImages: product.galleryImages?.length ? product.galleryImages : undefined,
+    specifications: product.specifications || undefined,
   };
 }
 
