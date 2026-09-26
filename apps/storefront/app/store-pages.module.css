@@ -469,3 +469,20 @@
   .pageHeroCopy h1 { font-size: 29px; }
   .productVisual { height: 250px; }
 }
+
+/* Keep only transparent artwork in the shop hero. */
+.pageHeroImageWalnut {
+  width: 31%;
+  right: -1%;
+  bottom: 8%;
+  z-index: 2;
+  opacity: .92;
+  transform: rotate(10deg);
+}
+@media (max-width: 760px) {
+  .pageHeroImageWalnut {
+    width: 29%;
+    right: 0;
+    bottom: 9%;
+  }
+}

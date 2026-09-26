@@ -98,10 +98,9 @@ export function ShopShell({ children, title, kicker, description }: { children: 
       <img className={styles.pageHeroImage + " " + styles.pageHeroImageBack} src="/products/dragon-box-new.webp" alt="" />
       <img className={styles.pageHeroImage + " " + styles.pageHeroImageSide} src="/products/almond-pouch-new.webp" alt="" />
       <img className={styles.pageHeroImage + " " + styles.pageHeroImageFront} src="/products/pistachio-pouch-new.webp" alt="" />
-      <img className={styles.pageHeroImage + " " + styles.pageHeroImageGift} src="/products/gift-boxes-new.webp" alt="" />
+      <img className={styles.pageHeroImage + " " + styles.pageHeroImageWalnut} src="/products/walnut-character-new.webp" alt="" />
       <span className={styles.pageHeroSpark + " " + styles.pageHeroSparkOne}>✦</span>
       <span className={styles.pageHeroSpark + " " + styles.pageHeroSparkTwo}>✦</span>
-      <span className={styles.pageHeroTag}>هر روز، یک مزهٔ خوب</span>
     </div>
   </section>{children}<StoreFooter /></main>;
 }
