@@ -2,18 +2,18 @@
 
 :root {
   --green-900: #243127;
-  --green-800: #31543a;
-  --green-700: #3f6b45;
-  --green-500: #6e9b67;
-  --green-200: #cfe2c7;
-  --green-100: #e7f1e2;
+  --green-800: #2c5147;
+  --green-700: #4c7568;
+  --green-500: #7a9f91;
+  --green-200: #cfe2dc;
+  --green-100: #e4eee9;
   --cream: #fff9ef;
   --sand: #f2e7d6;
   --apricot: #f7c58b;
   --peach: #f8ddd0;
   --lilac: #e8e1f3;
   --white: #ffffff;
-  --muted: #667168;
+  --muted: #5f6f67;
   --line: #e4e8e2;
   --shadow: 0 18px 55px rgba(38, 62, 43, 0.09);
 }
