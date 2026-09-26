@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Npgsql;
 
-public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<CheckoutDatabase> logger)
+public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<CheckoutDatabase> logger, InventoryLedgerDatabase ledger)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -155,7 +155,11 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                     return PersistedCheckoutResult.OutOfStock(
                         "موجودی هنگام ثبت سفارش تغییر کرد؛ سبد خرید را دوباره بررسی کنید.", [line.Sku]);
                 }
-                stockLevels.Add(new StockLevelChange(line.Sku, Convert.ToInt32(remaining)));
+                var remainingPackages = Convert.ToInt32(remaining);
+                await ledger.RecordAsync(
+                    connection, transaction, line.Sku, -line.Quantity, "Reserved",
+                    remainingPackages, null, "customer", "checkout-reservation", cancellationToken);
+                stockLevels.Add(new StockLevelChange(line.Sku, remainingPackages));
             }
 
             var subtotal = lines.Sum(item => item.LineTotal);
@@ -262,7 +266,13 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 release.Parameters.AddWithValue("sku", line.Sku);
                 var available = await release.ExecuteScalarAsync(cancellationToken);
                 if (available is not null)
-                    changes.Add(new StockLevelChange(line.Sku, Convert.ToInt32(available)));
+                {
+                    var availablePackages = Convert.ToInt32(available);
+                    await ledger.RecordAsync(
+                        connection, transaction, line.Sku, line.Quantity, "ReservationReleased",
+                        availablePackages, orderId, "system", "reservation-expired", cancellationToken);
+                    changes.Add(new StockLevelChange(line.Sku, availablePackages));
+                }
             }
 
             var now = DateTimeOffset.UtcNow;
