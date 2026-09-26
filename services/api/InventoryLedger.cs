@@ -15,7 +15,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
                 quantity_delta integer not null check (quantity_delta <> 0),
                 movement_type varchar(32) not null,
                 balance_after integer not null check (balance_after >= 0),
-                order_id uuid null references checkout_orders(id) on delete set null,
+                order_id uuid null,
                 actor text not null,
                 reason text not null,
                 created_at timestamptz not null
