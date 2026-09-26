@@ -56,7 +56,11 @@ type CheckoutForm = {
   postalCode: string;
 };
 
-const API_BASE = (process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL ?? "").replace(/\/$/, "");
+const API_BASE = (
+  process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim()
+  || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim()
+  || ""
+).replace(/\/$/, "");
 const CART_KEY = "mazeduneh-cart-v1";
 
 const previewProducts: Product[] = [
