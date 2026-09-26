@@ -98,11 +98,11 @@ export default function ProfessionalStorefront() {
         <div className={styles.heroVisual}>
           <span className={styles.heroCaption}>پرفروشِ این هفته</span>
           <div className={styles.heroPackagingHalo} aria-hidden="true" />
-          <figure className={${styles.heroPackaging} ${styles.heroPackagingBack}}><img src="/products/cocoa-cookie-dragon.webp" alt="" /></figure>
-          <figure className={${styles.heroPackaging} ${styles.heroPackagingSide}}><img src="/products/almond-pouch.webp" alt="" /></figure>
-          <figure className={${styles.heroPackaging} ${styles.heroPackagingFront}}><img src="/products/pistachio-pouch.webp" alt="" /></figure>
-          <span className={${styles.heroSpark} ${styles.heroSparkOne}} aria-hidden="true">✦</span>
-          <span className={${styles.heroSpark} ${styles.heroSparkTwo}} aria-hidden="true">✦</span>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingBack}`}><img src="/products/cocoa-cookie-dragon.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingSide}`}><img src="/products/almond-pouch.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingFront}`}><img src="/products/pistachio-pouch.webp" alt="" /></figure>
+          <span className={`${styles.heroSpark} ${styles.heroSparkOne}`} aria-hidden="true">✦</span>
+          <span className={`${styles.heroSpark} ${styles.heroSparkTwo}`} aria-hidden="true">✦</span>
           <div className={styles.heroPriceCard}>
             <small>پسته اکبری ممتاز</small>
             <b>{toman(demoProducts[0].price)} <span>تومان</span></b>
@@ -131,7 +131,7 @@ export default function ProfessionalStorefront() {
             ["/products/gift-wrap-packaging.webp", "پک هدیه"],
           ].map(([src, label]) => (
             <figure className={styles.packagingTile} key={src}>
-              <img src={src} alt={\`بسته‌بندی ${label}\`} loading="lazy" />
+              <img src={src} alt={`بسته‌بندی ${label}`} loading="lazy" />
               <figcaption>{label}</figcaption>
             </figure>
           ))}
