@@ -450,7 +450,7 @@
   }
   .pageHeroImageBack { width: 31%; right: 4%; top: 2%; }
   .pageHeroImageSide { width: 30%; left: 2%; bottom: 4%; }
-  .pageHeroImageFront { width: 46%; left: 27%; bottom: -4%; }
+  .pageHeroImageFront { width: 46%; left: 27%; bottom: 0; }
   .pageHeroImageGift { width: 33%; right: 0; bottom: 9%; }
   .pageHeroTag { right: 12%; top: 16%; padding: 6px 8px; font-size: 8px; }
   .pageHeroSpark { font-size: 1.3rem; }
