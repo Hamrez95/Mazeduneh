@@ -78,6 +78,18 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسته‌بندی ثبت شد.')));
   }
 
+  Future<void> _openEditDialog(Product product) async {
+    final updated = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories, initialProduct: product),
+    );
+    if (updated != true) return;
+    await widget.onReload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌روزرسانی شد.')));
+  }
+
   Future<void> _openCreateDialog() async {
     final created = await showDialog<bool>(
       context: context,
@@ -175,6 +187,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                                       ),
                                     ),
+                                    IconButton(onPressed: () => _openEditDialog(product), tooltip: 'ویرایش محصول', icon: const Icon(Icons.edit_outlined)),
                                     Chip(
                                       label: Text(product.isPublished ? 'منتشرشده' : 'پیش‌نویس'),
                                       backgroundColor: product.isPublished
@@ -262,10 +275,11 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
 }
 
 class _CreateProductDialog extends StatefulWidget {
-  const _CreateProductDialog({required this.api, required this.categories});
+  const _CreateProductDialog({required this.api, required this.categories, this.initialProduct});
 
   final CatalogApiClient api;
   final List<Category> categories;
+  final Product? initialProduct;
 
   @override
   State<_CreateProductDialog> createState() => _CreateProductDialogState();
@@ -291,6 +305,36 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
   bool submitting = false;
   String? errorMessage;
   late List<_VariantDraft> variants = _weightVariants();
+
+  @override
+  void initState() {
+    super.initState();
+    final product = widget.initialProduct;
+    if (product == null) return;
+    title.text = product.title;
+    slug.text = product.slug;
+    category.text = product.category;
+    origin.text = product.origin;
+    selectedCategory = widget.categories.any((item) => item.name == product.category) ? product.category : null;
+    unitType = product.unitType;
+    shortDescription.text = product.shortDescription;
+    description.text = product.description;
+    seoTitle.text = product.seoTitle;
+    seoDescription.text = product.seoDescription;
+    seoKeywords.text = product.seoKeywords;
+    primaryImage.text = product.primaryImage;
+    galleryImages.text = product.galleryImages.join('\\n');
+    specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    for (final variant in variants) variant.dispose();
+    variants = product.variants.map((variant) => _VariantDraft(
+      sku: variant.sku,
+      quantity: '${variant.quantity}',
+      label: variant.displayLabel,
+      priceToman: '${(variant.price / 10).round()}',
+      costPriceToman: '${(variant.costPrice / 10).round()}',
+      stock: '${variant.availablePackages}',
+    )).toList();
+  }
 
   @override
   void dispose() {
@@ -376,7 +420,28 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
             )
             .toList(),
       );
-      await widget.api.createProduct(command);
+      if (widget.initialProduct == null) {
+        await widget.api.createProduct(command);
+      } else {
+        await widget.api.updateProduct(
+          widget.initialProduct!.slug,
+          UpdateProductCommand(
+            title: command.title,
+            category: command.category,
+            origin: command.origin,
+            unitType: command.unitType,
+            variants: command.variants,
+            shortDescription: command.shortDescription,
+            description: command.description,
+            seoTitle: command.seoTitle,
+            seoDescription: command.seoDescription,
+            seoKeywords: command.seoKeywords,
+            primaryImage: command.primaryImage,
+            galleryImages: command.galleryImages,
+            specifications: command.specifications,
+          ),
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) setState(() => errorMessage = error.toString());
@@ -390,7 +455,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     return Dialog.fullscreen(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('محصول جدید'),
+          title: Text(widget.initialProduct == null ? 'محصول جدید' : 'ویرایش محصول'),
           leading: IconButton(
             onPressed: submitting ? null : () => Navigator.pop(context, false),
             icon: const Icon(Icons.close_rounded),
@@ -406,7 +471,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save_rounded),
-                label: const Text('ذخیره پیش‌نویس'),
+                label: Text(widget.initialProduct == null ? 'ذخیره پیش‌نویس' : 'ذخیره تغییرات'),
               ),
             ),
           ],
