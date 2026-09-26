@@ -827,7 +827,7 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
       const SizedBox(height: 10),
       _Input(width: double.infinity, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
       if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
-    ]))),
+    ])))),
     actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
   );
 }
