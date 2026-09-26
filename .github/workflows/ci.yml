@@ -1,0 +1,218 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  storefront:
+    name: Storefront
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/storefront
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type check
+        run: npm run typecheck
+      - name: Production static preview build
+        run: npm run build
+        env:
+          MAZEDUNEH_STATIC_EXPORT: 'true'
+      - name: Upload storefront preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazeduneh-storefront-preview
+          path: apps/storefront/out
+
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mazeduneh
+          POSTGRES_PASSWORD: mazeduneh_ci
+          POSTGRES_DB: mazeduneh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mazeduneh -d mazeduneh"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_ci
+      Admin__Email: ci-owner@mazeduneh.test
+      Admin__PasswordHash: e285b7f5f8dd444780a92a2831698caa12a03c5b12c66d4b4a4c6f4688216ea2
+      Admin__TokenSigningKey: mazeduneh-ci-signing-key-must-be-long-and-private
+      Payments__SandboxEnabled: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore services/api/Mazeduneh.Api.csproj
+      - name: Build
+        run: dotnet build services/api/Mazeduneh.Api.csproj --configuration Release --no-restore
+      - name: Durable checkout payment and order operations contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          start_api() {
+            dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/mazeduneh-api.log 2>&1 &
+            API_PID=$!
+            export API_PID
+            for attempt in $(seq 1 40); do
+              if curl -fsS http://127.0.0.1:5099/health > /dev/null; then return 0; fi
+              sleep 1
+            done
+            cat /tmp/mazeduneh-api.log
+            return 1
+          }
+          stop_api() {
+            kill "$API_PID" || true
+            wait "$API_PID" || true
+          }
+          trap 'stop_api' EXIT
+          start_api
+
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/checkout/orders \
+            -H 'Content-Type: application/json' \
+            -H 'Idempotency-Key: ci-checkout-0001' \
+            --data '{"customerName":"تست CI","mobile":"09120000000","province":"تهران","city":"تهران","address":"نشانی تست قرارداد","postalCode":"1234567890","lines":[{"sku":"PI-AKB-250","quantity":1}]}' \
+            > /tmp/order-created.json
+
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/checkout/orders \
+            -H 'Content-Type: application/json' \
+            -H 'Idempotency-Key: ci-checkout-0001' \
+            --data '{"customerName":"تست CI","mobile":"09120000000","province":"تهران","city":"تهران","address":"نشانی تست قرارداد","postalCode":"1234567890","lines":[{"sku":"PI-AKB-250","quantity":1}]}' \
+            > /tmp/order-replayed.json
+
+          python3 - <<'PY'
+          import json
+          created = json.load(open('/tmp/order-created.json', encoding='utf-8'))
+          replayed = json.load(open('/tmp/order-replayed.json', encoding='utf-8'))
+          assert created['id'] == replayed['id']
+          assert created['payable'] == replayed['payable']
+          assert created['state'] == 'AwaitingPayment'
+          open('/tmp/order-id', 'w').write(created['id'])
+          open('/tmp/receipt-token', 'w').write(created['receiptToken'])
+          PY
+
+          stop_api
+          start_api
+          ORDER_ID=$(cat /tmp/order-id)
+          RECEIPT_TOKEN=$(cat /tmp/receipt-token)
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
+
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/orders/${ORDER_ID}/intent" \
+            -H 'Content-Type: application/json' --data "{\"receiptToken\":\"${RECEIPT_TOKEN}\"}" > /tmp/payment-intent.json
+          AUTHORITY=$(python3 -c "import json; print(json.load(open('/tmp/payment-intent.json'))['authority'])")
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/sandbox/${AUTHORITY}/complete" \
+            -H 'Content-Type: application/json' --data "{\"receiptToken\":\"${RECEIPT_TOKEN}\"}" > /tmp/payment-completed.json
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/sandbox/${AUTHORITY}/complete" \
+            -H 'Content-Type: application/json' --data "{\"receiptToken\":\"${RECEIPT_TOKEN}\"}" > /tmp/payment-replayed.json
+
+          python3 - <<'PY'
+          import json
+          completed = json.load(open('/tmp/payment-completed.json', encoding='utf-8'))
+          replayed = json.load(open('/tmp/payment-replayed.json', encoding='utf-8'))
+          assert completed['id'] == replayed['id']
+          assert completed['state'] == 'Succeeded'
+          assert completed['reference']
+          PY
+
+          stop_api
+          start_api
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
+
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
+          TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
+
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders)" = "401"
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-orders.json
+          python3 - <<'PY'
+          import json
+          orders = json.load(open('/tmp/admin-orders.json', encoding='utf-8'))
+          assert len(orders) == 1
+          assert orders[0]['state'] == 'Paid'
+          assert orders[0]['paymentReference']
+          PY
+
+          for STATE in Preparing Shipped Delivered; do
+            curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/state" \
+              -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+              --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" > "/tmp/order-${STATE}.json"
+          done
+
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/dashboard -H "Authorization: Bearer ${TOKEN}" > /tmp/dashboard.json
+          python3 - <<'PY'
+          import json
+          delivered = json.load(open('/tmp/order-Delivered.json', encoding='utf-8'))
+          dashboard = json.load(open('/tmp/dashboard.json', encoding='utf-8'))
+          assert delivered['state'] == 'Delivered'
+          assert dashboard['delivered'] == 1
+          assert dashboard['paidRevenue'] > 0
+          assert dashboard['todayRevenue'] > 0
+          PY
+
+          stop_api
+          start_api
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
+          python3 - <<'PY'
+          import json
+          order = json.load(open('/tmp/order-delivered-after-restart.json', encoding='utf-8'))
+          assert order['state'] == 'Delivered'
+          assert [item['state'] for item in order['transitions']] == ['AwaitingPayment','Paid','Preparing','Shipped','Delivered']
+          PY
+
+  admin:
+    name: Admin Flutter
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.7
+          channel: stable
+          cache: true
+      - name: Generate platform runners
+        run: flutter create --platforms=android,web --project-name mazeduneh_admin .
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build authenticated web
+        run: flutter build web --release --target lib/secure_main.dart
+      - name: Build authenticated Android test APK
+        run: flutter build apk --debug --target lib/secure_main.dart
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazeduneh-admin-web
+          path: apps/admin/build/web
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazeduneh-admin-apk-debug
+          path: apps/admin/build/app/outputs/flutter-apk/app-debug.apk

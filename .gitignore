@@ -1,0 +1,36 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Node
+node_modules/
+.next/
+out/
+coverage/
+*.log
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+android/.gradle/
+ios/Pods/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# Local infrastructure
+.pgdata/
+.redis-data/

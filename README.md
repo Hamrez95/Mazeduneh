@@ -1,6 +1,6 @@
-# NOOSHORA
+# MAZEDUNEH
 
-NOOSHORA is a modern commerce platform for premium nuts, dried fruits, gifts, and healthy snacks.
+MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, and healthy snacks.
 
 ## Product surfaces
 
@@ -8,6 +8,42 @@ NOOSHORA is a modern commerce platform for premium nuts, dried fruits, gifts, an
 - **Admin:** Flutter application targeting Android and installable web/PWA.
 - **API:** ASP.NET Core modular monolith.
 - **Data:** PostgreSQL with an auditable stock ledger.
+
+## Local development
+
+### One-command Windows launcher
+
+```powershell
+./scripts/dev.ps1
+```
+
+You can also run one component:
+
+```powershell
+./scripts/dev.ps1 -Component storefront
+./scripts/dev.ps1 -Component api
+./scripts/dev.ps1 -Component admin
+```
+
+### Manual commands
+
+```bash
+cd apps/storefront
+npm install
+npm run dev
+```
+
+```bash
+cd services/api
+dotnet watch run
+```
+
+```bash
+cd apps/admin
+flutter create --platforms=android,web --project-name mazeduneh_admin .
+flutter pub get
+flutter run -d chrome
+```
 
 ## Branching
 
@@ -23,6 +59,15 @@ NOOSHORA is a modern commerce platform for premium nuts, dried fruits, gifts, an
 4. Critique from product, UX, technical, sales, warehouse, accounting, and domain perspectives.
 5. Fix gaps and repeat until the release gate is met.
 
+## Documentation
+
+- `docs/PRODUCT_VISION.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DESIGN_SYSTEM.md`
+- `docs/BUSINESS_OPERATIONS.md`
+- `docs/DELIVERY_LOOP.md`
+- `docs/ROADMAP.md`
+
 ## Status
 
-Project bootstrap in progress. See `docs/` and GitHub Issues for the active roadmap.
+The platform foundation is on `dev`. `main` remains the stable release branch until production gates pass.

@@ -1,0 +1,66 @@
+name: Partner Demo
+
+on:
+  pull_request:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storefront-demo:
+    name: Partner Storefront Demo
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/storefront
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type check
+        run: npm run typecheck
+      - name: Build professional partner demo
+        run: npm run build
+        env:
+          MAZEDUNEH_STATIC_EXPORT: 'true'
+          NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: 'true'
+          NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL: 'https://mazeduneh-admin.vercel.app'
+      - name: Upload partner storefront
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazeduneh-partner-storefront-v2
+          path: apps/storefront/out
+
+  admin-demo:
+    name: Professional Partner Admin Demo
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.7
+          channel: stable
+          cache: true
+      - name: Generate web runner
+        run: flutter create --platforms=web --project-name mazeduneh_admin .
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze all demo and production sources
+        run: flutter analyze
+      - name: Run tests
+        run: flutter test
+      - name: Build professional partner admin
+        run: flutter build web --release --target lib/professional_demo_main.dart
+      - name: Upload partner admin
+        uses: actions/upload-artifact@v4
+        with:
+          name: mazeduneh-partner-admin-v2
+          path: apps/admin/build/web
