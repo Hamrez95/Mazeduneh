@@ -148,6 +148,33 @@ function productIcon(product: Product) {
   return "🌰";
 }
 
+function normalizeStoredCart(value: unknown): CartItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((line) => {
+    if (!line || typeof line !== "object") return [];
+    const item = line as Record<string, unknown>;
+    const quantity = Number(item.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) return [];
+    if (typeof item.sku === "string" && typeof item.productTitle === "string") {
+      return [item as unknown as CartItem];
+    }
+    if (typeof item.id === "string" && typeof item.title === "string") {
+      const price = Number(item.price);
+      const stock = Number(item.stock);
+      return [{
+        sku: typeof item.sku === "string" && item.sku ? item.sku : item.id,
+        productSlug: item.id,
+        productTitle: item.title,
+        variantLabel: typeof item.packageLabel === "string" ? item.packageLabel : "بستهٔ انتخابی",
+        unitPrice: Number.isFinite(price) ? price * 10 : 0,
+        quantity,
+        maxQuantity: Number.isFinite(stock) ? stock : quantity,
+      }];
+    }
+    return [];
+  });
+}
+
 function createIdempotencyKey() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `checkout-${crypto.randomUUID()}`;
@@ -175,7 +202,7 @@ export default function StorefrontApp() {
       const stored = localStorage.getItem(CART_KEY);
       if (stored) {
         const parsed: unknown = JSON.parse(stored);
-        if (Array.isArray(parsed)) setCart(parsed as CartItem[]);
+        setCart(normalizeStoredCart(parsed));
       }
     } catch {
       localStorage.removeItem(CART_KEY);
