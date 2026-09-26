@@ -8,11 +8,13 @@ class ProductManagementPage extends StatefulWidget {
     required this.products,
     required this.api,
     required this.onReload,
+    this.categories = const [],
   });
 
   final List<Product> products;
   final CatalogApiClient api;
   final Future<void> Function() onReload;
+  final List<Category> categories;
 
   @override
   State<ProductManagementPage> createState() => _ProductManagementPageState();
@@ -64,11 +66,23 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
     }
   }
 
+  Future<void> _openCreateCategoryDialog() async {
+    final created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CreateCategoryDialog(api: widget.api),
+    );
+    if (created != true) return;
+    await widget.onReload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسته‌بندی ثبت شد.')));
+  }
+
   Future<void> _openCreateDialog() async {
     final created = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CreateProductDialog(api: widget.api),
+      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories),
     );
     if (created != true) return;
     await widget.onReload();
@@ -102,10 +116,20 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                 ],
               ),
             ),
-            FilledButton.icon(
-              onPressed: _openCreateDialog,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('محصول جدید'),
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _openCreateCategoryDialog,
+                  icon: const Icon(Icons.category_outlined),
+                  label: const Text('دسته جدید'),
+                ),
+                FilledButton.icon(
+                  onPressed: _openCreateDialog,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('محصول جدید'),
+                ),
+              ],
             ),
           ],
         ),
@@ -238,9 +262,10 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
 }
 
 class _CreateProductDialog extends StatefulWidget {
-  const _CreateProductDialog({required this.api});
+  const _CreateProductDialog({required this.api, required this.categories});
 
   final CatalogApiClient api;
+  final List<Category> categories;
 
   @override
   State<_CreateProductDialog> createState() => _CreateProductDialogState();
@@ -250,10 +275,19 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
   final formKey = GlobalKey<FormState>();
   final title = TextEditingController();
   final slug = TextEditingController();
-  final category = TextEditingController(text: 'پسته و مغزیجات');
+  final category = TextEditingController();
   final origin = TextEditingController();
+  final shortDescription = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  final seoKeywords = TextEditingController();
+  final primaryImage = TextEditingController();
+  final galleryImages = TextEditingController();
+  final specifications = TextEditingController();
 
   String unitType = 'Weight';
+  String? selectedCategory;
   bool submitting = false;
   String? errorMessage;
   late List<_VariantDraft> variants = _weightVariants();
@@ -264,6 +298,14 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     slug.dispose();
     category.dispose();
     origin.dispose();
+    shortDescription.dispose();
+    description.dispose();
+    seoTitle.dispose();
+    seoDescription.dispose();
+    seoKeywords.dispose();
+    primaryImage.dispose();
+    galleryImages.dispose();
+    specifications.dispose();
     for (final variant in variants) {
       variant.dispose();
     }
@@ -309,10 +351,18 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
       final command = CreateProductCommand(
         title: title.text.trim(),
         slug: slug.text.trim().toLowerCase(),
-        category: category.text.trim(),
+        category: (selectedCategory ?? category.text).trim(),
         origin: origin.text.trim(),
         unitType: unitType,
         isPublished: false,
+        shortDescription: shortDescription.text.trim(),
+        description: description.text.trim(),
+        seoTitle: seoTitle.text.trim(),
+        seoDescription: seoDescription.text.trim(),
+        seoKeywords: seoKeywords.text.trim(),
+        primaryImage: primaryImage.text.trim(),
+        galleryImages: galleryImages.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        specifications: _parseSpecifications(specifications.text),
         variants: variants
             .map(
               (variant) => CreateVariantCommand(
@@ -320,6 +370,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                 quantity: num.parse(variant.quantity.text.trim()),
                 displayLabel: variant.label.text.trim(),
                 price: int.parse(variant.priceToman.text.trim()) * 10,
+                costPrice: int.parse(variant.costPriceToman.text.trim()) * 10,
                 availablePackages: int.parse(variant.stock.text.trim()),
               ),
             )
@@ -389,10 +440,35 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                             validator: _slugValidator,
                             textDirection: TextDirection.ltr,
                           ),
-                          _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required),
+                          if (widget.categories.isEmpty)
+                            _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required)
+                          else
+                            SizedBox(
+                              width: 430,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedCategory,
+                                decoration: const InputDecoration(labelText: 'دسته‌بندی'),
+                                items: widget.categories.where((item) => item.isActive).map((item) => DropdownMenuItem(value: item.name, child: Text(item.name))).toList(),
+                                onChanged: submitting ? null : (value) => setState(() => selectedCategory = value),
+                                validator: (value) => value == null ? 'دسته‌بندی را انتخاب کنید.' : null,
+                              ),
+                            ),
                           _Input(width: 430, controller: origin, label: 'مبدأ یا برند', validator: _required),
+                          _Input(width: 430, controller: shortDescription, label: 'توضیح کوتاه', hint: 'برای کارت محصول و خلاصه سئو'),
+                          _Input(width: 872, controller: description, label: 'توضیحات کامل محصول', maxLines: 4),
                         ],
                       ),
+                      const SizedBox(height: 24),
+                      const _SectionTitle(title: 'تصاویر و سئوی محصول', subtitle: 'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.'),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 12, runSpacing: 12, children: [
+                        _Input(width: 430, controller: primaryImage, label: 'تصویر اصلی', hint: '/products/pistachio-pouch-new.webp', textDirection: TextDirection.ltr),
+                        _Input(width: 430, controller: seoTitle, label: 'عنوان SEO'),
+                        _Input(width: 430, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
+                        _Input(width: 430, controller: seoKeywords, label: 'کلمات کلیدی SEO'),
+                        _Input(width: 430, controller: galleryImages, label: 'گالری تصاویر', maxLines: 4, textDirection: TextDirection.ltr),
+                        _Input(width: 430, controller: specifications, label: 'مشخصات کلیدی', hint: 'وزن: ۲۵۰ گرم\nدرجه: ممتاز', maxLines: 4),
+                      ]),
                       const SizedBox(height: 24),
                       const _SectionTitle(
                         title: 'نوع واحد فروش',
@@ -542,6 +618,13 @@ class _VariantEditor extends StatelessWidget {
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
+                  width: 170,
+                  controller: draft.costPriceToman,
+                  label: 'قیمت تمام‌شده (تومان)',
+                  validator: _nonNegativeInt,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
                   width: 145,
                   controller: draft.stock,
                   label: 'تعداد بسته موجود',
@@ -566,6 +649,7 @@ class _Input extends StatelessWidget {
     this.validator,
     this.keyboardType,
     this.textDirection,
+    this.maxLines = 1,
   });
 
   final double width;
@@ -575,6 +659,7 @@ class _Input extends StatelessWidget {
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
   final TextDirection? textDirection;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -585,6 +670,7 @@ class _Input extends StatelessWidget {
         validator: validator,
         keyboardType: keyboardType,
         textDirection: textDirection,
+        maxLines: maxLines,
         decoration: InputDecoration(labelText: label, hintText: hint),
       ),
     );
@@ -618,17 +704,20 @@ class _VariantDraft {
     String quantity = '',
     String label = '',
     String priceToman = '0',
+    String costPriceToman = '0',
     String stock = '0',
   })  : sku = TextEditingController(text: sku),
         quantity = TextEditingController(text: quantity),
         label = TextEditingController(text: label),
         priceToman = TextEditingController(text: priceToman),
+        costPriceToman = TextEditingController(text: costPriceToman),
         stock = TextEditingController(text: stock);
 
   final TextEditingController sku;
   final TextEditingController quantity;
   final TextEditingController label;
   final TextEditingController priceToman;
+  final TextEditingController costPriceToman;
   final TextEditingController stock;
 
   void dispose() {
@@ -636,6 +725,7 @@ class _VariantDraft {
     quantity.dispose();
     label.dispose();
     priceToman.dispose();
+    costPriceToman.dispose();
     stock.dispose();
   }
 }
@@ -682,6 +772,64 @@ String? _skuValidator(String? value) {
     return 'فقط حروف انگلیسی، عدد و خط تیره.';
   }
   return null;
+}
+
+Map<String, dynamic> _parseSpecifications(String raw) {
+  final result = <String, dynamic>{};
+  for (final line in raw.split('\n')) {
+    final separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    final key = line.substring(0, separator).trim();
+    final value = line.substring(separator + 1).trim();
+    if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
+  }
+  return result;
+}
+
+class _CreateCategoryDialog extends StatefulWidget {
+  const _CreateCategoryDialog({required this.api});
+  final CatalogApiClient api;
+  @override
+  State<_CreateCategoryDialog> createState() => _CreateCategoryDialogState();
+}
+
+class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
+  final formKey = GlobalKey<FormState>();
+  final name = TextEditingController();
+  final slug = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  bool submitting = false;
+  String? error;
+  @override
+  void dispose() { name.dispose(); slug.dispose(); description.dispose(); seoTitle.dispose(); seoDescription.dispose(); super.dispose(); }
+  Future<void> submit() async {
+    if (!formKey.currentState!.validate()) return;
+    setState(() { submitting = true; error = null; });
+    try {
+      await widget.api.createCategory(CreateCategoryCommand(name: name.text.trim(), slug: slug.text.trim().toLowerCase(), description: description.text.trim(), seoTitle: seoTitle.text.trim(), seoDescription: seoDescription.text.trim()));
+      if (mounted) Navigator.pop(context, true);
+    } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => submitting = false); }
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('دسته‌بندی جدید'),
+    content: SizedBox(width: 460, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      _Input(width: double.infinity, controller: name, label: 'نام دسته‌بندی', validator: _required),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: slug, label: 'شناسه انگلیسی URL', validator: _slugValidator, textDirection: TextDirection.ltr),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: description, label: 'توضیح'),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: seoTitle, label: 'عنوان SEO'),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
+    ]))),
+    actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
+  );
 }
 
 String _formatToman(num irr) {
