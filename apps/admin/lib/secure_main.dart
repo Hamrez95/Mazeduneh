@@ -222,6 +222,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
 
   List<Product> products = const [];
   List<AdminOrder> orders = const [];
+  List<StockMovement> movements = const [];
   AdminDashboard? dashboard;
   bool loading = true;
   String? error;
@@ -233,6 +234,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     NavigationDestination(icon: Icon(Icons.space_dashboard_rounded), label: 'داشبورد'),
     NavigationDestination(icon: Icon(Icons.receipt_long_rounded), label: 'سفارش‌ها'),
     NavigationDestination(icon: Icon(Icons.inventory_2_rounded), label: 'محصولات'),
+    NavigationDestination(icon: Icon(Icons.warehouse_rounded), label: 'انبار'),
   ];
 
   @override
@@ -253,12 +255,14 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
         catalogApi.fetchProducts(includeDrafts: true),
         orderApi.fetchOrders(state: orderFilter),
         orderApi.fetchDashboard(),
+        orderApi.fetchInventoryMovements(limit: 100),
       ]);
       if (!mounted) return;
       setState(() {
         products = result[0] as List<Product>;
         orders = result[1] as List<AdminOrder>;
         dashboard = result[2] as AdminDashboard;
+        movements = result[3] as List<StockMovement>;
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
@@ -359,6 +363,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
                 NavigationRailDestination(icon: Icon(Icons.space_dashboard_rounded), label: Text('داشبورد')),
                 NavigationRailDestination(icon: Icon(Icons.receipt_long_rounded), label: Text('سفارش‌ها')),
                 NavigationRailDestination(icon: Icon(Icons.inventory_2_rounded), label: Text('محصولات')),
+                NavigationRailDestination(icon: Icon(Icons.warehouse_rounded), label: Text('انبار')),
               ],
             ),
           Expanded(
@@ -393,8 +398,45 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     return switch (selectedIndex) {
       0 => dashboardView(),
       1 => ordersView(),
-      _ => ProductManagementPage(products: products, api: catalogApi, onReload: loadAll),
+      2 => ProductManagementPage(products: products, api: catalogApi, onReload: loadAll),
+      _ => inventoryView(),
     };
+  }
+
+  Widget inventoryView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const PageHeader(title: 'گردش موجودی', subtitle: 'ردپای رزرو، آزادسازی و موجودی اولیه از دفتر ثبت سرور'),
+        const SizedBox(height: 14),
+        Expanded(
+          child: movements.isEmpty
+              ? const Center(child: Text('هنوز گردش موجودی ثبت نشده است.'))
+              : ListView.separated(
+                  itemCount: movements.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final movement = movements[index];
+                    final positive = movement.quantityDelta > 0;
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
+                          child: Icon(positive ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded),
+                        ),
+                        title: Text('${movement.sku} · ${movement.movementType}'),
+                        subtitle: Text('${movement.reason} · ${movement.actor} · ${formatDateTime(movement.createdAt)}'),
+                        trailing: Text(
+                          '${positive ? '+' : ''}${movement.quantityDelta}  |  ${movement.balanceAfter}',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
   }
 
   Widget dashboardView() {
