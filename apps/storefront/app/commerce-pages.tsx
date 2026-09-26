@@ -132,6 +132,16 @@ const apiSkusByProductId: Record<string, string> = {
   "protein-cookie": "CK-PRO-4",
 };
 
+const checkoutStateLabels: Record<string, string> = {
+  AwaitingPayment: "در انتظار پرداخت",
+  Paid: "پرداخت تأییدشده",
+  Preparing: "در حال آماده‌سازی",
+  Shipped: "ارسال‌شده",
+  Delivered: "تحویل‌شده",
+  Cancelled: "لغوشده",
+  Expired: "مهلت پرداخت پایان‌یافته",
+};
+
 const checkoutIdempotencyStorageKey = "mazedooneh-checkout-key-v1";
 
 function getCheckoutIdempotencyKey(fingerprint: string) {
@@ -155,7 +165,7 @@ function toAsciiDigits(value: string) {
 
 export function CheckoutPage() {
   const { cart, subtotal, shipping, total } = useCart();
-  const [receipt, setReceipt] = useState<{ name: string; orderId: string; payable: number; expiresAt: string } | null>(null);
+  const [receipt, setReceipt] = useState<{ name: string; orderId: string; payable: number; expiresAt: string; state: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
@@ -204,7 +214,7 @@ export function CheckoutPage() {
       if (!body.id || typeof body.payable !== "number" || !body.reservationExpiresAt) {
         throw new Error("پاسخ سرویس سفارش کامل نبود؛ وضعیت سفارش را پیش از تلاش دوباره بررسی کن.");
       }
-      setReceipt({ name, orderId: body.id, payable: body.payable, expiresAt: body.reservationExpiresAt });
+      setReceipt({ name, orderId: body.id, payable: body.payable, expiresAt: body.reservationExpiresAt, state: body.state ?? "AwaitingPayment" });
     } catch (submitError) {
       setError(submitError instanceof TypeError
         ? "ارتباط با سرویس سفارش برقرار نشد. نشانی سرویس یا دسترسی ارسال را بررسی کن و دوباره تلاش کن."
@@ -214,7 +224,7 @@ export function CheckoutPage() {
     }
   }
 
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>در انتظار پرداخت</span><h1>ممنون {receipt.name}، سفارش ثبت شد.</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان</p><p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. پرداخت هنوز انجام نشده است و خرید تا تأیید درگاه کامل نمی‌شود.</p><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></div></section><StoreFooter /></main>;
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان</p>{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. پرداخت هنوز انجام نشده است و خرید تا تأیید درگاه کامل نمی‌شود.</p>}<a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></div></section><StoreFooter /></main>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
     <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>
