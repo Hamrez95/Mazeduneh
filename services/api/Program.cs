@@ -69,6 +69,25 @@ app.MapGet("/health", async (
     });
 });
 
+app.MapGet("/api/v1/categories", async (CatalogDatabase db, CancellationToken cancellationToken) => Results.Ok(await db.LoadCategoriesAsync(cancellationToken)));
+app.MapGet("/api/v1/categories/admin", async (CatalogDatabase db, CancellationToken cancellationToken) => Results.Ok(await db.LoadCategoriesAsync(cancellationToken)))
+    .AddEndpointFilter<OwnerAuthorizationFilter>();
+
+app.MapPost("/api/v1/categories", async (CreateCategoryRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+{
+    var errors = request.Validate();
+    if (errors.Count > 0) return Results.ValidationProblem(errors);
+    try
+    {
+        return Results.Created($"/api/v1/categories/{request.Slug}", await db.InsertCategoryAsync(request, cancellationToken));
+    }
+    catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+    {
+        return Results.Conflict(new { message = "دسته‌ای با این شناسه آدرس وجود دارد." });
+    }
+})
+.AddEndpointFilter<OwnerAuthorizationFilter>();
+
 app.MapGet("/api/v1/catalog/unit-types", () => Results.Ok(new[]
 {
     new { value = nameof(ProductUnitType.Weight), baseUnit = "gram", titleFa = "وزنی / گرم" },
@@ -108,6 +127,24 @@ products.MapPost("/", async (
     {
         return Results.Conflict(new { message = "شناسه آدرس یا SKU تکراری است." });
     }
+})
+.AddEndpointFilter<OwnerAuthorizationFilter>();
+
+products.MapPut("/{slug}", async (
+    string slug,
+    UpdateProductRequest request,
+    ProductCatalog productCatalog,
+    CatalogDatabase db,
+    CancellationToken cancellationToken) =>
+{
+    var existing = productCatalog.FindBySlug(slug);
+    if (existing is null) return Results.NotFound(new { message = "محصول موردنظر پیدا نشد." });
+    var errors = request.Validate();
+    if (errors.Count > 0) return Results.ValidationProblem(errors);
+    var updated = productCatalog.Update(existing, request);
+    await db.UpdateAsync(updated, cancellationToken);
+    productCatalog.Add(updated);
+    return Results.Ok(updated);
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -179,6 +216,28 @@ public sealed class ProductCatalog
                 item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages)).ToArray(), DateTimeOffset.UtcNow);
     }
 
+    public Product Update(Product existing, UpdateProductRequest request)
+    {
+        var unitType = Enum.Parse<ProductUnitType>(request.UnitType, true);
+        var baseUnit = unitType == ProductUnitType.Weight ? "gram" : "piece";
+        return existing with
+        {
+            Title = request.Title.Trim(),
+            Category = request.Category.Trim(),
+            Origin = request.Origin.Trim(),
+            UnitType = unitType,
+            ShortDescription = request.ShortDescription?.Trim() ?? string.Empty,
+            Description = request.Description?.Trim() ?? string.Empty,
+            SeoTitle = request.SeoTitle?.Trim() ?? request.Title.Trim(),
+            SeoDescription = request.SeoDescription?.Trim() ?? request.ShortDescription?.Trim() ?? string.Empty,
+            SeoKeywords = request.SeoKeywords?.Trim() ?? string.Empty,
+            PrimaryImage = request.PrimaryImage?.Trim() ?? string.Empty,
+            GalleryImages = request.GalleryImages?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToArray() ?? [],
+            Specifications = request.Specifications ?? new Dictionary<string, string>(),
+            Variants = request.Variants.Select(item => new ProductVariant(item.Sku.Trim().ToUpperInvariant(), item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)).ToArray()
+        };
+    }
+
     public void Add(Product product) => _products[product.Id] = product;
     public void ReplaceWith(IEnumerable<Product> products)
     {
@@ -219,6 +278,7 @@ public sealed record CreateProductRequest(string Title, string Slug, string Cate
             if (item.Quantity <= 0) errors[$"Variants[{index}].Quantity"] = ["مقدار بسته باید بیشتر از صفر باشد."];
             if (item.Price < 0) errors[$"Variants[{index}].Price"] = ["قیمت نمی‌تواند منفی باشد."];
             if (item.AvailablePackages < 0) errors[$"Variants[{index}].AvailablePackages"] = ["موجودی نمی‌تواند منفی باشد."];
+            if (item.CostPrice < 0) errors[$"Variants[{index}].CostPrice"] = ["قیمت تمام‌شده نمی‌تواند منفی باشد."];
         }
         return errors;
     }
