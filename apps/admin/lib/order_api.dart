@@ -40,6 +40,18 @@ class OrderApiClient {
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<List<StockMovement>> fetchInventoryMovements({String? sku, int limit = 100}) async {
+    final query = <String, String>{'limit': '$limit', if (sku != null && sku.isNotEmpty) 'sku': sku};
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/inventory/movements').replace(queryParameters: query),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => StockMovement.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
   Future<AdminOrder> transition(String orderId, String state, {String? reason}) async {
     final response = await _client.patch(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/state'), headers: _headers(json: true), body: jsonEncode({'state': state, 'reason': reason}));
     _guard(response);
@@ -87,6 +99,42 @@ class AdminOrder {
     currency: json['currency'] as String, state: json['state'].toString(), createdAt: DateTime.parse(json['createdAt'] as String),
     reservationExpiresAt: DateTime.parse(json['reservationExpiresAt'] as String), lineCount: json['lineCount'] as int,
     paymentReference: json['paymentReference'] as String?, paymentState: json['paymentState'] as String?);
+}
+
+class StockMovement {
+  const StockMovement({
+    required this.id,
+    required this.sku,
+    required this.quantityDelta,
+    required this.movementType,
+    required this.balanceAfter,
+    required this.orderId,
+    required this.actor,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String sku;
+  final int quantityDelta;
+  final String movementType;
+  final int balanceAfter;
+  final String? orderId;
+  final String actor;
+  final String reason;
+  final DateTime createdAt;
+
+  factory StockMovement.fromJson(Map<String, dynamic> json) => StockMovement(
+        id: json['id'].toString(),
+        sku: json['sku'] as String,
+        quantityDelta: json['quantityDelta'] as int,
+        movementType: json['movementType'] as String,
+        balanceAfter: json['balanceAfter'] as int,
+        orderId: json['orderId'] as String?,
+        actor: json['actor'] as String,
+        reason: json['reason'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
 }
 
 class AdminDashboard {
