@@ -24,6 +24,12 @@ export type DemoProduct = {
   stock: number;
   badge?: string;
   note: string;
+  description?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  primaryImage?: string;
+  galleryImages?: string[];
+  specifications?: Record<string, string>;
 };
 
 export const categories = [
