@@ -63,6 +63,36 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
+        if (request.QuantityDelta == 0) return StockAdjustmentResult.Failed("مقدار تغییر باید صفر نباشد.");
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string sql = """
+            update product_variants
+            set available_packages = available_packages + @delta
+            where upper(sku)=upper(@sku) and available_packages + @delta >= 0
+            returning sku,available_packages;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("sku", request.Sku.Trim());
+        command.Parameters.AddWithValue("delta", request.QuantityDelta);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return StockAdjustmentResult.Failed("SKU پیدا نشد یا موجودی نمی‌تواند منفی شود.");
+        }
+        var sku = reader.GetString(0);
+        var balance = reader.GetInt32(1);
+        await reader.CloseAsync();
+        await RecordAsync(connection, transaction, sku, request.QuantityDelta, "ManualAdjustment", balance, null, "owner", request.Reason.Trim(), cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return StockAdjustmentResult.Success(sku, balance);
+    }
+
     public async Task<IReadOnlyCollection<StockMovement>> ListAsync(
         string? sku,
         int limit,
@@ -104,6 +134,14 @@ public static class InventoryLedgerModule
 {
     public static IEndpointRouteBuilder MapInventoryLedger(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapPost("/api/v1/admin/inventory/adjust", async (StockAdjustmentRequest request, InventoryLedgerDatabase database, CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Sku) || string.IsNullOrWhiteSpace(request.Reason))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Sku)] = ["SKU و دلیل تغییر الزامی است."] });
+            var result = await database.AdjustAsync(request, cancellationToken);
+            return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         endpoints.MapGet("/api/v1/admin/inventory/movements", async (
             string? sku,
             int? limit,
@@ -113,6 +151,13 @@ public static class InventoryLedgerModule
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         return endpoints;
     }
+}
+
+public sealed record StockAdjustmentRequest(string Sku, int QuantityDelta, string Reason);
+public sealed record StockAdjustmentResult(bool IsSuccess, string? Sku = null, int? BalanceAfter = null, string? Message = null)
+{
+    public static StockAdjustmentResult Success(string sku, int balance) => new(true, sku, balance);
+    public static StockAdjustmentResult Failed(string message) => new(false, Message: message);
 }
 
 public sealed record StockMovement(

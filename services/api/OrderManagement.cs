@@ -30,6 +30,19 @@ public static class OrderManagementModule
             Results.Ok(await database.DashboardAsync(cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/analytics", async (
+            int? days,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapGet("/notifications", async (
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await database.NotificationsAsync(cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapPatch("/orders/{orderId:guid}/state", async (
             Guid orderId,
             SetOrderStateRequest request,
@@ -159,6 +172,85 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
 
         return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, todayRevenue, lowStock);
+    }
+
+    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return new AdminAnalytics(days, 0, 0, 0, 0, 0, 0);
+        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        const string orderSql = """
+            select count(*)::int, coalesce(sum(payable),0)
+            from checkout_orders
+            where created_at >= @from and state in ('Paid','Preparing','Shipped','Delivered');
+            """;
+        int orderCount;
+        decimal revenue;
+        await using (var command = new NpgsqlCommand(orderSql, connection))
+        {
+            command.Parameters.AddWithValue("from", from);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            orderCount = reader.GetInt32(0);
+            revenue = reader.GetDecimal(1);
+        }
+
+        const string lineSql = """
+            select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*l.cost_price),0), coalesce(sum(l.line_total),0)
+            from checkout_order_lines l join checkout_orders o on o.id=l.order_id
+            where o.created_at >= @from and o.state in ('Paid','Preparing','Shipped','Delivered');
+            """;
+        int units;
+        decimal cost;
+        decimal merchandiseRevenue;
+        await using (var command = new NpgsqlCommand(lineSql, connection))
+        {
+            command.Parameters.AddWithValue("from", from);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            units = reader.GetInt32(0);
+            cost = reader.GetDecimal(1);
+            merchandiseRevenue = reader.GetDecimal(2);
+        }
+
+        var profit = revenue - cost;
+        var margin = revenue <= 0 ? 0 : profit / revenue * 100;
+        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin);
+    }
+
+    public async Task<AdminNotifications> NotificationsAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        const string orderSql = """
+            select count(*) filter (where state='AwaitingPayment')::int,
+                   count(*) filter (where created_at >= now() - interval '24 hours' and state not in ('Cancelled','Expired'))::int
+            from checkout_orders;
+            """;
+        int awaitingPayment;
+        int recentOrders;
+        await using (var command = new NpgsqlCommand(orderSql, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            await reader.ReadAsync(cancellationToken);
+            awaitingPayment = reader.GetInt32(0);
+            recentOrders = reader.GetInt32(1);
+        }
+
+        const string stockSql = "select p.title,v.sku,v.available_packages from product_variants v join products p on p.id=v.product_id where v.available_packages <= 5 order by v.available_packages,p.title limit 20;";
+        var items = new List<AdminNotification>();
+        await using (var command = new NpgsqlCommand(stockSql, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken))
+                items.Add(new AdminNotification("low-stock", $"موجودی {reader.GetString(0)} کم است.", $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته"));
+
+        if (awaitingPayment > 0)
+            items.Insert(0, new AdminNotification("awaiting-payment", $"{awaitingPayment} سفارش در انتظار پرداخت است.", "نیازمند بررسی پنل سفارش‌ها"));
+        if (recentOrders > 0)
+            items.Insert(0, new AdminNotification("new-orders", $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.", "مرور سفارش‌ها و وضعیت ارسال"));
+        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items);
     }
 
     public async Task<OrderOperationResult> TransitionAsync(
@@ -321,6 +413,9 @@ public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobi
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock);
+public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent);
+public sealed record AdminNotification(string Type, string Title, string Detail);
+public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }
 public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrderSummary? Order = null,
     string? Message = null, IReadOnlyCollection<StockLevelChange>? StockLevels = null)

@@ -37,8 +37,10 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 variant_label text not null,
                 quantity integer not null check (quantity > 0),
                 unit_price numeric(18,2) not null check (unit_price >= 0),
-                line_total numeric(18,2) not null check (line_total >= 0)
+                line_total numeric(18,2) not null check (line_total >= 0),
+                cost_price numeric(18,2) not null default 0 check (cost_price >= 0)
             );
+            alter table checkout_order_lines add column if not exists cost_price numeric(18,2) not null default 0;
             create table if not exists checkout_order_transitions (
                 id uuid primary key,
                 order_id uuid not null references checkout_orders(id) on delete cascade,
@@ -99,7 +101,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             foreach (var requested in request.Lines.OrderBy(item => item.Sku, StringComparer.OrdinalIgnoreCase))
             {
                 const string selectSql = """
-                    select p.title, v.sku, v.display_label, v.price, v.available_packages
+                    select p.title, v.sku, v.display_label, v.price, v.available_packages, v.cost_price
                     from product_variants v
                     join products p on p.id = v.product_id
                     where upper(v.sku) = upper(@sku) and p.is_published = true
@@ -119,6 +121,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 var label = reader.GetString(2);
                 var price = reader.GetDecimal(3);
                 var available = reader.GetInt32(4);
+                var costPrice = reader.GetDecimal(5);
                 await reader.CloseAsync();
 
                 if (available < requested.Quantity)
@@ -127,7 +130,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                     continue;
                 }
 
-                lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity));
+                lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity, costPrice));
             }
 
             if (unavailable.Count > 0)
@@ -335,8 +338,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         {
             const string lineSql = """
                 insert into checkout_order_lines
-                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total)
-                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total);
+                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total,cost_price)
+                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total,@cost_price);
                 """;
             await using var command = new NpgsqlCommand(lineSql, connection, transaction);
             command.Parameters.AddWithValue("id", Guid.NewGuid());
@@ -347,6 +350,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("quantity", line.Quantity);
             command.Parameters.AddWithValue("unit_price", line.UnitPrice);
             command.Parameters.AddWithValue("line_total", line.LineTotal);
+            command.Parameters.AddWithValue("cost_price", line.CostPrice);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
