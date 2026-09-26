@@ -56,7 +56,7 @@ public static class OrderManagementModule
     }
 }
 
-public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger)
+public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger, InventoryLedgerDatabase ledger)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -227,7 +227,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 command.Parameters.AddWithValue("quantity", line.Quantity);
                 command.Parameters.AddWithValue("sku", line.Sku);
                 var available = await command.ExecuteScalarAsync(cancellationToken);
-                if (available is not null) stockLevels.Add(new StockLevelChange(line.Sku, Convert.ToInt32(available)));
+                if (available is not null)
+                {
+                    var availablePackages = Convert.ToInt32(available);
+                    await ledger.RecordAsync(
+                        connection, transaction, line.Sku, line.Quantity, "ReservationReleased",
+                        availablePackages, orderId, "owner", "owner-cancelled-before-payment", cancellationToken);
+                    stockLevels.Add(new StockLevelChange(line.Sku, availablePackages));
+                }
             }
         }
 
