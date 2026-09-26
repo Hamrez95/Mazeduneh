@@ -87,6 +87,18 @@ const productFacts = [
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
   const { add } = useCart();
+  const variants = product.variants?.length
+    ? product.variants
+    : [{ sku: product.sku ?? `${product.id}-preview`, packageLabel: product.packageLabel, price: product.price, stock: product.stock }];
+  const [selectedSku, setSelectedSku] = useState(variants[0].sku);
+  const selectedVariant = variants.find((variant) => variant.sku === selectedSku) ?? variants[0];
+  const selectedProduct: DemoProduct = {
+    ...product,
+    sku: product.variants?.length ? selectedVariant.sku : product.sku,
+    packageLabel: selectedVariant.packageLabel,
+    price: selectedVariant.price,
+    stock: selectedVariant.stock,
+  };
   const [reviews, setReviews] = useState<{ name: string; rating: string; text: string }[]>([]);
   function addReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,10 +120,24 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
         <h1>{product.title}</h1>
         <p className={styles.detailSubtitle}>{product.subtitle}</p>
         <div className={styles.rating} aria-label="بدون امتیاز ثبت‌شده">☆☆☆☆☆ <span>هنوز امتیاز تأییدشده‌ای ثبت نشده</span></div>
-        <div className={styles.detailPrice}>{toman(product.price)} <small>تومان</small></div>
+        <div className={styles.detailPrice}>{toman(selectedProduct.price)} <small>تومان</small></div>
         <p className={styles.variantTitle}>بستهٔ قابل انتخاب</p>
-        <span className={styles.variantChoice}>{product.packageLabel} <span aria-hidden="true">✓</span></span>
-        <div className={styles.detailBuy}><button type="button" onClick={() => add(product)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
+        <div className={styles.variantChoices} role="listbox" aria-label="انتخاب بسته">
+          {variants.map((variant) => (
+            <button
+              key={variant.sku}
+              type="button"
+              role="option"
+              aria-selected={variant.sku === selectedVariant.sku}
+              className={variant.sku === selectedVariant.sku ? styles.variantOptionActive : styles.variantOption}
+              onClick={() => setSelectedSku(variant.sku)}
+            >
+              <span>{variant.packageLabel}</span>
+              <small>{toman(variant.price)} تومان · {variant.stock} موجود</small>
+            </button>
+          ))}
+        </div>
+        <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={() => add(selectedProduct)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
         <div className={styles.facts}>{productFacts.map(([label, value]) => <div className={styles.fact} key={label}><small>{label}</small><b>{label === "مبدأ" ? product.origin : value}</b></div>)}</div>
         <div className={styles.detailNotice}>{live ? "این اطلاعات از کاتالوگ منتشرشدهٔ سرویس فروش خوانده شده‌اند؛ جزئیات غذایی نهایی باید با بسته‌بندی تطبیق داده شوند." : "اطلاعات و قیمت‌های این نسخه نمونه‌اند. مشخصات قطعی ترکیبات، حساسیت‌زاها و وزن باید پیش از فروش از پنل محصول تأیید شوند."}</div>
       </div>
@@ -239,7 +265,7 @@ export function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
-  const unsupportedLines = cart.filter((line) => !(apiSkusByProductId[line.id] ?? line.sku));
+  const unsupportedLines = cart.filter((line) => !(line.sku ?? apiSkusByProductId[line.id]));
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -262,7 +288,7 @@ export function CheckoutPage() {
       city: String(data.get("city") ?? ""),
       address: String(data.get("address") ?? ""),
       postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
-      lines: cart.map((line) => ({ sku: (apiSkusByProductId[line.id] ?? line.sku)!, quantity: line.quantity })),
+      lines: cart.map((line) => ({ sku: (line.sku ?? apiSkusByProductId[line.id])!, quantity: line.quantity })),
     };
 
     setSubmitting(true);
