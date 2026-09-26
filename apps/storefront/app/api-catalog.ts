@@ -67,6 +67,12 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
   return {
     id: product.slug,
     sku: variant.sku,
+    variants: variants.map((item) => ({
+      sku: item.sku,
+      packageLabel: item.displayLabel,
+      price: tomanFromApiPrice(item.price),
+      stock: item.availablePackages,
+    })),
     title: product.title,
     subtitle: `${variant.displayLabel} · ${product.unitType === "Weight" ? "فروش وزنی" : "فروش عددی"}`,
     category: product.category,
