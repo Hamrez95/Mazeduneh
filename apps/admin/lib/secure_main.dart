@@ -225,6 +225,8 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
   List<AdminOrder> orders = const [];
   List<StockMovement> movements = const [];
   AdminDashboard? dashboard;
+  AdminAnalytics? analytics;
+  AdminNotifications? notifications;
   bool loading = true;
   String? error;
   int selectedIndex = 0;
@@ -257,6 +259,8 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
         catalogApi.fetchCategories(),
         orderApi.fetchOrders(state: orderFilter),
         orderApi.fetchDashboard(),
+        orderApi.fetchAnalytics(),
+        orderApi.fetchNotifications(),
         orderApi.fetchInventoryMovements(limit: 100),
       ]);
       if (!mounted) return;
@@ -265,7 +269,9 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
         categories = result[1] as List<Category>;
         orders = result[2] as List<AdminOrder>;
         dashboard = result[3] as AdminDashboard;
-        movements = result[4] as List<StockMovement>;
+        analytics = result[4] as AdminAnalytics;
+        notifications = result[5] as AdminNotifications;
+        movements = result[6] as List<StockMovement>;
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
@@ -342,6 +348,12 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
           children: [BrandMark(size: 38), SizedBox(width: 10), Text('مدیریت مزه‌دونه')],
         ),
         actions: [
+          if (notifications != null)
+            Badge(
+              isLabelVisible: notifications!.count > 0,
+              label: Text('${notifications!.count}'),
+              child: IconButton(onPressed: loading ? null : loadAll, tooltip: 'اعلان‌ها', icon: const Icon(Icons.notifications_none_rounded)),
+            ),
           IconButton(onPressed: loading ? null : loadAll, tooltip: 'تازه‌سازی', icon: const Icon(Icons.refresh_rounded)),
           IconButton(onPressed: OwnerSession.instance.clear, tooltip: 'خروج امن', icon: const Icon(Icons.logout_rounded)),
           const SizedBox(width: 8),
@@ -406,11 +418,19 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     };
   }
 
+  Future<void> _openStockAdjustment() async {
+    final changed = await showDialog<bool>(context: context, builder: (_) => _StockAdjustmentDialog(api: orderApi));
+    if (changed == true) await loadAll();
+  }
+
   Widget inventoryView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const PageHeader(title: 'گردش موجودی', subtitle: 'ردپای رزرو، آزادسازی و موجودی اولیه از دفتر ثبت سرور'),
+        Row(children: [
+          const Expanded(child: PageHeader(title: 'گردش موجودی', subtitle: 'ردپای رزرو، آزادسازی و موجودی اولیه از دفتر ثبت سرور')),
+          FilledButton.icon(onPressed: _openStockAdjustment, icon: const Icon(Icons.tune_rounded), label: const Text('اصلاح موجودی')),
+        ]),
         const SizedBox(height: 14),
         Expanded(
           child: movements.isEmpty
@@ -444,6 +464,8 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
 
   Widget dashboardView() {
     final data = dashboard!;
+    final finance = analytics!;
+    final notices = notifications!;
     final cards = [
       MetricCard(
         title: 'فروش امروز',
@@ -472,6 +494,20 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
         suffix: 'سفارش',
         icon: Icons.local_shipping_rounded,
         tone: const Color(0xFFE8E1F3),
+      ),
+      MetricCard(
+        title: 'سود ناخالص ۳۰ روز',
+        value: formatToman(finance.grossProfit),
+        suffix: 'تومان',
+        icon: Icons.trending_up_rounded,
+        tone: const Color(0xFFDCEFEA),
+      ),
+      MetricCard(
+        title: 'حاشیه سود',
+        value: finance.grossMarginPercent.toStringAsFixed(1),
+        suffix: 'درصد',
+        icon: Icons.percent_rounded,
+        tone: const Color(0xFFE9E2F3),
       ),
     ];
 
@@ -530,6 +566,25 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
                       ),
                   ],
                 ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('اعلان‌های مدیریتی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                  const SizedBox(height: 10),
+                  if (notices.items.isEmpty)
+                    const Text('اعلان جدیدی وجود ندارد.')
+                  else
+                    ...notices.items.take(5).map((item) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(item.type == 'low-stock' ? Icons.warning_amber_rounded : Icons.notifications_active_rounded),
+                      title: Text(item.title),
+                      subtitle: Text(item.detail),
+                    )),
+                ]),
               ),
             ),
           ],
@@ -764,3 +819,44 @@ Color stateColor(String state) => switch (state) {
       'Expired' => const Color(0xFFFFE7E2),
       _ => const Color(0xFFF2E7D6),
     };
+
+
+class _StockAdjustmentDialog extends StatefulWidget {
+  const _StockAdjustmentDialog({required this.api});
+  final OrderApiClient api;
+  @override
+  State<_StockAdjustmentDialog> createState() => _StockAdjustmentDialogState();
+}
+
+class _StockAdjustmentDialogState extends State<_StockAdjustmentDialog> {
+  final formKey = GlobalKey<FormState>();
+  final sku = TextEditingController();
+  final delta = TextEditingController();
+  final reason = TextEditingController(text: 'اصلاح دستی موجودی');
+  bool submitting = false;
+  String? error;
+  @override
+  void dispose() { sku.dispose(); delta.dispose(); reason.dispose(); super.dispose(); }
+  Future<void> submit() async {
+    if (!formKey.currentState!.validate()) return;
+    setState(() { submitting = true; error = null; });
+    try {
+      await widget.api.adjustStock(sku.text.trim(), int.parse(delta.text.trim()), reason.text.trim());
+      if (mounted) Navigator.pop(context, true);
+    } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => submitting = false); }
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('اصلاح دستی موجودی'),
+    content: SizedBox(width: 420, child: Form(key: formKey, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextFormField(controller: sku, textDirection: TextDirection.ltr, decoration: const InputDecoration(labelText: 'SKU'), validator: (value) => value == null || value.trim().isEmpty ? 'SKU الزامی است.' : null),
+      const SizedBox(height: 10),
+      TextFormField(controller: delta, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تغییر تعداد بسته', hintText: 'مثبت برای افزایش، منفی برای کاهش'), validator: (value) => int.tryParse(value ?? '') == null || int.parse(value!) == 0 ? 'یک عدد غیرصفر وارد کنید.' : null),
+      const SizedBox(height: 10),
+      TextFormField(controller: reason, decoration: const InputDecoration(labelText: 'دلیل تغییر'), validator: (value) => value == null || value.trim().isEmpty ? 'دلیل الزامی است.' : null),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
+    ]))),
+    actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت تغییر'))],
+  );
+}
