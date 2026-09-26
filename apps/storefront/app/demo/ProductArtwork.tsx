@@ -6,22 +6,22 @@ const imageByProductId: Record<string, string> = {
   "pistachio-ahmad": "/products/pistachio-pouch-new.webp",
   almond: "/products/almond-pouch-new.webp",
   walnut: "/products/walnut-character-new.webp",
-  "dried-fruit": "/products/gift-boxes-new.webp",
+  "dried-fruit": "/products/dried-fruit.webp",
   "pumpkin-seeds": "/products/pumpkin-seeds.webp",
-  "protein-cookie": "/products/dragon-box-new.webp",
-  "fruit-leather": "/products/gift-boxes-new.webp",
-  "oat-cookie": "/products/cookie-boxes-new.webp",
-  "gift-box": "/products/gift-boxes-new.webp",
+  "protein-cookie": "/products/protein-cookie.webp",
+  "fruit-leather": "/products/fruit-leather.webp",
+  "oat-cookie": "/products/oat-cookie.webp",
+  "gift-box": "/products/gift-box.webp",
 };
 
 const imageByArt: Record<ProductArt, string> = {
   pistachio: "/products/pistachio-pouch-new.webp",
   almond: "/products/almond-pouch-new.webp",
   walnut: "/products/walnut-character-new.webp",
-  fruit: "/products/gift-boxes-new.webp",
+  fruit: "/products/dried-fruit.webp",
   seed: "/products/pumpkin-seeds.webp",
-  cookie: "/products/dragon-box-new.webp",
-  gift: "/products/gift-boxes-new.webp",
+  cookie: "/products/oat-cookie.webp",
+  gift: "/products/gift-box.webp",
 };
 
 const galleryByProductId: Record<string, string[]> = {
@@ -48,31 +48,25 @@ const galleryByProductId: Record<string, string[]> = {
     "/products/walnut.webp",
   ],
   "dried-fruit": [
-    "/products/gift-boxes-new.webp",
-    "/products/gift-wrap-packaging.webp",
     "/products/dried-fruit.webp",
   ],
   "protein-cookie": [
-    "/products/dragon-box-new.webp",
-    "/products/cookie-boxes-new.webp",
-    "/products/cocoa-cookie-dragon.webp",
     "/products/protein-cookie.webp",
+    "/products/cocoa-cookie-dragon.webp",
+    "/products/dragon-box-new.webp",
   ],
   "fruit-leather": [
-    "/products/gift-boxes-new.webp",
-    "/products/gift-wrap-packaging.webp",
     "/products/fruit-leather.webp",
   ],
   "oat-cookie": [
-    "/products/cookie-boxes-new.webp",
-    "/products/cookie-mouth-packaging.webp",
     "/products/oat-cookie.webp",
+    "/products/cookie-mouth-packaging.webp",
   ],
   "gift-box": [
-    "/products/gift-boxes-new.webp",
-    "/products/one-kilo-box-packaging.webp",
-    "/products/gift-wrap-packaging.webp",
     "/products/gift-box.webp",
+    "/products/one-kilo-box-packaging.webp",
+    "/products/mixed-nuts-character.webp",
+    "/products/gift-boxes-new.webp",
   ],
 };
 
@@ -80,9 +74,9 @@ const galleryByArt: Partial<Record<ProductArt, string[]>> = {
   pistachio: ["/products/pistachio-pouch-new.webp", "/products/pistachio-scene-new.webp", "/products/pistachio-pouch.webp"],
   almond: ["/products/almond-pouch-new.webp", "/products/almond-pouch.webp"],
   walnut: ["/products/walnut-character-new.webp", "/products/walnut-character.webp"],
-  fruit: ["/products/gift-boxes-new.webp", "/products/gift-wrap-packaging.webp"],
-  cookie: ["/products/dragon-box-new.webp", "/products/cookie-boxes-new.webp"],
-  gift: ["/products/gift-boxes-new.webp", "/products/one-kilo-box-packaging.webp"],
+  fruit: ["/products/dried-fruit.webp", "/products/fruit-leather.webp"],
+  cookie: ["/products/oat-cookie.webp", "/products/protein-cookie.webp", "/products/dragon-box-new.webp"],
+  gift: ["/products/gift-box.webp", "/products/mixed-nuts-character.webp", "/products/one-kilo-box-packaging.webp"],
 };
 
 function imageFor(product: DemoProduct) {
