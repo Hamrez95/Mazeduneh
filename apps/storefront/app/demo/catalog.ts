@@ -11,6 +11,7 @@ export type DemoProduct = {
   id: string;
   /** Server SKU used when this product came from the live catalog. */
   sku?: string;
+  variants?: Array<{ sku: string; packageLabel: string; price: number; stock: number }>;
   title: string;
   subtitle: string;
   category: string;
