@@ -44,7 +44,7 @@ const artByKeyword: Array<[string, ProductArt]> = [
 const accents = ["sage", "mint", "sand", "peach", "apricot", "olive", "lilac", "rose"] as const;
 
 function inferArt(title: string): ProductArt {
-  return artByKeyword.find(([keyword]) => title.includes(keyword))?.[1] ?? "nut";
+  return artByKeyword.find(([keyword]) => title.includes(keyword))?.[1] ?? "almond";
 }
 
 function inferAccent(slug: string) {
