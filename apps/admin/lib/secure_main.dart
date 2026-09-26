@@ -728,6 +728,12 @@ String formatToman(num irr) => '${(irr / 10).round()}'.replaceAllMapped(
       (match) => '٬',
     );
 
+String formatDateTime(DateTime value) {
+  final local = value.toLocal();
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${local.year}/${two(local.month)}/${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+}
+
 String stateLabel(String state) => switch (state) {
       'AwaitingPayment' => 'در انتظار پرداخت',
       'Paid' => 'پرداخت‌شده',
