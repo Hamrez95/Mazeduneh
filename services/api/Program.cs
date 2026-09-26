@@ -36,6 +36,7 @@ var database = app.Services.GetRequiredService<CatalogDatabase>();
 if (database.IsConfigured)
 {
     await database.InitializeAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
     if (persistedProducts.Count == 0)
     {
