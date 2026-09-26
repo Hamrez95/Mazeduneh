@@ -7,7 +7,7 @@ export function generateStaticParams() { return demoProducts.map((product) => ({
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const fallback = demoProducts.find((item) => item.id === slug);
-  const apiBase = (process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim() || "").replace(/\\/$/, "");
+  const apiBase = (process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim() || "").replace(/\/$/, "");
   if (apiBase) {
     try {
       const response = await fetch(apiBase + "/api/v1/products/" + encodeURIComponent(slug), { cache: "no-store" });
