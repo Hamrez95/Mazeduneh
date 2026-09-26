@@ -27,6 +27,7 @@ type Product = {
 
 type CartItem = {
   sku: string;
+  productSlug: string;
   productTitle: string;
   variantLabel: string;
   unitPrice: number;
@@ -161,6 +162,7 @@ export default function StorefrontApp() {
   );
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartReady, setCartReady] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [form, setForm] = useState<CheckoutForm>(emptyForm);
@@ -171,15 +173,22 @@ export default function StorefrontApp() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CART_KEY);
-      if (stored) setCart(JSON.parse(stored) as CartItem[]);
+      if (stored) {
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) setCart(parsed as CartItem[]);
+      }
     } catch {
       localStorage.removeItem(CART_KEY);
+    } finally {
+      setCartReady(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!cartReady) return;
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  }, [cart]);
+    window.dispatchEvent(new Event("mazeduneh-cart-updated"));
+  }, [cart, cartReady]);
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -236,6 +245,7 @@ export default function StorefrontApp() {
         ...items,
         {
           sku: variant.sku,
+          productSlug: product.slug,
           productTitle: product.title,
           variantLabel: variant.displayLabel,
           unitPrice: variant.price,
