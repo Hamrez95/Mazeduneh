@@ -36,17 +36,18 @@ function normalizeStoredCart(value: unknown): CartLine[] {
       const unitPrice = Number(item.unitPrice);
       const stock = Number(item.maxQuantity);
       if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || !Number.isFinite(stock)) return [];
+      const variantLabel = typeof item.variantLabel === "string" ? item.variantLabel : "بستهٔ انتخابی";
       return [{
         id: typeof item.productSlug === "string" && item.productSlug ? item.productSlug : item.sku,
         sku: item.sku,
         title: item.productTitle,
-        subtitle: item.variantLabel,
+        subtitle: variantLabel,
         category: "کاتالوگ مزه‌دونه",
         origin: "مزه‌دونه",
         art: "almond",
         accent: "sage",
         price: Math.max(0, Math.round(unitPrice / 10)),
-        packageLabel: item.variantLabel,
+        packageLabel: variantLabel,
         stock,
         note: "محصول کاتالوگ آنلاین",
         quantity,
