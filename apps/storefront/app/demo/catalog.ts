@@ -9,6 +9,8 @@ export type ProductArt =
 
 export type DemoProduct = {
   id: string;
+  /** Server SKU used when this product came from the live catalog. */
+  sku?: string;
   title: string;
   subtitle: string;
   category: string;
