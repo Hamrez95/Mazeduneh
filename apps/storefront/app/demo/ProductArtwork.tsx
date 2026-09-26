@@ -2,26 +2,26 @@ import type { DemoProduct, ProductArt } from "./catalog";
 import styles from "./professional-storefront.module.css";
 
 const imageByProductId: Record<string, string> = {
-  "pistachio-akbari": "/products/pistachio-akbari.webp",
-  "pistachio-ahmad": "/products/pistachio-ahmad.webp",
-  almond: "/products/almond.webp",
-  walnut: "/products/walnut.webp",
-  "dried-fruit": "/products/dried-fruit.webp",
+  "pistachio-akbari": "/products/pistachio-pouch.webp",
+  "pistachio-ahmad": "/products/pistachio-pouch.webp",
+  almond: "/products/almond-pouch.webp",
+  walnut: "/products/walnut-character.webp",
+  "dried-fruit": "/products/gift-wrap-packaging.webp",
   "pumpkin-seeds": "/products/pumpkin-seeds.webp",
-  "protein-cookie": "/products/protein-cookie.webp",
-  "fruit-leather": "/products/fruit-leather.webp",
-  "oat-cookie": "/products/oat-cookie.webp",
-  "gift-box": "/products/gift-box.webp",
+  "protein-cookie": "/products/cocoa-cookie-dragon.webp",
+  "fruit-leather": "/products/gift-wrap-packaging.webp",
+  "oat-cookie": "/products/cookie-mouth-packaging.webp",
+  "gift-box": "/products/one-kilo-box-packaging.webp",
 };
 
 const imageByArt: Record<ProductArt, string> = {
-  pistachio: "/products/pistachio-akbari.webp",
-  almond: "/products/almond.webp",
-  walnut: "/products/walnut.webp",
-  fruit: "/products/dried-fruit.webp",
+  pistachio: "/products/pistachio-pouch.webp",
+  almond: "/products/almond-pouch.webp",
+  walnut: "/products/walnut-character.webp",
+  fruit: "/products/gift-wrap-packaging.webp",
   seed: "/products/pumpkin-seeds.webp",
-  cookie: "/products/oat-cookie.webp",
-  gift: "/products/gift-box.webp",
+  cookie: "/products/cocoa-cookie-dragon.webp",
+  gift: "/products/one-kilo-box-packaging.webp",
 };
 
 export function ProductArtwork({
