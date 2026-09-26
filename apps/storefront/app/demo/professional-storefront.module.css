@@ -511,3 +511,19 @@
 @media (prefers-reduced-motion: reduce) {
   .heroPackaging, .packagingTile img { animation: none; transition: none; }
 }
+
+
+/* Keep transparent artwork fully visible inside responsive cards. */
+.productImage {
+  width: auto;
+  height: auto;
+  max-width: 94%;
+  max-height: 94%;
+}
+.productVisual :global(img) {
+  width: auto;
+  height: auto;
+  max-width: 94%;
+  max-height: 94%;
+  object-fit: contain;
+}
