@@ -856,7 +856,7 @@ class _StockAdjustmentDialogState extends State<_StockAdjustmentDialog> {
       const SizedBox(height: 10),
       TextFormField(controller: reason, decoration: const InputDecoration(labelText: 'دلیل تغییر'), validator: (value) => value == null || value.trim().isEmpty ? 'دلیل الزامی است.' : null),
       if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
-    ]))),
+    ])))),
     actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت تغییر'))],
   );
 }
