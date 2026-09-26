@@ -45,6 +45,10 @@ flutter pub get
 flutter run -d chrome
 ```
 
+### Storefront order submission
+
+Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. The checkout submits orders only for products whose SKU mapping is present in `apps/storefront/app/commerce-pages.tsx`; unsupported demo products stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until a real payment provider is integrated and confirms payment server-side.
+
 ## Branching
 
 - `main`: stable and release-ready only.

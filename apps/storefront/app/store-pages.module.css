@@ -100,6 +100,7 @@
 .summaryRow strong { color:#334d3d; }.summaryTotal { padding-top:15px; border-top:1px solid var(--line); color:#33483b; font-size:14px; font-weight:900; }
 .summaryNote { padding:10px 12px; border-radius:11px; color:#806237; background:#fcf2e1; font-size:9px; line-height:1.8; }
 .primaryAction,.secondaryAction { width:100%; min-height:47px; margin-top:12px; display:flex; justify-content:center; align-items:center; border:0; border-radius:13px; color:white; background:var(--deep); font:inherit; font-size:11px; font-weight:900; text-decoration:none; cursor:pointer; }
+.primaryAction:disabled { opacity:.55; cursor:not-allowed; }
 .secondaryAction { color:#45634e; border:1px solid #dce4da; background:#fff; }
 .emptyCart { min-height:240px; display:grid; place-content:center; justify-items:center; text-align:center; }
 .emptyCart strong { margin-top:15px; font-size:16px; }.emptyCart p { color:#89938b; font-size:11px; }
