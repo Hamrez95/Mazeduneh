@@ -138,3 +138,39 @@
   color: #31584a;
   font-size: 0.88rem;
 }
+
+
+.variantChoices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+
+.variantOption,
+.variantOptionActive {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #d8e3d8;
+  border-radius: 12px;
+  background: #fff;
+  color: #31584a;
+  text-align: right;
+  cursor: pointer;
+}
+
+.variantOption small,
+.variantOptionActive small {
+  color: #6b776e;
+  font-size: 0.72rem;
+}
+
+.variantOptionActive {
+  border-color: #31584a;
+  box-shadow: 0 0 0 2px #dce9da;
+  background: #f5f9f1;
+}
