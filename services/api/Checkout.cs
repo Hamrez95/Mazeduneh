@@ -131,7 +131,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
                 }
 
                 lines.Add(new CheckoutLine(item.product.Title, item.variant.Sku, item.variant.DisplayLabel,
-                    requested.Quantity, item.variant.Price, item.variant.Price * requested.Quantity));
+                    requested.Quantity, item.variant.Price, item.variant.Price * requested.Quantity, item.variant.CostPrice));
             }
 
             if (unavailable.Count > 0)
@@ -206,7 +206,7 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
 }
 
 public sealed record CheckoutItemRequest(string Sku, int Quantity);
-public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
+public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal, decimal CostPrice = 0);
 public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string CustomerName, string Mobile, string Province,
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
     decimal Subtotal, decimal Shipping, decimal Discount, decimal Payable, OrderState State, DateTimeOffset CreatedAt,
