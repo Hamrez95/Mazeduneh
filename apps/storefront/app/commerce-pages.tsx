@@ -116,45 +116,127 @@ export function CartPage() {
   </ShopShell>;
 }
 
-type Delivery = "post" | "courier";
+type CheckoutOrderResponse = {
+  id: string;
+  payable: number;
+  state: string;
+  reservationExpiresAt: string;
+};
+
+const apiSkusByProductId: Record<string, string> = {
+  "pistachio-akbari": "PI-AKB-500",
+  "pistachio-ahmad": "PI-AHM-500",
+  almond: "NU-ALM-500",
+  walnut: "NU-WAL-500",
+  "pumpkin-seeds": "SE-PUM-500",
+  "protein-cookie": "CK-PRO-4",
+};
+
+const checkoutIdempotencyStorageKey = "mazedooneh-checkout-key-v1";
+
+function getCheckoutIdempotencyKey(fingerprint: string) {
+  const current = window.sessionStorage.getItem(checkoutIdempotencyStorageKey);
+  if (current) {
+    try {
+      const saved = JSON.parse(current) as { fingerprint?: unknown; key?: unknown };
+      if (saved.fingerprint === fingerprint && typeof saved.key === "string") return saved.key;
+    } catch {
+      window.sessionStorage.removeItem(checkoutIdempotencyStorageKey);
+    }
+  }
+  const key = window.crypto.randomUUID();
+  window.sessionStorage.setItem(checkoutIdempotencyStorageKey, JSON.stringify({ fingerprint, key }));
+  return key;
+}
+
+function toAsciiDigits(value: string) {
+  return value.replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
+}
+
 export function CheckoutPage() {
-  const { cart, subtotal, shipping, total, clear } = useCart();
-  const [delivery, setDelivery] = useState<Delivery>("post");
-  const [receipt, setReceipt] = useState<{ name: string; code: string } | null>(null);
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const { cart, subtotal, shipping, total } = useCart();
+  const [receipt, setReceipt] = useState<{ name: string; orderId: string; payable: number; expiresAt: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
+  const unsupportedLines = cart.filter((line) => !apiSkusByProductId[line.id]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setError("");
+    if (!apiBaseUrl) {
+      setError("ثبت آنلاین سفارش هنوز برای این سایت فعال نشده است.");
+      return;
+    }
+    if (unsupportedLines.length > 0) {
+      setError(`این کالاها هنوز برای ثبت سفارش آنلاین آماده نیستند: ${unsupportedLines.map((line) => line.title).join("، ")}.`);
+      return;
+    }
+
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") ?? "مشتری");
-    const code = `MD-${new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(Math.floor(100000 + Math.random() * 900000))}`;
-    setReceipt({ name, code });
-    clear();
+    const payload = {
+      customerName: name,
+      mobile: toAsciiDigits(String(data.get("phone") ?? "")),
+      province: String(data.get("province") ?? ""),
+      city: String(data.get("city") ?? ""),
+      address: String(data.get("address") ?? ""),
+      postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
+      lines: cart.map((line) => ({ sku: apiSkusByProductId[line.id], quantity: line.quantity })),
+    };
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/checkout/orders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": getCheckoutIdempotencyKey(JSON.stringify(payload)),
+        },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({})) as Partial<CheckoutOrderResponse> & { message?: string; title?: string; errors?: Record<string, string[]> };
+      if (!response.ok) {
+        const validationMessage = body.errors ? Object.values(body.errors).flat().join(" ") : "";
+        throw new Error(body.message || body.title || validationMessage || "ثبت سفارش انجام نشد. سبد خرید را بررسی کن و دوباره تلاش کن.");
+      }
+      if (!body.id || typeof body.payable !== "number" || !body.reservationExpiresAt) {
+        throw new Error("پاسخ سرویس سفارش کامل نبود؛ وضعیت سفارش را پیش از تلاش دوباره بررسی کن.");
+      }
+      setReceipt({ name, orderId: body.id, payable: body.payable, expiresAt: body.reservationExpiresAt });
+    } catch (submitError) {
+      setError(submitError instanceof TypeError
+        ? "ارتباط با سرویس سفارش برقرار نشد. نشانی سرویس یا دسترسی ارسال را بررسی کن و دوباره تلاش کن."
+        : submitError instanceof Error ? submitError.message : "ارتباط با سرویس سفارش برقرار نشد. دوباره تلاش کن.");
+    } finally {
+      setSubmitting(false);
+    }
   }
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>سناریوی نمایشی</span><h1>ممنون {receipt.name}، سفارش نمونه ثبت شد.</h1><p>شمارهٔ پیگیری: {receipt.code}. پرداخت و ارسال واقعی در این نسخه فعال نیست.</p><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></div></section><StoreFooter /></main>;
+
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>در انتظار پرداخت</span><h1>ممنون {receipt.name}، سفارش ثبت شد.</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان</p><p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. پرداخت هنوز انجام نشده است و خرید تا تأیید درگاه کامل نمی‌شود.</p><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></div></section><StoreFooter /></main>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
-    <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی و روش ارسال را وارد کن؛ مبلغ نهایی پیش از رفتن به پرداخت نمایش داده می‌شود.</p></div>
+    <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>
     <div className={styles.checkoutSteps}><b>۱. اطلاعات تحویل</b><i /> <span>۲. مرور سفارش</span><i /> <span>۳. پرداخت</span></div>
     <section className={styles.checkoutLayout}>
       <form className={styles.checkoutForm} onSubmit={submit}>
-        <h2>گیرنده و نشانی</h2><p>این فرم صرفاً دمو است و اطلاعاتش ذخیره یا ارسال نمی‌شود.</p>
+        <h2>گیرنده و نشانی</h2><p>اطلاعات تحویل فقط برای ثبت سفارش به سرویس فروش ارسال می‌شود.</p>
         <div className={styles.fieldGrid}>
           <div className={styles.field}><label htmlFor="name">نام و نام خانوادگی</label><input id="name" name="name" autoComplete="name" required placeholder="نام گیرنده" /></div>
-          <div className={styles.field}><label htmlFor="phone">شماره موبایل</label><input id="phone" name="phone" autoComplete="tel" inputMode="tel" pattern="09[0-9]{9}" required placeholder="۰۹۱۲۱۲۳۴۵۶۷" /></div>
+          <div className={styles.field}><label htmlFor="phone">شماره موبایل</label><input id="phone" name="phone" autoComplete="tel" inputMode="tel" pattern="09[0-9۰-۹]{9}" required placeholder="۰۹۱۲۱۲۳۴۵۶۷" /></div>
           <div className={styles.field}><label htmlFor="province">استان</label><select id="province" name="province" required defaultValue=""><option value="" disabled>انتخاب استان</option><option>تهران</option><option>اصفهان</option><option>خراسان رضوی</option><option>فارس</option></select></div>
           <div className={styles.field}><label htmlFor="city">شهر</label><input id="city" name="city" autoComplete="address-level2" required placeholder="شهر" /></div>
           <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="address">نشانی کامل</label><textarea id="address" name="address" autoComplete="street-address" required placeholder="خیابان، کوچه، پلاک و واحد" /></div>
           <div className={styles.field}><label htmlFor="postal">کد پستی</label><input id="postal" name="postal" inputMode="numeric" autoComplete="postal-code" pattern="[0-9۰-۹]{10}" required placeholder="۱۰ رقم" /></div>
-          <div className={styles.field}><label htmlFor="note">یادداشت برای سفارش</label><input id="note" name="note" placeholder="اختیاری" /></div>
         </div>
-        <div className={styles.deliveryChoices}>
-          <strong>روش ارسال</strong>
-          <label className={styles.deliveryOption}><input type="radio" name="delivery" checked={delivery === "post"} onChange={() => setDelivery("post")} /><span><b>پست پیشتاز</b>تحویل بر اساس نشانی؛ زمان و هزینه در نسخهٔ واقعی از سرویس ارسال می‌آید.</span></label>
-          <label className={styles.deliveryOption}><input type="radio" name="delivery" checked={delivery === "courier"} onChange={() => setDelivery("courier")} /><span><b>پیک درون‌شهری</b>در محدوده‌های تحت پوشش؛ فعلاً نمایشی.</span></label>
-        </div>
-        <div className={styles.paymentInfo}><b>پرداخت درگاه در این پیش‌نمایش انجام نمی‌شود.</b><br />برای فروش واقعی، سفارش باید از API ثبت شود و بازگشت درگاه فقط پس از تأیید سرور به‌عنوان پرداخت‌شده نمایش داده شود.</div>
-        <button className={styles.primaryAction} type="submit">ثبت سفارش نمونه و نمایش نتیجه</button>
+        <div className={styles.paymentInfo}><b>ارسال پستی برای این مرحله در نظر گرفته شده است.</b><br />هزینهٔ ارسال نهایی را سرور محاسبه می‌کند. ثبت سفارش به‌معنی پرداخت نیست؛ خرید پس از اتصال و تأیید درگاه کامل می‌شود.</div>
+        {error && <p role="alert" className={styles.paymentInfo}>{error}</p>}
+        {unsupportedLines.length > 0 && <p className={styles.summaryNote}>برای ثبت آنلاین، فعلاً این کالاها را از سبد بردار: {unsupportedLines.map((line) => line.title).join("، ")}.</p>}
+        {!apiBaseUrl && <p className={styles.summaryNote}>ثبت سفارش آنلاین هنوز برای این سایت فعال نشده است.</p>}
+        <button className={styles.primaryAction} type="submit" disabled={submitting || !apiBaseUrl || unsupportedLines.length > 0}>{submitting ? "در حال ثبت سفارش…" : "ثبت سفارش و بررسی مبلغ نهایی"}</button>
       </form>
-      <aside className={styles.checkoutSummary}><h2>مرور سفارش</h2>{cart.map((line) => <div className={styles.summaryProduct} key={line.id}><span>{line.title} × {toman(line.quantity)}</span><b>{toman(line.price * line.quantity)} تومان</b></div>)}<div className={styles.summaryRow}><span>جمع محصولات</span><strong>{toman(subtotal)} تومان</strong></div><div className={styles.summaryRow}><span>ارسال</span><strong>{shipping ? `${toman(shipping)} تومان` : "رایگان"}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>مبلغ نمونه</span><strong>{toman(total)} تومان</strong></div><p className={styles.summaryNote}>مبالغ، کالاها و هزینهٔ ارسال نمونه هستند. در نسخهٔ واقعی قیمت نهایی را سرور محاسبه می‌کند.</p></aside>
+      <aside className={styles.checkoutSummary}><h2>مرور سفارش</h2>{cart.map((line) => <div className={styles.summaryProduct} key={line.id}><span>{line.title} × {toman(line.quantity)}</span><b>{toman(line.price * line.quantity)} تومان</b></div>)}<div className={styles.summaryRow}><span>جمع محصولات</span><strong>{toman(subtotal)} تومان</strong></div><div className={styles.summaryRow}><span>ارسال</span><strong>{shipping ? `${toman(shipping)} تومان` : "رایگان"}</strong></div><div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>برآورد اولیه</span><strong>{toman(total)} تومان</strong></div><p className={styles.summaryNote}>مبلغ نهایی و موجودی فقط پس از پاسخ سرور تأیید می‌شود.</p></aside>
     </section><StoreFooter />
   </main>;
 }
