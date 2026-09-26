@@ -83,7 +83,27 @@ export function RelatedProducts({ currentId }: { currentId?: string }) {
 }
 
 export function ShopShell({ children, title, kicker, description }: { children: React.ReactNode; title: string; kicker: string; description: string }) {
-  return <main className={styles.page}><StoreHeader /><section className={styles.pageHero}><span>{kicker}</span><h1>{title}</h1><p>{description}</p></section>{children}<StoreFooter /></main>;
+  return <main className={styles.page}><StoreHeader /><section className={styles.pageHero}>
+    <div className={styles.pageHeroCopy}>
+      <span>{kicker}</span>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <div className={styles.pageHeroMeta} aria-hidden="true">
+        <span>تازه و روزانه</span>
+        <span>بسته‌بندی دوست‌داشتنی</span>
+      </div>
+    </div>
+    <div className={styles.pageHeroArt} aria-hidden="true">
+      <div className={styles.pageHeroHalo} />
+      <img className={styles.pageHeroImage + " " + styles.pageHeroImageBack} src="/products/dragon-box-new.webp" alt="" />
+      <img className={styles.pageHeroImage + " " + styles.pageHeroImageSide} src="/products/almond-pouch-new.webp" alt="" />
+      <img className={styles.pageHeroImage + " " + styles.pageHeroImageFront} src="/products/pistachio-pouch-new.webp" alt="" />
+      <img className={styles.pageHeroImage + " " + styles.pageHeroImageGift} src="/products/gift-boxes-new.webp" alt="" />
+      <span className={styles.pageHeroSpark + " " + styles.pageHeroSparkOne}>✦</span>
+      <span className={styles.pageHeroSpark + " " + styles.pageHeroSparkTwo}>✦</span>
+      <span className={styles.pageHeroTag}>هر روز، یک مزهٔ خوب</span>
+    </div>
+  </section>{children}<StoreFooter /></main>;
 }
 
 export function categoriesForUi() { return categories; }
