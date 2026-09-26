@@ -91,6 +91,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     ? product.variants
     : [{ sku: product.sku ?? `${product.id}-preview`, packageLabel: product.packageLabel, price: product.price, stock: product.stock }];
   const [selectedSku, setSelectedSku] = useState(variants[0].sku);
+  useEffect(() => setSelectedSku(variants[0].sku), [product.id, product.sku]);
   const selectedVariant = variants.find((variant) => variant.sku === selectedSku) ?? variants[0];
   const selectedProduct: DemoProduct = {
     ...product,
