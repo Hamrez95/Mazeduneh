@@ -213,7 +213,12 @@ public sealed class ProductCatalog
         return new Product(Guid.NewGuid(), request.Title.Trim(), request.Slug.Trim().ToLowerInvariant(),
             request.Category.Trim(), request.Origin.Trim(), request.Currency.Trim().ToUpperInvariant(), unitType,
             request.IsPublished, request.Variants.Select(item => new ProductVariant(item.Sku.Trim().ToUpperInvariant(),
-                item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages)).ToArray(), DateTimeOffset.UtcNow);
+                item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)).ToArray(), DateTimeOffset.UtcNow,
+            request.ShortDescription?.Trim() ?? string.Empty, request.Description?.Trim() ?? string.Empty,
+            request.SeoTitle?.Trim() ?? request.Title.Trim(), request.SeoDescription?.Trim() ?? request.ShortDescription?.Trim() ?? string.Empty,
+            request.SeoKeywords?.Trim() ?? string.Empty, request.PrimaryImage?.Trim() ?? string.Empty,
+            request.GalleryImages?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToArray() ?? [],
+            request.Specifications ?? new Dictionary<string, string>());
     }
 
     public Product Update(Product existing, UpdateProductRequest request)
@@ -251,38 +256,4 @@ public sealed class ProductCatalog
         new(sku, quantity, unit, label, price, stock);
 }
 
-public sealed record Product(Guid Id, string Title, string Slug, string Category, string Origin, string Currency,
-    ProductUnitType UnitType, bool IsPublished, IReadOnlyCollection<ProductVariant> Variants, DateTimeOffset CreatedAt);
-public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUnit, string DisplayLabel, decimal Price, int AvailablePackages);
-
-public sealed record CreateProductRequest(string Title, string Slug, string Category, string Origin, string Currency,
-    string UnitType, bool IsPublished, IReadOnlyCollection<CreateProductVariantRequest> Variants)
-{
-    public Dictionary<string, string[]> Validate()
-    {
-        var errors = new Dictionary<string, string[]>();
-        if (string.IsNullOrWhiteSpace(Title)) errors[nameof(Title)] = ["عنوان محصول الزامی است."];
-        if (string.IsNullOrWhiteSpace(Slug)) errors[nameof(Slug)] = ["شناسه آدرس محصول الزامی است."];
-        if (string.IsNullOrWhiteSpace(Category)) errors[nameof(Category)] = ["دسته‌بندی محصول الزامی است."];
-        if (string.IsNullOrWhiteSpace(Origin)) errors[nameof(Origin)] = ["مبدأ یا برند محصول الزامی است."];
-        if (string.IsNullOrWhiteSpace(Currency)) errors[nameof(Currency)] = ["واحد پول الزامی است."];
-        if (!Enum.TryParse<ProductUnitType>(UnitType, true, out _)) errors[nameof(UnitType)] = ["نوع واحد باید Weight یا Count باشد."];
-        if (Variants is null || Variants.Count == 0) { errors[nameof(Variants)] = ["حداقل یک بسته قابل فروش الزامی است."]; return errors; }
-        var duplicates = Variants.Where(item => !string.IsNullOrWhiteSpace(item.Sku)).GroupBy(item => item.Sku.Trim(), StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
-        if (duplicates.Length > 0) errors["Variants.Sku"] = [$"کدهای کالا تکراری هستند: {string.Join("، ", duplicates)}"];
-        for (var index = 0; index < Variants.Count; index++)
-        {
-            var item = Variants.ElementAt(index);
-            if (string.IsNullOrWhiteSpace(item.Sku)) errors[$"Variants[{index}].Sku"] = ["کد کالا الزامی است."];
-            if (string.IsNullOrWhiteSpace(item.DisplayLabel)) errors[$"Variants[{index}].DisplayLabel"] = ["عنوان بسته الزامی است."];
-            if (item.Quantity <= 0) errors[$"Variants[{index}].Quantity"] = ["مقدار بسته باید بیشتر از صفر باشد."];
-            if (item.Price < 0) errors[$"Variants[{index}].Price"] = ["قیمت نمی‌تواند منفی باشد."];
-            if (item.AvailablePackages < 0) errors[$"Variants[{index}].AvailablePackages"] = ["موجودی نمی‌تواند منفی باشد."];
-            if (item.CostPrice < 0) errors[$"Variants[{index}].CostPrice"] = ["قیمت تمام‌شده نمی‌تواند منفی باشد."];
-        }
-        return errors;
-    }
-}
-public sealed record CreateProductVariantRequest(string Sku, decimal Quantity, string DisplayLabel, decimal Price, int AvailablePackages);
-public sealed record SetProductPublicationRequest(bool IsPublished);
 public partial class Program;
