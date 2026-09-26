@@ -2,13 +2,41 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { demoProducts, categories, toman, type DemoProduct } from "./demo/catalog";
+import { demoProducts, toman, type DemoProduct } from "./demo/catalog";
+import { API_BASE, fetchLiveProduct, fetchLiveProducts } from "./api-catalog";
 import { ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import { ProductCard, RelatedProducts, ShopShell, StoreFooter, StoreHeader } from "./store-chrome";
 import styles from "./store-pages.module.css";
 
+function useLiveCatalog() {
+  const [liveProducts, setLiveProducts] = useState<DemoProduct[] | null>(null);
+  const [status, setStatus] = useState<"preview" | "loading" | "live" | "error">(API_BASE ? "loading" : "preview");
+
+  useEffect(() => {
+    if (!API_BASE) return;
+    const controller = new AbortController();
+    fetchLiveProducts(controller.signal)
+      .then((items) => {
+        if (!items) return;
+        setLiveProducts(items);
+        setStatus("live");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStatus("error");
+      });
+    return () => controller.abort();
+  }, []);
+
+  return {
+    products: liveProducts ?? demoProducts,
+    status,
+  };
+}
+
 export function CatalogPage() {
+  const { products: catalogProducts, status } = useLiveCatalog();
   const [category, setCategory] = useState("همه");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("popular");
@@ -17,20 +45,30 @@ export function CatalogPage() {
     setQuery(params.get("q") ?? "");
     setCategory(params.get("category") ?? "همه");
   }, []);
+  const categoryOptions = useMemo(
+    () => ["همه", ...Array.from(new Set(catalogProducts.map((product) => product.category)))],
+    [catalogProducts],
+  );
   const products = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
-    const filtered = demoProducts.filter((product) =>
+    const filtered = catalogProducts.filter((product) =>
       (category === "همه" || product.category === category)
       && (!normalized || `${product.title} ${product.subtitle} ${product.category} ${product.origin}`.toLocaleLowerCase().includes(normalized)),
     );
-    return filtered.sort((a, b) => sort === "price-asc" ? a.price - b.price : sort === "price-desc" ? b.price - a.price : demoProducts.indexOf(a) - demoProducts.indexOf(b));
-  }, [category, query, sort]);
+    return filtered.sort((a, b) => sort === "price-asc" ? a.price - b.price : sort === "price-desc" ? b.price - a.price : catalogProducts.indexOf(a) - catalogProducts.indexOf(b));
+  }, [catalogProducts, category, query, sort]);
 
   return <ShopShell kicker="از قفسهٔ مزه‌دونه" title="هر روز، یک مزهٔ خوب" description="محصول‌ها را ببین، دسته‌بندی کن و جزئیات هر بسته را پیش از انتخاب بخوان.">
     <section className={styles.content}>
+      <div className={styles.catalogMode} role="status" aria-live="polite">
+        {status === "loading" && "در حال دریافت کاتالوگ منتشرشده…"}
+        {status === "live" && "کاتالوگ زنده؛ قیمت و موجودی از سرویس فروش خوانده می‌شود."}
+        {status === "preview" && "حالت پیش‌نمایش؛ قیمت و موجودی نمونه هستند."}
+        {status === "error" && "API در دسترس نبود؛ دادهٔ نمونه برای بازبینی نمایش داده می‌شود."}
+      </div>
       <div className={styles.toolbar}>
         <div className={styles.categoryList} aria-label="فیلتر دسته‌بندی">
-          {categories.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
+          {categoryOptions.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
         </div>
         <label className={styles.sortSelect}>مرتب‌سازی <select aria-label="مرتب‌سازی محصولات" value={sort} onChange={(event) => setSort(event.target.value)}><option value="popular">پیشنهادی</option><option value="price-asc">ارزان‌ترین</option><option value="price-desc">گران‌ترین</option></select></label>
       </div>
@@ -47,7 +85,7 @@ const productFacts = [
   ["بسته‌بندی", "بسته‌بندی مناسب نگهداری خوراکی"],
 ];
 
-export function ProductPage({ product }: { product: DemoProduct }) {
+export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
   const { add } = useCart();
   const [reviews, setReviews] = useState<{ name: string; rating: string; text: string }[]>([]);
   function addReview(event: FormEvent<HTMLFormElement>) {
@@ -75,7 +113,7 @@ export function ProductPage({ product }: { product: DemoProduct }) {
         <span className={styles.variantChoice}>{product.packageLabel} <span aria-hidden="true">✓</span></span>
         <div className={styles.detailBuy}><button type="button" onClick={() => add(product)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
         <div className={styles.facts}>{productFacts.map(([label, value]) => <div className={styles.fact} key={label}><small>{label}</small><b>{label === "مبدأ" ? product.origin : value}</b></div>)}</div>
-        <div className={styles.detailNotice}>اطلاعات و قیمت‌های این نسخه نمونه‌اند. مشخصات قطعی ترکیبات، حساسیت‌زاها و وزن باید پیش از فروش از پنل محصول تأیید شوند.</div>
+        <div className={styles.detailNotice}>{live ? "این اطلاعات از کاتالوگ منتشرشدهٔ سرویس فروش خوانده شده‌اند؛ جزئیات غذایی نهایی باید با بسته‌بندی تطبیق داده شوند." : "اطلاعات و قیمت‌های این نسخه نمونه‌اند. مشخصات قطعی ترکیبات، حساسیت‌زاها و وزن باید پیش از فروش از پنل محصول تأیید شوند."}</div>
       </div>
     </div>
     <section className={styles.detailTabs}>
@@ -96,6 +134,38 @@ export function ProductPage({ product }: { product: DemoProduct }) {
     <RelatedProducts currentId={product.id} />
     <StoreFooter />
   </main>;
+}
+
+export function LiveProductPage({ slug }: { slug: string }) {
+  const fallback = demoProducts.find((item) => item.id === slug);
+  const [product, setProduct] = useState<DemoProduct | undefined>(fallback);
+  const [live, setLive] = useState(false);
+  const [loading, setLoading] = useState(Boolean(API_BASE));
+
+  useEffect(() => {
+    if (!API_BASE) return;
+    const controller = new AbortController();
+    fetchLiveProduct(slug, controller.signal)
+      .then((item) => {
+        if (item) {
+          setProduct(item);
+          setLive(true);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [slug]);
+
+  if (loading && !product) {
+    return <ShopShell kicker="محصول" title="در حال دریافت اطلاعات…" description="اطلاعات محصول منتشرشده در حال بارگذاری است." />;
+  }
+  if (!product) {
+    return <ShopShell kicker="محصول پیدا نشد" title="این محصول در کاتالوگ موجود نیست." description="ممکن است محصول از فروش خارج شده باشد یا نشانی آن اشتباه باشد."><section className={styles.content}><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></section></ShopShell>;
+  }
+  return <ProductPage product={product} live={live} />;
 }
 
 export function CartPage() {
@@ -169,7 +239,7 @@ export function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
-  const unsupportedLines = cart.filter((line) => !apiSkusByProductId[line.id]);
+  const unsupportedLines = cart.filter((line) => !(apiSkusByProductId[line.id] ?? line.sku));
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -192,7 +262,7 @@ export function CheckoutPage() {
       city: String(data.get("city") ?? ""),
       address: String(data.get("address") ?? ""),
       postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
-      lines: cart.map((line) => ({ sku: apiSkusByProductId[line.id], quantity: line.quantity })),
+      lines: cart.map((line) => ({ sku: (apiSkusByProductId[line.id] ?? line.sku)!, quantity: line.quantity })),
     };
 
     setSubmitting(true);
