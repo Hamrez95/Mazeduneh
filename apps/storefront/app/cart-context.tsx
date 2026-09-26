@@ -12,8 +12,8 @@ type CartValue = {
   shipping: number;
   total: number;
   add: (product: DemoProduct) => void;
-  change: (id: string, delta: number) => void;
-  remove: (id: string) => void;
+  change: (key: string, delta: number) => void;
+  remove: (key: string) => void;
   clear: () => void;
 };
 
@@ -55,19 +55,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
       total: subtotal + shipping,
       add(product) {
         setCart((current) => {
-          const found = current.find((line) => line.id === product.id);
+          const found = current.find((line) => product.sku ? line.sku === product.sku : line.id === product.id);
           if (!found) return [...current, { ...product, quantity: 1 }];
-          return current.map((line) => line.id === product.id
+          return current.map((line) => (product.sku ? line.sku === product.sku : line.id === product.id)
             ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) }
             : line);
         });
       },
-      change(id, delta) {
+      change(key, delta) {
         setCart((current) => current
-          .map((line) => line.id === id ? { ...line, quantity: Math.max(0, Math.min(line.quantity + delta, line.stock)) } : line)
+          .map((line) => (line.sku ?? line.id) === key ? { ...line, quantity: Math.max(0, Math.min(line.quantity + delta, line.stock)) } : line)
           .filter((line) => line.quantity > 0));
       },
-      remove(id) { setCart((current) => current.filter((line) => line.id !== id)); },
+      remove(key) { setCart((current) => current.filter((line) => (line.sku ?? line.id) !== key)); },
       clear() { setCart([]); },
     };
   }, [cart]);
