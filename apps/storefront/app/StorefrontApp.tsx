@@ -148,6 +148,21 @@ function productIcon(product: Product) {
   return "🌰";
 }
 
+
+function productArtwork(product: Product) {
+  const key = `${product.slug} ${product.title}`.toLowerCase();
+  if (key.includes("almond") || key.includes("بادام")) return "/products/almond-pouch.webp";
+  if (key.includes("walnut") || key.includes("گردو")) return "/products/walnut-character.webp";
+  if (key.includes("pistachio") || key.includes("پسته")) return "/products/pistachio-pouch.webp";
+  if (key.includes("pumpkin") || key.includes("تخمه")) return "/products/pumpkin-seeds.webp";
+  if (key.includes("mixed") || key.includes("مخلوط")) return "/products/mixed-nuts-character.webp";
+  if (key.includes("oat-cookie")) return "/products/cookie-mouth-packaging.webp";
+  if (key.includes("cookie") || key.includes("کوکی")) return "/products/cocoa-cookie-dragon.webp";
+  if (key.includes("gift") || key.includes("هدیه")) return "/products/one-kilo-box-packaging.webp";
+  if (key.includes("dried") || key.includes("خشک") || key.includes("leather")) return "/products/gift-wrap-packaging.webp";
+  return "/products/mixed-nuts-character.webp";
+}
+
 function normalizeStoredCart(value: unknown): CartItem[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((line) => {
@@ -368,9 +383,38 @@ export default function StorefrontApp() {
           </div>
           <ul className="trustList"><li>ضمانت تازگی</li><li>قیمت نهایی در سرور</li><li>رزرو امن موجودی</li></ul>
         </div>
-        <div className="heroVisual" aria-label="تصویر مفهومی مغزیجات مزه‌دونه">
-          <div className="sun" />
-          <div className="bowl"><span>🥜</span><span>🌰</span><span>🍪</span><span>🎃</span></div>
+        <div className="heroVisual" aria-label="مجموعه بسته‌بندی‌های تازه مزه‌دونه">
+          <div className="heroHalo" aria-hidden="true" />
+          <figure className="heroPack heroPackBack"><img src="/products/cocoa-cookie-dragon.webp" alt="" /></figure>
+          <figure className="heroPack heroPackSide"><img src="/products/almond-pouch.webp" alt="" /></figure>
+          <figure className="heroPack heroPackFront"><img src="/products/pistachio-pouch.webp" alt="" /></figure>
+          <span className="heroSpark heroSparkOne" aria-hidden="true">✦</span>
+          <span className="heroSpark heroSparkTwo" aria-hidden="true">✦</span>
+        </div>
+      </section>
+
+
+      <section className="packagingShowcase shell" aria-labelledby="packaging-title">
+        <div className="packagingShowcaseCopy">
+          <span className="eyebrow">هویت تازهٔ مزه‌دونه</span>
+          <h2 id="packaging-title">هر محصول، یک شخصیت و یک بسته‌بندی</h2>
+          <p>رنگ و کاراکتر هر محصول متفاوت است؛ اما پنجرهٔ شفاف، لوگوتایپ و زبان سبز صدری همه‌چیز را یکپارچه نگه می‌دارند.</p>
+          <a className="secondaryButton" href="#products">دیدن محصولات</a>
+        </div>
+        <div className="packagingRail" aria-label="نمونه بسته‌بندی‌های مزه‌دونه">
+          {[
+            ["/products/pistachio-pouch.webp", "پسته"],
+            ["/products/almond-pouch.webp", "بادام"],
+            ["/products/walnut-character.webp", "گردو"],
+            ["/products/cocoa-cookie-dragon.webp", "کوکی کاکائویی"],
+            ["/products/one-kilo-box-packaging.webp", "پک یک‌کیلویی"],
+            ["/products/gift-wrap-packaging.webp", "پک هدیه"],
+          ].map(([src, label]) => (
+            <figure className="packagingTile" key={src}>
+              <img src={src} alt={`بسته‌بندی ${label}`} loading="lazy" />
+              <figcaption>{label}</figcaption>
+            </figure>
+          ))}
         </div>
       </section>
 
@@ -407,7 +451,7 @@ export default function StorefrontApp() {
               <article className="productCard" key={product.id}>
                 <div className="productImage">
                   <span className="badge">{product.unitType === "Weight" ? "وزنی" : "عددی"}</span>
-                  <span className="productEmoji" aria-hidden="true">{productIcon(product)}</span>
+                  <img className="productArtwork" src={productArtwork(product)} alt={`بسته‌بندی ${product.title}`} loading="lazy" />
                 </div>
                 <div className="productBody">
                   <small>{product.origin} · {product.category}</small>
