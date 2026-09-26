@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { demoProducts, toman, type DemoProduct } from "./demo/catalog";
 import { API_BASE, fetchLiveProduct, fetchLiveProducts } from "./api-catalog";
-import { ProductArtwork } from "./demo/ProductArtwork";
+import { getProductArtworkGallery, ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import { ProductCard, RelatedProducts, ShopShell, StoreFooter, StoreHeader } from "./store-chrome";
 import styles from "./store-pages.module.css";
@@ -111,10 +111,32 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     }, ...current]);
     event.currentTarget.reset();
   }
+  const gallery = getProductArtworkGallery(product);
+  const [activeImage, setActiveImage] = useState(gallery[0]);
+  useEffect(() => setActiveImage(gallery[0]), [product.id]);
+
   return <main className={styles.page}>
     <StoreHeader />
     <div className={styles.detailLayout}>
-      <div className={`${styles.detailVisual} ${styles[product.accent]}`}><ProductArtwork product={product} hero /></div>
+      <div className={`${styles.detailVisual} ${styles[product.accent]}`}>
+        <div className={styles.detailImageStage}>
+          <ProductArtwork product={product} hero src={activeImage} />
+        </div>
+        <div className={styles.detailGallery} aria-label={`تصاویر ${product.title}`}>
+          {gallery.map((image, index) => (
+            <button
+              key={image}
+              type="button"
+              className={activeImage === image ? styles.detailGalleryActive : styles.detailGalleryButton}
+              aria-label={`نمایش تصویر ${index + 1} از ${gallery.length}`}
+              aria-pressed={activeImage === image}
+              onClick={() => setActiveImage(image)}
+            >
+              <img src={image} alt="" loading={index === 0 ? "eager" : "lazy"} />
+            </button>
+          ))}
+        </div>
+      </div>
       <div className={styles.detailInfo}>
         <div className={styles.breadcrumbs}><a href="/">خانه</a> ← <a href="/shop">فروشگاه</a> ← <a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a></div>
         <span className={styles.detailKicker}>{product.badge ?? "انتخاب مزه‌دونه"}</span>

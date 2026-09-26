@@ -98,9 +98,11 @@ export default function ProfessionalStorefront() {
         <div className={styles.heroVisual}>
           <span className={styles.heroCaption}>پرفروشِ این هفته</span>
           <div className={styles.heroPackagingHalo} aria-hidden="true" />
-          <figure className={`${styles.heroPackaging} ${styles.heroPackagingBack}`}><img src="/products/cocoa-cookie-dragon.webp" alt="" /></figure>
-          <figure className={`${styles.heroPackaging} ${styles.heroPackagingSide}`}><img src="/products/almond-pouch.webp" alt="" /></figure>
-          <figure className={`${styles.heroPackaging} ${styles.heroPackagingFront}`}><img src="/products/pistachio-pouch.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingBack}`} aria-hidden="true"><img src="/products/dragon-box-new.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingSide}`} aria-hidden="true"><img src="/products/almond-pouch-new.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingWalnut}`} aria-hidden="true"><img src="/products/walnut-character-new.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingFront}`} aria-hidden="true"><img src="/products/pistachio-pouch-new.webp" alt="" /></figure>
+          <figure className={`${styles.heroPackaging} ${styles.heroPackagingGift}`} aria-hidden="true"><img src="/products/gift-boxes-new.webp" alt="" /></figure>
           <span className={`${styles.heroSpark} ${styles.heroSparkOne}`} aria-hidden="true">✦</span>
           <span className={`${styles.heroSpark} ${styles.heroSparkTwo}`} aria-hidden="true">✦</span>
           <div className={styles.heroPriceCard}>
@@ -123,12 +125,12 @@ export default function ProfessionalStorefront() {
         </div>
         <div className={styles.packagingRail} aria-label="نمونه بسته‌بندی‌های مزه‌دونه">
           {[
-            ["/products/pistachio-pouch.webp", "پسته"],
-            ["/products/almond-pouch.webp", "بادام"],
-            ["/products/walnut-character.webp", "گردو"],
-            ["/products/cocoa-cookie-dragon.webp", "کوکی کاکائویی"],
-            ["/products/one-kilo-box-packaging.webp", "پک یک‌کیلویی"],
-            ["/products/gift-wrap-packaging.webp", "پک هدیه"],
+            ["/products/pistachio-pouch-new.webp", "پسته"],
+            ["/products/almond-pouch-new.webp", "بادام"],
+            ["/products/walnut-character-new.webp", "گردو"],
+            ["/products/dragon-box-new.webp", "کوکی کاکائویی"],
+            ["/products/gift-boxes-new.webp", "پک یک‌کیلویی"],
+            ["/products/cookie-boxes-new.webp", "پک کوکی"],
           ].map(([src, label]) => (
             <figure className={styles.packagingTile} key={src}>
               <img src={src} alt={`بسته‌بندی ${label}`} loading="lazy" />

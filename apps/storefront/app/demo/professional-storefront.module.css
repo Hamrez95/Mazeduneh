@@ -470,3 +470,44 @@
   .packagingTile img { height: 83px; }
   .packagingTile figcaption { font-size: .59rem; }
 }
+
+
+/* Motion layer for the real packaging artwork. */
+.heroPackaging {
+  will-change: transform;
+  animation: packagingFloat 7s ease-in-out infinite;
+}
+.heroPackagingBack { animation-delay: -1.8s; }
+.heroPackagingSide { animation-delay: -.7s; }
+.heroPackagingWalnut {
+  width: 142px;
+  left: 7%;
+  top: 14%;
+  transform: rotate(-14deg);
+  opacity: .88;
+  z-index: 2;
+  animation-delay: -3.5s;
+}
+.heroPackagingFront { animation-delay: -2.6s; }
+.heroPackagingGift {
+  width: 150px;
+  right: 3%;
+  bottom: 11%;
+  transform: rotate(10deg);
+  opacity: .9;
+  z-index: 2;
+  animation-delay: -4.4s;
+}
+@keyframes packagingFloat {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -9px; }
+}
+.packagingTile img { transition: transform .3s ease, filter .3s ease; }
+.packagingTile:hover img { transform: translateY(-6px) rotate(-2deg) scale(1.04); filter: drop-shadow(0 16px 13px rgba(38,66,49,.18)); }
+@media (max-width: 640px) {
+  .heroPackagingWalnut { width: 92px; left: 0; top: 13%; }
+  .heroPackagingGift { width: 94px; right: 0; bottom: 12%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .heroPackaging, .packagingTile img { animation: none; transition: none; }
+}
