@@ -146,12 +146,15 @@ jobs:
 
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders)" = "401"
           curl -fsS http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-orders.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=PI-AKB-250" -H "Authorization: Bearer ${TOKEN}" > /tmp/stock-movements.json
           python3 - <<'PY'
           import json
           orders = json.load(open('/tmp/admin-orders.json', encoding='utf-8'))
           assert len(orders) == 1
           assert orders[0]['state'] == 'Paid'
           assert orders[0]['paymentReference']
+          movements = json.load(open('/tmp/stock-movements.json', encoding='utf-8'))
+          assert any(item['movementType'] == 'Reserved' and item['quantityDelta'] == -1 for item in movements)
           PY
 
           for STATE in Preparing Shipped Delivered; do
