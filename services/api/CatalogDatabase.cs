@@ -1,6 +1,6 @@
 using Npgsql;
 
-public sealed class CatalogDatabase(IConfiguration configuration, ILogger<CatalogDatabase> logger)
+public sealed class CatalogDatabase(IConfiguration configuration, ILogger<CatalogDatabase> logger, InventoryLedgerDatabase ledger)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -102,6 +102,9 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             command.Parameters.AddWithValue("price", variant.Price);
             command.Parameters.AddWithValue("available_packages", variant.AvailablePackages);
             await command.ExecuteNonQueryAsync(cancellationToken);
+            await ledger.RecordAsync(
+                connection, transaction, variant.Sku, variant.AvailablePackages, "InitialStock",
+                variant.AvailablePackages, null, "system", "catalog-initial-stock", cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
     }
