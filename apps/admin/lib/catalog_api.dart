@@ -47,6 +47,25 @@ class CatalogApiClient {
     return decoded.map((item) => Product.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<Category>> fetchCategories() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/categories/admin'), headers: _headers());
+    _guardUnauthorized(response);
+    if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => Category.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<Category> createCategory(CreateCategoryCommand command) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/categories'),
+      headers: _headers(json: true),
+      body: jsonEncode(command.toJson()),
+    );
+    _guardUnauthorized(response);
+    if (response.statusCode != 201) throw CatalogApiException(_message(response), statusCode: response.statusCode);
+    return Category.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<Product> createProduct(CreateProductCommand command) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/products/'),
@@ -57,6 +76,17 @@ class CatalogApiClient {
     if (response.statusCode != 201) {
       throw CatalogApiException(_message(response), statusCode: response.statusCode);
     }
+    return Product.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<Product> updateProduct(String slug, UpdateProductCommand command) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/products/$slug'),
+      headers: _headers(json: true),
+      body: jsonEncode(command.toJson()),
+    );
+    _guardUnauthorized(response);
+    if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
     return Product.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
