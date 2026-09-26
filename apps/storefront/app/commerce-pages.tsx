@@ -142,6 +142,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
         <span className={styles.detailKicker}>{product.badge ?? "انتخاب مزه‌دونه"}</span>
         <h1>{product.title}</h1>
         <p className={styles.detailSubtitle}>{product.subtitle}</p>
+        {product.description && <p className={styles.detailDescription}>{product.description}</p>}
         <div className={styles.rating} aria-label="بدون امتیاز ثبت‌شده">☆☆☆☆☆ <span>هنوز امتیاز تأییدشده‌ای ثبت نشده</span></div>
         <div className={styles.detailPrice}>{toman(selectedProduct.price)} <small>تومان</small></div>
         <p className={styles.variantTitle}>بستهٔ قابل انتخاب</p>
@@ -166,7 +167,8 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
       </div>
     </div>
     <section className={styles.detailTabs}>
-      <h2>دربارهٔ این محصول</h2><p>{product.subtitle} · {product.note}. برای خرید واقعی باید اطلاعات کامل ترکیبات، وزن خالص، تاریخ تولید و شرایط نگهداری روی همین صفحه و بسته‌بندی نمایش داده شود.</p>
+      <h2>دربارهٔ این محصول</h2><p>{product.description || `${product.subtitle} · ${product.note}.`}</p>
+      {product.specifications && Object.keys(product.specifications).length > 0 && <div className={styles.specGrid}>{Object.entries(product.specifications).map(([label, value]) => <div className={styles.specItem} key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>}
       <div className={styles.reviewHeading}><h2>دیدگاه خریداران</h2><span>{toman(reviews.length)} دیدگاه این نشست</span></div>
       {reviews.length ? <div className={styles.reviewList}>{reviews.map((review, index) => <article className={styles.reviewCard} key={`${review.name}-${index}`}><div><strong>{review.name}</strong><span>{"★".repeat(Number(review.rating))}{"☆".repeat(5 - Number(review.rating))}</span></div><p>{review.text}</p><small>پیش‌نمایش محلی · برای دیگران ذخیره نمی‌شود</small></article>)}</div> : <div className={styles.reviewEmpty}>هنوز دیدگاه تأییدشده‌ای ثبت نشده است. دیدگاهی که اینجا بنویسی فقط در همین نشست دیده می‌شود.</div>}
       <form className={styles.reviewForm} onSubmit={addReview}>
