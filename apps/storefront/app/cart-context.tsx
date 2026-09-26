@@ -28,7 +28,8 @@ function normalizeStoredCart(value: unknown): CartLine[] {
     if (!line || typeof line !== "object") return [];
     const item = line as Record<string, unknown>;
     if (typeof item.id === "string" && typeof item.title === "string") {
-      return Number.isFinite(item.quantity) && Number(item.quantity) > 0 ? [{ ...item, quantity: Number(item.quantity) } as CartLine] : [];
+      const quantity = Number(item.quantity);
+      return Number.isFinite(quantity) && quantity > 0 ? [{ ...item, quantity } as CartLine] : [];
     }
     if (typeof item.sku === "string" && typeof item.productTitle === "string") {
       const quantity = Number(item.quantity);
