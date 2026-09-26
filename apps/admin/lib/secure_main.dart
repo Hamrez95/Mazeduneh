@@ -221,6 +221,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
   late final OrderApiClient orderApi = widget.orderApi ?? OrderApiClient();
 
   List<Product> products = const [];
+  List<Category> categories = const [];
   List<AdminOrder> orders = const [];
   List<StockMovement> movements = const [];
   AdminDashboard? dashboard;
@@ -253,6 +254,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     try {
       final result = await Future.wait<dynamic>([
         catalogApi.fetchProducts(includeDrafts: true),
+        catalogApi.fetchCategories(),
         orderApi.fetchOrders(state: orderFilter),
         orderApi.fetchDashboard(),
         orderApi.fetchInventoryMovements(limit: 100),
@@ -260,9 +262,10 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
       if (!mounted) return;
       setState(() {
         products = result[0] as List<Product>;
-        orders = result[1] as List<AdminOrder>;
-        dashboard = result[2] as AdminDashboard;
-        movements = result[3] as List<StockMovement>;
+        categories = result[1] as List<Category>;
+        orders = result[2] as List<AdminOrder>;
+        dashboard = result[3] as AdminDashboard;
+        movements = result[4] as List<StockMovement>;
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
@@ -398,7 +401,7 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     return switch (selectedIndex) {
       0 => dashboardView(),
       1 => ordersView(),
-      2 => ProductManagementPage(products: products, api: catalogApi, onReload: loadAll),
+      2 => ProductManagementPage(products: products, categories: categories, api: catalogApi, onReload: loadAll),
       _ => inventoryView(),
     };
   }
