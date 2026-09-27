@@ -1,3 +1,4 @@
+import 'admin_state.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 
@@ -160,7 +161,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminDashboard? dashboard;
   AdminNotifications? notifications;
-  String? error;
+  Object? error;
   bool loading = true;
 
   @override
@@ -175,7 +176,7 @@ class _DashboardPageState extends State<DashboardPage> {
         notifications = result[1] as AdminNotifications;
       });
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -184,11 +185,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.cloud_off_rounded, size: 54, color: AdminColors.muted),
-      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
-      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
-    ]));
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final data = dashboard!;
     return RefreshIndicator(
       onRefresh: load,
@@ -305,7 +302,7 @@ class CatalogPageState extends State<CatalogPage> {
   List<Category> categories = const [];
   final Set<String> changingPublication = {};
   bool loading = true;
-  String? error;
+  Object? error;
   bool showDrafts = true;
 
   @override
@@ -329,7 +326,7 @@ class CatalogPageState extends State<CatalogPage> {
         categories = result[1] as List<Category>;
       });
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -420,17 +417,7 @@ class CatalogPageState extends State<CatalogPage> {
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(error!, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('تلاش دوباره')),
-        ]),
-      );
-    }
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final visible = showDrafts ? products : products.where((item) => item.isPublished).toList();
     if (visible.isEmpty) return const Center(child: Text('محصولی با این وضعیت وجود ندارد.'));
     return LayoutBuilder(builder: (context, constraints) {
@@ -836,7 +823,7 @@ class _OrdersPageState extends State<OrdersPage> {
   };
   List<AdminOrder> orders = const [];
   String selectedState = '';
-  String? error;
+  Object? error;
   bool loading = true;
   String? busyOrder;
 
@@ -855,7 +842,7 @@ class _OrdersPageState extends State<OrdersPage> {
       final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState);
       if (mounted) setState(() => orders = result);
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -924,17 +911,7 @@ class _OrdersPageState extends State<OrdersPage> {
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(error!, textAlign: TextAlign.center),
-          const SizedBox(height: 12),
-          FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('تلاش دوباره')),
-        ]),
-      );
-    }
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     if (orders.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1007,7 +984,7 @@ class _InventoryPageState extends State<InventoryPage> {
   late final OrderApiClient orders = widget.orders ?? OrderApiClient();
   List<Product> products = const [];
   List<StockMovement> movements = const [];
-  String? error;
+  Object? error;
   bool loading = true;
   String? busySku;
 
@@ -1026,7 +1003,7 @@ class _InventoryPageState extends State<InventoryPage> {
         movements = result[1] as List<StockMovement>;
       });
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -1067,11 +1044,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
-      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
-      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('تلاش دوباره')),
-    ]));
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 1100 ? 2 : 1;
       return GridView.count(
@@ -1220,7 +1193,7 @@ class _ReportsPageState extends State<ReportsPage> {
   AdminAnalytics? analytics;
   int days = 30;
   bool loading = true;
-  String? error;
+  Object? error;
 
   @override
   void initState() { super.initState(); load(); }
@@ -1231,7 +1204,7 @@ class _ReportsPageState extends State<ReportsPage> {
       final result = await api.fetchAnalytics(days: days);
       if (mounted) setState(() => analytics = result);
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -1269,11 +1242,7 @@ class _ReportsPageState extends State<ReportsPage> {
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.query_stats_rounded, size: 56, color: AdminColors.muted),
-      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
-      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
-    ]));
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final data = analytics!;
     if (data.orderCount == 0) return const Center(child: Text('برای این بازه هنوز داده‌ی فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)));
     return LayoutBuilder(builder: (context, constraints) {
@@ -1538,7 +1507,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminNotifications? data;
   bool loading = true;
-  String? error;
+  Object? error;
 
   @override
   void initState() {
@@ -1552,7 +1521,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       final result = await api.fetchNotifications();
       if (mounted) setState(() => data = result);
     } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
+      if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -1577,13 +1546,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.notifications_off_rounded, size: 56, color: AdminColors.muted),
-      const SizedBox(height: 12),
-      Text(error!, textAlign: TextAlign.center),
-      const SizedBox(height: 12),
-      FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
-    ]));
+    if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final items = data?.items ?? const <AdminNotification>[];
     if (items.isEmpty) return const Center(child: Text('فعلاً اعلان مهمی ندارید.', style: TextStyle(color: AdminColors.muted)));
     return ListView.separated(
