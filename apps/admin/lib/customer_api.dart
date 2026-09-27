@@ -91,6 +91,7 @@ class CustomerSummary {
     required this.createdAt,
     required this.updatedAt,
     required this.orderCount,
+    this.addresses = const [],
   });
 
   final String id;
@@ -101,6 +102,7 @@ class CustomerSummary {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int orderCount;
+  final List<CustomerAddress> addresses;
 
   factory CustomerSummary.fromJson(Map<String, dynamic> json) => CustomerSummary(
         id: json['id'].toString(),
@@ -111,5 +113,36 @@ class CustomerSummary {
         createdAt: DateTime.parse(json['createdAt'] as String),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         orderCount: (json['orderCount'] as num?)?.toInt() ?? 0,
+        addresses: (json['addresses'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerAddress.fromJson)
+            .toList(),
+      );
+}
+
+class CustomerAddress {
+  const CustomerAddress({
+    required this.province,
+    required this.city,
+    required this.address,
+    required this.postalCode,
+    required this.isDefault,
+    required this.lastUsedAt,
+  });
+
+  final String province;
+  final String city;
+  final String address;
+  final String postalCode;
+  final bool isDefault;
+  final DateTime lastUsedAt;
+
+  factory CustomerAddress.fromJson(Map<String, dynamic> json) => CustomerAddress(
+        province: json['province'] as String? ?? '',
+        city: json['city'] as String? ?? '',
+        address: json['address'] as String? ?? '',
+        postalCode: json['postalCode'] as String? ?? '',
+        isDefault: json['isDefault'] as bool? ?? false,
+        lastUsedAt: DateTime.parse(json['lastUsedAt'] as String),
       );
 }
