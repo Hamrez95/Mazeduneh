@@ -812,7 +812,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 ]);
               },
             )),
-          ])),
+          ]))),
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
@@ -834,7 +834,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 );
               },
             )),
-          ])),
+          ]))),
         ],
       );
     });
