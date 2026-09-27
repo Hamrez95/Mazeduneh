@@ -564,6 +564,12 @@ class _ProductDialogState extends State<ProductDialog> {
   String? mediaError;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.categories.isNotEmpty) category = widget.categories.first.name;
+  }
+
+  @override
   Widget build(BuildContext context) => AlertDialog(
         title: const Text('محصول جدید'),
         content: SizedBox(
