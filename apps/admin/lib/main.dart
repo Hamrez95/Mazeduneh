@@ -590,9 +590,9 @@ class _ProductDialogState extends State<ProductDialog> {
                 DropdownButtonFormField<String>(
                   value: category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
-                  items: (categories.isEmpty
+                  items: (widget.categories.isEmpty
                       ? const ['آجیل و مغزها', 'میوه خشک', 'لواشک و ترش‌مزه', 'کوکی و شیرینی', 'کم‌شکر و پروتئینی', 'هدیه']
-                      : categories.map((item) => item.name).toList())
+                      : widget.categories.map((item) => item.name).toList())
                       .map((item) => DropdownMenuItem(value: item, child: Text(item)))
                       .toList(),
                   onChanged: (value) => category = value!,
