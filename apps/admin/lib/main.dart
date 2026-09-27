@@ -241,14 +241,14 @@ class _DashboardPageState extends State<DashboardPage> {
                             ListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                              subtitle: Text('\${item.variantLabel} · \${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                              trailing: Text('\${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                              subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                              trailing: Text('${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
                             ),
                         ]),
                 ),
               ),
             ]);
-          }),          ]),
+          }),
         ],
       ),
     );
