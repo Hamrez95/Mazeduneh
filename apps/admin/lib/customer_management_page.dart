@@ -44,8 +44,9 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
       if (mounted) {
         setState(() {
           customers = result;
-          final matching = result.where((item) => item.id == selected!.id);
-          selected = selected == null || matching.isEmpty ? null : matching.first;
+          final previous = selected;
+          final matching = previous == null ? const <CustomerSummary>[] : result.where((item) => item.id == previous.id);
+          selected = matching.isEmpty ? null : matching.first;
         });
       }
     } catch (exception) {
