@@ -44,9 +44,8 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
       if (mounted) {
         setState(() {
           customers = result;
-          selected = selected == null
-              ? null
-              : result.where((item) => item.id == selected!.id).firstOrNull;
+          final matching = result.where((item) => item.id == selected!.id);
+          selected = selected == null || matching.isEmpty ? null : matching.first;
         });
       }
     } catch (exception) {
@@ -187,7 +186,7 @@ class _CustomerList extends StatelessWidget {
                         CircleAvatar(
                           backgroundColor: _CustomerColors.mint,
                           foregroundColor: _CustomerColors.inkDeep,
-                          child: Text(customer.fullName.isEmpty ? '؟' : customer.fullName.characters.first),
+                          child: Text(customer.fullName.isEmpty ? '؟' : customer.fullName.substring(0, 1)),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
