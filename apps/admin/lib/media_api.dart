@@ -27,10 +27,8 @@ class MediaAsset {
 }
 
 class MediaApiClient {
-  MediaApiClient({http.Client? client, String? baseUrl})
-      : _client = client ?? http.Client(),
-        baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), '');
-  final http.Client _client;
+  MediaApiClient({String? baseUrl})
+      : baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), '');
   final String baseUrl;
 
   Future<MediaAsset> uploadImage({
