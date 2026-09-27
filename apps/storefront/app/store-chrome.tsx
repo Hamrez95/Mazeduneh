@@ -7,6 +7,10 @@ import { ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import styles from "./store-pages.module.css";
 
+function CartGlyph() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
+}
+
 export function BrandLogo({ light = false }: { light?: boolean }) {
   return (
     <a className={`${styles.brand} ${light ? styles.brandLight : ""}`} href="/" aria-label="مزه‌دونه، صفحهٔ اصلی">
@@ -40,7 +44,7 @@ export function StoreHeader() {
         </nav>
         <div className={styles.headerActions}>
           <form className={styles.search} onSubmit={search} role="search"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="دنبال چه مزه‌ای هستی؟" aria-label="جست‌وجوی محصولات" /><button aria-label="جست‌وجو">⌕</button></form>
-          <a href="/cart" className={styles.cartLink} aria-label={`سبد خرید، ${count} کالا`}>سبد خرید <b>{toman(count)}</b></a>
+          <a href="/cart" className={styles.cartLink} aria-label={`سبد خرید، ${count} کالا`}><span className={styles.cartGlyph}><CartGlyph /></span><em>سبد خرید</em><b>{toman(count)}</b></a>
         </div>
       </header>
       {menuOpen && <button className={styles.menuScrim} type="button" aria-label="بستن فهرست" onClick={() => setMenuOpen(false)} />}
@@ -50,6 +54,7 @@ export function StoreHeader() {
 
 export function StoreFooter() {
   return <footer className={styles.footer}>
+    <img className={styles.footerArt} src="/products/gift-boxes-new.webp" alt="" aria-hidden="true" loading="lazy" />
     <div className={styles.footerMain}>
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a><a href="/shop?category=آجیل و مغزها">آجیل و مغزها</a><a href="/shop?category=میوه خشک">میوه خشک</a><a href="/shop?category=کوکی و شیرینی">کوکی و شیرینی</a></div>
