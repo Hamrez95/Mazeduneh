@@ -40,6 +40,10 @@ export function StoreHeader() {
         <BrandLogo />
         <button className={styles.menuToggle} type="button" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن فهرست" : "باز کردن فهرست"} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? "×" : "☰"}</button>
         <nav className={`${styles.nav} ${menuOpen ? styles.navOpen : ""}`} aria-label="ناوبری فروشگاه">
+          <form className={styles.mobileMenuSearch} onSubmit={(event) => { search(event); setMenuOpen(false); }} role="search">
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="جست‌وجوی محصولات" aria-label="جست‌وجوی محصولات" />
+            <button aria-label="جست‌وجو">جست‌وجو</button>
+          </form>
           <a href="/shop" onClick={() => setMenuOpen(false)}>همهٔ محصولات</a>
           <a href="/shop?category=آجیل و مغزها" onClick={() => setMenuOpen(false)}>آجیل و مغزها</a>
           <a href="/shop?category=میوه خشک" onClick={() => setMenuOpen(false)}>میوه خشک</a>
