@@ -455,7 +455,7 @@ class ProductCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 child: product.primaryImage.trim().isEmpty
                     ? Container(width: 58, height: 58, color: AdminColors.mintSoft, alignment: Alignment.center, child: Text(product.isWeight ? '⚖' : '●'))
-                    : Image.network(product.primaryImage, width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined))),
+                    : Image.network(product.primaryImage, width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined)))),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900)),
