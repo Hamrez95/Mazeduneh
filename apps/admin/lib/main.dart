@@ -822,13 +822,14 @@ class _InventoryPageState extends State<InventoryPage> {
               itemBuilder: (_, index) {
                 final item = movements[index];
                 final positive = item.quantityDelta >= 0;
+                final sign = positive ? '+' : '-';
                 return ListTile(
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
                     backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
                     child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
                   ),
-                  title: Text('${item.sku} · ${positive ? '+' : ''}${item.quantityDelta}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  title: Text('${item.sku} · $sign${item.quantityDelta.abs()}', style: const TextStyle(fontWeight: FontWeight.w800)),
                   subtitle: Text('${item.reason} · مانده ${item.balanceAfter}', style: const TextStyle(fontSize: 11)),
                 );
               },
