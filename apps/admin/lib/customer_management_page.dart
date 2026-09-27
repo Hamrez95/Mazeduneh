@@ -208,7 +208,7 @@ class _CustomerList extends StatelessWidget {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text(${formatPersianInteger(customer.orderCount)}, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: _CustomerColors.ink)),
+                            Text(formatPersianInteger(customer.orderCount), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: _CustomerColors.ink)),
                             const Text('سفارش', style: TextStyle(fontSize: 11, color: _CustomerColors.muted)),
                           ],
                         ),
@@ -241,10 +241,10 @@ class _CustomerDetails extends StatelessWidget {
               _DetailRow('نام', customer.fullName),
               _DetailRow('موبایل ثبت‌شده', customer.mobile),
               _DetailRow('شناسه نرمال‌شده', customer.normalizedMobile),
-              _DetailRow('تعداد سفارش', ${formatPersianInteger(customer.orderCount)}),
+              _DetailRow('تعداد سفارش', formatPersianInteger(customer.orderCount)),
               _DetailRow('رضایت ارتباطی', customer.marketingConsent ? 'فعال' : 'ثبت نشده'),
-              _DetailRow('اولین ثبت', ${formatPersianDateTime(customer.createdAt)}),
-              _DetailRow('آخرین فعالیت', ${formatPersianDateTime(customer.updatedAt)}),
+              _DetailRow('اولین ثبت', formatPersianDateTime(customer.createdAt)),
+              _DetailRow('آخرین فعالیت', formatPersianDateTime(customer.updatedAt)),
             ],
           ),
         ),
