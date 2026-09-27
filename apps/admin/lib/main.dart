@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'catalog_api.dart';
 import 'order_api.dart';
 import 'media_api.dart';
+import 'customer_management_page.dart';
 import 'package:file_picker/file_picker.dart';
 
 class AdminColors {
@@ -67,6 +68,7 @@ class _AdminShellState extends State<AdminShell> {
     ('انبار', Icons.warehouse_rounded),
     ('گزارش‌ها', Icons.query_stats_rounded),
     ('اعلان‌ها', Icons.notifications_active_rounded),
+    ('مشتری‌ها', Icons.people_alt_rounded),
   ];
 
   @override
@@ -79,6 +81,7 @@ class _AdminShellState extends State<AdminShell> {
       const InventoryPage(),
       const ReportsPage(),
       const NotificationsPage(),
+      const CustomerManagementPage(),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand()),
