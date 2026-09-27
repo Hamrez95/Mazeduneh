@@ -72,7 +72,7 @@ class _AdminShellState extends State<AdminShell> {
       const OrdersPage(),
       CatalogPage(key: catalogKey),
       const InventoryPage(),
-      const PlaceholderPage('گزارش‌ها', Icons.query_stats_rounded),
+      const ReportsPage(),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand()),
@@ -1015,6 +1015,124 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
     reason.dispose();
     super.dispose();
   }
+}
+
+
+class ReportsPage extends StatefulWidget {
+  const ReportsPage({super.key, this.api});
+  final OrderApiClient? api;
+  @override
+  State<ReportsPage> createState() => _ReportsPageState();
+}
+
+class _ReportsPageState extends State<ReportsPage> {
+  late final OrderApiClient api = widget.api ?? OrderApiClient();
+  AdminAnalytics? analytics;
+  int days = 30;
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() { super.initState(); load(); }
+
+  Future<void> load() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final result = await api.fetchAnalytics(days: days);
+      if (mounted) setState(() => analytics = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(28),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('گزارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+          const SizedBox(height: 6),
+          const Text('عملکرد فروش و سود را در یک نمای ساده و قابل تصمیم‌گیری ببینید.', style: TextStyle(color: AdminColors.muted)),
+        ])),
+        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+      ]),
+      const SizedBox(height: 20),
+      SegmentedButton<int>(
+        segments: const [
+          ButtonSegment(value: 7, label: Text('۷ روز')),
+          ButtonSegment(value: 30, label: Text('۳۰ روز')),
+          ButtonSegment(value: 90, label: Text('۹۰ روز')),
+        ],
+        selected: {days},
+        onSelectionChanged: (value) {
+          setState(() => days = value.first);
+          load();
+        },
+      ),
+      const SizedBox(height: 20),
+      Expanded(child: _body()),
+    ]),
+  );
+
+  Widget _body() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.query_stats_rounded, size: 56, color: AdminColors.muted),
+      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
+      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
+    ]));
+    final data = analytics!;
+    if (data.orderCount == 0) return const Center(child: Text('برای این بازه هنوز داده‌ی فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)));
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1050 ? 3 : constraints.maxWidth >= 680 ? 2 : 1;
+      return ListView(children: [
+        GridView.count(
+          crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14,
+          childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            _ReportMetric(title: 'درآمد', value: '\${data.revenue.toStringAsFixed(0)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'هزینه کالا', value: '\${data.cost.toStringAsFixed(0)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'سود ناخالص', value: '\${data.grossProfit.toStringAsFixed(0)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
+            _ReportMetric(title: 'حاشیه سود', value: '\${data.grossMarginPercent.toStringAsFixed(1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'تعداد سفارش', value: '\${data.orderCount}', icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
+            _ReportMetric(title: 'واحد فروخته‌شده', value: '\${data.unitsSold}', icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('خلاصه‌ی تصمیم‌گیری', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
+          const SizedBox(height: 12),
+          Text(
+            'در \${data.days} روز گذشته، \${data.orderCount} سفارش با \${data.unitsSold} واحد ثبت شده است. '
+            'سود ناخالص \${data.grossProfit.toStringAsFixed(0)} ریال و حاشیه سود \${data.grossMarginPercent.toStringAsFixed(1)}٪ بوده است.',
+            style: const TextStyle(height: 1.7, color: AdminColors.muted),
+          ),
+        ]))),
+      ]);
+    });
+  }
+}
+
+class _ReportMetric extends StatelessWidget {
+  const _ReportMetric({required this.title, required this.value, required this.icon, required this.tint});
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color tint;
+  @override
+  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [
+    CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
+    const SizedBox(width: 12),
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+      Text(title, style: const TextStyle(fontSize: 12, color: AdminColors.muted, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+    ])),
+  ])));
 }
 
 class PlaceholderPage extends StatelessWidget {
