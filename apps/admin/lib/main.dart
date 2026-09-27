@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
 import 'order_api.dart';
+import 'media_api.dart';
+import 'package:file_picker/file_picker.dart';
 
 class AdminColors {
   static const ink = Color(0xFF24463A);
@@ -324,7 +326,7 @@ class CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> openCreateDialog() async {
-    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => const ProductDialog());
+    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(mediaApi: MediaApiClient()));
     if (command == null) return;
     try {
       await api.createProduct(command);
@@ -511,13 +513,15 @@ class _PublicationBadge extends StatelessWidget {
 }
 
 class ProductDialog extends StatefulWidget {
-  const ProductDialog({super.key});
+  const ProductDialog({super.key, this.mediaApi});
+  final MediaApiClient? mediaApi;
 
   @override
   State<ProductDialog> createState() => _ProductDialogState();
 }
 
 class _ProductDialogState extends State<ProductDialog> {
+  late final MediaApiClient media = widget.mediaApi ?? MediaApiClient();
   final formKey = GlobalKey<FormState>();
   final title = TextEditingController();
   final slug = TextEditingController();
@@ -530,6 +534,8 @@ class _ProductDialogState extends State<ProductDialog> {
   String unitType = 'Weight';
   String category = 'آجیل و مغزها';
   num quantity = 250;
+  bool uploadingImage = false;
+  String? mediaError;
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -567,17 +573,32 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 10),
                 TextFormField(controller: origin, decoration: const InputDecoration(labelText: 'مبدأ یا برند'), validator: required),
-                TextFormField(
-                  controller: primaryImage,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'تصویر اصلی محصول',
-                    hintText: 'لینک تصویر بسته‌بندی بدون بک‌گراند',
-                    helperText: 'این تصویر در کارت محصول و صفحه‌ی اصلی محصول نمایش داده می‌شود.',
-                    prefixIcon: Icon(Icons.image_outlined),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: TextFormField(
+                    controller: primaryImage,
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      labelText: 'تصویر اصلی محصول',
+                      hintText: 'لینک تصویر یا فایل آپلودشده',
+                      helperText: 'در کارت محصول و صفحه‌ی محصول نمایش داده می‌شود.',
+                      prefixIcon: Icon(Icons.image_outlined),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  )),
+                  const SizedBox(width: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: OutlinedButton.icon(
+                      onPressed: uploadingImage ? null : pickImage,
+                      icon: uploadingImage
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.upload_file_rounded),
+                      label: Text(uploadingImage ? 'در حال آپلود' : 'انتخاب فایل'),
+                    ),
                   ),
-                  onChanged: (_) => setState(() {}),
-                ),
+                ]),
+                if (mediaError != null)
+                  Align(alignment: Alignment.centerRight, child: Text(mediaError!, style: const TextStyle(color: AdminColors.coral, fontSize: 11))),
                 const SizedBox(height: 10),
                 if (primaryImage.text.trim().isNotEmpty)
                   ClipRRect(
@@ -649,6 +670,35 @@ class _ProductDialogState extends State<ProductDialog> {
 
   String? required(String? value) => value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
   String? numberRequired(String? value) => num.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null;
+
+  Future<void> pickImage() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    if (result == null || result.files.single.bytes == null) return;
+    final file = result.files.single;
+    setState(() { uploadingImage = true; mediaError = null; });
+    try {
+      final uploaded = await media.uploadImage(
+        fileName: file.name,
+        bytes: file.bytes!,
+        contentType: _mimeFor(file.name),
+      );
+      if (mounted) setState(() => primaryImage.text = uploaded.url);
+    } catch (exception) {
+      if (mounted) setState(() => mediaError = exception.toString());
+    } finally {
+      if (mounted) setState(() => uploadingImage = false);
+    }
+  }
+
+  String _mimeFor(String name) {
+    final extension = name.split('.').last.toLowerCase();
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'avif' => 'image/avif',
+      _ => 'image/jpeg',
+    };
+  }
 
   @override
   void dispose() {
