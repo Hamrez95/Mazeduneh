@@ -55,16 +55,27 @@ app.MapGet("/health", async (
     CatalogDatabase db,
     AdminTokenService adminTokens,
     PaymentDatabase paymentDatabase,
+    IConfiguration configuration,
     CancellationToken cancellationToken) =>
 {
     var databaseStatus = !db.IsConfigured ? "not-configured" :
         await db.CanConnectAsync(cancellationToken) ? "healthy" : "unhealthy";
+    var migrations = db.IsConfigured
+        ? await DatabaseMigrationRunner.ListAsync(configuration, cancellationToken)
+        : Array.Empty<DatabaseMigrationInfo>();
+    var latestMigration = migrations.LastOrDefault();
 
     return Results.Ok(new
     {
         status = databaseStatus == "unhealthy" ? "degraded" : "healthy",
         service = "mazeduneh-api",
         database = databaseStatus,
+        migrations = new
+        {
+            status = db.IsConfigured ? "tracked" : "not-configured",
+            applied = migrations.Count,
+            latest = latestMigration is null ? null : new { latestMigration.Component, latestMigration.Version }
+        },
         adminAuthentication = adminTokens.IsConfigured ? "configured" : "not-configured",
         paymentSandbox = paymentDatabase.SandboxEnabled ? "enabled" : "disabled",
         utc = DateTimeOffset.UtcNow
