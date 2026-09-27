@@ -3,6 +3,17 @@ import 'package:flutter/material.dart';
 import 'catalog_api.dart';
 import 'order_api.dart';
 
+class AdminColors {
+  static const ink = Color(0xFF24463A);
+  static const inkDeep = Color(0xFF19352C);
+  static const mintSoft = Color(0xFFDDEFE5);
+  static const canvas = Color(0xFFF7F8F4);
+  static const border = Color(0xFFE3E8E1);
+  static const amber = Color(0xFFF2B866);
+  static const coral = Color(0xFFE8846B);
+  static const muted = Color(0xFF718078);
+}
+
 void main() => runApp(const MazedunehAdminApp());
 
 class MazedunehAdminApp extends StatelessWidget {
@@ -15,20 +26,20 @@ class MazedunehAdminApp extends StatelessWidget {
         locale: const Locale('fa'),
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF31584A)),
-          scaffoldBackgroundColor: const Color(0xFFFAF7EF),
+          fontFamily: 'Vazirmatn',
+          colorScheme: ColorScheme.fromSeed(seedColor: AdminColors.ink),
+          scaffoldBackgroundColor: AdminColors.canvas,
+          appBarTheme: const AppBarTheme(backgroundColor: AdminColors.canvas, surfaceTintColor: Colors.transparent, elevation: 0),
+          navigationBarTheme: const NavigationBarThemeData(backgroundColor: Colors.white, indicatorColor: AdminColors.mintSoft),
           cardTheme: const CardThemeData(
-            elevation: 0,
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(20)),
-              side: BorderSide(color: Color(0xFFE3E8E1)),
-            ),
+            elevation: 0, color: Colors.white, margin: EdgeInsets.zero, surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(18)), side: BorderSide(color: AdminColors.border)),
           ),
           inputDecorationTheme: const InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14))),
+            filled: true, fillColor: Colors.white, contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.ink, width: 1.5)),
           ),
         ),
         home: const Directionality(textDirection: TextDirection.rtl, child: AdminShell()),
@@ -78,7 +89,7 @@ class _AdminShellState extends State<AdminShell> {
             width: 245,
             margin: const EdgeInsets.all(16),
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: const Color(0xFF203E34), borderRadius: BorderRadius.circular(24)),
+            decoration: BoxDecoration(color: AdminColors.inkDeep, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Color(0x1424463A), blurRadius: 24, offset: Offset(0, 10))]),
             child: Column(children: [
               const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
               const SizedBox(height: 20),
@@ -87,9 +98,9 @@ class _AdminShellState extends State<AdminShell> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: ListTile(
                     selected: index == i,
-                    selectedTileColor: const Color(0xFF31584A),
+                    selectedTileColor: AdminColors.ink,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFD5DFD6)),
+                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFBFD0C5)),
                     title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFD5DFD6))),
                     onTap: () => setState(() => index = i),
                   ),
@@ -133,49 +144,112 @@ class Brand extends StatelessWidget {
       ]);
 }
 
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({super.key, this.api});
+  final OrderApiClient? api;
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  late final OrderApiClient api = widget.api ?? OrderApiClient();
+  AdminDashboard? dashboard;
+  AdminNotifications? notifications;
+  String? error;
+  bool loading = true;
 
   @override
-  Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(24),
+  void initState() { super.initState(); load(); }
+
+  Future<void> load() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final result = await Future.wait([api.fetchDashboard(), api.fetchNotifications()]);
+      if (mounted) setState(() {
+        dashboard = result[0] as AdminDashboard;
+        notifications = result[1] as AdminNotifications;
+      });
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.cloud_off_rounded, size: 54, color: AdminColors.muted),
+      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
+      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
+    ]));
+    final data = dashboard!;
+    return RefreshIndicator(
+      onRefresh: load,
+      child: ListView(
+        padding: const EdgeInsets.all(28),
         children: [
-          Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          const Text('هسته عملیاتی فروشگاه در حال اتصال به داده‌های واقعی است.'),
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+              const SizedBox(height: 6),
+              const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
+            ])),
+            IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+          ]),
           const SizedBox(height: 24),
-          Wrap(spacing: 12, runSpacing: 12, children: const [
-            MetricCard('فروش امروز', 'آزمایشی', Icons.payments_rounded),
-            MetricCard('سفارش جدید', '۰', Icons.shopping_bag_rounded),
-            MetricCard('کاتالوگ', 'متصل به API', Icons.cloud_done_rounded),
-            MetricCard('وضعیت پرداخت', 'غیرفعال', Icons.lock_rounded),
+          Wrap(spacing: 14, runSpacing: 14, children: [
+            MetricCard('فروش امروز', '\${data.todayRevenue.toStringAsFixed(0)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            MetricCard('در انتظار پرداخت', '\${data.awaitingPayment}', Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
+            MetricCard('در حال پردازش', '\${data.processing}', Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
+            MetricCard('ارسال‌شده', '\${data.shipped}', Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
+          ]),
+          const SizedBox(height: 24),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: _DashboardPanel(title: 'هشدارهای عملیاتی', icon: Icons.notifications_active_rounded, child: notifications?.items.isEmpty == true
+              ? const Text('مورد فوری وجود ندارد.', style: TextStyle(color: AdminColors.muted))
+              : Column(children: [for (final item in notifications?.items.take(4) ?? const []) ListTile(contentPadding: EdgeInsets.zero, leading: const CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18)), title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)))]))),
+            const SizedBox(width: 14),
+            Expanded(child: _DashboardPanel(title: 'موجودی کم', icon: Icons.warning_amber_rounded, child: data.lowStock.isEmpty
+              ? const Text('همه موجودی‌ها در وضعیت مناسب هستند.', style: TextStyle(color: AdminColors.muted))
+              : Column(children: [for (final item in data.lowStock.take(4)) ListTile(contentPadding: EdgeInsets.zero, title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('\${item.variantLabel} · \${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), trailing: Text('\${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)))]))),
           ]),
         ],
-      );
+      ),
+    );
+  }
+}
+
+class _DashboardPanel extends StatelessWidget {
+  const _DashboardPanel({required this.title, required this.icon, required this.child});
+  final String title;
+  final IconData icon;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [Icon(icon, color: AdminColors.ink), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
+    const SizedBox(height: 12), child,
+  ])));
 }
 
 class MetricCard extends StatelessWidget {
-  const MetricCard(this.title, this.value, this.icon, {super.key});
+  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft});
   final String title;
   final String value;
   final IconData icon;
-
+  final Color tint;
   @override
   Widget build(BuildContext context) => SizedBox(
-        width: 250,
-        height: 135,
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: const Color(0xFF31584A)),
-              const Spacer(),
-              Text(title, style: const TextStyle(color: Colors.grey)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-            ]),
-          ),
-        ),
-      );
+    width: 250, height: 142,
+    child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
+      const Spacer(),
+      Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 3),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
+    ])),
+  );
 }
 
 class CatalogPage extends StatefulWidget {
