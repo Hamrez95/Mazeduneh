@@ -121,6 +121,33 @@ app.MapPost("/api/v1/categories", async (CreateCategoryRequest request, CatalogD
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
+app.MapPut("/api/v1/categories/{slug}", async (string slug, UpdateCategoryRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+{
+    var errors = request.Validate();
+    if (errors.Count > 0) return Results.ValidationProblem(errors);
+    var before = (await db.LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+    var updated = await db.UpdateCategoryAsync(slug, request, cancellationToken);
+    if (before is not null && updated is not null) app.Services.GetRequiredService<ProductCatalog>().RenameCategory(before.Name, updated.Name);
+    return updated is null ? Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." }) : Results.Ok(updated);
+}).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+app.MapPatch("/api/v1/categories/{slug}/active", async (string slug, SetCategoryActiveRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+{
+    var updated = await db.SetCategoryActiveAsync(slug, request.IsActive, cancellationToken);
+    return updated is null ? Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." }) : Results.Ok(new { message = request.IsActive ? "دسته‌بندی فعال شد." : "دسته‌بندی غیرفعال شد.", category = updated });
+}).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+app.MapDelete("/api/v1/categories/{slug}", async (string slug, CatalogDatabase db, ProductCatalog productCatalog, CancellationToken cancellationToken) =>
+{
+    var category = (await db.LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
+    if (category is not null && productCatalog.AllIncludingDrafts().Any(product => product.Category.Equals(category.Name, StringComparison.OrdinalIgnoreCase)))
+        return Results.Conflict(new { message = "این دسته‌بندی به محصول متصل است و حذف نمی‌شود. ابتدا محصولات را جابه‌جا یا دسته را غیرفعال کنید." });
+    var result = await db.DeleteCategoryAsync(slug, cancellationToken);
+    if (result.ProductCount == -1) return Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." });
+    if (!result.Deleted) return Results.Conflict(new { message = $"این دسته‌بندی به {result.ProductCount} محصول متصل است و حذف نمی‌شود. ابتدا محصولات را جابه‌جا یا دسته را غیرفعال کنید." });
+    return Results.Ok(new { message = "دسته‌بندی با موفقیت حذف شد." });
+}).AddEndpointFilter<OwnerAuthorizationFilter>();
+
 app.MapGet("/api/v1/catalog/unit-types", () => Results.Ok(new[]
 {
     new { value = nameof(ProductUnitType.Weight), baseUnit = "gram", titleFa = "وزنی / گرم" },
@@ -277,6 +304,11 @@ public sealed class ProductCatalog
     }
 
     public void Add(Product product) => _products[product.Id] = product;
+    public void RenameCategory(string previousName, string newName)
+    {
+        foreach (var product in _products.Values.Where(item => item.Category.Equals(previousName, StringComparison.OrdinalIgnoreCase)))
+            _products[product.Id] = product with { Category = newName };
+    }
     public void ReplaceWith(IEnumerable<Product> products)
     {
         _products.Clear();
@@ -290,3 +322,4 @@ public sealed class ProductCatalog
 }
 
 public partial class Program;
+
