@@ -60,7 +60,7 @@ class _AdminShellState extends State<AdminShell> {
       const DashboardPage(),
       const OrdersPage(),
       CatalogPage(key: catalogKey),
-      const PlaceholderPage('مدیریت انبار', Icons.warehouse_rounded),
+      const InventoryPage(),
       const PlaceholderPage('گزارش‌ها', Icons.query_stats_rounded),
     ];
     return Scaffold(
@@ -692,6 +692,196 @@ class _OrdersPageState extends State<OrdersPage> {
         );
       },
     );
+  }
+}
+
+
+class InventoryPage extends StatefulWidget {
+  const InventoryPage({super.key, this.catalog, this.orders});
+  final CatalogApiClient? catalog;
+  final OrderApiClient? orders;
+  @override
+  State<InventoryPage> createState() => _InventoryPageState();
+}
+
+class _InventoryPageState extends State<InventoryPage> {
+  late final CatalogApiClient catalog = widget.catalog ?? CatalogApiClient();
+  late final OrderApiClient orders = widget.orders ?? OrderApiClient();
+  List<Product> products = const [];
+  List<StockMovement> movements = const [];
+  String? error;
+  bool loading = true;
+  String? busySku;
+
+  @override
+  void initState() { super.initState(); load(); }
+
+  Future<void> load() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final result = await Future.wait([
+        catalog.fetchProducts(includeDrafts: true),
+        orders.fetchInventoryMovements(limit: 30),
+      ]);
+      if (mounted) setState(() {
+        products = result[0] as List<Product>;
+        movements = result[1] as List<StockMovement>;
+      });
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> adjust(ProductVariant variant) async {
+    final result = await showDialog<_AdjustmentCommand>(
+      context: context, builder: (_) => AdjustmentDialog(variant: variant),
+    );
+    if (result == null) return;
+    setState(() => busySku = variant.sku);
+    try {
+      await orders.adjustStock(variant.sku, result.delta, result.reason);
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('موجودی با موفقیت ثبت شد.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => busySku = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+        ])),
+        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+      ]),
+      const SizedBox(height: 18),
+      Expanded(child: _body()),
+    ]),
+  );
+
+  Widget _body() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
+      const SizedBox(height: 12), Text(error!, textAlign: TextAlign.center),
+      const SizedBox(height: 12), FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('تلاش دوباره')),
+    ]));
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1100 ? 2 : 1;
+      return GridView.count(
+        crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
+        childAspectRatio: columns == 1 ? 2.7 : 1.9,
+        children: [
+          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const SizedBox(height: 12),
+            Expanded(child: ListView.separated(
+              itemCount: products.fold<int>(0, (sum, item) => sum + item.variants.length),
+              separatorBuilder: (_, __) => const Divider(height: 16),
+              itemBuilder: (_, index) {
+                var offset = index;
+                Product? product;
+                ProductVariant? variant;
+                for (final candidate in products) {
+                  if (offset < candidate.variants.length) { product = candidate; variant = candidate.variants[offset]; break; }
+                  offset -= candidate.variants.length;
+                }
+                if (product == null || variant == null) return const SizedBox.shrink();
+                final low = variant.availablePackages <= 5;
+                final busy = busySku == variant.sku;
+                return Row(children: [
+                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text('\${variant.availablePackages}')),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(product.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text('\${variant.displayLabel} · \${variant.sku}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ])),
+                  FilledButton.tonalIcon(
+                    onPressed: busy ? null : () => adjust(variant!),
+                    icon: busy ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.tune_rounded),
+                    label: const Text('اصلاح'),
+                  ),
+                ]);
+              },
+            )),
+          ])),
+          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const SizedBox(height: 12),
+            Expanded(child: movements.isEmpty ? const Center(child: Text('گردشی ثبت نشده است.')) : ListView.separated(
+              itemCount: movements.length,
+              separatorBuilder: (_, __) => const Divider(height: 16),
+              itemBuilder: (_, index) {
+                final item = movements[index];
+                final positive = item.quantityDelta >= 0;
+                return ListTile(
+                  dense: true, contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
+                    child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
+                  ),
+                  title: Text('\${item.sku} · \${positive ? '+' : ''}\${item.quantityDelta}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text('\${item.reason} · مانده \${item.balanceAfter}', style: const TextStyle(fontSize: 11)),
+                );
+              },
+            )),
+          ])),
+        ],
+      );
+    });
+  }
+}
+
+class _AdjustmentCommand {
+  const _AdjustmentCommand(this.delta, this.reason);
+  final int delta;
+  final String reason;
+}
+
+class AdjustmentDialog extends StatefulWidget {
+  const AdjustmentDialog({super.key, required this.variant});
+  final ProductVariant variant;
+  @override
+  State<AdjustmentDialog> createState() => _AdjustmentDialogState();
+}
+
+class _AdjustmentDialogState extends State<AdjustmentDialog> {
+  final formKey = GlobalKey<FormState>();
+  final delta = TextEditingController();
+  final reason = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('اصلاح موجودی \${widget.variant.sku}'),
+    content: SizedBox(width: 430, child: Form(key: formKey, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text('موجودی فعلی: \${widget.variant.availablePackages} بسته'),
+      const SizedBox(height: 12),
+      TextFormField(controller: delta, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تغییر موجودی', hintText: 'مثبت برای ورود، منفی برای خروج'), validator: (value) => int.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null),
+      const SizedBox(height: 10),
+      TextFormField(controller: reason, decoration: const InputDecoration(labelText: 'علت اصلاح'), validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : null),
+    ]))),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+      FilledButton(onPressed: () {
+        if (!formKey.currentState!.validate()) return;
+        Navigator.pop(context, _AdjustmentCommand(int.parse(delta.text), reason.text.trim()));
+      }, child: const Text('ثبت اصلاح')),
+    ],
+  );
+
+  @override
+  void dispose() {
+    delta.dispose();
+    reason.dispose();
+    super.dispose();
   }
 }
 
