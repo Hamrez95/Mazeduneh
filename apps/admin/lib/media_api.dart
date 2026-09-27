@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
 
