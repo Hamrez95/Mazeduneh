@@ -236,8 +236,8 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
-      - name: Build authenticated web
-        run: flutter build web --release --target lib/secure_main.dart
+      - name: Build active admin web
+        run: flutter build web --release --target lib/main.dart
       - name: Verify generated Android runner
         run: test -f android/app/build.gradle.kts || test -f android/app/build.gradle
       - name: Upload web artifact

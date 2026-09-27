@@ -1,3 +1,4 @@
+import 'formatters.dart';
 import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
@@ -212,7 +213,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                     Text(product.isWeight ? 'واحد پایه: گرم' : 'واحد پایه: عدد'),
                                     const Spacer(),
                                     Text(
-                                      '${product.totalStock} بسته',
+                                      '${formatPersianInteger(product.totalStock)} بسته',
                                       style: const TextStyle(fontWeight: FontWeight.w800),
                                     ),
                                   ],
@@ -226,10 +227,10 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                       children: [
                                         for (final variant in product.variants)
                                           Tooltip(
-                                            message: '${variant.sku} · ${_formatToman(variant.price)} تومان',
+                                            message: '${variant.sku} · ${formatToman(variant.price)} تومان',
                                             child: Chip(
                                               label: Text(
-                                                '${variant.displayLabel} · ${variant.availablePackages}',
+                                                '${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)}',
                                               ),
                                             ),
                                           ),
@@ -638,7 +639,7 @@ class _VariantEditor extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'بسته ${index + 1}',
+                    'بسته ${formatPersianInteger(index + 1)}',
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -897,9 +898,3 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
   );
 }
 
-String _formatToman(num irr) {
-  return '${(irr / 10).round()}'.replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (_) => '٬',
-  );
-}
