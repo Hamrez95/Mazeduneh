@@ -61,6 +61,13 @@ public sealed record CreateCategoryRequest(string Name, string Slug, string? Des
     }
 }
 
+public sealed record UpdateCategoryRequest(string Name, string Slug, string? Description = null, string? SeoTitle = null, string? SeoDescription = null, int SortOrder = 0, bool IsActive = true)
+{
+    public Dictionary<string, string[]> Validate() => new CreateCategoryRequest(Name, Slug, Description, SeoTitle, SeoDescription, SortOrder, IsActive).Validate();
+}
+
+public sealed record SetCategoryActiveRequest(bool IsActive);
+
 public sealed record Category(Guid Id, string Name, string Slug, string Description, string SeoTitle, string SeoDescription, int SortOrder, bool IsActive, DateTimeOffset CreatedAt);
 
 public sealed record SetProductPublicationRequest(bool IsPublished);

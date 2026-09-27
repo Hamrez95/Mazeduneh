@@ -1337,6 +1337,8 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
   late List<Category> categories = [...widget.initial];
   bool saving = false;
   String? error;
+  String query = '';
+  bool activeOnly = false;
 
   Future<void> addCategory() async {
     final command = await showDialog<CreateCategoryCommand>(context: context, builder: (_) => const CategoryDialog());
@@ -1353,6 +1355,34 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
     }
   }
 
+  Future<void> editCategory(Category item) async {
+    final command = await showDialog<CreateCategoryCommand>(context: context, builder: (_) => CategoryDialog(initial: item));
+    if (command == null) return;
+    setState(() { saving = true; error = null; });
+    try {
+      await widget.api.updateCategory(item.slug, UpdateCategoryCommand(name: command.name, slug: command.slug, description: command.description, seoTitle: command.seoTitle, seoDescription: command.seoDescription, sortOrder: command.sortOrder, isActive: command.isActive));
+      await widget.onChanged();
+      if (mounted) setState(() => categories = [...categories.where((category) => category.id != item.id), Category(id: item.id, name: command.name, slug: command.slug, description: command.description, seoTitle: command.seoTitle, seoDescription: command.seoDescription, sortOrder: command.sortOrder, isActive: command.isActive)]..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)));
+    } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+
+  Future<void> toggleCategory(Category item) async {
+    setState(() { saving = true; error = null; });
+    try { await widget.api.setCategoryActive(item.slug, !item.isActive); await widget.onChanged(); if (mounted) setState(() => categories = [for (final category in categories) category.id == item.id ? Category(id: category.id, name: category.name, slug: category.slug, description: category.description, seoTitle: category.seoTitle, seoDescription: category.seoDescription, sortOrder: category.sortOrder, isActive: !category.isActive) : category]); }
+    catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+
+  Future<void> deleteCategory(Category item) async {
+    final confirmed = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('حذف دسته‌بندی؟'), content: Text('دستهٔ «${item.name}» فقط اگر محصولی به آن متصل نباشد حذف می‌شود. در غیر این صورت، دسته را غیرفعال کنید.'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف امن'))]));
+    if (confirmed != true) return;
+    setState(() { saving = true; error = null; });
+    try { await widget.api.deleteCategory(item.slug); await widget.onChanged(); if (mounted) setState(() => categories.removeWhere((category) => category.id == item.id)); }
+    catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => saving = false); }
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('مدیریت دسته‌بندی‌ها'),
@@ -1362,21 +1392,23 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('دسته‌ها مسیر پیدا کردن محصول در فروشگاه هستند. نام و شناسه آدرس را خوانا و پایدار انتخاب کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 12, height: 1.5)),
         const SizedBox(height: 14),
+        TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجوی نام یا شناسه'), onChanged: (value) => setState(() => query = value.trim().toLowerCase())),
+        Row(children: [FilterChip(label: const Text('فقط فعال‌ها'), selected: activeOnly, onSelected: (value) => setState(() => activeOnly = value)), const Spacer(), Text('${categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).length} دسته', style: const TextStyle(color: AdminColors.muted, fontSize: 12))]),
         if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: const TextStyle(color: AdminColors.coral))),
         Expanded(
-          child: categories.isEmpty
+          child: categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).isEmpty
               ? const Center(child: Text('هنوز دسته‌ای تعریف نشده است.'))
               : ListView.separated(
-                  itemCount: categories.length,
+                  itemCount: categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, index) {
-                    final item = categories[index];
+                    final item = categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).toList()[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Text(item.sortOrder.toString())),
                       title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                       subtitle: Text('${item.slug} · ${(item.isActive ? 'فعال' : 'غیرفعال')}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                      trailing: const Icon(Icons.chevron_left_rounded),
+                      trailing: PopupMenuButton<String>(onSelected: (action) { if (action == 'edit') editCategory(item); if (action == 'toggle') toggleCategory(item); if (action == 'delete') deleteCategory(item); }, itemBuilder: (_) => [const PopupMenuItem(value: 'edit', child: Text('ویرایش')), PopupMenuItem(value: 'toggle', child: Text(item.isActive ? 'غیرفعال کردن' : 'فعال کردن')), const PopupMenuItem(value: 'delete', child: Text('حذف امن'))]),
                     );
                   },
                 ),
@@ -1395,7 +1427,8 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
 }
 
 class CategoryDialog extends StatefulWidget {
-  const CategoryDialog({super.key});
+  const CategoryDialog({super.key, this.initial});
+  final Category? initial;
 
   @override
   State<CategoryDialog> createState() => _CategoryDialogState();
@@ -1412,8 +1445,15 @@ class _CategoryDialogState extends State<CategoryDialog> {
   bool isActive = true;
 
   @override
+  void initState() {
+    super.initState();
+    final item = widget.initial;
+    if (item != null) { name.text = item.name; slug.text = item.slug; description.text = item.description; seoTitle.text = item.seoTitle; seoDescription.text = item.seoDescription; sortOrder.text = item.sortOrder.toString(); isActive = item.isActive; }
+  }
+
+  @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('افزودن دسته‌بندی'),
+    title: Text(widget.initial == null ? 'افزودن دسته‌بندی' : 'ویرایش دسته‌بندی'),
     content: SizedBox(
       width: 500,
       child: Form(
@@ -1469,7 +1509,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
             isActive: isActive,
           ));
         },
-        child: const Text('ثبت دسته'),
+        child: Text(widget.initial == null ? 'ثبت دسته' : 'ذخیره تغییرات'),
       ),
     ],
   );

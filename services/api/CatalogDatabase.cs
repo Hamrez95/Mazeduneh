@@ -5,6 +5,7 @@ using NpgsqlTypes;
 public sealed class CatalogDatabase(IConfiguration configuration, ILogger<CatalogDatabase> logger, InventoryLedgerDatabase ledger)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
+    private readonly List<Category> _fallbackCategories = DefaultCategories().ToList();
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -75,7 +76,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
     public async Task<IReadOnlyCollection<Category>> LoadCategoriesAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured)
-            return DefaultCategories();
+            return _fallbackCategories.OrderBy(item => item.SortOrder).ThenBy(item => item.Name).ToArray();
         const string sql = "select id,name,slug,description,seo_title,seo_description,sort_order,is_active,created_at from categories order by sort_order,name;";
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -90,7 +91,11 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
     public async Task<Category> InsertCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken)
     {
         if (!IsConfigured)
-            return new Category(Guid.NewGuid(), request.Name.Trim(), request.Slug.Trim().ToLowerInvariant(), request.Description?.Trim() ?? "", request.SeoTitle?.Trim() ?? request.Name.Trim(), request.SeoDescription?.Trim() ?? "", request.SortOrder, request.IsActive, DateTimeOffset.UtcNow);
+        {
+            var fallback = new Category(Guid.NewGuid(), request.Name.Trim(), request.Slug.Trim().ToLowerInvariant(), request.Description?.Trim() ?? "", request.SeoTitle?.Trim() ?? request.Name.Trim(), request.SeoDescription?.Trim() ?? "", request.SortOrder, request.IsActive, DateTimeOffset.UtcNow);
+            _fallbackCategories.Add(fallback);
+            return fallback;
+        }
         const string sql = """
             insert into categories (id,name,slug,description,seo_title,seo_description,sort_order,is_active,created_at)
             values (@id,@name,@slug,@description,@seo_title,@seo_description,@sort_order,@is_active,@created_at)
@@ -112,6 +117,74 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         await reader.ReadAsync(cancellationToken);
         return new Category(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6), reader.GetBoolean(7), reader.GetFieldValue<DateTimeOffset>(8));
+    }
+
+    public async Task<Category?> UpdateCategoryAsync(string slug, UpdateCategoryRequest request, CancellationToken cancellationToken)
+    {
+        var normalizedSlug = slug.Trim().ToLowerInvariant();
+        var name = request.Name.Trim();
+        var newSlug = request.Slug.Trim().ToLowerInvariant();
+        var description = request.Description?.Trim() ?? "";
+        var seoTitle = request.SeoTitle?.Trim() ?? name;
+        var seoDescription = request.SeoDescription?.Trim() ?? "";
+        if (!IsConfigured)
+        {
+            var index = _fallbackCategories.FindIndex(item => item.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase));
+            if (index < 0) return null;
+            var updated = _fallbackCategories[index] with { Name = name, Slug = newSlug, Description = description, SeoTitle = seoTitle, SeoDescription = seoDescription, SortOrder = request.SortOrder, IsActive = request.IsActive };
+            _fallbackCategories[index] = updated;
+            return updated;
+        }
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var oldName = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase))?.Name;
+        if (oldName is null) return null;
+        await using (var productCommand = new NpgsqlCommand("update products set category=@new_name where category=@old_name", connection, transaction))
+        {
+            productCommand.Parameters.AddWithValue("new_name", name); productCommand.Parameters.AddWithValue("old_name", oldName);
+            await productCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+        const string sql = "update categories set name=@name,slug=@new_slug,description=@description,seo_title=@seo_title,seo_description=@seo_description,sort_order=@sort_order,is_active=@is_active where slug=@slug returning id,created_at;";
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("name", name); command.Parameters.AddWithValue("new_slug", newSlug); command.Parameters.AddWithValue("description", description);
+        command.Parameters.AddWithValue("seo_title", seoTitle); command.Parameters.AddWithValue("seo_description", seoDescription); command.Parameters.AddWithValue("sort_order", request.SortOrder);
+        command.Parameters.AddWithValue("is_active", request.IsActive); command.Parameters.AddWithValue("slug", normalizedSlug);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        var id = reader.GetGuid(0); var createdAt = reader.GetFieldValue<DateTimeOffset>(1);
+        await reader.DisposeAsync();
+        await transaction.CommitAsync(cancellationToken);
+        return new Category(id, name, newSlug, description, seoTitle, seoDescription, request.SortOrder, request.IsActive, createdAt);
+    }
+
+    public async Task<Category?> SetCategoryActiveAsync(string slug, bool isActive, CancellationToken cancellationToken)
+    {
+        var current = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (current is null) return null;
+        return await UpdateCategoryAsync(current.Slug, new UpdateCategoryRequest(current.Name, current.Slug, current.Description, current.SeoTitle, current.SeoDescription, current.SortOrder, isActive), cancellationToken);
+    }
+
+    public async Task<int> CountProductsInCategoryAsync(string categoryName, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return 0;
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("select count(*) from products where category=@category", connection);
+        command.Parameters.AddWithValue("category", categoryName);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
+    public async Task<(bool Deleted, int ProductCount)> DeleteCategoryAsync(string slug, CancellationToken cancellationToken)
+    {
+        var current = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (current is null) return (false, -1);
+        var productCount = await CountProductsInCategoryAsync(current.Name, cancellationToken);
+        if (productCount > 0) return (false, productCount);
+        if (!IsConfigured) { _fallbackCategories.RemoveAll(item => item.Id == current.Id); return (true, 0); }
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("delete from categories where id=@id", connection); command.Parameters.AddWithValue("id", current.Id);
+        await command.ExecuteNonQueryAsync(cancellationToken); return (true, 0);
     }
 
     public async Task<IReadOnlyCollection<Product>> LoadAsync(CancellationToken cancellationToken)

@@ -66,6 +66,25 @@ class CatalogApiClient {
     return Category.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<Category> updateCategory(String slug, UpdateCategoryCommand command) async {
+    final response = await _client.put(Uri.parse('$baseUrl/api/v1/categories/$slug'), headers: _headers(json: true), body: jsonEncode(command.toJson()));
+    _guardUnauthorized(response);
+    if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
+    return Category.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<void> setCategoryActive(String slug, bool isActive) async {
+    final response = await _client.patch(Uri.parse('$baseUrl/api/v1/categories/$slug/active'), headers: _headers(json: true), body: jsonEncode({'isActive': isActive}));
+    _guardUnauthorized(response);
+    if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
+  }
+
+  Future<void> deleteCategory(String slug) async {
+    final response = await _client.delete(Uri.parse('$baseUrl/api/v1/categories/$slug'), headers: _headers());
+    _guardUnauthorized(response);
+    if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
+  }
+
   Future<Product> createProduct(CreateProductCommand command) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/products/'),
@@ -254,6 +273,18 @@ class Category {
 
 class CreateCategoryCommand {
   const CreateCategoryCommand({required this.name, required this.slug, this.description = '', this.seoTitle = '', this.seoDescription = '', this.sortOrder = 0, this.isActive = true});
+  final String name;
+  final String slug;
+  final String description;
+  final String seoTitle;
+  final String seoDescription;
+  final int sortOrder;
+  final bool isActive;
+  Map<String, dynamic> toJson() => {'name': name, 'slug': slug, 'description': description, 'seoTitle': seoTitle, 'seoDescription': seoDescription, 'sortOrder': sortOrder, 'isActive': isActive};
+}
+
+class UpdateCategoryCommand {
+  const UpdateCategoryCommand({required this.name, required this.slug, this.description = '', this.seoTitle = '', this.seoDescription = '', this.sortOrder = 0, this.isActive = true});
   final String name;
   final String slug;
   final String description;
