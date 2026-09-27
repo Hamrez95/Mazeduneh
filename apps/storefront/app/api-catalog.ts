@@ -38,6 +38,18 @@ export const API_BASE = (
   || ""
 ).replace(/\/$/, "");
 
+export function resolveMediaUrl(value?: string) {
+  const candidate = value?.trim();
+  if (!candidate) return undefined;
+  if (/^(?:https?:|data:)/i.test(candidate)) return candidate;
+  if (!API_BASE) return candidate;
+  try {
+    return new URL(candidate, `${API_BASE}/`).toString();
+  } catch {
+    return `${API_BASE}/${candidate.replace(/^\/+/, "")}`;
+  }
+}
+
 const artByKeyword: Array<[string, ProductArt]> = [
   ["پسته", "pistachio"],
   ["بادام", "almond"],
@@ -73,6 +85,10 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
   const variant = variants?.[0];
   if (!variant || !product.isPublished) return null;
 
+  const galleryImages = (product.galleryImages ?? [])
+    .map(resolveMediaUrl)
+    .filter((image): image is string => Boolean(image));
+
   return {
     id: product.slug,
     sku: variant.sku,
@@ -95,8 +111,8 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     description: toPersianDigits(product.description || product.shortDescription || `${product.title} با کیفیت و بسته‌بندی مزه‌دونه.`),
     seoTitle: toPersianDigits(product.seoTitle || product.title),
     seoDescription: toPersianDigits(product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`),
-    primaryImage: product.primaryImage || undefined,
-    galleryImages: product.galleryImages?.length ? product.galleryImages : undefined,
+    primaryImage: resolveMediaUrl(product.primaryImage),
+    galleryImages: galleryImages.length ? galleryImages : undefined,
     specifications: product.specifications
       ? Object.fromEntries(Object.entries(product.specifications).map(([key, value]) => [toPersianDigits(key), toPersianDigits(value)]))
       : undefined,

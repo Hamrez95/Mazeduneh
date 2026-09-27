@@ -189,10 +189,11 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
 }
 
 export function LiveProductPage({ slug }: { slug: string }) {
-  const fallback = demoProducts.find((item) => item.id === slug);
+  const fallback = API_BASE ? undefined : demoProducts.find((item) => item.id === slug);
   const [product, setProduct] = useState<DemoProduct | undefined>(fallback);
   const [live, setLive] = useState(false);
   const [loading, setLoading] = useState(Boolean(API_BASE));
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!API_BASE) return;
@@ -206,6 +207,8 @@ export function LiveProductPage({ slug }: { slug: string }) {
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        setProduct(undefined);
+        setError(true);
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -245,14 +248,6 @@ type CheckoutOrderResponse = {
   reservationExpiresAt: string;
 };
 
-const apiSkusByProductId: Record<string, string> = {
-  "pistachio-akbari": "PI-AKB-500",
-  "pistachio-ahmad": "PI-AHM-500",
-  almond: "NU-ALM-500",
-  walnut: "NU-WAL-500",
-  "pumpkin-seeds": "SE-PUM-500",
-  "protein-cookie": "CK-PRO-4",
-};
 
 const checkoutStateLabels: Record<string, string> = {
   AwaitingPayment: "در انتظار پرداخت",
@@ -291,7 +286,7 @@ export function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
-  const unsupportedLines = cart.filter((line) => !(line.sku ?? apiSkusByProductId[line.id]));
+  const unsupportedLines = cart.filter((line) => !line.sku);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -314,7 +309,7 @@ export function CheckoutPage() {
       city: String(data.get("city") ?? ""),
       address: String(data.get("address") ?? ""),
       postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
-      lines: cart.map((line) => ({ sku: (line.sku ?? apiSkusByProductId[line.id])!, quantity: line.quantity })),
+      lines: cart.map((line) => ({ sku: line.sku!, quantity: line.quantity })),
     };
 
     setSubmitting(true);

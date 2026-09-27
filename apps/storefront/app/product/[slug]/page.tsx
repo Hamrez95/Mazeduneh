@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { demoProducts } from "../../demo/catalog";
 import { LiveProductPage } from "../../commerce-pages";
 
-export function generateStaticParams() { return demoProducts.map((product) => ({ slug: product.id })); }
+export function generateStaticParams() {
+  const apiConfigured = Boolean(
+    process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim()
+    || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim(),
+  );
+  return apiConfigured ? [] : demoProducts.map((product) => ({ slug: product.id }));
+}
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const fallback = demoProducts.find((item) => item.id === slug);
