@@ -146,19 +146,33 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
 
   void _select(CustomerSummary customer) {
     setState(() => selected = customer);
-    if (MediaQuery.sizeOf(context).width < 860) {
-      showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (_) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-            child: _CustomerDetails(customer: customer),
-          ),
-        ),
-      );
+    _loadProfile(customer);
+  }
+
+  Future<void> _loadProfile(CustomerSummary customer) async {
+    try {
+      final profile = await api.fetchCustomer(customer.id);
+      if (!mounted) return;
+      setState(() => selected = profile);
+      if (MediaQuery.sizeOf(context).width < 860) _showMobileDetails(profile);
+    } on CustomerApiException catch (exception) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.message)));
     }
+  }
+
+  void _showMobileDetails(CustomerSummary customer) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: _CustomerDetails(customer: customer),
+        ),
+      ),
+    );
   }
 }
 
@@ -245,8 +259,45 @@ class _CustomerDetails extends StatelessWidget {
               _DetailRow('رضایت ارتباطی', customer.marketingConsent ? 'فعال' : 'ثبت نشده'),
               _DetailRow('اولین ثبت', formatPersianDateTime(customer.createdAt)),
               _DetailRow('آخرین فعالیت', formatPersianDateTime(customer.updatedAt)),
+              if (customer.addresses.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text('آدرس‌های ذخیره‌شده', style: TextStyle(fontWeight: FontWeight.w900, color: _CustomerColors.inkDeep)),
+                const SizedBox(height: 10),
+                for (final address in customer.addresses) _AddressRow(address: address),
+              ],
             ],
           ),
+        ),
+      );
+}
+
+class _AddressRow extends StatelessWidget {
+  const _AddressRow({required this.address});
+
+  final CustomerAddress address;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _CustomerColors.selected,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${address.province}، ${address.city}${address.isDefault ? ' · پیش‌فرض' : ''}',
+              style: const TextStyle(fontWeight: FontWeight.w800, color: _CustomerColors.inkDeep),
+            ),
+            const SizedBox(height: 4),
+            Text(address.address, style: const TextStyle(color: _CustomerColors.muted, height: 1.5)),
+            const SizedBox(height: 4),
+            Text('کدپستی: ${address.postalCode}', style: const TextStyle(fontSize: 12, color: _CustomerColors.muted)),
+            Text('آخرین استفاده: ${formatPersianDateTime(address.lastUsedAt)}', style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
+          ],
         ),
       );
 }
