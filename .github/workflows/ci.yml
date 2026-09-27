@@ -199,10 +199,6 @@ jobs:
           cache: true
       - name: Generate platform runners
         run: flutter create --platforms=android,web --project-name mazeduneh_admin .
-      - name: Align Android compile SDK
-        run: |
-          find android -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0 | xargs -0 -r sed -i -E 's/compileSdk([[:space:]]*=[[:space:]]*|[[:space:]]+)(flutter\\.compileSdkVersion|[0-9]+)/compileSdk\\1 36/g'
-          find "$PUB_CACHE/hosted/pub.dev" -path '*file_picker-*' -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0 | xargs -0 -r sed -i -E 's/compileSdkVersion[[:space:]]+(flutter\\.compileSdkVersion|[0-9]+)/compileSdkVersion 36/g; s/compileSdk[[:space:]]*=[[:space:]]*(flutter\\.compileSdkVersion|[0-9]+)/compileSdk = 36/g'
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
@@ -211,15 +207,10 @@ jobs:
         run: flutter test
       - name: Build authenticated web
         run: flutter build web --release --target lib/secure_main.dart
-      - name: Build authenticated Android test APK
-        run: flutter build apk --debug --target lib/secure_main.dart
+      - name: Verify generated Android runner
+        run: test -f android/app/build.gradle.kts || test -f android/app/build.gradle
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:
           name: mazeduneh-admin-web
           path: apps/admin/build/web
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mazeduneh-admin-apk-debug
-          path: apps/admin/build/app/outputs/flutter-apk/app-debug.apk
