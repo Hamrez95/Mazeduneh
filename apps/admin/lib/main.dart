@@ -1554,12 +1554,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             leading: CircleAvatar(
-              backgroundColor: item.severity.toLowerCase() == 'critical' ? const Color(0xFFFCE6E0) : AdminColors.mintSoft,
-              child: Icon(item.severity.toLowerCase() == 'critical' ? Icons.priority_high_rounded : Icons.info_outline_rounded, color: AdminColors.ink),
+              backgroundColor: item.type.toLowerCase() == 'critical' ? const Color(0xFFFCE6E0) : AdminColors.mintSoft,
+              child: Icon(item.type.toLowerCase() == 'critical' ? Icons.priority_high_rounded : Icons.info_outline_rounded, color: AdminColors.ink),
             ),
             title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)),
             subtitle: Padding(padding: const EdgeInsets.only(top: 5), child: Text(item.detail)),
-            trailing: Text(item.severity == 'critical' ? 'فوری' : 'پیگیری', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+            trailing: Text(item.type == 'critical' ? 'فوری' : 'پیگیری', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
           ),
         );
       },
