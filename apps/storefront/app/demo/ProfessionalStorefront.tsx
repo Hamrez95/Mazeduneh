@@ -5,7 +5,7 @@ import { categories, demoProducts, toman, type DemoProduct } from "./catalog";
 import { ProductArtwork } from "./ProductArtwork";
 import styles from "./professional-storefront.module.css";
 import { useCart } from "../cart-context";
-import { StoreFooter } from "../store-chrome";
+import { StoreFooter, StoreHeader } from "../store-chrome";
 
 const categoryMeta: Record<string, { icon: string; image: string; hint: string }> = {
   "آجیل و مغزها": { icon: "🥜", image: "/products/almond-pouch-new.webp", hint: "تازه و دست‌چین" },
@@ -39,11 +39,9 @@ function Icon({ name }: { name: "cart" | "search" | "user" | "home" | "grid" | "
 
 export default function ProfessionalStorefront() {
   const [category, setCategory] = useState("همه");
-  const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { cart, count: cartCount, subtotal, shipping, total: payable, add, change } = useCart();
 
@@ -67,13 +65,11 @@ export default function ProfessionalStorefront() {
   }, [toast]);
 
   const products = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("fa");
     return demoProducts.filter((product) => {
       const matchesCategory = category === "همه" || product.category === category;
-      const searchable = `${product.title} ${product.subtitle} ${product.origin} ${product.category}`.toLocaleLowerCase("fa");
-      return matchesCategory && (!favoritesOnly || favorites.includes(product.id)) && (!normalized || searchable.includes(normalized));
+      return matchesCategory && (!favoritesOnly || favorites.includes(product.id));
     });
-  }, [category, favorites, favoritesOnly, query]);
+  }, [category, favorites, favoritesOnly]);
 
   function announceAdd(product: DemoProduct) {
     add(product);
@@ -94,22 +90,7 @@ export default function ProfessionalStorefront() {
 
   return (
     <main className={styles.page} id="top">
-      <div className={styles.announcement}>ارسال رایگان برای خریدهای بالای ۱٬۵۰۰٬۰۰۰ تومان <span>•</span> تازه‌چین، خوش‌طعم، آمادهٔ رسیدن</div>
-
-      <header className={styles.siteHeader}>
-        <a href="#top" className={styles.brand} aria-label="مزه‌دونه؛ صفحهٔ اصلی">
-          <span className={styles.brandMark}><img src="/mazedoone-mark.svg" alt="" width="52" height="52" /></span>
-          <span><strong>مزه‌دونه</strong><small>خوش‌خوراکِ هر روز</small></span>
-        </a>
-        <nav className={`${styles.desktopNav} ${menuOpen ? styles.desktopNavOpen : ""}`} aria-label="ناوبری اصلی"><a href="/shop" onClick={() => setMenuOpen(false)}>همهٔ محصولات</a><a href="/shop?category=آجیل و مغزها" onClick={() => setMenuOpen(false)}>آجیل و مغزها</a><a href="/shop?category=میوه خشک" onClick={() => setMenuOpen(false)}>میوه خشک</a><a href="/shop?category=کوکی و شیرینی" onClick={() => setMenuOpen(false)}>کوکی و شیرینی</a><a href="/about" onClick={() => setMenuOpen(false)}>داستان ما</a></nav>
-        <div className={styles.headerActions}>
-          <label className={styles.searchBox}><span aria-hidden="true"><Icon name="search" /></span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="جست‌وجوی محصولات..." aria-label="جست‌وجوی محصولات" /></label>
-          <a className={styles.accountButton} href="/profile" aria-label="حساب کاربری"><Icon name="user" /></a>
-          <button className={styles.cartButton} type="button" onClick={() => setCartOpen(true)} aria-label={`سبد خرید، ${cartCount} کالا`}><span aria-hidden="true"><Icon name="cart" /></span><b>{toman(cartCount)}</b></button>
-        </div>
-        <button className={styles.menuButton} type="button" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منوی فروشگاه" : "باز کردن منوی فروشگاه"} onClick={() => setMenuOpen((open) => !open)}><Icon name="grid" /></button>
-      </header>
-      {menuOpen && <button className={styles.menuScrim} type="button" aria-label="بستن منو" onClick={() => setMenuOpen(false)} />}
+      <StoreHeader />
 
       <section className={styles.hero} aria-labelledby="hero-title">
         <div className={styles.heroCopy}><span className={styles.eyebrow}>یک مشت حال خوب، آمادهٔ خوردن</span><h1 id="hero-title">خوشمزه‌ها<br /><em>اینجان</em></h1><p>از پسته و مغزهای تازه تا کوکی‌های شکلاتی؛ انتخاب‌هایی که قرار است حال یک روز معمولی را بهتر کنند.</p><div className={styles.heroActions}><button type="button" className={styles.primaryButton} onClick={() => selectCategory("همه")}>شروع مزه‌گردی <span>←</span></button><a className={styles.secondaryButton} href="#story">قصهٔ مزه‌دونه</a></div><div className={styles.heroProof}><span><b>تازه</b><small>آماده‌سازی روزانه</small></span><span><b>خوش‌ساخت</b><small>بسته‌بندی باحال</small></span><span><b>مطمئن</b><small>ارسال سراسری</small></span></div></div>
@@ -120,7 +101,7 @@ export default function ProfessionalStorefront() {
 
       <section className={styles.trustStrip} aria-label="مزیت‌های خرید از مزه‌دونه"><div><span>🚚</span><strong>ارسال سریع<small>به سراسر ایران</small></strong></div><div><span>🌿</span><strong>تازه و باکیفیت<small>مستقیم از بهترین‌ها</small></strong></div><div><span>🛡️</span><strong>پرداخت امن<small>با خیال راحت خرید کن</small></strong></div></section>
 
-      <section className={styles.productSection} id="products" aria-labelledby="products-title"><div className={styles.sectionHeading}><div><span>انتخاب‌های محبوب</span><h2 id="products-title">پرفروش‌ترین‌ها</h2></div><a href="/shop">مشاهدهٔ همه ←</a></div><div className={styles.productToolbar}><div className={styles.chips}>{categories.slice(0, 5).map((item) => <button type="button" className={category === item ? styles.chipActive : ""} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div><span>{toman(products.length)} محصول</span></div>{products.length === 0 ? <div className={styles.emptyState}><span>🔎</span><strong>چیزی با این جست‌وجو پیدا نشد.</strong><p>اسم محصول یا دستهٔ دیگری را امتحان کن.</p><button type="button" onClick={() => { setQuery(""); setCategory("همه"); }}>نمایش همهٔ محصولات</button></div> : <div className={styles.productGrid}>{products.map((product) => { const key = cartKey(product); const quantity = cart.find((line) => (line.sku ?? line.id) === key)?.quantity ?? 0; const favorite = favorites.includes(product.id); return <article className={styles.productCard} key={product.id}><div className={`${styles.productVisual} ${styles[product.accent]}`}><button type="button" className={`${styles.favoriteButton} ${favorite ? styles.favoriteActive : ""}`} onClick={() => toggleFavorite(product)} aria-label={favorite ? `حذف ${product.title} از علاقه‌مندی‌ها` : `افزودن ${product.title} به علاقه‌مندی‌ها`}>{favorite ? "♥" : "♡"}</button>{product.badge && <span className={styles.productBadge}>{product.badge}</span>}<a href={`/product/${product.id}`} className={styles.productImageLink}><ProductArtwork product={product} /></a></div><div className={styles.productBody}><div className={styles.productMeta}><span>{product.category}</span><small>★ ۴٫۸</small></div><h3><a href={`/product/${product.id}`}>{product.title}</a></h3><p>{product.packageLabel}</p><div className={styles.priceLine}><strong>{toman(product.price)} <small>تومان</small></strong><span className={product.stock < 8 ? styles.lowStock : ""}>{product.stock > 0 ? "موجود" : "ناموجود"}</span></div>{quantity > 0 ? <div className={styles.quantityBar}><button type="button" onClick={() => change(key, 1)} disabled={quantity >= product.stock}>+</button><b>{toman(quantity)}</b><button type="button" onClick={() => change(key, -1)}>−</button><span>در سبد شما</span></div> : <button type="button" className={styles.addToCart} onClick={() => announceAdd(product)} disabled={product.stock === 0}>افزودن به سبد <span>🛒</span></button>}</div></article>; })}</div>}</section>
+      <section className={styles.productSection} id="products" aria-labelledby="products-title"><div className={styles.sectionHeading}><div><span>انتخاب‌های محبوب</span><h2 id="products-title">پرفروش‌ترین‌ها</h2></div><a href="/shop">مشاهدهٔ همه ←</a></div><div className={styles.productToolbar}><div className={styles.chips}>{categories.slice(0, 5).map((item) => <button type="button" className={category === item ? styles.chipActive : ""} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div><span>{toman(products.length)} محصول</span></div>{products.length === 0 ? <div className={styles.emptyState}><span>🔎</span><strong>محصولی در این دسته پیدا نشد.</strong><p>دستهٔ دیگری را برای دیدن محصولات امتحان کن.</p><button type="button" onClick={() => setCategory("همه")}>نمایش همهٔ محصولات</button></div> : <div className={styles.productGrid}>{products.map((product) => { const key = cartKey(product); const quantity = cart.find((line) => (line.sku ?? line.id) === key)?.quantity ?? 0; const favorite = favorites.includes(product.id); return <article className={styles.productCard} key={product.id}><div className={`${styles.productVisual} ${styles[product.accent]}`}><button type="button" className={`${styles.favoriteButton} ${favorite ? styles.favoriteActive : ""}`} onClick={() => toggleFavorite(product)} aria-label={favorite ? `حذف ${product.title} از علاقه‌مندی‌ها` : `افزودن ${product.title} به علاقه‌مندی‌ها`}>{favorite ? "♥" : "♡"}</button>{product.badge && <span className={styles.productBadge}>{product.badge}</span>}<a href={`/product/${product.id}`} className={styles.productImageLink}><ProductArtwork product={product} /></a></div><div className={styles.productBody}><div className={styles.productMeta}><span>{product.category}</span><small>★ ۴٫۸</small></div><h3><a href={`/product/${product.id}`}>{product.title}</a></h3><p>{product.packageLabel}</p><div className={styles.priceLine}><strong>{toman(product.price)} <small>تومان</small></strong><span className={product.stock < 8 ? styles.lowStock : ""}>{product.stock > 0 ? "موجود" : "ناموجود"}</span></div>{quantity > 0 ? <div className={styles.quantityBar}><button type="button" onClick={() => change(key, 1)} disabled={quantity >= product.stock}>+</button><b>{toman(quantity)}</b><button type="button" onClick={() => change(key, -1)}>−</button><span>در سبد شما</span></div> : <button type="button" className={styles.addToCart} onClick={() => announceAdd(product)} disabled={product.stock === 0}>افزودن به سبد <span>🛒</span></button>}</div></article>; })}</div>}</section>
 
       <section className={styles.specialOffer} id="offer"><div className={styles.offerArtwork}><img src="/products/dragon-box-new.webp" alt="جعبهٔ کوکی شکلاتی مزه‌دونه" /></div><div><span>پیشنهاد امروز</span><h2>یک استراحت شکلاتی<br />برای وسط روز</h2><p>کوکی‌های شکلاتی مزه‌دونه با مواد اولیهٔ طبیعی و تکه‌های شکلات واقعی.</p><button type="button" onClick={() => announceAdd(demoProducts.find((product) => product.id === "protein-cookie") ?? demoProducts[0])}>همین حالا سفارش بده <b>←</b></button></div></section>
       <section className={styles.storySection} id="story"><div><span>داستان مزه‌دونه</span><h2>ما باور داریم<br />مزه باید حال آدم را خوب کند.</h2></div><p>از انتخاب دانه‌های خوب تا لحظه‌ای که بسته را باز می‌کنی، مزه‌دونه برای همان لبخند کوچک ساخته شده؛ ساده، خوش‌طعم و صمیمی.</p></section>
