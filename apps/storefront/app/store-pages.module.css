@@ -622,6 +622,23 @@
 .footerMain, .copyright { position: relative; z-index: 1; }
 .footerMain strong { color: #ffd29b; }
 
+/* Product artwork must never be cropped inside catalog cards. */
+.productVisual :global(img) {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  padding: 14px 18px 16px;
+  box-sizing: border-box;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .productVisual :global(img) { padding: 12px 12px 14px; }
+}
+
 @media (max-width: 760px) {
   .siteHeader {
     width: calc(100% - 24px);
