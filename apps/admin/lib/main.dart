@@ -282,7 +282,7 @@ class MetricCard extends StatelessWidget {
       Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
       const SizedBox(height: 3),
       Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
-    ])),
+    ]))),
   );
 }
 
