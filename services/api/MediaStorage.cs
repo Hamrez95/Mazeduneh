@@ -49,8 +49,13 @@ public static class MediaStorageContentTypes
         ["image/avif"] = ".avif"
     };
 
-    public static bool TryGetExtension(string? contentType, out string extension) =>
-        contentType is not null && Allowed.TryGetValue(contentType.Trim(), out extension!);
+    public static bool TryGetExtension(string? contentType, out string extension)
+    {
+        if (contentType is not null && Allowed.TryGetValue(contentType.Trim(), out extension!))
+            return true;
+        extension = string.Empty;
+        return false;
+    }
 
     public static string FromKey(string key) =>
         Path.GetExtension(key).ToLowerInvariant() switch
@@ -128,7 +133,7 @@ public static class MediaStorageExtensions
                 var media = await storage.GetAsync(key, cancellationToken);
                 if (media is null) return Results.NotFound();
 
-                context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+                context.Response.Headers["Cache-Control"] = "public, max-age=31536000, immutable";
                 context.Response.Headers["X-Content-Type-Options"] = "nosniff";
                 context.Response.Headers.ContentDisposition = $"inline; filename=\"{media.FileName}\"";
                 return Results.Stream(media.Content, media.ContentType, enableRangeProcessing: true);
@@ -357,7 +362,6 @@ public sealed class S3CompatibleMediaStorageProvider : IMediaStorageProvider, ID
             Key = key,
             InputStream = content,
             ContentType = contentType,
-            ContentLength = sizeBytes,
             AutoCloseStream = false
         }, cancellationToken);
     }
