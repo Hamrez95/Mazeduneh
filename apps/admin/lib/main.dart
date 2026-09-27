@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
+import 'order_api.dart';
 
 void main() => runApp(const MazedunehAdminApp());
 
@@ -57,7 +58,7 @@ class _AdminShellState extends State<AdminShell> {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final pages = [
       const DashboardPage(),
-      const PlaceholderPage('سفارش‌ها', Icons.receipt_long_rounded),
+      const OrdersPage(),
       CatalogPage(key: catalogKey),
       const PlaceholderPage('مدیریت انبار', Icons.warehouse_rounded),
       const PlaceholderPage('گزارش‌ها', Icons.query_stats_rounded),
@@ -511,6 +512,185 @@ class _ProductDialogState extends State<ProductDialog> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class OrdersPage extends StatefulWidget {
+  const OrdersPage({super.key, this.api});
+  final OrderApiClient? api;
+
+  @override
+  State<OrdersPage> createState() => _OrdersPageState();
+}
+
+class _OrdersPageState extends State<OrdersPage> {
+  late final OrderApiClient api = widget.api ?? OrderApiClient();
+  final states = const <String, String>{
+    '': 'همه سفارش‌ها',
+    'AwaitingPayment': 'در انتظار پرداخت',
+    'Paid': 'پرداخت‌شده',
+    'Preparing': 'در حال آماده‌سازی',
+    'Shipped': 'ارسال‌شده',
+    'Delivered': 'تحویل‌شده',
+    'Cancelled': 'لغوشده',
+    'Expired': 'منقضی‌شده',
+  };
+  List<AdminOrder> orders = const [];
+  String selectedState = '';
+  String? error;
+  bool loading = true;
+  String? busyOrder;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState);
+      if (mounted) setState(() => orders = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> advance(AdminOrder order) async {
+    final next = order.nextState;
+    if (next == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('تغییر وضعیت سفارش'),
+        content: Text('وضعیت سفارش ${order.id.substring(0, 8)} به «${states[next] ?? next}» تغییر کند؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأیید')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => busyOrder = order.id);
+    try {
+      await api.transition(order.id, next);
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('وضعیت سفارش به «${states[next] ?? next}» تغییر کرد.')),
+        );
+      }
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => busyOrder = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+                const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ]),
+            ),
+            DropdownButton<String>(
+              value: selectedState,
+              items: states.entries
+                  .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value)))
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => selectedState = value);
+                load();
+              },
+            ),
+            const SizedBox(width: 8),
+            IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+          ]),
+          const SizedBox(height: 18),
+          Expanded(child: _body()),
+        ]),
+      );
+
+  Widget _body() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.cloud_off_rounded, size: 54, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(error!, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh), label: const Text('تلاش دوباره')),
+        ]),
+      );
+    }
+    if (orders.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.receipt_long_rounded, size: 56, color: Color(0xFF9EACA1)),
+          const SizedBox(height: 12),
+          Text(selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است.' : 'سفارشی با این وضعیت وجود ندارد.'),
+        ]),
+      );
+    }
+    return ListView.separated(
+      itemCount: orders.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, index) {
+        final order = orders[index];
+        final next = order.nextState;
+        final busy = busyOrder == order.id;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 14,
+              spacing: 20,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 210,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('سفارش ${order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 5),
+                    Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text('${order.province}، ${order.city} · ${order.lineCount} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  ]),
+                ),
+                Chip(
+                  label: Text(states[order.state] ?? order.state),
+                  backgroundColor: const Color(0xFFE7F1E2),
+                ),
+                Text('${order.payable.toStringAsFixed(0)} ${order.currency}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (next != null)
+                  FilledButton.tonalIcon(
+                    onPressed: busy ? null : () => advance(order),
+                    icon: busy
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.arrow_forward_rounded),
+                    label: Text('مرحله بعد: ${states[next] ?? next}'),
+                  )
+                else
+                  const Text('فرآیند تکمیل شده', style: TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
