@@ -142,8 +142,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "customers", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Customer identity schema and checkout trigger are ready.");
     }
 
