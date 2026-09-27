@@ -145,6 +145,37 @@ jobs:
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
 
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders)" = "401"
+
+          python3 - <<'PY'
+          import base64
+          open('/tmp/media-test.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
+          PY
+          MEDIA_RESPONSE=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/media \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -F "file=@/tmp/media-test.png;type=image/png")
+          python3 - <<'PY' "${MEDIA_RESPONSE}"
+          import json, sys
+          media = json.loads(sys.argv[1])
+          assert media['key'].startswith('products/')
+          assert media['url'].startswith('/media/')
+          assert media['contentType'] == 'image/png'
+          assert media['sizeBytes'] > 0
+          open('/tmp/media-key', 'w').write(media['key'])
+          PY
+          MEDIA_KEY=$(cat /tmp/media-key)
+          curl -fsS "http://127.0.0.1:5099/media/${MEDIA_KEY}" -o /tmp/media-downloaded.png
+          cmp /tmp/media-test.png /tmp/media-downloaded.png
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/media/metadata/${MEDIA_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/media-metadata.json
+          python3 - <<'PY'
+          import json
+          metadata = json.load(open('/tmp/media-metadata.json', encoding='utf-8'))
+          assert metadata['contentType'] == 'image/png'
+          assert metadata['sizeBytes'] > 0
+          PY
+          curl -fsS -X DELETE "http://127.0.0.1:5099/api/v1/admin/media/${MEDIA_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" -o /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/media/${MEDIA_KEY}")" = "404"
           curl -fsS http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-orders.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=PI-AKB-250" -H "Authorization: Bearer ${TOKEN}" > /tmp/stock-movements.json
           python3 - <<'PY'
