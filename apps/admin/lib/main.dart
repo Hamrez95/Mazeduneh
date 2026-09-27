@@ -1342,6 +1342,7 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
 
 class CategoryDialog extends StatefulWidget {
   const CategoryDialog({super.key});
+
   @override
   State<CategoryDialog> createState() => _CategoryDialogState();
 }
@@ -1365,35 +1366,36 @@ class _CategoryDialogState extends State<CategoryDialog> {
         key: formKey,
         child: SingleChildScrollView(
           child: Column(children: [
-            const Align(alignment: Alignment.centerRight, child: Text('شناسه آدرس فقط با حروف انگلیسی، عدد و خط تیره باشد.', style: TextStyle(fontSize: 11, color: AdminColors.muted))),
+            const Align(
+              alignment: Alignment.centerRight,
+              child: Text('شناسه آدرس را کوتاه، خوانا و با حروف انگلیسی وارد کنید.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
+            ),
             const SizedBox(height: 10),
-            TextFormField(controller: name, decoration: const InputDecoration(labelText: 'نام دسته *'), validator: (value) => value == null || value.trim().length < 2 ? 'نام دسته را وارد کنید.' : null),
+            TextFormField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'نام دسته *'),
+              validator: (value) => value == null || value.trim().length < 2 ? 'نام دسته را وارد کنید.' : null,
+            ),
             const SizedBox(height: 10),
-            TextFormField(controller: slug, decoration: const InputDecoration(labelText: 'شناسه آدرس (slug) *', hintText: 'مثلاً nuts-premium'), validator: (value) => value == null || !RegExp(r'^[a-z0-9-]+
-  const PlaceholderPage(this.title, this.icon, {super.key});
-  final String title;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 64, color: const Color(0xFF90A08F)),
-          const SizedBox(height: 12),
-          Text(title, style: Theme.of(context).textTheme.headlineSmall),
-          const Text('در Vertical Slice بعدی عملیاتی می‌شود.'),
-        ]),
-      );
-}
-).hasMatch(value.trim()) ? 'شناسه آدرس معتبر نیست.' : null),
+            TextFormField(
+              controller: slug,
+              decoration: const InputDecoration(labelText: 'شناسه آدرس (slug) *', hintText: 'مثلاً nuts-premium'),
+              validator: (value) => value == null || value.trim().isEmpty ? 'شناسه آدرس را وارد کنید.' : null,
+            ),
             const SizedBox(height: 10),
-            TextFormField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح دسته', hintText: 'این متن در صفحه دسته و برای سئو کمک می‌کند.')),
+            TextFormField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح دسته', hintText: 'برای صفحه دسته و سئو استفاده می‌شود.')),
             const SizedBox(height: 10),
             TextFormField(controller: seoTitle, decoration: const InputDecoration(labelText: 'عنوان SEO', helperText: 'اگر خالی باشد از نام دسته استفاده می‌شود.')),
             const SizedBox(height: 10),
-            TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO', helperText: 'یک توضیح کوتاه و دقیق برای موتور جست‌وجو بنویسید.')),
+            TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO')),
             const SizedBox(height: 10),
             TextFormField(controller: sortOrder, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ترتیب نمایش')),
-            SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('دسته فعال باشد'), value: isActive, onChanged: (value) => setState(() => isActive = value)),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('دسته فعال باشد'),
+              value: isActive,
+              onChanged: (value) => setState(() => isActive = value),
+            ),
           ]),
         ),
       ),
