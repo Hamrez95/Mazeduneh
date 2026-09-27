@@ -1,6 +1,7 @@
 "use client";
 
 import type { DemoProduct, ProductArt } from "./demo/catalog";
+import { toPersianDigits } from "./formatters";
 
 type ApiProductVariant = {
   sku: string;
@@ -77,26 +78,28 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     sku: variant.sku,
     variants: variants.map((item) => ({
       sku: item.sku,
-      packageLabel: item.displayLabel,
+      packageLabel: toPersianDigits(item.displayLabel),
       price: tomanFromApiPrice(item.price),
       stock: item.availablePackages,
     })),
-    title: product.title,
-    subtitle: `${variant.displayLabel} · ${product.unitType === "Weight" ? "فروش وزنی" : "فروش عددی"}`,
-    category: product.category,
-    origin: product.origin,
+    title: toPersianDigits(product.title),
+    subtitle: toPersianDigits(`${variant.displayLabel} · ${product.unitType === "Weight" ? "فروش وزنی" : "فروش عددی"}`),
+    category: toPersianDigits(product.category),
+    origin: toPersianDigits(product.origin),
     art: inferArt(product.title),
     accent: inferAccent(product.slug),
     price: tomanFromApiPrice(variant.price),
-    packageLabel: variant.displayLabel,
+    packageLabel: toPersianDigits(variant.displayLabel),
     stock: variant.availablePackages,
     note: `کد کالا: ${variant.sku}`,
-    description: product.description || product.shortDescription || `${product.title} با کیفیت و بسته‌بندی مزه‌دونه.`,
-    seoTitle: product.seoTitle || product.title,
-    seoDescription: product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`,
+    description: toPersianDigits(product.description || product.shortDescription || `${product.title} با کیفیت و بسته‌بندی مزه‌دونه.`),
+    seoTitle: toPersianDigits(product.seoTitle || product.title),
+    seoDescription: toPersianDigits(product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`),
     primaryImage: product.primaryImage || undefined,
     galleryImages: product.galleryImages?.length ? product.galleryImages : undefined,
-    specifications: product.specifications || undefined,
+    specifications: product.specifications
+      ? Object.fromEntries(Object.entries(product.specifications).map(([key, value]) => [toPersianDigits(key), toPersianDigits(value)]))
+      : undefined,
   };
 }
 

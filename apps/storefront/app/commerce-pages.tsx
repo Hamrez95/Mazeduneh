@@ -7,6 +7,7 @@ import { API_BASE, fetchLiveProduct, fetchLiveProducts } from "./api-catalog";
 import { getProductArtworkGallery, ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import { ProductCard, RelatedProducts, ShopShell, StoreFooter, StoreHeader } from "./store-chrome";
+import { formatInventory, toPersianDigits } from "./formatters";
 import styles from "./store-pages.module.css";
 
 function useLiveCatalog() {
@@ -78,12 +79,12 @@ export function CatalogPage() {
   </ShopShell>;
 }
 
-const productFacts = [
-  ["مبدأ", "روی بستهٔ محصول درج می‌شود"],
-  ["ترکیبات و حساسیت‌زاها", "پیش از فروش هر محصول تأیید می‌شود"],
-  ["شرایط نگهداری", "در جای خشک و خنک، دور از نور مستقیم"],
-  ["بسته‌بندی", "بسته‌بندی مناسب نگهداری خوراکی"],
-];
+function productFacts(product: DemoProduct) {
+  const details = Object.entries(product.specifications ?? {})
+    .filter(([label]) => label !== "مبدأ")
+    .slice(0, 3);
+  return [["مبدأ", product.origin], ...details] as Array<[string, string]>;
+}
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
   const { add } = useCart();
@@ -128,7 +129,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
               key={image}
               type="button"
               className={activeImage === image ? styles.detailGalleryActive : styles.detailGalleryButton}
-              aria-label={`نمایش تصویر ${index + 1} از ${gallery.length}`}
+              aria-label={`نمایش تصویر ${toman(index + 1)} از ${toman(gallery.length)}`}
               aria-pressed={activeImage === image}
               onClick={() => setActiveImage(image)}
             >
@@ -157,12 +158,12 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
               onClick={() => setSelectedSku(variant.sku)}
             >
               <span>{variant.packageLabel}</span>
-              <small>{toman(variant.price)} تومان · {variant.stock} موجود</small>
+              <small>{toman(variant.price)} تومان · {formatInventory(variant.stock)}</small>
             </button>
           ))}
         </div>
         <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={() => add(selectedProduct)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
-        <div className={styles.facts}>{productFacts.map(([label, value]) => <div className={styles.fact} key={label}><small>{label}</small><b>{label === "مبدأ" ? product.origin : value}</b></div>)}</div>
+        <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
         <div className={styles.detailNotice}>{live ? "این اطلاعات از کاتالوگ منتشرشدهٔ سرویس فروش خوانده شده‌اند؛ جزئیات غذایی نهایی باید با بسته‌بندی تطبیق داده شوند." : "اطلاعات و قیمت‌های این نسخه نمونه‌اند. مشخصات قطعی ترکیبات، حساسیت‌زاها و وزن باید پیش از فروش از پنل محصول تأیید شوند."}</div>
       </div>
     </div>
