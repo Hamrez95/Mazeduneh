@@ -5,6 +5,7 @@ import { categories, demoProducts, toman, type DemoProduct } from "./catalog";
 import { ProductArtwork } from "./ProductArtwork";
 import styles from "./professional-storefront.module.css";
 import { useCart } from "../cart-context";
+import { StoreFooter } from "../store-chrome";
 
 const categoryMeta: Record<string, { icon: string; image: string; hint: string }> = {
   "آجیل و مغزها": { icon: "🥜", image: "/products/almond-pouch-new.webp", hint: "تازه و دست‌چین" },
@@ -42,6 +43,7 @@ export default function ProfessionalStorefront() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const { cart, count: cartCount, subtotal, shipping, total: payable, add, change } = useCart();
 
@@ -99,13 +101,15 @@ export default function ProfessionalStorefront() {
           <span className={styles.brandMark}><img src="/mazedoone-mark.svg" alt="" width="52" height="52" /></span>
           <span><strong>مزه‌دونه</strong><small>خوش‌خوراکِ هر روز</small></span>
         </a>
-        <nav className={styles.desktopNav} aria-label="ناوبری اصلی"><a href="#products">محصولات</a><a href="#categories">دسته‌بندی‌ها</a><a href="#story">داستان ما</a></nav>
+        <nav className={`${styles.desktopNav} ${menuOpen ? styles.desktopNavOpen : ""}`} aria-label="ناوبری اصلی"><a href="/shop" onClick={() => setMenuOpen(false)}>همهٔ محصولات</a><a href="/shop?category=آجیل و مغزها" onClick={() => setMenuOpen(false)}>آجیل و مغزها</a><a href="/shop?category=میوه خشک" onClick={() => setMenuOpen(false)}>میوه خشک</a><a href="/shop?category=کوکی و شیرینی" onClick={() => setMenuOpen(false)}>کوکی و شیرینی</a><a href="/about" onClick={() => setMenuOpen(false)}>داستان ما</a></nav>
         <div className={styles.headerActions}>
           <label className={styles.searchBox}><span aria-hidden="true"><Icon name="search" /></span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="جست‌وجوی محصولات..." aria-label="جست‌وجوی محصولات" /></label>
-          <button className={styles.accountButton} type="button" onClick={() => setToast("ورود به حساب کاربری به‌زودی فعال می‌شود.")} aria-label="حساب کاربری"><Icon name="user" /></button>
+          <a className={styles.accountButton} href="/profile" aria-label="حساب کاربری"><Icon name="user" /></a>
           <button className={styles.cartButton} type="button" onClick={() => setCartOpen(true)} aria-label={`سبد خرید، ${cartCount} کالا`}><span aria-hidden="true"><Icon name="cart" /></span><b>{toman(cartCount)}</b></button>
         </div>
+        <button className={styles.menuButton} type="button" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن منوی فروشگاه" : "باز کردن منوی فروشگاه"} onClick={() => setMenuOpen((open) => !open)}><Icon name="grid" /></button>
       </header>
+      {menuOpen && <button className={styles.menuScrim} type="button" aria-label="بستن منو" onClick={() => setMenuOpen(false)} />}
 
       <section className={styles.hero} aria-labelledby="hero-title">
         <div className={styles.heroCopy}><span className={styles.eyebrow}>یک مشت حال خوب، آمادهٔ خوردن</span><h1 id="hero-title">خوشمزه‌ها<br /><em>اینجان</em></h1><p>از پسته و مغزهای تازه تا کوکی‌های شکلاتی؛ انتخاب‌هایی که قرار است حال یک روز معمولی را بهتر کنند.</p><div className={styles.heroActions}><button type="button" className={styles.primaryButton} onClick={() => selectCategory("همه")}>شروع مزه‌گردی <span>←</span></button><a className={styles.secondaryButton} href="#story">قصهٔ مزه‌دونه</a></div><div className={styles.heroProof}><span><b>تازه</b><small>آماده‌سازی روزانه</small></span><span><b>خوش‌ساخت</b><small>بسته‌بندی باحال</small></span><span><b>مطمئن</b><small>ارسال سراسری</small></span></div></div>
@@ -120,8 +124,8 @@ export default function ProfessionalStorefront() {
 
       <section className={styles.specialOffer} id="offer"><div className={styles.offerArtwork}><img src="/products/dragon-box-new.webp" alt="جعبهٔ کوکی شکلاتی مزه‌دونه" /></div><div><span>پیشنهاد امروز</span><h2>یک استراحت شکلاتی<br />برای وسط روز</h2><p>کوکی‌های شکلاتی مزه‌دونه با مواد اولیهٔ طبیعی و تکه‌های شکلات واقعی.</p><button type="button" onClick={() => announceAdd(demoProducts.find((product) => product.id === "protein-cookie") ?? demoProducts[0])}>همین حالا سفارش بده <b>←</b></button></div></section>
       <section className={styles.storySection} id="story"><div><span>داستان مزه‌دونه</span><h2>ما باور داریم<br />مزه باید حال آدم را خوب کند.</h2></div><p>از انتخاب دانه‌های خوب تا لحظه‌ای که بسته را باز می‌کنی، مزه‌دونه برای همان لبخند کوچک ساخته شده؛ ساده، خوش‌طعم و صمیمی.</p></section>
-      <footer className={styles.footer}><div className={styles.footerBrand}><span className={styles.brandMark}><img src="/mazedoone-mark.svg" alt="" width="48" height="48" /></span><div><strong>مزه‌دونه</strong><small>خوش‌خوراکِ هر روز</small></div></div><div className={styles.footerLinks}><a href="/shop">محصولات</a><a href="/about">دربارهٔ ما</a><a href="/shipping">روش ارسال</a><a href="/faq">پرسش‌های پرتکرار</a></div><p>هر روز، یک مشت حال خوب.</p></footer>
-      <nav className={styles.mobileNav} aria-label="ناوبری موبایل"><button type="button" onClick={() => setToast("ورود به حساب کاربری به‌زودی فعال می‌شود.")}><span><Icon name="user" /></span>پروفایل</button><button type="button" onClick={() => { setFavoritesOnly(true); document.getElementById("products")?.scrollIntoView({ behavior: "smooth" }); }}><span><Icon name="heart" /></span>علاقه‌مندی‌ها</button><a className={styles.mobileNavActive} href="#top"><span><Icon name="home" /></span>خانه</a><a href="#categories"><span><Icon name="grid" /></span>دسته‌بندی‌ها</a><button type="button" onClick={() => setCartOpen(true)}><span><Icon name="cart" /><i>{toman(cartCount)}</i></span>سبد خرید</button></nav>
+      <StoreFooter />
+      <nav className={styles.mobileNav} aria-label="ناوبری موبایل"><a href="/profile"><span><Icon name="user" /></span>پروفایل</a><button type="button" onClick={() => { setFavoritesOnly(true); document.getElementById("products")?.scrollIntoView({ behavior: "smooth" }); }}><span><Icon name="heart" /></span>علاقه‌مندی‌ها</button><a className={styles.mobileNavActive} href="#top"><span><Icon name="home" /></span>خانه</a><a href="#categories"><span><Icon name="grid" /></span>دسته‌بندی‌ها</a><button type="button" onClick={() => setCartOpen(true)}><span><Icon name="cart" /><i>{toman(cartCount)}</i></span>سبد خرید</button></nav>
       {toast && <div className={styles.toast} role="status"><span>✓</span>{toast}<button type="button" onClick={() => setCartOpen(true)}>مشاهدهٔ سبد</button></div>}
       {cartOpen && <div className={styles.overlay} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setCartOpen(false)}><aside className={styles.cartDrawer} role="dialog" aria-modal="true" aria-labelledby="cart-title"><div className={styles.drawerHeader}><div><small>سبد خرید شما</small><h2 id="cart-title">انتخاب‌های خوشمزه</h2></div><button type="button" onClick={() => setCartOpen(false)} aria-label="بستن سبد">×</button></div><div className={styles.cartLines}>{cart.length === 0 ? <div className={styles.emptyCart}><span>🛒</span><b>سبد خرید هنوز خالی است.</b><p>یک بستهٔ خوشمزه برای شروع انتخاب کن.</p><button type="button" onClick={() => setCartOpen(false)}>بازگشت به فروشگاه</button></div> : cart.map((line) => <article className={styles.cartLine} key={line.sku ?? line.id}><div className={`${styles.cartThumb} ${styles[line.accent]}`}><ProductArtwork product={line} /></div><div className={styles.cartLineInfo}><b>{line.title}</b><small>{line.packageLabel}</small><span>{toman(line.price * line.quantity)} تومان</span></div><div className={styles.quantityControl}><button type="button" onClick={() => change(line.sku ?? line.id, 1)} aria-label="افزایش تعداد">+</button><b>{toman(line.quantity)}</b><button type="button" onClick={() => change(line.sku ?? line.id, -1)} aria-label="کاهش تعداد">−</button></div></article>)}</div><div className={styles.cartSummary}><div><span>جمع محصولات</span><b>{toman(subtotal)} تومان</b></div><div><span>ارسال</span><b>{shipping === 0 ? "رایگان" : `${toman(shipping)} تومان`}</b></div><div className={styles.payableRow}><span>مبلغ قابل پرداخت</span><b>{toman(payable)} تومان</b></div><a className={styles.checkoutButton} aria-disabled={cart.length === 0} href={cart.length ? "/checkout" : "#top"}>ادامه به اطلاعات ارسال</a><a className={styles.fullCartLink} href="/cart">مشاهدهٔ سبد کامل</a></div></aside></div>}
     </main>
