@@ -57,6 +57,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 12,
     badge: "پرفروش",
     note: "شور ملایم · سایز یکدست",
+    primaryImage: "/products/pistachio-pouch-new.webp",
+    galleryImages: ["/products/pistachio-pouch-new.webp", "/products/pistachio-scene-new.webp", "/products/pistachio-pouch.webp", "/products/pistachio-akbari.webp"],
   },
   {
     id: "pistachio-ahmad",
@@ -71,6 +73,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 10,
     badge: "انتخاب مهمانی",
     note: "بوداده روز · نمک کنترل‌شده",
+    primaryImage: "/products/pistachio-pouch-new.webp",
+    galleryImages: ["/products/pistachio-pouch-new.webp", "/products/pistachio-scene-new.webp", "/products/pistachio-pouch.webp", "/products/pistachio-ahmad.webp"],
   },
   {
     id: "almond",
@@ -84,6 +88,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 16,
     note: "خام · بدون افزودنی",
+    primaryImage: "/products/almond-pouch-new.webp",
+    galleryImages: ["/products/almond-pouch-new.webp", "/products/almond-pouch.webp", "/products/almond.webp"],
   },
   {
     id: "walnut",
@@ -97,6 +103,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 8,
     note: "شکستگی کم · طعم تازه",
+    primaryImage: "/products/walnut-character-new.webp",
+    galleryImages: ["/products/walnut-character-new.webp", "/products/walnut-character.webp", "/products/walnut.webp"],
   },
   {
     id: "dried-fruit",
@@ -112,6 +120,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 21,
     badge: "ترکیب تازه",
     note: "بدون سرخ‌کردن · برش یکدست",
+    primaryImage: "/products/dried-fruit.webp",
+    galleryImages: ["/products/dried-fruit.webp"],
   },
   {
     id: "pumpkin-seeds",
@@ -125,6 +135,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 14,
     note: "تازه‌برشت · کم‌نمک",
+    primaryImage: "/products/pumpkin-seeds.webp",
+    galleryImages: ["/products/pumpkin-seeds.webp"],
   },
   {
     id: "protein-cookie",
@@ -139,6 +151,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 20,
     badge: "کم‌شکر · پروتئینی",
     note: "پخت روز · بافت نرم",
+    primaryImage: "/products/protein-cookie.webp",
+    galleryImages: ["/products/protein-cookie.webp", "/products/cocoa-cookie-dragon.webp", "/products/dragon-box-new.webp"],
   },
   {
     id: "fruit-leather",
@@ -153,6 +167,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 18,
     badge: "دست‌ساز",
     note: "بدون رنگ مصنوعی · میوه‌محور",
+    primaryImage: "/products/fruit-leather.webp",
+    galleryImages: ["/products/fruit-leather.webp"],
   },
   {
     id: "oat-cookie",
@@ -167,6 +183,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 15,
     badge: "کم‌شکر",
     note: "جو دوسر · بدون شیرینی اضافه",
+    primaryImage: "/products/oat-cookie.webp",
+    galleryImages: ["/products/oat-cookie.webp", "/products/cookie-mouth-packaging.webp"],
   },
   {
     id: "gift-box",
@@ -182,6 +200,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 7,
     badge: "هدیه ویژه",
     note: "کارت تبریک · چیدمان سفارشی",
+    primaryImage: "/products/gift-box.webp",
+    galleryImages: ["/products/gift-box.webp", "/products/one-kilo-box-packaging.webp", "/products/mixed-nuts-character.webp", "/products/gift-boxes-new.webp"],
   },
 ];
 
