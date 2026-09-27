@@ -333,7 +333,7 @@ class CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> openCreateDialog() async {
-    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(mediaApi: MediaApiClient()));
+    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(mediaApi: MediaApiClient(), categories: categories));
     if (command == null) return;
     try {
       await api.createProduct(command);
@@ -531,8 +531,9 @@ class _PublicationBadge extends StatelessWidget {
 }
 
 class ProductDialog extends StatefulWidget {
-  const ProductDialog({super.key, this.mediaApi});
+  const ProductDialog({super.key, this.mediaApi, this.categories = const []});
   final MediaApiClient? mediaApi;
+  final List<Category> categories;
 
   @override
   State<ProductDialog> createState() => _ProductDialogState();
@@ -544,6 +545,13 @@ class _ProductDialogState extends State<ProductDialog> {
   final title = TextEditingController();
   final slug = TextEditingController();
   final origin = TextEditingController();
+  final shortDescription = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  final seoKeywords = TextEditingController();
+  final specifications = TextEditingController();
+  final costPrice = TextEditingController();
   final primaryImage = TextEditingController();
   final galleryImages = TextEditingController();
   final sku = TextEditingController();
@@ -576,21 +584,35 @@ class _ProductDialogState extends State<ProductDialog> {
                 DropdownButtonFormField<String>(
                   value: category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
-                  items: const [
-                    DropdownMenuItem(value: 'آجیل و مغزها', child: Text('آجیل و مغزها')),
-                    DropdownMenuItem(value: 'میوه خشک', child: Text('میوه خشک')),
-                    DropdownMenuItem(value: 'لواشک و ترش‌مزه', child: Text('لواشک و ترش‌مزه')),
-                    DropdownMenuItem(value: 'کوکی و شیرینی', child: Text('کوکی و شیرینی')),
-                    DropdownMenuItem(value: 'کم‌شکر و پروتئینی', child: Text('کم‌شکر و پروتئینی')),
-                    DropdownMenuItem(value: 'هدیه', child: Text('هدیه')),
-                    DropdownMenuItem(value: 'پسته و مغزیجات', child: Text('پسته و مغزیجات')),
-                    DropdownMenuItem(value: 'تخمه و تنقلات', child: Text('تخمه و تنقلات')),
-                    DropdownMenuItem(value: 'کوکی و کیک سالم', child: Text('کوکی و کیک سالم')),
-                  ],
+                  items: (categories.isEmpty
+                      ? const ['آجیل و مغزها', 'میوه خشک', 'لواشک و ترش‌مزه', 'کوکی و شیرینی', 'کم‌شکر و پروتئینی', 'هدیه']
+                      : categories.map((item) => item.name).toList())
+                      .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                      .toList(),
                   onChanged: (value) => category = value!,
                 ),
                 const SizedBox(height: 10),
                 TextFormField(controller: origin, decoration: const InputDecoration(labelText: 'مبدأ یا برند'), validator: required),
+                const SizedBox(height: 10),
+                TextFormField(controller: shortDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح کوتاه', helperText: 'یک جمله‌ی روشن برای کارت محصول و جست‌وجو.')),
+                const SizedBox(height: 10),
+                TextFormField(controller: description, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'توضیحات کامل', helperText: 'مواد، طعم، روش نگهداری و نکات مهم مشتری.')),
+                const SizedBox(height: 10),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('اطلاعات SEO و مشخصات', style: TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: const Text('اختیاری، اما برای دیده‌شدن محصول پیشنهاد می‌شود.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
+                  children: [
+                    TextFormField(controller: seoTitle, decoration: const InputDecoration(labelText: 'عنوان SEO')),
+                    const SizedBox(height: 10),
+                    TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO')),
+                    const SizedBox(height: 10),
+                    TextFormField(controller: seoKeywords, decoration: const InputDecoration(labelText: 'کلمات کلیدی', hintText: 'مثلاً پسته، رفسنجان، شور')),
+                    const SizedBox(height: 10),
+                    TextFormField(controller: specifications, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'مشخصات ساختاریافته', hintText: 'هر خط: کلید=مقدار', helperText: 'مثلاً وزن خالص=۲۵۰ گرم')),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: TextFormField(
                     controller: primaryImage,
@@ -666,7 +688,14 @@ class _ProductDialogState extends State<ProductDialog> {
                 TextFormField(
                   controller: price,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'قیمت ریال'),
+                  decoration: const InputDecoration(labelText: 'قیمت فروش ریال'),
+                  validator: numberRequired,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: costPrice,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'قیمت تمام‌شده ریال', helperText: 'برای محاسبه سود و حاشیه سود استفاده می‌شود.'),
                   validator: numberRequired,
                 ),
                 const SizedBox(height: 10),
@@ -723,6 +752,13 @@ class _ProductDialogState extends State<ProductDialog> {
     title.dispose();
     slug.dispose();
     origin.dispose();
+    shortDescription.dispose();
+    description.dispose();
+    seoTitle.dispose();
+    seoDescription.dispose();
+    seoKeywords.dispose();
+    specifications.dispose();
+    costPrice.dispose();
     primaryImage.dispose();
     galleryImages.dispose();
     sku.dispose();
@@ -741,6 +777,15 @@ class _ProductDialogState extends State<ProductDialog> {
         slug: slug.text,
         category: category,
         origin: origin.text,
+        shortDescription: shortDescription.text.trim(),
+        description: description.text.trim(),
+        seoTitle: seoTitle.text.trim(),
+        seoDescription: seoDescription.text.trim(),
+        seoKeywords: seoKeywords.text.trim(),
+        specifications: {
+          for (final line in specifications.text.split('\n'))
+            if (line.contains('=')) line.split('=').first.trim(): line.substring(line.indexOf('=') + 1).trim(),
+        },
         unitType: unitType,
         isPublished: false,
         primaryImage: primaryImage.text.trim(),
@@ -751,6 +796,7 @@ class _ProductDialogState extends State<ProductDialog> {
             quantity: quantity,
             displayLabel: label,
             price: num.parse(price.text),
+            costPrice: num.parse(costPrice.text),
             availablePackages: int.parse(stock.text),
           ),
         ],
