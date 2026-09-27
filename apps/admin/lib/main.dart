@@ -64,6 +64,7 @@ class _AdminShellState extends State<AdminShell> {
     ('محصولات', Icons.inventory_2_rounded),
     ('انبار', Icons.warehouse_rounded),
     ('گزارش‌ها', Icons.query_stats_rounded),
+    ('اعلان‌ها', Icons.notifications_active_rounded),
   ];
 
   @override
@@ -75,6 +76,7 @@ class _AdminShellState extends State<AdminShell> {
       CatalogPage(key: catalogKey),
       const InventoryPage(),
       const ReportsPage(),
+      const NotificationsPage(),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand()),
@@ -1481,6 +1483,87 @@ class _CategoryDialogState extends State<CategoryDialog> {
     seoDescription.dispose();
     sortOrder.dispose();
     super.dispose();
+  }
+}
+
+class NotificationsPage extends StatefulWidget {
+  const NotificationsPage({super.key, this.api});
+  final OrderApiClient? api;
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  late final OrderApiClient api = widget.api ?? OrderApiClient();
+  AdminNotifications? data;
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final result = await api.fetchNotifications();
+      if (mounted) setState(() => data = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(28),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('مرکز اعلان‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+          const SizedBox(height: 6),
+          const Text('هشدارهای سفارش، موجودی و کارهای مهم را در یک صف واضح دنبال کنید.', style: TextStyle(color: AdminColors.muted)),
+        ])),
+        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+      ]),
+      const SizedBox(height: 20),
+      Expanded(child: _body()),
+    ]),
+  );
+
+  Widget _body() {
+    if (loading) return const Center(child: CircularProgressIndicator());
+    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.notifications_off_rounded, size: 56, color: AdminColors.muted),
+      const SizedBox(height: 12),
+      Text(error!, textAlign: TextAlign.center),
+      const SizedBox(height: 12),
+      FilledButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
+    ]));
+    final items = data?.items ?? const <AdminNotification>[];
+    if (items.isEmpty) return const Center(child: Text('فعلاً اعلان مهمی ندارید.', style: TextStyle(color: AdminColors.muted)));
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, index) {
+        final item = items[index];
+        return Card(
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            leading: CircleAvatar(
+              backgroundColor: item.type.toLowerCase() == 'critical' ? const Color(0xFFFCE6E0) : AdminColors.mintSoft,
+              child: Icon(item.type.toLowerCase() == 'critical' ? Icons.priority_high_rounded : Icons.info_outline_rounded, color: AdminColors.ink),
+            ),
+            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)),
+            subtitle: Padding(padding: const EdgeInsets.only(top: 5), child: Text(item.detail)),
+            trailing: Text(item.type == 'critical' ? 'فوری' : 'پیگیری', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+          ),
+        );
+      },
+    );
   }
 }
 
