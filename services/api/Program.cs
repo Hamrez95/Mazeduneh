@@ -30,6 +30,38 @@ app.MapCheckout();
 app.MapPayments();
 app.MapOrderManagement();
 app.MapInventoryLedger();
+app.MapPost("/api/v1/admin/media", async (HttpRequest request, MediaStorage storage, CancellationToken cancellationToken) =>
+{
+    if (!request.HasFormContentType)
+        return Results.BadRequest(new { message = "درخواست باید شامل فایل تصویر باشد." });
+
+    var form = await request.ReadFormAsync(cancellationToken);
+    var file = form.Files.GetFile("file");
+    if (file is null)
+        return Results.BadRequest(new { message = "فایل تصویر ارسال نشده است." });
+
+    try
+    {
+        var stored = await storage.SaveAsync(file, cancellationToken);
+        return Results.Created(stored.Url, stored);
+    }
+    catch (InvalidDataException exception)
+    {
+        return Results.BadRequest(new { message = exception.Message });
+    }
+})
+.AddEndpointFilter<OwnerAuthorizationFilter>();
+
+app.MapGet("/media/{fileName}", (string fileName, MediaStorage storage) =>
+{
+    var path = storage.Resolve(fileName);
+    return path is null
+        ? Results.NotFound()
+        : Results.File(path, fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" :
+            fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ? "image/webp" :
+            fileName.EndsWith(".avif", StringComparison.OrdinalIgnoreCase) ? "image/avif" : "image/jpeg");
+});
+
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
 var database = app.Services.GetRequiredService<CatalogDatabase>();
