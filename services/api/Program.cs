@@ -74,7 +74,7 @@ app.MapGet("/health", async (
         {
             status = db.IsConfigured ? "tracked" : "not-configured",
             applied = migrations.Count,
-            latest = latestMigration is null ? null : new { latestMigration.Component, latestMigration.Version }
+            latest = latestMigration is null ? null : new { component = latestMigration.Component, version = latestMigration.Version }
         },
         adminAuthentication = adminTokens.IsConfigured ? "configured" : "not-configured",
         paymentSandbox = paymentDatabase.SandboxEnabled ? "enabled" : "disabled",
