@@ -450,10 +450,18 @@ class ProductCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(17),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              CircleAvatar(backgroundColor: const Color(0xFFE7F1E2), child: Text(product.isWeight ? '⚖' : '●')),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: product.primaryImage.trim().isEmpty
+                    ? Container(width: 58, height: 58, color: AdminColors.mintSoft, alignment: Alignment.center, child: Text(product.isWeight ? '⚖' : '●'))
+                    : Image.network(product.primaryImage, width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined))),
               const SizedBox(width: 10),
-              Expanded(child: Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900))),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(product.galleryImages.isEmpty ? 'یک تصویر ثبت شده' : '${product.galleryImages.length + 1} تصویر ثبت شده', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+              ])),
               _PublicationBadge(product.isPublished),
             ]),
             const SizedBox(height: 8),
@@ -514,6 +522,8 @@ class _ProductDialogState extends State<ProductDialog> {
   final title = TextEditingController();
   final slug = TextEditingController();
   final origin = TextEditingController();
+  final primaryImage = TextEditingController();
+  final galleryImages = TextEditingController();
   final sku = TextEditingController();
   final price = TextEditingController();
   final stock = TextEditingController();
@@ -557,7 +567,49 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 10),
                 TextFormField(controller: origin, decoration: const InputDecoration(labelText: 'مبدأ یا برند'), validator: required),
+                TextFormField(
+                  controller: primaryImage,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'تصویر اصلی محصول',
+                    hintText: 'لینک تصویر بسته‌بندی بدون بک‌گراند',
+                    helperText: 'این تصویر در کارت محصول و صفحه‌ی اصلی محصول نمایش داده می‌شود.',
+                    prefixIcon: Icon(Icons.image_outlined),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
                 const SizedBox(height: 10),
+                if (primaryImage.text.trim().isNotEmpty)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      primaryImage.text.trim(),
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 80,
+                        alignment: Alignment.center,
+                        color: const Color(0xFFFFF0D9),
+                        child: const Text('پیش‌نمایش تصویر در دسترس نیست؛ لینک را بررسی کنید.'),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: galleryImages,
+                  minLines: 2,
+                  maxLines: 4,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(
+                    labelText: 'تصاویر گالری',
+                    hintText: 'هر لینک را در یک خط وارد کنید',
+                    helperText: 'تصاویر گالری برای صفحه‌ی جزئیات محصول به‌ترتیب ذخیره می‌شوند.',
+                    prefixIcon: Icon(Icons.collections_outlined),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
                 SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(value: 'Weight', label: Text('وزنی')),
@@ -598,6 +650,19 @@ class _ProductDialogState extends State<ProductDialog> {
   String? required(String? value) => value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
   String? numberRequired(String? value) => num.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null;
 
+  @override
+  void dispose() {
+    title.dispose();
+    slug.dispose();
+    origin.dispose();
+    primaryImage.dispose();
+    galleryImages.dispose();
+    sku.dispose();
+    price.dispose();
+    stock.dispose();
+    super.dispose();
+  }
+
   void submit() {
     if (!formKey.currentState!.validate()) return;
     final label = unitType == 'Weight' ? '${quantity.toInt()} گرم' : '${quantity.toInt()} عدد';
@@ -610,6 +675,8 @@ class _ProductDialogState extends State<ProductDialog> {
         origin: origin.text,
         unitType: unitType,
         isPublished: false,
+        primaryImage: primaryImage.text.trim(),
+        galleryImages: galleryImages.text.split('\n').map((value) => value.trim()).where((value) => value.isNotEmpty).toList(),
         variants: [
           CreateVariantCommand(
             sku: sku.text,
@@ -1094,12 +1161,12 @@ class _ReportsPageState extends State<ReportsPage> {
           childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _ReportMetric(title: 'درآمد', value: '\${data.revenue.toStringAsFixed(0)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
-            _ReportMetric(title: 'هزینه کالا', value: '\${data.cost.toStringAsFixed(0)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
-            _ReportMetric(title: 'سود ناخالص', value: '\${data.grossProfit.toStringAsFixed(0)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
-            _ReportMetric(title: 'حاشیه سود', value: '\${data.grossMarginPercent.toStringAsFixed(1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
-            _ReportMetric(title: 'تعداد سفارش', value: '\${data.orderCount}', icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
-            _ReportMetric(title: 'واحد فروخته‌شده', value: '\${data.unitsSold}', icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
+            _ReportMetric(title: 'درآمد', value: '${data.revenue.toStringAsFixed(0)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'هزینه کالا', value: '${data.cost.toStringAsFixed(0)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'سود ناخالص', value: '${data.grossProfit.toStringAsFixed(0)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
+            _ReportMetric(title: 'حاشیه سود', value: '${data.grossMarginPercent.toStringAsFixed(1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'تعداد سفارش', value: '${data.orderCount}', icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
+            _ReportMetric(title: 'واحد فروخته‌شده', value: '${data.unitsSold}', icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
           ],
         ),
         const SizedBox(height: 18),
@@ -1107,8 +1174,8 @@ class _ReportsPageState extends State<ReportsPage> {
           const Text('خلاصه‌ی تصمیم‌گیری', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
           const SizedBox(height: 12),
           Text(
-            'در \${data.days} روز گذشته، \${data.orderCount} سفارش با \${data.unitsSold} واحد ثبت شده است. '
-            'سود ناخالص \${data.grossProfit.toStringAsFixed(0)} ریال و حاشیه سود \${data.grossMarginPercent.toStringAsFixed(1)}٪ بوده است.',
+            'در ${data.days} روز گذشته، ${data.orderCount} سفارش با ${data.unitsSold} واحد ثبت شده است. '
+            'سود ناخالص ${data.grossProfit.toStringAsFixed(0)} ریال و حاشیه سود ${data.grossMarginPercent.toStringAsFixed(1)}٪ بوده است.',
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),
