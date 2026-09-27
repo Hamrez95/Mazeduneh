@@ -9,6 +9,7 @@ public static class CheckoutModule
     public static IServiceCollection AddCheckout(this IServiceCollection services)
     {
         services.AddSingleton<CheckoutDatabase>();
+        services.AddCustomerIdentity();
         services.AddSingleton<CheckoutService>();
         services.AddHostedService<CheckoutSchemaInitializer>();
         services.AddHostedService<ReservationExpiryWorker>();
@@ -48,6 +49,7 @@ public static class CheckoutModule
                 ? Results.Ok(order)
                 : Results.NotFound(new { message = "سفارش پیدا نشد." }));
 
+        endpoints.MapCustomerIdentity();
         return endpoints;
     }
 }
