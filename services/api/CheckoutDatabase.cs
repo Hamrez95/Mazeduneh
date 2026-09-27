@@ -65,8 +65,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "checkout", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Checkout PostgreSQL schema is ready.");
     }
 
