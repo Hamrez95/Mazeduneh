@@ -399,7 +399,7 @@ class CatalogPageState extends State<CatalogPage> {
                 );
               },
               icon: const Icon(Icons.category_rounded),
-              label: Text('دسته‌ها (' + categories.length.toString() + ')'),
+              label: Text('دسته‌ها (${categories.length})'),
             ),
             const SizedBox(width: 8),
             FilterChip(
@@ -1321,7 +1321,7 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
                       contentPadding: EdgeInsets.zero,
                       leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Text(item.sortOrder.toString())),
                       title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: Text(item.slug + ' · ' + (item.isActive ? 'فعال' : 'غیرفعال'), style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                      subtitle: Text('${item.slug} · ${(item.isActive ? 'فعال' : 'غیرفعال')}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                       trailing: const Icon(Icons.chevron_left_rounded),
                     );
                   },
