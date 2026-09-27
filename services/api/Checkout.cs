@@ -11,6 +11,7 @@ public static class CheckoutModule
         services.AddSingleton<CheckoutDatabase>();
         services.AddSingleton<CheckoutService>();
         services.AddHostedService<CheckoutSchemaInitializer>();
+        services.AddCustomerIdentity();
         services.AddHostedService<ReservationExpiryWorker>();
         return services;
     }
@@ -48,6 +49,7 @@ public static class CheckoutModule
                 ? Results.Ok(order)
                 : Results.NotFound(new { message = "سفارش پیدا نشد." }));
 
+        endpoints.MapCustomerIdentity();
         return endpoints;
     }
 }
