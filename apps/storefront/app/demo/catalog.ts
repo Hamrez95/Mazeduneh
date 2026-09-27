@@ -185,6 +185,4 @@ export const demoProducts: DemoProduct[] = [
   },
 ];
 
-export function toman(value: number) {
-  return new Intl.NumberFormat("fa-IR").format(value);
-}
+export { formatNumber as toman } from "../formatters";
