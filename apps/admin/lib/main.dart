@@ -299,6 +299,7 @@ class CatalogPage extends StatefulWidget {
 class CatalogPageState extends State<CatalogPage> {
   late final CatalogApiClient api = widget.api ?? CatalogApiClient();
   List<Product> products = const [];
+  List<Category> categories = const [];
   final Set<String> changingPublication = {};
   bool loading = true;
   String? error;
@@ -316,8 +317,14 @@ class CatalogPageState extends State<CatalogPage> {
       error = null;
     });
     try {
-      final result = await api.fetchProducts(includeDrafts: true);
-      if (mounted) setState(() => products = result);
+      final result = await Future.wait([
+        api.fetchProducts(includeDrafts: true),
+        api.fetchCategories(),
+      ]);
+      if (mounted) setState(() {
+        products = result[0] as List<Product>;
+        categories = result[1] as List<Category>;
+      });
     } catch (exception) {
       if (mounted) setState(() => error = exception.toString());
     } finally {
@@ -384,6 +391,17 @@ class CatalogPageState extends State<CatalogPage> {
                 const Text('پیش‌نویس‌ها فقط در پنل دیده می‌شوند.', style: TextStyle(color: Colors.grey, fontSize: 11)),
               ]),
             ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (_) => CategoryManagerDialog(api: api, initial: categories, onChanged: load),
+                );
+              },
+              icon: const Icon(Icons.category_rounded),
+              label: Text('دسته‌ها (${categories.length})'),
+            ),
+            const SizedBox(width: 8),
             FilterChip(
               label: const Text('نمایش پیش‌نویس‌ها'),
               selected: showDrafts,
@@ -1250,6 +1268,168 @@ class _ReportMetric extends StatelessWidget {
       Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
     ])),
   ])));
+}
+
+class CategoryManagerDialog extends StatefulWidget {
+  const CategoryManagerDialog({super.key, required this.api, required this.initial, required this.onChanged});
+  final CatalogApiClient api;
+  final List<Category> initial;
+  final Future<void> Function() onChanged;
+  @override
+  State<CategoryManagerDialog> createState() => _CategoryManagerDialogState();
+}
+
+class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
+  late List<Category> categories = [...widget.initial];
+  bool saving = false;
+  String? error;
+
+  Future<void> addCategory() async {
+    final command = await showDialog<CreateCategoryCommand>(context: context, builder: (_) => const CategoryDialog());
+    if (command == null) return;
+    setState(() { saving = true; error = null; });
+    try {
+      final created = await widget.api.createCategory(command);
+      if (mounted) setState(() => categories = [...categories, created]);
+      await widget.onChanged();
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('مدیریت دسته‌بندی‌ها'),
+    content: SizedBox(
+      width: 520,
+      height: 360,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('دسته‌ها مسیر پیدا کردن محصول در فروشگاه هستند. نام و شناسه آدرس را خوانا و پایدار انتخاب کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 12, height: 1.5)),
+        const SizedBox(height: 14),
+        if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: const TextStyle(color: AdminColors.coral))),
+        Expanded(
+          child: categories.isEmpty
+              ? const Center(child: Text('هنوز دسته‌ای تعریف نشده است.'))
+              : ListView.separated(
+                  itemCount: categories.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, index) {
+                    final item = categories[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Text(item.sortOrder.toString())),
+                      title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: Text('${item.slug} · ${(item.isActive ? 'فعال' : 'غیرفعال')}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                      trailing: const Icon(Icons.chevron_left_rounded),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('بستن')),
+      FilledButton.icon(
+        onPressed: saving ? null : addCategory,
+        icon: saving ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_rounded),
+        label: const Text('دسته جدید'),
+      ),
+    ],
+  );
+}
+
+class CategoryDialog extends StatefulWidget {
+  const CategoryDialog({super.key});
+
+  @override
+  State<CategoryDialog> createState() => _CategoryDialogState();
+}
+
+class _CategoryDialogState extends State<CategoryDialog> {
+  final formKey = GlobalKey<FormState>();
+  final name = TextEditingController();
+  final slug = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  final sortOrder = TextEditingController(text: '10');
+  bool isActive = true;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('افزودن دسته‌بندی'),
+    content: SizedBox(
+      width: 500,
+      child: Form(
+        key: formKey,
+        child: SingleChildScrollView(
+          child: Column(children: [
+            const Align(
+              alignment: Alignment.centerRight,
+              child: Text('شناسه آدرس را کوتاه، خوانا و با حروف انگلیسی وارد کنید.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'نام دسته *'),
+              validator: (value) => value == null || value.trim().length < 2 ? 'نام دسته را وارد کنید.' : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: slug,
+              decoration: const InputDecoration(labelText: 'شناسه آدرس (slug) *', hintText: 'مثلاً nuts-premium'),
+              validator: (value) => value == null || value.trim().isEmpty ? 'شناسه آدرس را وارد کنید.' : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(controller: description, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح دسته', hintText: 'برای صفحه دسته و سئو استفاده می‌شود.')),
+            const SizedBox(height: 10),
+            TextFormField(controller: seoTitle, decoration: const InputDecoration(labelText: 'عنوان SEO', helperText: 'اگر خالی باشد از نام دسته استفاده می‌شود.')),
+            const SizedBox(height: 10),
+            TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO')),
+            const SizedBox(height: 10),
+            TextFormField(controller: sortOrder, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ترتیب نمایش')),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('دسته فعال باشد'),
+              value: isActive,
+              onChanged: (value) => setState(() => isActive = value),
+            ),
+          ]),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+      FilledButton(
+        onPressed: () {
+          if (!formKey.currentState!.validate()) return;
+          Navigator.pop(context, CreateCategoryCommand(
+            name: name.text.trim(),
+            slug: slug.text.trim().toLowerCase(),
+            description: description.text.trim(),
+            seoTitle: seoTitle.text.trim(),
+            seoDescription: seoDescription.text.trim(),
+            sortOrder: int.tryParse(sortOrder.text.trim()) ?? 0,
+            isActive: isActive,
+          ));
+        },
+        child: const Text('ثبت دسته'),
+      ),
+    ],
+  );
+
+  @override
+  void dispose() {
+    name.dispose();
+    slug.dispose();
+    description.dispose();
+    seoTitle.dispose();
+    seoDescription.dispose();
+    sortOrder.dispose();
+    super.dispose();
+  }
 }
 
 class PlaceholderPage extends StatelessWidget {
