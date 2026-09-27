@@ -19,7 +19,7 @@ public static class CustomerIdentityModule
                 Guid customerId,
                 CustomerIdentityDatabase database,
                 CancellationToken cancellationToken) =>
-            await database.FindAsync(customerId, cancellationToken) is { } customer
+            await database.FindProfileAsync(customerId, cancellationToken) is { } customer
                 ? Results.Ok(customer)
                 : Results.NotFound(new { message = "مشتری پیدا نشد." }))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
@@ -209,7 +209,49 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
             reader.GetFieldValue<DateTimeOffset>(6),
             reader.GetInt32(7));
     }
+
+    public async Task<CustomerSummary?> FindProfileAsync(Guid customerId, CancellationToken cancellationToken)
+    {
+        var summary = await FindAsync(customerId, cancellationToken);
+        if (summary is null || !IsConfigured) return summary;
+
+        const string sql = """
+            select id,province,city,address,postal_code,is_default,last_used_at
+            from customer_addresses
+            where customer_id = @customer_id
+            order by is_default desc, last_used_at desc;
+            """;
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("customer_id", customerId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var addresses = new List<CustomerAddressSummary>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            addresses.Add(new CustomerAddressSummary(
+                reader.GetGuid(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetBoolean(5),
+                reader.GetFieldValue<DateTimeOffset>(6)));
+        }
+
+        return summary with { Addresses = addresses };
+    }
 }
+
+public sealed record CustomerAddressSummary(
+    Guid Id,
+    string Province,
+    string City,
+    string Address,
+    string PostalCode,
+    bool IsDefault,
+    DateTimeOffset LastUsedAt);
 
 public sealed record CustomerSummary(
     Guid Id,
@@ -219,7 +261,8 @@ public sealed record CustomerSummary(
     bool MarketingConsent,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    int OrderCount);
+    int OrderCount,
+    IReadOnlyCollection<CustomerAddressSummary> Addresses = null!);
 
 public sealed class CustomerIdentitySchemaInitializer(CustomerIdentityDatabase database) : IHostedService
 {
