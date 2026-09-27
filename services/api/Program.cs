@@ -30,7 +30,7 @@ app.MapCheckout();
 app.MapPayments();
 app.MapOrderManagement();
 app.MapInventoryLedger();
-app.MapPost("/api/v1/admin/media", async (HttpRequest request, MediaStorage storage, CancellationToken cancellationToken) =>
+app.MapPost("/api/v1/admin/media", async (HttpRequest request, [Microsoft.AspNetCore.Mvc.FromServices] MediaStorage storage, CancellationToken cancellationToken) =>
 {
     if (!request.HasFormContentType)
         return Results.BadRequest(new { message = "درخواست باید شامل فایل تصویر باشد." });
