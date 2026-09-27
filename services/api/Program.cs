@@ -52,8 +52,9 @@ app.MapPost("/api/v1/admin/media", async (HttpRequest request, [Microsoft.AspNet
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
-app.MapGet("/media/{fileName}", (string fileName, MediaStorage storage) =>
+app.MapGet("/media/{fileName}", (HttpContext context, string fileName) =>
 {
+    var storage = context.RequestServices.GetRequiredService<MediaStorage>();
     var path = storage.Resolve(fileName);
     return path is null
         ? Results.NotFound()
