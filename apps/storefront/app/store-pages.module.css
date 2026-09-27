@@ -665,3 +665,40 @@
   .pageHero { min-height: 430px; }
   .footerArt { width: 145px; height: 145px; inset-inline-end: -22px; bottom: -40px; }
 }
+
+/* Final responsive corrections: keep header controls on one mobile row and
+   prevent portrait artwork from imposing its intrinsic grid size. */
+@media (max-width: 760px) {
+  .siteHeader .brand { grid-column: 2; grid-row: 1; }
+  .siteHeader .headerActions { grid-column: 1; grid-row: 1; min-width: 0; margin-inline-start: 0; }
+  .siteHeader .menuToggle { grid-column: 3; grid-row: 1; }
+}
+
+.productVisual :global(img) {
+  min-width: 0;
+  min-height: 0;
+}
+
+.detailImageStage {
+  min-width: 0;
+  min-height: 420px;
+  height: 420px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.detailImageStage :global(img) {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+@media (max-width: 760px) {
+  .detailImageStage { min-height: 360px; height: 360px; }
+  .detailImageStage :global(img) { padding: 8px 12px; }
+}
