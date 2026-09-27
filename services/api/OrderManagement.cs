@@ -88,8 +88,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Order-management schema constraints are ready.");
     }
 
