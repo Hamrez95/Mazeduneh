@@ -798,11 +798,11 @@ class _InventoryPageState extends State<InventoryPage> {
                 final low = variant.availablePackages <= 5;
                 final busy = busySku == variant.sku;
                 return Row(children: [
-                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text('\${variant.availablePackages}')),
+                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text('${variant.availablePackages}')),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(product.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text('\${variant.displayLabel} · \${variant.sku}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    Text('${variant.displayLabel} · ${variant.sku}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   ])),
                   FilledButton.tonalIcon(
                     onPressed: busy ? null : () => adjust(variant!),
@@ -828,8 +828,8 @@ class _InventoryPageState extends State<InventoryPage> {
                     backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
                     child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
                   ),
-                  title: Text('\${item.sku} · \${positive ? '+' : ''}\${item.quantityDelta}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('\${item.reason} · مانده \${item.balanceAfter}', style: const TextStyle(fontSize: 11)),
+                  title: Text('${item.sku} · ${positive ? '+' : ''}${item.quantityDelta}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text('${item.reason} · مانده ${item.balanceAfter}', style: const TextStyle(fontSize: 11)),
                 );
               },
             )),
@@ -859,23 +859,46 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
   final reason = TextEditingController();
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('اصلاح موجودی \${widget.variant.sku}'),
-    content: SizedBox(width: 430, child: Form(key: formKey, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Text('موجودی فعلی: \${widget.variant.availablePackages} بسته'),
-      const SizedBox(height: 12),
-      TextFormField(controller: delta, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تغییر موجودی', hintText: 'مثبت برای ورود، منفی برای خروج'), validator: (value) => int.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null),
-      const SizedBox(height: 10),
-      TextFormField(controller: reason, decoration: const InputDecoration(labelText: 'علت اصلاح'), validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : null),
-    ]))),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
-      FilledButton(onPressed: () {
-        if (!formKey.currentState!.validate()) return;
-        Navigator.pop(context, _AdjustmentCommand(int.parse(delta.text), reason.text.trim()));
-      }, child: const Text('ثبت اصلاح')),
-    ],
-  );
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('اصلاح موجودی ${widget.variant.sku}'),
+      content: SizedBox(
+        width: 430,
+        child: Form(
+          key: formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('موجودی فعلی: ${widget.variant.availablePackages} بسته'),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: delta,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'تغییر موجودی',
+                hintText: 'مثبت برای ورود، منفی برای خروج',
+              ),
+              validator: (value) => int.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null,
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: reason,
+              decoration: const InputDecoration(labelText: 'علت اصلاح'),
+              validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : null,
+            ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+        FilledButton(
+          onPressed: () {
+            if (!formKey.currentState!.validate()) return;
+            Navigator.pop(context, _AdjustmentCommand(int.parse(delta.text), reason.text.trim()));
+          },
+          child: const Text('ثبت اصلاح'),
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
