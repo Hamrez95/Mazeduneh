@@ -1,3 +1,4 @@
+import 'formatters.dart';
 import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
@@ -204,10 +205,10 @@ class _DashboardPageState extends State<DashboardPage> {
           ]),
           const SizedBox(height: 24),
           Wrap(spacing: 14, runSpacing: 14, children: [
-            MetricCard('فروش امروز', '${data.todayRevenue.toStringAsFixed(0)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
-            MetricCard('در انتظار پرداخت', '${data.awaitingPayment}', Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
-            MetricCard('در حال پردازش', '${data.processing}', Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
-            MetricCard('ارسال‌شده', '${data.shipped}', Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
+            MetricCard('فروش امروز', '${formatPersianNumber(data.todayRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
+            MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
+            MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
           ]),
           const SizedBox(height: 24),
           Builder(builder: (context) {
@@ -246,7 +247,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               contentPadding: EdgeInsets.zero,
                               title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
                               subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                              trailing: Text('${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                              trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
                             ),
                         ]),
                 ),
@@ -401,7 +402,7 @@ class CatalogPageState extends State<CatalogPage> {
                 );
               },
               icon: const Icon(Icons.category_rounded),
-              label: Text('دسته‌ها (${categories.length})'),
+              label: Text('دسته‌ها (${formatPersianInteger(categories.length)})'),
             ),
             const SizedBox(width: 8),
             FilterChip(
@@ -482,7 +483,7 @@ class ProductCard extends StatelessWidget {
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900)),
                 const SizedBox(height: 4),
-                Text(product.galleryImages.isEmpty ? 'یک تصویر ثبت شده' : '${product.galleryImages.length + 1} تصویر ثبت شده', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                Text(product.galleryImages.isEmpty ? 'یک تصویر ثبت شده' : '${formatPersianInteger(product.galleryImages.length + 1)} تصویر ثبت شده', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
               ])),
               _PublicationBadge(product.isPublished),
             ]),
@@ -491,13 +492,13 @@ class ProductCard extends StatelessWidget {
             const Spacer(),
             Wrap(spacing: 5, runSpacing: 5, children: [
               for (final variant in product.variants)
-                Chip(label: Text('${variant.displayLabel} · ${variant.availablePackages} بسته', style: const TextStyle(fontSize: 10))),
+                Chip(label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10))),
             ]),
             const SizedBox(height: 8),
             Row(children: [
               Expanded(
                 child: Text(
-                  'موجودی کل: ${product.totalStock} بسته',
+                  'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
                   style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
                 ),
               ),
@@ -777,7 +778,7 @@ class _ProductDialogState extends State<ProductDialog> {
 
   void submit() {
     if (!formKey.currentState!.validate()) return;
-    final label = unitType == 'Weight' ? '${quantity.toInt()} گرم' : '${quantity.toInt()} عدد';
+    final label = unitType == 'Weight' ? '${formatPersianInteger(quantity.toInt())} گرم' : '${quantity.toInt()} عدد';
     Navigator.pop(
       context,
       CreateProductCommand(
@@ -965,14 +966,14 @@ class _OrdersPageState extends State<OrdersPage> {
                     Text('سفارش ${order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900)),
                     const SizedBox(height: 5),
                     Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text('${order.province}، ${order.city} · ${order.lineCount} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    Text('${order.province}، ${order.city} · ${formatPersianInteger(order.lineCount)} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                   ]),
                 ),
                 Chip(
                   label: Text(states[order.state] ?? order.state),
                   backgroundColor: const Color(0xFFE7F1E2),
                 ),
-                Text('${order.payable.toStringAsFixed(0)} ${order.currency}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text('${formatPersianNumber(order.payable)} ${order.currency}', style: const TextStyle(fontWeight: FontWeight.w800)),
                 if (next != null)
                   FilledButton.tonalIcon(
                     onPressed: busy ? null : () => advance(order),
@@ -1095,7 +1096,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 final low = variant.availablePackages <= 5;
                 final busy = busySku == variant.sku;
                 return Row(children: [
-                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text('${variant.availablePackages}')),
+                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text(formatPersianInteger(variant.availablePackages))),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(product.title, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -1126,8 +1127,8 @@ class _InventoryPageState extends State<InventoryPage> {
                     backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
                     child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
                   ),
-                  title: Text('${item.sku} · $sign${item.quantityDelta.abs()}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${item.reason} · مانده ${item.balanceAfter}', style: const TextStyle(fontSize: 11)),
+                  title: Text('${item.sku} · $sign${formatPersianInteger(item.quantityDelta.abs())}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text('${item.reason} · مانده ${formatPersianInteger(item.balanceAfter)}', style: const TextStyle(fontSize: 11)),
                 );
               },
             )),
@@ -1165,7 +1166,7 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
         child: Form(
           key: formKey,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('موجودی فعلی: ${widget.variant.availablePackages} بسته'),
+            Text('موجودی فعلی: ${formatPersianInteger(widget.variant.availablePackages)} بسته'),
             const SizedBox(height: 12),
             TextFormField(
               controller: delta,
@@ -1283,12 +1284,12 @@ class _ReportsPageState extends State<ReportsPage> {
           childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _ReportMetric(title: 'درآمد', value: '${data.revenue.toStringAsFixed(0)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
-            _ReportMetric(title: 'هزینه کالا', value: '${data.cost.toStringAsFixed(0)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
-            _ReportMetric(title: 'سود ناخالص', value: '${data.grossProfit.toStringAsFixed(0)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
-            _ReportMetric(title: 'حاشیه سود', value: '${data.grossMarginPercent.toStringAsFixed(1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
-            _ReportMetric(title: 'تعداد سفارش', value: '${data.orderCount}', icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
-            _ReportMetric(title: 'واحد فروخته‌شده', value: '${data.unitsSold}', icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
+            _ReportMetric(title: 'درآمد', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'هزینه کالا', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'سود ناخالص', value: '${formatPersianNumber(data.grossProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
+            _ReportMetric(title: 'حاشیه سود', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'تعداد سفارش', value: formatPersianInteger(data.orderCount), icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
+            _ReportMetric(title: 'واحد فروخته‌شده', value: formatPersianInteger(data.unitsSold), icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
           ],
         ),
         const SizedBox(height: 18),
@@ -1296,8 +1297,8 @@ class _ReportsPageState extends State<ReportsPage> {
           const Text('خلاصه‌ی تصمیم‌گیری', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
           const SizedBox(height: 12),
           Text(
-            'در ${data.days} روز گذشته، ${data.orderCount} سفارش با ${data.unitsSold} واحد ثبت شده است. '
-            'سود ناخالص ${data.grossProfit.toStringAsFixed(0)} ریال و حاشیه سود ${data.grossMarginPercent.toStringAsFixed(1)}٪ بوده است.',
+            'در ${formatPersianInteger(data.days)} روز گذشته، ${formatPersianInteger(data.orderCount)} سفارش با ${formatPersianInteger(data.unitsSold)} واحد ثبت شده است. '
+            'سود ناخالص ${formatPersianNumber(data.grossProfit)} ریال و حاشیه سود ${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪ بوده است.',
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),
@@ -1393,7 +1394,7 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
         const Text('دسته‌ها مسیر پیدا کردن محصول در فروشگاه هستند. نام و شناسه آدرس را خوانا و پایدار انتخاب کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 12, height: 1.5)),
         const SizedBox(height: 14),
         TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجوی نام یا شناسه'), onChanged: (value) => setState(() => query = value.trim().toLowerCase())),
-        Row(children: [FilterChip(label: const Text('فقط فعال‌ها'), selected: activeOnly, onSelected: (value) => setState(() => activeOnly = value)), const Spacer(), Text('${categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).length} دسته', style: const TextStyle(color: AdminColors.muted, fontSize: 12))]),
+        Row(children: [FilterChip(label: const Text('فقط فعال‌ها'), selected: activeOnly, onSelected: (value) => setState(() => activeOnly = value)), const Spacer(), Text('${formatPersianInteger(categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).length)} دسته', style: const TextStyle(color: AdminColors.muted, fontSize: 12))]),
         if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: const TextStyle(color: AdminColors.coral))),
         Expanded(
           child: categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).isEmpty
@@ -1405,7 +1406,7 @@ class _CategoryManagerDialogState extends State<CategoryManagerDialog> {
                     final item = categories.where((item) => (!activeOnly || item.isActive) && (query.isEmpty || item.name.toLowerCase().contains(query) || item.slug.toLowerCase().contains(query))).toList()[index];
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Text(item.sortOrder.toString())),
+                      leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Text(formatPersianInteger(item.sortOrder))),
                       title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800)),
                       subtitle: Text('${item.slug} · ${(item.isActive ? 'فعال' : 'غیرفعال')}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                       trailing: PopupMenuButton<String>(onSelected: (action) { if (action == 'edit') editCategory(item); if (action == 'toggle') toggleCategory(item); if (action == 'delete') deleteCategory(item); }, itemBuilder: (_) => [const PopupMenuItem(value: 'edit', child: Text('ویرایش')), PopupMenuItem(value: 'toggle', child: Text(item.isActive ? 'غیرفعال کردن' : 'فعال کردن')), const PopupMenuItem(value: 'delete', child: Text('حذف امن'))]),
