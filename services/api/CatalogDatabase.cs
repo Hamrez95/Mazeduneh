@@ -68,8 +68,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "catalog", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Catalog PostgreSQL schema is ready.");
     }
 

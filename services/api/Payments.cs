@@ -80,8 +80,7 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "payments", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Payment PostgreSQL schema is ready; sandbox enabled: {Enabled}.", SandboxEnabled);
     }
 
