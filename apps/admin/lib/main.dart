@@ -200,21 +200,55 @@ class _DashboardPageState extends State<DashboardPage> {
           ]),
           const SizedBox(height: 24),
           Wrap(spacing: 14, runSpacing: 14, children: [
-            MetricCard('فروش امروز', '\${data.todayRevenue.toStringAsFixed(0)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
-            MetricCard('در انتظار پرداخت', '\${data.awaitingPayment}', Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
-            MetricCard('در حال پردازش', '\${data.processing}', Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
-            MetricCard('ارسال‌شده', '\${data.shipped}', Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
+            MetricCard('فروش امروز', '${data.todayRevenue.toStringAsFixed(0)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            MetricCard('در انتظار پرداخت', '${data.awaitingPayment}', Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
+            MetricCard('در حال پردازش', '${data.processing}', Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
+            MetricCard('ارسال‌شده', '${data.shipped}', Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
           ]),
           const SizedBox(height: 24),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: _DashboardPanel(title: 'هشدارهای عملیاتی', icon: Icons.notifications_active_rounded, child: notifications?.items.isEmpty == true
-              ? const Text('مورد فوری وجود ندارد.', style: TextStyle(color: AdminColors.muted))
-              : Column(children: [for (final item in notifications?.items.take(4) ?? const []) ListTile(contentPadding: EdgeInsets.zero, leading: const CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18)), title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)))]))),
-            const SizedBox(width: 14),
-            Expanded(child: _DashboardPanel(title: 'موجودی کم', icon: Icons.warning_amber_rounded, child: data.lowStock.isEmpty
-              ? const Text('همه موجودی‌ها در وضعیت مناسب هستند.', style: TextStyle(color: AdminColors.muted))
-              : Column(children: [for (final item in data.lowStock.take(4)) ListTile(contentPadding: EdgeInsets.zero, title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('\${item.variantLabel} · \${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), trailing: Text('\${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)))]))),
-          ]),
+          Builder(builder: (context) {
+            final alertItems = notifications?.items ?? const <AdminNotification>[];
+            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: _DashboardPanel(
+                  title: 'هشدارهای عملیاتی',
+                  icon: Icons.notifications_active_rounded,
+                  child: alertItems.isEmpty
+                      ? const Text('مورد فوری وجود ندارد.', style: TextStyle(color: AdminColors.muted))
+                      : Column(children: [
+                          for (final item in alertItems.take(4))
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: const CircleAvatar(
+                                backgroundColor: AdminColors.mintSoft,
+                                child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18),
+                              ),
+                              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                              subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)),
+                            ),
+                        ]),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _DashboardPanel(
+                  title: 'موجودی کم',
+                  icon: Icons.warning_amber_rounded,
+                  child: data.lowStock.isEmpty
+                      ? const Text('همه موجودی‌ها در وضعیت مناسب هستند.', style: TextStyle(color: AdminColors.muted))
+                      : Column(children: [
+                          for (final item in data.lowStock.take(4))
+                            ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                              subtitle: Text('\${item.variantLabel} · \${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                              trailing: Text('\${item.availablePackages}', style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                            ),
+                        ]),
+                ),
+              ),
+            ]);
+          }),          ]),
         ],
       ),
     );
