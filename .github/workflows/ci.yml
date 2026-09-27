@@ -201,9 +201,8 @@ jobs:
         run: flutter create --platforms=android,web --project-name mazeduneh_admin .
       - name: Align Android compile SDK
         run: |
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
-          fi
+          find android -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0 | xargs -0 -r sed -i -E 's/compileSdk([[:space:]]*=[[:space:]]*|[[:space:]]+)(flutter\\.compileSdkVersion|[0-9]+)/compileSdk\\1 36/g'
+          find "$PUB_CACHE/hosted/pub.dev" -path '*file_picker-*' -type f \( -name '*.gradle' -o -name '*.gradle.kts' \) -print0 | xargs -0 -r sed -i -E 's/compileSdkVersion[[:space:]]+(flutter\\.compileSdkVersion|[0-9]+)/compileSdkVersion 36/g; s/compileSdk[[:space:]]*=[[:space:]]*(flutter\\.compileSdkVersion|[0-9]+)/compileSdk = 36/g'
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
