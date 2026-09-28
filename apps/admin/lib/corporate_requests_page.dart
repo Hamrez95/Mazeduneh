@@ -1,3 +1,6 @@
+// The async file/message callbacks guard mounted before using the panel context.
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
