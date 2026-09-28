@@ -140,13 +140,12 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
             if (unavailable.Count > 0)
                 return CheckoutResult.OutOfStock("حداقل یک کالا موجودی کافی ندارد یا منتشر نشده است.", unavailable);
 
-            foreach (var requested in request.Lines)
-                catalog.Reserve(requested.Sku, requested.Quantity);
-
             var subtotal = lines.Sum(line => line.LineTotal);
             var quoteResult = pricing.QuoteAsync(subtotal, request.ShippingMethod, CancellationToken.None).GetAwaiter().GetResult();
             if (quoteResult.Quote is null) return CheckoutResult.Invalid(new Dictionary<string, string[]> { [nameof(request.ShippingMethod)] = [quoteResult.Error ?? "روش ارسال معتبر نیست."] });
             var quote = quoteResult.Quote;
+            foreach (var requested in request.Lines)
+                catalog.Reserve(requested.Sku, requested.Quantity);
             var now = DateTimeOffset.UtcNow;
             var order = new CheckoutOrder(
                 Guid.NewGuid(),
