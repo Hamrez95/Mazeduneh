@@ -1,7 +1,16 @@
 using System.Text.Json;
 using Npgsql;
 
-public sealed record ShippingMethodDefinition(string Code, string Title, decimal Price, decimal FreeAbove = 0, bool IsActive = true);
+public sealed record ShippingMethodDefinition(
+    string Code,
+    string Title,
+    decimal Price,
+    decimal FreeAbove = 0,
+    bool IsActive = true,
+    decimal InternalCost = 0);
+
+public sealed record PublicShippingMethodDefinition(string Code, string Title, decimal Price, decimal FreeAbove = 0, bool IsActive = true);
+public sealed record PublicCommerceSettings(decimal TaxRatePercent, IReadOnlyCollection<PublicShippingMethodDefinition> ShippingMethods, DateTimeOffset UpdatedAt);
 
 public sealed record CommerceSettings(decimal TaxRatePercent, IReadOnlyCollection<ShippingMethodDefinition> ShippingMethods, DateTimeOffset UpdatedAt);
 
@@ -33,12 +42,13 @@ public sealed record CommerceSettingsRequest(decimal TaxRatePercent, IReadOnlyCo
             var item = ShippingMethods.ElementAt(index);
             if (item.Price < 0) errors[$"ShippingMethods[{index}].Price"] = ["هزینه ارسال نمی‌تواند منفی باشد."];
             if (item.FreeAbove < 0) errors[$"ShippingMethods[{index}].FreeAbove"] = ["حداقل خرید ارسال رایگان نمی‌تواند منفی باشد."];
+            if (item.InternalCost < 0) errors[$"ShippingMethods[{index}].InternalCost"] = ["هزینه عملیاتی ارسال نمی‌تواند منفی باشد."];
         }
         return errors;
     }
 }
 
-public sealed record CommerceQuote(string ShippingMethod, decimal Shipping, decimal TaxRatePercent, decimal Tax, decimal Payable);
+public sealed record CommerceQuote(string ShippingMethod, decimal Shipping, decimal ShippingExpense, decimal TaxRatePercent, decimal Tax, decimal Payable);
 
 public sealed class CommercePricingDatabase(IConfiguration configuration, ILogger<CommercePricingDatabase> logger)
 {
@@ -132,7 +142,7 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
         if (method is null) return (null, "روش ارسال انتخاب‌شده فعال نیست.");
         var shipping = method.FreeAbove > 0 && subtotal >= method.FreeAbove ? 0 : method.Price;
         var tax = Math.Round(subtotal * settings.TaxRatePercent / 100m, 2, MidpointRounding.AwayFromZero);
-        return (new CommerceQuote(method.Code, shipping, settings.TaxRatePercent, tax, subtotal + shipping + tax), null);
+        return (new CommerceQuote(method.Code, shipping, method.InternalCost, settings.TaxRatePercent, tax, subtotal + shipping + tax), null);
     }
 
     private static IReadOnlyCollection<ShippingMethodDefinition> ReadConfiguredShipping(IConfiguration configuration)
@@ -141,9 +151,9 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
         return methods is { Count: > 0 }
             ? methods
             : [
-                new ShippingMethodDefinition("store-courier", "پیک فروشگاه", 750_000, 15_000_000),
-                new ShippingMethodDefinition("post", "پست", 500_000, 0),
-                new ShippingMethodDefinition("pickup", "تحویل حضوری", 0, 0)
+                new ShippingMethodDefinition("store-courier", "پیک فروشگاه", 750_000, 15_000_000, true, 600_000),
+                new ShippingMethodDefinition("post", "پست", 500_000, 0, true, 450_000),
+                new ShippingMethodDefinition("pickup", "تحویل حضوری", 0, 0, true, 0)
             ];
     }
 }
@@ -165,7 +175,13 @@ public static class CommercePricingModule
     public static IEndpointRouteBuilder MapCommercePricing(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/api/v1/commerce/shipping-methods", async (CommercePricingDatabase database, CancellationToken cancellationToken) =>
-            Results.Ok(await database.GetAsync(cancellationToken)));
+        {
+            var settings = await database.GetAsync(cancellationToken);
+            return Results.Ok(new PublicCommerceSettings(
+                settings.TaxRatePercent,
+                settings.ShippingMethods.Select(item => new PublicShippingMethodDefinition(item.Code, item.Title, item.Price, item.FreeAbove, item.IsActive)).ToArray(),
+                settings.UpdatedAt));
+        });
 
         endpoints.MapGet("/api/v1/admin/commerce/settings", async (CommercePricingDatabase database, CancellationToken cancellationToken) =>
             Results.Ok(await database.GetAsync(cancellationToken)))

@@ -223,7 +223,7 @@ class StockMovement {
 }
 
 class AdminAnalytics {
-  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent, required this.tax, required this.netProfit});
+  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent, required this.tax, required this.netProfit, required this.shippingExpense});
   final int days;
   final int orderCount;
   final int unitsSold;
@@ -233,6 +233,7 @@ class AdminAnalytics {
   final num grossMarginPercent;
   final num tax;
   final num netProfit;
+  final num shippingExpense;
   factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
     days: json['days'] as int,
     orderCount: json['orderCount'] as int,
@@ -243,6 +244,7 @@ class AdminAnalytics {
     grossMarginPercent: json['grossMarginPercent'] as num,
     tax: (json['tax'] as num?) ?? 0,
     netProfit: (json['netProfit'] as num?) ?? ((json['grossProfit'] as num) - ((json['tax'] as num?) ?? 0)),
+    shippingExpense: (json['shippingExpense'] as num?) ?? 0,
   );
 }
 
