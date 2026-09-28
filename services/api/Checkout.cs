@@ -104,7 +104,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
         return Task.FromResult(found);
     }
 
-    private CheckoutResult CreateInMemory(string idempotencyKey, string fingerprint, CheckoutRequest request
+    private CheckoutResult CreateInMemory(string idempotencyKey, string fingerprint, CheckoutRequest request)
     {
         if (_idempotency.TryGetValue(idempotencyKey, out var existing))
             return existing.Fingerprint == fingerprint
