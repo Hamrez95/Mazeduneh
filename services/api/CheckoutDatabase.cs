@@ -46,6 +46,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             alter table checkout_order_lines add column if not exists cost_price numeric(18,2) not null default 0;
             alter table checkout_order_lines add column if not exists packaging_cost numeric(18,2) not null default 0;
             alter table checkout_order_lines add column if not exists additional_cost numeric(18,2) not null default 0;
+            alter table checkout_order_lines add column if not exists batch_allocations jsonb not null default '[]'::jsonb;
             create table if not exists checkout_order_transitions (
                 id uuid primary key,
                 order_id uuid not null references checkout_orders(id) on delete cascade,
@@ -100,7 +101,6 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
 
             var lines = new List<CheckoutLine>();
             var unavailable = new List<string>();
-            var stockLevels = new List<StockLevelChange>();
 
             foreach (var requested in request.Lines.OrderBy(item => item.Sku, StringComparer.OrdinalIgnoreCase))
             {
@@ -125,18 +125,64 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 var label = reader.GetString(2);
                 var price = reader.GetDecimal(3);
                 var available = reader.GetInt32(4);
-                var costPrice = reader.GetDecimal(5);
-                var packagingCost = reader.GetDecimal(6);
-                var additionalCost = reader.GetDecimal(7);
+                var fallbackCost = reader.GetDecimal(5);
+                var fallbackPackaging = reader.GetDecimal(6);
+                var fallbackAdditional = reader.GetDecimal(7);
                 await reader.CloseAsync();
 
-                if (available < requested.Quantity)
+                const string batchSql = """
+                    select batch_code, expires_at, remaining_packages, cost_price, packaging_cost, additional_cost
+                    from inventory_batches
+                    where upper(sku)=upper(@sku) and remaining_packages > 0
+                    order by expires_at asc, created_at asc
+                    for update;
+                    """;
+                var batches = new List<(string BatchCode, DateTimeOffset ExpiresAt, int Remaining, decimal CostPrice, decimal PackagingCost, decimal AdditionalCost)>();
+                await using (var batchCommand = new NpgsqlCommand(batchSql, connection, transaction))
+                {
+                    batchCommand.Parameters.AddWithValue("sku", sku);
+                    await using var batchReader = await batchCommand.ExecuteReaderAsync(cancellationToken);
+                    while (await batchReader.ReadAsync(cancellationToken))
+                        batches.Add((batchReader.GetString(0), batchReader.GetFieldValue<DateTimeOffset>(1), batchReader.GetInt32(2),
+                            batchReader.GetDecimal(3), batchReader.GetDecimal(4), batchReader.GetDecimal(5)));
+                }
+
+                if (batches.Count == 0)
+                {
+                    if (available < requested.Quantity)
+                    {
+                        unavailable.Add(sku);
+                        continue;
+                    }
+
+                    lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity,
+                        fallbackCost, fallbackPackaging, fallbackAdditional));
+                    continue;
+                }
+
+                var activeBatches = batches.Where(batch => batch.ExpiresAt > DateTimeOffset.UtcNow).ToArray();
+                if (activeBatches.Sum(batch => batch.Remaining) < requested.Quantity)
                 {
                     unavailable.Add(sku);
                     continue;
                 }
 
-                lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity, costPrice, packagingCost, additionalCost));
+                var remainingToAllocate = requested.Quantity;
+                var allocations = new List<CheckoutBatchAllocation>();
+                foreach (var batch in activeBatches)
+                {
+                    if (remainingToAllocate == 0) break;
+                    var quantity = Math.Min(remainingToAllocate, batch.Remaining);
+                    allocations.Add(new CheckoutBatchAllocation(batch.BatchCode, batch.ExpiresAt, quantity,
+                        batch.CostPrice, batch.PackagingCost, batch.AdditionalCost));
+                    remainingToAllocate -= quantity;
+                }
+
+                var costPrice = allocations.Sum(item => item.Quantity * item.CostPrice) / requested.Quantity;
+                var packagingCost = allocations.Sum(item => item.Quantity * item.PackagingCost) / requested.Quantity;
+                var additionalCost = allocations.Sum(item => item.Quantity * item.AdditionalCost) / requested.Quantity;
+                lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity,
+                    costPrice, packagingCost, additionalCost, allocations));
             }
 
             if (unavailable.Count > 0)
@@ -146,8 +192,34 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                     "حداقل یک کالا موجودی کافی ندارد یا منتشر نشده است.", unavailable);
             }
 
+            var stockLevels = new List<StockLevelChange>();
             foreach (var line in lines)
             {
+                if (line.BatchAllocations is { Count: > 0 })
+                {
+                    foreach (var allocation in line.BatchAllocations)
+                    {
+                        const string batchReserveSql = """
+                            update inventory_batches
+                            set remaining_packages = remaining_packages - @quantity
+                            where upper(sku)=upper(@sku) and batch_code=@batch_code
+                              and expires_at > @now and remaining_packages >= @quantity
+                            returning remaining_packages;
+                            """;
+                        await using var batchReserve = new NpgsqlCommand(batchReserveSql, connection, transaction);
+                        batchReserve.Parameters.AddWithValue("quantity", allocation.Quantity);
+                        batchReserve.Parameters.AddWithValue("sku", line.Sku);
+                        batchReserve.Parameters.AddWithValue("batch_code", allocation.BatchCode);
+                        batchReserve.Parameters.AddWithValue("now", DateTimeOffset.UtcNow);
+                        if (await batchReserve.ExecuteScalarAsync(cancellationToken) is null)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            return PersistedCheckoutResult.OutOfStock(
+                                "موجودی بچ هنگام ثبت سفارش تغییر کرد؛ سبد خرید را دوباره بررسی کنید.", [line.Sku]);
+                        }
+                    }
+                }
+
                 const string reserveSql = """
                     update product_variants
                     set available_packages = available_packages - @quantity
@@ -259,17 +331,31 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         var changes = new List<StockLevelChange>();
         foreach (var orderId in orderIds)
         {
-            const string linesSql = "select sku, quantity from checkout_order_lines where order_id=@order_id;";
-            var lines = new List<(string Sku, int Quantity)>();
+            const string linesSql = "select sku, quantity, batch_allocations from checkout_order_lines where order_id=@order_id;";
+            var lines = new List<(string Sku, int Quantity, string BatchAllocationsJson)>();
             await using (var command = new NpgsqlCommand(linesSql, connection, transaction))
             {
                 command.Parameters.AddWithValue("order_id", orderId);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken)) lines.Add((reader.GetString(0), reader.GetInt32(1)));
-            }
-
-            foreach (var line in lines)
+                while (await reader.ReadAsync(cancellationToken))
+                    l            foreach (var line in lines)
             {
+                var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)
+                    ?? Array.Empty<CheckoutBatchAllocation>();
+                foreach (var allocation in allocations)
+                {
+                    const string batchReleaseSql = """
+                        update inventory_batches
+                        set remaining_packages = least(received_packages, remaining_packages + @quantity)
+                        where upper(sku)=upper(@sku) and batch_code=@batch_code;
+                        """;
+                    await using var batchRelease = new NpgsqlCommand(batchReleaseSql, connection, transaction);
+                    batchRelease.Parameters.AddWithValue("quantity", allocation.Quantity);
+                    batchRelease.Parameters.AddWithValue("sku", line.Sku);
+                    batchRelease.Parameters.AddWithValue("batch_code", allocation.BatchCode);
+                    await batchRelease.ExecuteNonQueryAsync(cancellationToken);
+                }
+
                 const string releaseSql = """
                     update product_variants
                     set available_packages = available_packages + @quantity
@@ -353,8 +439,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         {
             const string lineSql = """
                 insert into checkout_order_lines
-                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost)
-                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total,@cost_price,@packaging_cost,@additional_cost);
+                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations)
+                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total,@cost_price,@packaging_cost,@additional_cost,@batch_allocations);
                 """;
             await using var command = new NpgsqlCommand(lineSql, connection, transaction);
             command.Parameters.AddWithValue("id", Guid.NewGuid());
@@ -368,6 +454,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("cost_price", line.CostPrice);
             command.Parameters.AddWithValue("packaging_cost", line.PackagingCost);
             command.Parameters.AddWithValue("additional_cost", line.AdditionalCost);
+            command.Parameters.Add("batch_allocations", NpgsqlTypes.NpgsqlDbType.Jsonb).Value = JsonSerializer.Serialize(line.BatchAllocations ?? Array.Empty<CheckoutBatchAllocation>());
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -451,14 +538,16 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
 
         var lines = new List<CheckoutLine>();
         await using (var command = new NpgsqlCommand(
-            "select product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost from checkout_order_lines where order_id=@id order by id;",
+            "select product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations from checkout_order_lines where order_id=@id order by id;",
             connection, transaction))
         {
             command.Parameters.AddWithValue("id", orderId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
+                var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(reader.GetString(9))
+                    ?? Array.Empty<CheckoutBatchAllocation>();
                 lines.Add(new CheckoutLine(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                    reader.GetInt32(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8)));
+                    reader.GetInt32(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), allocations));
         }
 
         var transitions = new List<OrderTransition>();

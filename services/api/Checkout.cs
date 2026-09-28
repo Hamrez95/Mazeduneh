@@ -224,8 +224,10 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
 }
 
 public sealed record CheckoutItemRequest(string Sku, int Quantity);
+public sealed record CheckoutBatchAllocation(string BatchCode, DateTimeOffset ExpiresAt, int Quantity, decimal CostPrice, decimal PackagingCost, decimal AdditionalCost);
 public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal,
-    decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
+    decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,
+    IReadOnlyCollection<CheckoutBatchAllocation>? BatchAllocations = null);
 public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string CustomerName, string Mobile, string Province,
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
     string ShippingMethod, decimal Subtotal, decimal Shipping, decimal Discount, decimal TaxRatePercent, decimal Tax,

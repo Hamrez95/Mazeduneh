@@ -141,13 +141,28 @@ app.MapGet("/api/v1/catalog/unit-types", () => Results.Ok(new[]
 }));
 
 var products = app.MapGroup("/api/v1/products").WithTags("Products");
-products.MapGet("/", (ProductCatalog productCatalog) => Results.Ok(productCatalog.All()));
-products.MapGet("/admin", (ProductCatalog productCatalog) => Results.Ok(productCatalog.AllIncludingDrafts()))
+products.MapGet("/", async (
+    ProductCatalog productCatalog,
+    InventoryBatchDatabase batches,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await CatalogWithExpiryAsync(productCatalog.All(), batches, cancellationToken)));
+products.MapGet("/admin", async (
+    ProductCatalog productCatalog,
+    InventoryBatchDatabase batches,
+    CancellationToken cancellationToken) =>
+    Results.Ok(await CatalogWithExpiryAsync(productCatalog.AllIncludingDrafts(), batches, cancellationToken)))
     .AddEndpointFilter<OwnerAuthorizationFilter>();
-products.MapGet("/{slug}", (string slug, ProductCatalog productCatalog) =>
-    productCatalog.FindPublishedBySlug(slug) is { } product
-        ? Results.Ok(product)
-        : Results.NotFound(new { message = "محصول پیدا نشد یا هنوز منتشر نشده است." }));
+products.MapGet("/{slug}", async (
+    string slug,
+    ProductCatalog productCatalog,
+    InventoryBatchDatabase batches,
+    CancellationToken cancellationToken) =>
+{
+    var product = productCatalog.FindPublishedBySlug(slug);
+    if (product is null) return Results.NotFound(new { message = "محصول پیدا نشد یا هنوز منتشر نشده است." });
+    var enriched = (await CatalogWithExpiryAsync([product], batches, cancellationToken)).Single();
+    return Results.Ok(enriched);
+});
 
 products.MapPost("/", async (
     CreateProductRequest request,
@@ -218,6 +233,22 @@ products.MapPatch("/{slug}/publication", async (
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
 app.Run();
+
+static async Task<IReadOnlyCollection<Product>> CatalogWithExpiryAsync(
+    IReadOnlyCollection<Product> products,
+    InventoryBatchDatabase batches,
+    CancellationToken cancellationToken)
+{
+    var expiryBySku = await batches.EarliestExpiryBySkuAsync(cancellationToken);
+    return products.Select(product =>
+    {
+        var expiry = product.Variants
+            .Select(variant => expiryBySku.TryGetValue(variant.Sku, out var value) ? value : (DateTimeOffset?)null)
+            .Where(value => value is not null)
+            .Min();
+        return product with { EarliestAvailableExpiryAt = expiry };
+    }).ToArray();
+}
 
 public enum ProductUnitType { Weight, Count }
 

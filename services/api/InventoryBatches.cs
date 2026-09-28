@@ -152,6 +152,25 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt), null);
     }
 
+    public async Task<IReadOnlyDictionary<string, DateTimeOffset>> EarliestExpiryBySkuAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        const string sql = """
+            select upper(sku), min(expires_at)
+            from inventory_batches
+            where remaining_packages > 0 and expires_at > now()
+            group by upper(sku);
+            """;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        var result = new Dictionary<string, DateTimeOffset>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result[reader.GetString(0)] = reader.GetFieldValue<DateTimeOffset>(1);
+        return result;
+    }
+
     public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int limit, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return Array.Empty<InventoryBatch>();

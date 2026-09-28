@@ -223,7 +223,7 @@ class StockMovement {
 }
 
 class AdminAnalytics {
-  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent});
+  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent, required this.tax, required this.netProfit});
   final int days;
   final int orderCount;
   final int unitsSold;
@@ -231,7 +231,19 @@ class AdminAnalytics {
   final num cost;
   final num grossProfit;
   final num grossMarginPercent;
-  factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(days: json['days'] as int, orderCount: json['orderCount'] as int, unitsSold: json['unitsSold'] as int, revenue: json['revenue'] as num, cost: json['cost'] as num, grossProfit: json['grossProfit'] as num, grossMarginPercent: json['grossMarginPercent'] as num);
+  final num tax;
+  final num netProfit;
+  factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
+    days: json['days'] as int,
+    orderCount: json['orderCount'] as int,
+    unitsSold: json['unitsSold'] as int,
+    revenue: json['revenue'] as num,
+    cost: json['cost'] as num,
+    grossProfit: json['grossProfit'] as num,
+    grossMarginPercent: json['grossMarginPercent'] as num,
+    tax: (json['tax'] as num?) ?? 0,
+    netProfit: (json['netProfit'] as num?) ?? ((json['grossProfit'] as num) - ((json['tax'] as num?) ?? 0)),
+  );
 }
 
 class AdminNotification {

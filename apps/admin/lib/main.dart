@@ -1487,10 +1487,11 @@ class _ReportsPageState extends State<ReportsPage> {
           childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _ReportMetric(title: 'درآمد', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
-            _ReportMetric(title: 'هزینه کالا', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
-            _ReportMetric(title: 'سود ناخالص', value: '${formatPersianNumber(data.grossProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
-            _ReportMetric(title: 'حاشیه سود', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'درآمد شامل ارسال', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'هزینه مواد و بسته‌بندی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'مالیات پرداختنی', value: '${formatPersianNumber(data.tax)} ریال', icon: Icons.account_balance_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'سود خالص', value: '${formatPersianNumber(data.netProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
+            _ReportMetric(title: 'حاشیه سود ناخالص', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
             _ReportMetric(title: 'تعداد سفارش', value: formatPersianInteger(data.orderCount), icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
             _ReportMetric(title: 'واحد فروخته‌شده', value: formatPersianInteger(data.unitsSold), icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
           ],
@@ -1501,7 +1502,7 @@ class _ReportsPageState extends State<ReportsPage> {
           const SizedBox(height: 12),
           Text(
             'در ${formatPersianInteger(data.days)} روز گذشته، ${formatPersianInteger(data.orderCount)} سفارش با ${formatPersianInteger(data.unitsSold)} واحد ثبت شده است. '
-            'سود ناخالص ${formatPersianNumber(data.grossProfit)} ریال و حاشیه سود ${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪ بوده است.',
+            'هزینهٔ مواد، بسته‌بندی و جانبی ${formatPersianNumber(data.cost)} ریال، مالیات پرداختنی ${formatPersianNumber(data.tax)} ریال و سود خالص ${formatPersianNumber(data.netProfit)} ریال بوده است.',
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),

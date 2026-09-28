@@ -38,6 +38,7 @@ export type ApiProduct = {
   netWeight?: number;
   netWeightUnit?: string;
   expiryLabel?: string;
+  earliestAvailableExpiryAt?: string;
 };
 
 export const API_BASE = (
@@ -134,6 +135,7 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     netWeight: product.netWeight,
     netWeightUnit: product.netWeightUnit,
     expiryLabel: toPersianDigits(product.expiryLabel ?? ""),
+    earliestAvailableExpiryAt: product.earliestAvailableExpiryAt,
   };
 }
 
