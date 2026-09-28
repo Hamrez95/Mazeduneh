@@ -333,6 +333,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     primaryImage.text = product.primaryImage;
     galleryImages.text = product.galleryImages.join('\\n');
     specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    ingredients.text = product.ingredients;
+    allergens.text = product.allergens.join('، ');
+    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    storageInstructions.text = product.storageInstructions;
+    shelfLifeDays.text = product.shelfLifeDays?.toString() ?? '';
+    netWeight.text = product.netWeight?.toString() ?? '';
+    expiryLabel.text = product.expiryLabel;
     for (final variant in variants) variant.dispose();
     variants = product.variants.map((variant) => _VariantDraft(
       sku: variant.sku,
@@ -340,6 +347,8 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
       label: variant.displayLabel,
       priceToman: '${(variant.price / 10).round()}',
       costPriceToman: '${(variant.costPrice / 10).round()}',
+      packagingCostToman: '${(variant.packagingCost / 10).round()}',
+      additionalCostToman: '${(variant.additionalCost / 10).round()}',
       stock: '${variant.availablePackages}',
     )).toList();
   }
