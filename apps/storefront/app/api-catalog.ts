@@ -30,6 +30,14 @@ export type ApiProduct = {
   primaryImage?: string;
   galleryImages?: string[];
   specifications?: Record<string, string>;
+  ingredients?: string;
+  allergens?: string[];
+  nutritionFacts?: Record<string, number>;
+  storageInstructions?: string;
+  shelfLifeDays?: number;
+  netWeight?: number;
+  netWeightUnit?: string;
+  expiryLabel?: string;
 };
 
 export const API_BASE = (
@@ -116,6 +124,16 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     specifications: product.specifications
       ? Object.fromEntries(Object.entries(product.specifications).map(([key, value]) => [toPersianDigits(key), toPersianDigits(value)]))
       : undefined,
+    ingredients: toPersianDigits(product.ingredients ?? ""),
+    allergens: (product.allergens ?? []).map(toPersianDigits),
+    nutritionFacts: product.nutritionFacts
+      ? Object.fromEntries(Object.entries(product.nutritionFacts).map(([key, value]) => [toPersianDigits(key), value]))
+      : undefined,
+    storageInstructions: toPersianDigits(product.storageInstructions ?? ""),
+    shelfLifeDays: product.shelfLifeDays,
+    netWeight: product.netWeight,
+    netWeightUnit: product.netWeightUnit,
+    expiryLabel: toPersianDigits(product.expiryLabel ?? ""),
   };
 }
 
