@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'commerce_api.dart';
-import 'formatters.dart';
 import 'main.dart';
 
 class CommerceSettingsPage extends StatefulWidget {
@@ -41,7 +40,9 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
     if (!formKey.currentState!.validate() || settings == null) return;
     setState(() { saving = true; error = null; });
     try {
-      final value = await api.updateSettings(settings!..taxRatePercent = num.parse(tax.text.trim()));
+      final draft = settings!;
+      draft.taxRatePercent = num.parse(tax.text.trim());
+      final value = await api.updateSettings(draft);
       if (mounted) setState(() => settings = value);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تنظیمات قیمت‌گذاری ذخیره شد.')));
     } catch (exception) {
