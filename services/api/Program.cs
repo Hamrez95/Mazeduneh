@@ -250,15 +250,30 @@ public sealed class ProductCatalog
     {
         var unitType = Enum.Parse<ProductUnitType>(request.UnitType, true);
         var baseUnit = unitType == ProductUnitType.Weight ? "gram" : "piece";
-        return new Product(Guid.NewGuid(), request.Title.Trim(), request.Slug.Trim().ToLowerInvariant(),
+        var product = new Product(Guid.NewGuid(), request.Title.Trim(), request.Slug.Trim().ToLowerInvariant(),
             request.Category.Trim(), request.Origin.Trim(), request.Currency.Trim().ToUpperInvariant(), unitType,
             request.IsPublished, request.Variants.Select(item => new ProductVariant(item.Sku.Trim().ToUpperInvariant(),
-                item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)).ToArray(), DateTimeOffset.UtcNow,
+                item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)
+                {
+                    PackagingCost = item.PackagingCost,
+                    AdditionalCost = item.AdditionalCost
+                }).ToArray(), DateTimeOffset.UtcNow,
             request.ShortDescription?.Trim() ?? string.Empty, request.Description?.Trim() ?? string.Empty,
             request.SeoTitle?.Trim() ?? request.Title.Trim(), request.SeoDescription?.Trim() ?? request.ShortDescription?.Trim() ?? string.Empty,
             request.SeoKeywords?.Trim() ?? string.Empty, request.PrimaryImage?.Trim() ?? string.Empty,
             request.GalleryImages?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToArray() ?? [],
-            request.Specifications ?? new Dictionary<string, string>());
+            request.Specifications ?? new Dictionary<string, string>())
+        {
+            Ingredients = request.Ingredients?.Trim() ?? string.Empty,
+            Allergens = request.Allergens ?? Array.Empty<string>(),
+            NutritionFacts = request.NutritionFacts ?? new Dictionary<string, decimal>(),
+            StorageInstructions = request.StorageInstructions?.Trim() ?? string.Empty,
+            ShelfLifeDays = request.ShelfLifeDays,
+            NetWeight = request.NetWeight,
+            NetWeightUnit = request.NetWeightUnit?.Trim() ?? "gram",
+            ExpiryLabel = request.ExpiryLabel?.Trim() ?? "best-before"
+        };
+        return product;
     }
 
     public Product Update(Product existing, UpdateProductRequest request)
@@ -279,7 +294,19 @@ public sealed class ProductCatalog
             PrimaryImage = request.PrimaryImage?.Trim() ?? string.Empty,
             GalleryImages = request.GalleryImages?.Where(item => !string.IsNullOrWhiteSpace(item)).Select(item => item.Trim()).Distinct().ToArray() ?? [],
             Specifications = request.Specifications ?? new Dictionary<string, string>(),
-            Variants = request.Variants.Select(item => new ProductVariant(item.Sku.Trim().ToUpperInvariant(), item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)).ToArray()
+            Ingredients = request.Ingredients?.Trim() ?? string.Empty,
+            Allergens = request.Allergens ?? Array.Empty<string>(),
+            NutritionFacts = request.NutritionFacts ?? new Dictionary<string, decimal>(),
+            StorageInstructions = request.StorageInstructions?.Trim() ?? string.Empty,
+            ShelfLifeDays = request.ShelfLifeDays,
+            NetWeight = request.NetWeight,
+            NetWeightUnit = request.NetWeightUnit?.Trim() ?? "gram",
+            ExpiryLabel = request.ExpiryLabel?.Trim() ?? "best-before",
+            Variants = request.Variants.Select(item => new ProductVariant(item.Sku.Trim().ToUpperInvariant(), item.Quantity, baseUnit, item.DisplayLabel.Trim(), item.Price, item.AvailablePackages, item.CostPrice)
+            {
+                PackagingCost = item.PackagingCost,
+                AdditionalCost = item.AdditionalCost
+            }).ToArray()
         };
     }
 
