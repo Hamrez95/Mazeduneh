@@ -73,6 +73,39 @@ class OrderApiClient {
     return decoded.map((item) => StockMovement.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<InventoryBatch>> fetchInventoryBatches({String? sku, bool includeExpired = true, int limit = 100}) async {
+    final query = <String, String>{'limit': '$limit', 'includeExpired': '$includeExpired', if (sku != null && sku.isNotEmpty) 'sku': sku};
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/inventory/batches').replace(queryParameters: query), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => InventoryBatch.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<InventoryBatch> receiveInventoryBatch({
+    required String sku,
+    required String batchCode,
+    required int receivedPackages,
+    required DateTime producedAt,
+    required DateTime expiresAt,
+    required num costPrice,
+    required num packagingCost,
+    required num additionalCost,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/inventory/batches'),
+      headers: _headers(json: true),
+      body: jsonEncode({
+        'sku': sku, 'batchCode': batchCode, 'receivedPackages': receivedPackages,
+        'producedAt': producedAt.toUtc().toIso8601String(), 'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'costPrice': costPrice, 'packagingCost': packagingCost, 'additionalCost': additionalCost,
+      }),
+    );
+    _guard(response);
+    if (response.statusCode != 201) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return InventoryBatch.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<AdminOrder> transition(String orderId, String state, {String? reason}) async {
     final response = await _client.patch(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/state'), headers: _headers(json: true), body: jsonEncode({'state': state, 'reason': reason}));
     _guard(response);
@@ -120,6 +153,37 @@ class AdminOrder {
     currency: json['currency'] as String, state: json['state'].toString(), createdAt: DateTime.parse(json['createdAt'] as String),
     reservationExpiresAt: DateTime.parse(json['reservationExpiresAt'] as String), lineCount: json['lineCount'] as int,
     paymentReference: json['paymentReference'] as String?, paymentState: json['paymentState'] as String?);
+}
+
+class InventoryBatch {
+  const InventoryBatch({
+    required this.id, required this.sku, required this.productTitle, required this.variantLabel,
+    required this.batchCode, required this.receivedPackages, required this.remainingPackages,
+    required this.producedAt, required this.expiresAt, required this.costPrice,
+    required this.packagingCost, required this.additionalCost, required this.isExpired,
+  });
+  final String id;
+  final String sku;
+  final String productTitle;
+  final String variantLabel;
+  final String batchCode;
+  final int receivedPackages;
+  final int remainingPackages;
+  final DateTime producedAt;
+  final DateTime expiresAt;
+  final num costPrice;
+  final num packagingCost;
+  final num additionalCost;
+  final bool isExpired;
+
+  factory InventoryBatch.fromJson(Map<String, dynamic> json) => InventoryBatch(
+    id: json['id'].toString(), sku: json['sku'] as String, productTitle: json['productTitle'] as String,
+    variantLabel: json['variantLabel'] as String, batchCode: json['batchCode'] as String,
+    receivedPackages: json['receivedPackages'] as int, remainingPackages: json['remainingPackages'] as int,
+    producedAt: DateTime.parse(json['producedAt'] as String), expiresAt: DateTime.parse(json['expiresAt'] as String),
+    costPrice: json['costPrice'] as num, packagingCost: json['packagingCost'] as num,
+    additionalCost: json['additionalCost'] as num, isExpired: json['isExpired'] as bool,
+  );
 }
 
 class StockMovement {
