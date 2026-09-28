@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'admin_state.dart';
 import 'commerce_api.dart';
 import 'main.dart';
 
@@ -96,8 +97,10 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
             OutlinedButton.icon(onPressed: saving ? null : () => setState(() => data.shippingMethods.add(ShippingMethod(code: 'new-method', title: 'روش جدید', price: 0, freeAbove: 0, isActive: true))), icon: const Icon(Icons.add_rounded), label: const Text('روش جدید')),
           ]),
           const SizedBox(height: 10),
-          for (var index = 0; index < data.shippingMethods.length; index++)
-            _ShippingEditor(method: data.shippingMethods[index], onRemove: data.shippingMethods.length > 1 ? () => setState(() => data.shippingMethods.removeAt(index)) : null),
+          ...data.shippingMethods.asMap().entries.map((entry) {
+            final index = entry.key;
+            return _ShippingEditor(method: entry.value, onRemove: data.shippingMethods.length > 1 ? () => setState(() => data.shippingMethods.removeAt(index)) : null);
+          }),
         ],
       ),
     );
