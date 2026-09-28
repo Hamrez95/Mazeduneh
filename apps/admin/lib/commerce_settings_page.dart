@@ -90,7 +90,7 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
                 return amount == null || amount < 0 || amount > 100 ? 'بین صفر تا ۱۰۰ وارد کنید.' : null;
               },
             )),
-          ])),
+          ]))),
           const SizedBox(height: 16),
           Row(children: [
             const Expanded(child: Text('روش‌های ارسال', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900))),
