@@ -69,7 +69,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "catalog", "001-bootstrap", sql, cancellationToken);
-        const nutritionCostingSql = """
+        const string nutritionCostingSql = """
             alter table products add column if not exists ingredients text not null default '';
             alter table products add column if not exists allergens jsonb not null default '[]'::jsonb;
             alter table products add column if not exists nutrition_facts jsonb not null default '{}'::jsonb;
