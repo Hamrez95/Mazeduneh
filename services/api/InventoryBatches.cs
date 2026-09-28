@@ -1,0 +1,224 @@
+using Npgsql;
+
+public sealed record InventoryBatchRequest(
+    string Sku,
+    string BatchCode,
+    int ReceivedPackages,
+    DateTimeOffset ProducedAt,
+    DateTimeOffset ExpiresAt,
+    decimal CostPrice,
+    decimal PackagingCost = 0,
+    decimal AdditionalCost = 0)
+{
+    public Dictionary<string, string[]> Validate()
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(Sku)) errors[nameof(Sku)] = ["SKU الزامی است."];
+        if (string.IsNullOrWhiteSpace(BatchCode)) errors[nameof(BatchCode)] = ["کد بچ الزامی است."];
+        if (ReceivedPackages <= 0) errors[nameof(ReceivedPackages)] = ["تعداد دریافتی باید بیشتر از صفر باشد."];
+        if (ExpiresAt <= ProducedAt) errors[nameof(ExpiresAt)] = ["تاریخ انقضا باید بعد از تاریخ تولید باشد."];
+        if (CostPrice < 0) errors[nameof(CostPrice)] = ["قیمت خرید نمی‌تواند منفی باشد."];
+        if (PackagingCost < 0) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی نمی‌تواند منفی باشد."];
+        if (AdditionalCost < 0) errors[nameof(AdditionalCost)] = ["هزینه جانبی نمی‌تواند منفی باشد."];
+        return errors;
+    }
+}
+
+public sealed record InventoryBatch(
+    Guid Id,
+    string Sku,
+    string ProductTitle,
+    string VariantLabel,
+    string BatchCode,
+    int ReceivedPackages,
+    int RemainingPackages,
+    DateTimeOffset ProducedAt,
+    DateTimeOffset ExpiresAt,
+    decimal CostPrice,
+    decimal PackagingCost,
+    decimal AdditionalCost,
+    bool IsExpired,
+    DateTimeOffset CreatedAt);
+
+public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger<InventoryBatchDatabase> logger, InventoryLedgerDatabase ledger)
+{
+    private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
+
+    public async Task InitializeAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return;
+        const string sql = """
+            create table if not exists inventory_batches (
+                id uuid primary key,
+                sku text not null,
+                batch_code varchar(80) not null,
+                received_packages integer not null check (received_packages > 0),
+                remaining_packages integer not null check (remaining_packages >= 0 and remaining_packages <= received_packages),
+                produced_at timestamptz not null,
+                expires_at timestamptz not null,
+                cost_price numeric(18,2) not null default 0 check (cost_price >= 0),
+                packaging_cost numeric(18,2) not null default 0 check (packaging_cost >= 0),
+                additional_cost numeric(18,2) not null default 0 check (additional_cost >= 0),
+                created_at timestamptz not null,
+                unique (sku, batch_code)
+            );
+            create index if not exists ix_inventory_batches_fefo
+                on inventory_batches(sku, expires_at, remaining_packages);
+            """;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "002-batches-expiry", sql, cancellationToken);
+        logger.LogInformation("Inventory batch and expiry schema is ready.");
+    }
+
+    public async Task<(InventoryBatch? Batch, string? Error)> CreateAsync(InventoryBatchRequest request, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return (null, "دیتابیس موجودی تنظیم نشده است.");
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string variantSql = """
+            select p.title,v.sku,v.display_label
+            from product_variants v join products p on p.id=v.product_id
+            where upper(v.sku)=upper(@sku)
+            for update of v;
+            """;
+        await using var variant = new NpgsqlCommand(variantSql, connection, transaction);
+        variant.Parameters.AddWithValue("sku", request.Sku.Trim());
+        await using var reader = await variant.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, "SKU پیدا نشد.");
+        }
+        var title = reader.GetString(0);
+        var sku = reader.GetString(1);
+        var label = reader.GetString(2);
+        await reader.CloseAsync();
+
+        var id = Guid.NewGuid();
+        var createdAt = DateTimeOffset.UtcNow;
+        const string insertSql = """
+            insert into inventory_batches
+                (id,sku,batch_code,received_packages,remaining_packages,produced_at,expires_at,cost_price,packaging_cost,additional_cost,created_at)
+            values
+                (@id,@sku,@batch_code,@received,@remaining,@produced,@expires,@cost,@packaging,@additional,@created);
+            """;
+        await using (var insert = new NpgsqlCommand(insertSql, connection, transaction))
+        {
+            insert.Parameters.AddWithValue("id", id);
+            insert.Parameters.AddWithValue("sku", sku);
+            insert.Parameters.AddWithValue("batch_code", request.BatchCode.Trim());
+            insert.Parameters.AddWithValue("received", request.ReceivedPackages);
+            insert.Parameters.AddWithValue("remaining", request.ReceivedPackages);
+            insert.Parameters.AddWithValue("produced", request.ProducedAt);
+            insert.Parameters.AddWithValue("expires", request.ExpiresAt);
+            insert.Parameters.AddWithValue("cost", request.CostPrice);
+            insert.Parameters.AddWithValue("packaging", request.PackagingCost);
+            insert.Parameters.AddWithValue("additional", request.AdditionalCost);
+            insert.Parameters.AddWithValue("created", createdAt);
+            try { await insert.ExecuteNonQueryAsync(cancellationToken); }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return (null, "این کد بچ برای SKU قبلاً ثبت شده است.");
+            }
+        }
+
+        const string stockSql = """
+            update product_variants set available_packages=available_packages+@quantity
+            where upper(sku)=upper(@sku)
+            returning available_packages;
+            """;
+        await using (var stock = new NpgsqlCommand(stockSql, connection, transaction))
+        {
+            stock.Parameters.AddWithValue("quantity", request.ReceivedPackages);
+            stock.Parameters.AddWithValue("sku", sku);
+            var balance = await stock.ExecuteScalarAsync(cancellationToken);
+            if (balance is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return (null, "موجودی SKU به‌روزرسانی نشد.");
+            }
+            await ledger.RecordAsync(connection, transaction, sku, request.ReceivedPackages, "BatchReceived",
+                Convert.ToInt32(balance), null, "owner", "inventory-batch-received", cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return (new InventoryBatch(id, sku, title, label, request.BatchCode.Trim(), request.ReceivedPackages,
+            request.ReceivedPackages, request.ProducedAt, request.ExpiresAt, request.CostPrice,
+            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt), null);
+    }
+
+    public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int limit, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<InventoryBatch>();
+        const string sql = """
+            select b.id,b.sku,p.title,v.display_label,b.batch_code,b.received_packages,b.remaining_packages,
+                   b.produced_at,b.expires_at,b.cost_price,b.packaging_cost,b.additional_cost,b.created_at
+            from inventory_batches b
+            join product_variants v on upper(v.sku)=upper(b.sku)
+            join products p on p.id=v.product_id
+            where (@sku='' or upper(b.sku)=upper(@sku))
+              and (@include_expired or b.expires_at > now())
+            order by b.expires_at asc,b.created_at asc
+            limit @limit;
+            """;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("sku", sku?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("include_expired", includeExpired);
+        command.Parameters.AddWithValue("limit", limit);
+        var result = new List<InventoryBatch>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result.Add(new InventoryBatch(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetFieldValue<DateTimeOffset>(7),
+                reader.GetFieldValue<DateTimeOffset>(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
+                reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12)));
+        return result;
+    }
+}
+
+public static class InventoryBatchModule
+{
+    public static IServiceCollection AddInventoryBatches(this IServiceCollection services)
+    {
+        services.AddSingleton<InventoryBatchDatabase>();
+        services.AddHostedService<InventoryBatchSchemaInitializer>();
+        return services;
+    }
+
+    public static IEndpointRouteBuilder MapInventoryBatches(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapPost("/api/v1/admin/inventory/batches", async (
+            InventoryBatchRequest request,
+            InventoryBatchDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = request.Validate();
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var result = await database.CreateAsync(request, cancellationToken);
+            return result.Batch is null ? Results.Conflict(new { message = result.Error }) : Results.Created($"/api/v1/admin/inventory/batches/{result.Batch.Id}", result.Batch);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        endpoints.MapGet("/api/v1/admin/inventory/batches", async (
+            string? sku,
+            bool? includeExpired,
+            int? limit,
+            InventoryBatchDatabase database,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(sku, includeExpired ?? true, Math.Clamp(limit ?? 100, 1, 250), cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        return endpoints;
+    }
+}
+
+public sealed class InventoryBatchSchemaInitializer(InventoryBatchDatabase database) : IHostedService
+{
+    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
