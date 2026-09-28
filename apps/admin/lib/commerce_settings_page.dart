@@ -97,14 +97,28 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
             OutlinedButton.icon(onPressed: saving ? null : () => setState(() => data.shippingMethods.add(ShippingMethod(code: 'new-method', title: 'روش جدید', price: 0, freeAbove: 0, isActive: true))), icon: const Icon(Icons.add_rounded), label: const Text('روش جدید')),
           ]),
           const SizedBox(height: 10),
-          ...data.shippingMethods.asMap().entries.map((entry) {
-            final index = entry.key;
-            return _ShippingEditor(method: entry.value, onRemove: data.shippingMethods.length > 1 ? () => setState(() => data.shippingMethods.removeAt(index)) : null);
-          }),
+          _ShippingEditorList(
+            methods: data.shippingMethods,
+            onRemove: (index) => setState(() => data.shippingMethods.removeAt(index)),
+          ),
         ],
       ),
     );
   }
+}
+
+class _ShippingEditorList extends StatelessWidget {
+  const _ShippingEditorList({required this.methods, required this.onRemove});
+  final List<ShippingMethod> methods;
+  final void Function(int index) onRemove;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: List.generate(methods.length, (index) => _ShippingEditor(
+      method: methods[index],
+      onRemove: methods.length > 1 ? () => onRemove(index) : null,
+    )),
+  );
 }
 
 class _ShippingEditor extends StatelessWidget {
