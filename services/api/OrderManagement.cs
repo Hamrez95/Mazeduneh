@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Npgsql;
 
 public static class OrderManagementModule
@@ -180,12 +181,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0)
+            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0)
             from checkout_orders
             where created_at >= @from and state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int orderCount;
         decimal revenue;
+        decimal tax;
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
@@ -193,10 +195,11 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await reader.ReadAsync(cancellationToken);
             orderCount = reader.GetInt32(0);
             revenue = reader.GetDecimal(1);
+            tax = reader.GetDecimal(2);
         }
 
         const string lineSql = """
-            select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*l.cost_price),0), coalesce(sum(l.line_total),0)
+            select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*(l.cost_price+l.packaging_cost+l.additional_cost)),0), coalesce(sum(l.line_total),0)
             from checkout_order_lines l join checkout_orders o on o.id=l.order_id
             where o.created_at >= @from and o.state in ('Paid','Preparing','Shipped','Delivered');
             """;
@@ -214,8 +217,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         }
 
         var profit = revenue - cost;
+        var netProfit = profit - tax;
         var margin = revenue <= 0 ? 0 : profit / revenue * 100;
-        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin);
+        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit);
     }
 
     public async Task<AdminNotifications> NotificationsAsync(CancellationToken cancellationToken)
@@ -302,16 +306,30 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 await transaction.RollbackAsync(cancellationToken);
                 return OrderOperationResult.Conflict("رزرو سفارش منقضی شده و توسط سیستم آزاد خواهد شد.");
             }
-            const string linesSql = "select sku,quantity from checkout_order_lines where order_id=@id;";
-            var lines = new List<(string Sku, int Quantity)>();
+            const string linesSql = "select sku,quantity,batch_allocations from checkout_order_lines where order_id=@id;";
+            var lines = new List<(string Sku, int Quantity, string BatchAllocationsJson)>();
             await using (var command = new NpgsqlCommand(linesSql, connection, transaction))
             {
                 command.Parameters.AddWithValue("id", orderId);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken)) lines.Add((reader.GetString(0), reader.GetInt32(1)));
+                while (await reader.ReadAsync(cancellationToken))
+                    lines.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
             }
             foreach (var line in lines)
             {
+                var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)
+                    ?? Array.Empty<CheckoutBatchAllocation>();
+                foreach (var allocation in allocations)
+                {
+                    await using var batchCommand = new NpgsqlCommand(
+                        "update inventory_batches set remaining_packages=least(received_packages,remaining_packages+@quantity) where upper(sku)=upper(@sku) and batch_code=@batch_code;",
+                        connection, transaction);
+                    batchCommand.Parameters.AddWithValue("quantity", allocation.Quantity);
+                    batchCommand.Parameters.AddWithValue("sku", line.Sku);
+                    batchCommand.Parameters.AddWithValue("batch_code", allocation.BatchCode);
+                    await batchCommand.ExecuteNonQueryAsync(cancellationToken);
+                }
+
                 await using var command = new NpgsqlCommand(
                     "update product_variants set available_packages=available_packages+@quantity where upper(sku)=upper(@sku) returning available_packages;",
                     connection, transaction);
@@ -326,8 +344,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                         availablePackages, orderId, "owner", "owner-cancelled-before-payment", cancellationToken);
                     stockLevels.Add(new StockLevelChange(line.Sku, availablePackages));
                 }
-            }
-        }
+            }        }
 
         var now = DateTimeOffset.UtcNow;
         await using (var command = new NpgsqlCommand("update checkout_orders set state=@state where id=@id;", connection, transaction))
@@ -412,7 +429,7 @@ public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobi
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock);
-public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent);
+public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }

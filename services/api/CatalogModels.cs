@@ -12,6 +12,7 @@ public sealed record Product(Guid Id, string Title, string Slug, string Category
     public decimal? NetWeight { get; init; }
     public string NetWeightUnit { get; init; } = "gram";
     public string ExpiryLabel { get; init; } = "best-before";
+    public DateTimeOffset? EarliestAvailableExpiryAt { get; init; }
 };
 
 public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUnit, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0)

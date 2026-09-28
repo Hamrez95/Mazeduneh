@@ -38,6 +38,7 @@ export type DemoProduct = {
   netWeight?: number;
   netWeightUnit?: string;
   expiryLabel?: string;
+  earliestAvailableExpiryAt?: string;
 };
 
 export const categories = [
