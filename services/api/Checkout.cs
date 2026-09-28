@@ -54,7 +54,7 @@ public static class CheckoutModule
     }
 }
 
-public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase database)
+public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase database, CommercePricingDatabase pricing)
 {
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<string, StoredCheckout> _idempotency = new(StringComparer.Ordinal);
@@ -133,24 +133,26 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
                 }
 
                 lines.Add(new CheckoutLine(item.product.Title, item.variant.Sku, item.variant.DisplayLabel,
-                    requested.Quantity, item.variant.Price, item.variant.Price * requested.Quantity, item.variant.CostPrice));
+                    requested.Quantity, item.variant.Price, item.variant.Price * requested.Quantity, item.variant.CostPrice,
+                    item.variant.PackagingCost, item.variant.AdditionalCost));
             }
 
             if (unavailable.Count > 0)
                 return CheckoutResult.OutOfStock("حداقل یک کالا موجودی کافی ندارد یا منتشر نشده است.", unavailable);
 
+            var subtotal = lines.Sum(line => line.LineTotal);
+            var quoteResult = pricing.QuoteAsync(subtotal, request.ShippingMethod, CancellationToken.None).GetAwaiter().GetResult();
+            if (quoteResult.Quote is null) return CheckoutResult.Invalid(new Dictionary<string, string[]> { [nameof(request.ShippingMethod)] = [quoteResult.Error ?? "روش ارسال معتبر نیست."] });
+            var quote = quoteResult.Quote;
             foreach (var requested in request.Lines)
                 catalog.Reserve(requested.Sku, requested.Quantity);
-
-            var subtotal = lines.Sum(line => line.LineTotal);
-            var shipping = subtotal >= 15_000_000 ? 0 : 750_000;
             var now = DateTimeOffset.UtcNow;
             var order = new CheckoutOrder(
                 Guid.NewGuid(),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant(),
                 request.CustomerName.Trim(), request.Mobile.Trim(), request.Province.Trim(), request.City.Trim(),
-                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, subtotal, shipping, 0, subtotal + shipping,
-                OrderState.AwaitingPayment, now, now.AddMinutes(20),
+                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, quote.Shipping, 0,
+                quote.TaxRatePercent, quote.Tax, quote.Payable, OrderState.AwaitingPayment, now, now.AddMinutes(20),
                 [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")]);
 
             _orders[order.Id] = order;
@@ -179,7 +181,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 }
 
 public sealed record CheckoutRequest(string CustomerName, string Mobile, string Province, string City,
-    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines)
+    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post")
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -190,6 +192,7 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
         if (string.IsNullOrWhiteSpace(City)) errors[nameof(City)] = ["شهر الزامی است."];
         if (string.IsNullOrWhiteSpace(Address)) errors[nameof(Address)] = ["نشانی الزامی است."];
         if (string.IsNullOrWhiteSpace(PostalCode)) errors[nameof(PostalCode)] = ["کدپستی الزامی است."];
+        if (string.IsNullOrWhiteSpace(ShippingMethod)) errors[nameof(ShippingMethod)] = ["روش ارسال را انتخاب کنید."];
         if (Lines is null || Lines.Count == 0) errors[nameof(Lines)] = ["سبد خرید خالی است."];
         else
         {
@@ -208,10 +211,12 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
 }
 
 public sealed record CheckoutItemRequest(string Sku, int Quantity);
-public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal, decimal CostPrice = 0);
+public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal,
+    decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
 public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string CustomerName, string Mobile, string Province,
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
-    decimal Subtotal, decimal Shipping, decimal Discount, decimal Payable, OrderState State, DateTimeOffset CreatedAt,
+    string ShippingMethod, decimal Subtotal, decimal Shipping, decimal Discount, decimal TaxRatePercent, decimal Tax,
+    decimal Payable, OrderState State, DateTimeOffset CreatedAt,
     DateTimeOffset ReservationExpiresAt, IReadOnlyCollection<OrderTransition> Transitions);
 public sealed record OrderTransition(OrderState State, string Actor, DateTimeOffset At, string Reason);
 [JsonConverter(typeof(JsonStringEnumConverter))]
