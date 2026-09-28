@@ -300,6 +300,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
   final primaryImage = TextEditingController();
   final galleryImages = TextEditingController();
   final specifications = TextEditingController();
+  final ingredients = TextEditingController();
+  final allergens = TextEditingController();
+  final nutritionFacts = TextEditingController();
+  final storageInstructions = TextEditingController();
+  final shelfLifeDays = TextEditingController();
+  final netWeight = TextEditingController();
+  final expiryLabel = TextEditingController(text: 'best-before');
 
   String unitType = 'Weight';
   String? selectedCategory;
@@ -326,6 +333,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     primaryImage.text = product.primaryImage;
     galleryImages.text = product.galleryImages.join('\\n');
     specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    ingredients.text = product.ingredients;
+    allergens.text = product.allergens.join('، ');
+    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    storageInstructions.text = product.storageInstructions;
+    shelfLifeDays.text = product.shelfLifeDays?.toString() ?? '';
+    netWeight.text = product.netWeight?.toString() ?? '';
+    expiryLabel.text = product.expiryLabel;
     for (final variant in variants) variant.dispose();
     variants = product.variants.map((variant) => _VariantDraft(
       sku: variant.sku,
@@ -333,6 +347,8 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
       label: variant.displayLabel,
       priceToman: '${(variant.price / 10).round()}',
       costPriceToman: '${(variant.costPrice / 10).round()}',
+      packagingCostToman: '${(variant.packagingCost / 10).round()}',
+      additionalCostToman: '${(variant.additionalCost / 10).round()}',
       stock: '${variant.availablePackages}',
     )).toList();
   }
@@ -351,6 +367,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     primaryImage.dispose();
     galleryImages.dispose();
     specifications.dispose();
+    ingredients.dispose();
+    allergens.dispose();
+    nutritionFacts.dispose();
+    storageInstructions.dispose();
+    shelfLifeDays.dispose();
+    netWeight.dispose();
+    expiryLabel.dispose();
     for (final variant in variants) {
       variant.dispose();
     }
@@ -408,6 +431,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
         primaryImage: primaryImage.text.trim(),
         galleryImages: galleryImages.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
         specifications: _parseSpecifications(specifications.text),
+        ingredients: ingredients.text.trim(),
+        allergens: allergens.text.split('،').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        nutritionFacts: _parseDecimalMap(nutritionFacts.text),
+        storageInstructions: storageInstructions.text.trim(),
+        shelfLifeDays: int.tryParse(shelfLifeDays.text.trim()),
+        netWeight: num.tryParse(netWeight.text.trim()),
+        expiryLabel: expiryLabel.text.trim().isEmpty ? 'best-before' : expiryLabel.text.trim(),
         variants: variants
             .map(
               (variant) => CreateVariantCommand(
@@ -416,6 +446,8 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                 displayLabel: variant.label.text.trim(),
                 price: int.parse(variant.priceToman.text.trim()) * 10,
                 costPrice: int.parse(variant.costPriceToman.text.trim()) * 10,
+                packagingCost: int.parse(variant.packagingCostToman.text.trim()) * 10,
+                additionalCost: int.parse(variant.additionalCostToman.text.trim()) * 10,
                 availablePackages: int.parse(variant.stock.text.trim()),
               ),
             )
@@ -440,6 +472,13 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
             primaryImage: command.primaryImage,
             galleryImages: command.galleryImages,
             specifications: command.specifications,
+            ingredients: command.ingredients,
+            allergens: command.allergens,
+            nutritionFacts: command.nutritionFacts,
+            storageInstructions: command.storageInstructions,
+            shelfLifeDays: command.shelfLifeDays,
+            netWeight: command.netWeight,
+            expiryLabel: command.expiryLabel,
           ),
         );
       }
@@ -524,6 +563,21 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                           _Input(width: 872, controller: description, label: 'توضیحات کامل محصول', maxLines: 4),
                         ],
                       ),
+                      const SizedBox(height: 24),
+                      const _SectionTitle(
+                        title: 'اطلاعات خوراکی و نگهداری',
+                        subtitle: 'این اطلاعات مستقیماً از پنل به صفحه محصول منتقل می‌شود و hard-code نیست.',
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 12, runSpacing: 12, children: [
+                        _Input(width: 430, controller: ingredients, label: 'مواد تشکیل‌دهنده', hint: 'پسته، نمک، زعفران'),
+                        _Input(width: 430, controller: allergens, label: 'آلرژن‌ها', hint: 'بادام، بادام‌زمینی، گلوتن'),
+                        _Input(width: 430, controller: nutritionFacts, label: 'ارزش غذایی', hint: 'کالری: ۵۶۰\\nپروتئین: ۲۰', maxLines: 4),
+                        _Input(width: 430, controller: storageInstructions, label: 'نحوه نگهداری', hint: 'در جای خشک و خنک نگهداری شود', maxLines: 3),
+                        _Input(width: 210, controller: shelfLifeDays, label: 'ماندگاری (روز)', validator: _optionalNonNegativeInt, keyboardType: TextInputType.number),
+                        _Input(width: 210, controller: netWeight, label: 'وزن خالص', validator: _optionalNumber, keyboardType: TextInputType.number),
+                        _Input(width: 210, controller: expiryLabel, label: 'نوع تاریخ', hint: 'best-before'),
+                      ]),
                       const SizedBox(height: 24),
                       const _SectionTitle(title: 'تصاویر و سئوی محصول', subtitle: 'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.'),
                       const SizedBox(height: 12),
@@ -686,7 +740,21 @@ class _VariantEditor extends StatelessWidget {
                 _Input(
                   width: 170,
                   controller: draft.costPriceToman,
-                  label: 'قیمت تمام‌شده (تومان)',
+                  label: 'قیمت خرید/مواد (تومان)',
+                  validator: _nonNegativeInt,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
+                  width: 170,
+                  controller: draft.packagingCostToman,
+                  label: 'هزینه بسته‌بندی (تومان)',
+                  validator: _nonNegativeInt,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
+                  width: 170,
+                  controller: draft.additionalCostToman,
+                  label: 'هزینه جانبی (تومان)',
                   validator: _nonNegativeInt,
                   keyboardType: TextInputType.number,
                 ),
@@ -771,12 +839,16 @@ class _VariantDraft {
     String label = '',
     String priceToman = '0',
     String costPriceToman = '0',
+    String packagingCostToman = '0',
+    String additionalCostToman = '0',
     String stock = '0',
   })  : sku = TextEditingController(text: sku),
         quantity = TextEditingController(text: quantity),
         label = TextEditingController(text: label),
         priceToman = TextEditingController(text: priceToman),
         costPriceToman = TextEditingController(text: costPriceToman),
+        packagingCostToman = TextEditingController(text: packagingCostToman),
+        additionalCostToman = TextEditingController(text: additionalCostToman),
         stock = TextEditingController(text: stock);
 
   final TextEditingController sku;
@@ -784,6 +856,8 @@ class _VariantDraft {
   final TextEditingController label;
   final TextEditingController priceToman;
   final TextEditingController costPriceToman;
+  final TextEditingController packagingCostToman;
+  final TextEditingController additionalCostToman;
   final TextEditingController stock;
 
   void dispose() {
@@ -792,6 +866,8 @@ class _VariantDraft {
     label.dispose();
     priceToman.dispose();
     costPriceToman.dispose();
+    packagingCostToman.dispose();
+    additionalCostToman.dispose();
     stock.dispose();
   }
 }
@@ -818,6 +894,17 @@ String? _positiveNumber(String? value) {
   return null;
 }
 
+String? _optionalNumber(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  return num.tryParse(value.trim()) == null ? 'عدد معتبر وارد کنید.' : null;
+}
+
+String? _optionalNonNegativeInt(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final number = int.tryParse(value.trim());
+  return number == null || number < 0 ? 'عدد صحیح صفر یا بیشتر وارد کنید.' : null;
+}
+
 String? _nonNegativeInt(String? value) {
   final number = int.tryParse(value ?? '');
   if (number == null || number < 0) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
@@ -838,6 +925,18 @@ String? _skuValidator(String? value) {
     return 'فقط حروف انگلیسی، عدد و خط تیره.';
   }
   return null;
+}
+
+Map<String, dynamic> _parseDecimalMap(String raw) {
+  final result = <String, dynamic>{};
+  for (final line in raw.split('\\n')) {
+    final separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    final key = line.substring(0, separator).trim();
+    final value = num.tryParse(line.substring(separator + 1).trim());
+    if (key.isNotEmpty && value != null) result[key] = value;
+  }
+  return result;
 }
 
 Map<String, dynamic> _parseSpecifications(String raw) {

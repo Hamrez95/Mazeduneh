@@ -30,6 +30,14 @@ export type DemoProduct = {
   primaryImage?: string;
   galleryImages?: string[];
   specifications?: Record<string, string>;
+  ingredients?: string;
+  allergens?: string[];
+  nutritionFacts?: Record<string, number>;
+  storageInstructions?: string;
+  shelfLifeDays?: number;
+  netWeight?: number;
+  netWeightUnit?: string;
+  expiryLabel?: string;
 };
 
 export const categories = [
