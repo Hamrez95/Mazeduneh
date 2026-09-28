@@ -74,7 +74,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 
         var fingerprint = Fingerprint(request);
         if (!database.IsConfigured)
-            return await CreateInMemoryAsync(idempotencyKey, fingerprint, request);
+            return CreateInMemory(idempotencyKey, fingerprint, request);
 
         var persisted = await database.CreateAsync(idempotencyKey, fingerprint, request, cancellationToken);
         if (persisted.Status == CheckoutStatus.Created && persisted.StockLevels is not null)
@@ -104,7 +104,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
         return Task.FromResult(found);
     }
 
-    private async Task<CheckoutResult> CreateInMemoryAsync(string idempotencyKey, string fingerprint, CheckoutRequest request)
+    private CheckoutResult CreateInMemory(string idempotencyKey, string fingerprint, CheckoutRequest request
     {
         if (_idempotency.TryGetValue(idempotencyKey, out var existing))
             return existing.Fingerprint == fingerprint
@@ -144,7 +144,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
                 catalog.Reserve(requested.Sku, requested.Quantity);
 
             var subtotal = lines.Sum(line => line.LineTotal);
-            var quoteResult = await pricing.QuoteAsync(subtotal, request.ShippingMethod, CancellationToken.None);
+            var quoteResult = pricing.QuoteAsync(subtotal, request.ShippingMethod, CancellationToken.None).GetAwaiter().GetResult();
             if (quoteResult.Quote is null) return CheckoutResult.Invalid(new Dictionary<string, string[]> { [nameof(request.ShippingMethod)] = [quoteResult.Error ?? "روش ارسال معتبر نیست."] });
             var quote = quoteResult.Quote;
             var now = DateTimeOffset.UtcNow;
