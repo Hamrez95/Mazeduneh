@@ -1,4 +1,8 @@
+// The async file/message callbacks guard mounted before using the panel context.
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import 'admin_state.dart';
 import 'corporate_api.dart';
@@ -15,6 +19,7 @@ class CorporateRequestsPage extends StatefulWidget {
 class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   late final CorporateApiClient api = widget.api ?? CorporateApiClient();
   final search = TextEditingController();
+  final city = TextEditingController();
   final statuses = const {'': 'همه وضعیت‌ها', 'New': 'جدید', 'Reviewing': 'در حال بررسی', 'Contacted': 'تماس گرفته شد', 'NeedsInformation': 'نیازمند اطلاعات بیشتر', 'ProformaSent': 'پیش‌فاکتور ارسال شد', 'Negotiating': 'در حال مذاکره', 'Approved': 'تأیید شد', 'Preparing': 'در حال آماده‌سازی', 'Shipped': 'ارسال شد', 'Finalized': 'نهایی شد', 'Cancelled': 'لغو شد'};
   List<CorporateRequestSummary> items = [];
   CorporateRequestDetail? selected;
@@ -26,12 +31,12 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   @override
   void initState() { super.initState(); load(); }
   @override
-  void dispose() { search.dispose(); super.dispose(); }
+  void dispose() { search.dispose(); city.dispose(); super.dispose(); }
 
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final values = await Future.wait([api.fetchRequests(status: status, query: search.text), api.fetchSummary()]);
+      final values = await Future.wait([api.fetchRequests(status: status, query: search.text, city: city.text.trim()), api.fetchSummary()]);
       if (mounted) setState(() { items = values[0] as List<CorporateRequestSummary>; summary = values[1] as CorporateSummary; });
     } catch (exception) { if (mounted) setState(() => error = exception); }
     finally { if (mounted) setState(() => loading = false); }
@@ -64,7 +69,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
       IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
     ]),
     const SizedBox(height: 18),
-    Row(children: [Expanded(child: TextField(controller: search, onSubmitted: (_) => load(), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجو با نام، شرکت یا شماره'))), const SizedBox(width: 10), DropdownButton<String>(value: status, items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) { setState(() => status = value ?? ''); load(); })]),
+    Row(children: [Expanded(child: TextField(controller: search, onSubmitted: (_) => load(), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجو با نام، شرکت یا شماره'))), const SizedBox(width: 8), SizedBox(width: 125, child: TextField(controller: city, onSubmitted: (_) => load(), decoration: const InputDecoration(hintText: 'شهر'))), const SizedBox(width: 8), DropdownButton<String>(value: status, items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) { setState(() => status = value ?? ''); load(); })]),
     const SizedBox(height: 18),
     if (items.isEmpty) const Padding(padding: EdgeInsets.all(40), child: Column(children: [Icon(Icons.business_center_outlined, size: 48, color: AdminColors.muted), SizedBox(height: 12), Text('درخواستی ثبت نشده است'), Text('درخواست‌های جدید اینجا نمایش داده می‌شوند.', style: TextStyle(color: AdminColors.muted))]))
     else ...items.map((item) => Card(child: ListTile(onTap: () => open(item), leading: const CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Icon(Icons.business_center_rounded, color: AdminColors.ink)), title: Text('${item.companyName} · ${item.customerName}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${item.city} · ${formatPersianInteger(item.orderQuantity)} سفارش · ${statuses[item.status] ?? item.status}'), trailing: const Icon(Icons.chevron_left_rounded)))),
@@ -83,11 +88,13 @@ class _DetailPanel extends StatefulWidget {
 class _DetailPanelState extends State<_DetailPanel> {
   late String status = widget.item.status;
   final note = TextEditingController();
+  late final assignee = TextEditingController(text: widget.item.assignedTo ?? '');
+  final message = TextEditingController();
   final statuses = const {'New': 'جدید', 'Reviewing': 'در حال بررسی', 'Contacted': 'تماس گرفته شد', 'NeedsInformation': 'نیازمند اطلاعات بیشتر', 'ProformaSent': 'پیش‌فاکتور ارسال شد', 'Negotiating': 'در حال مذاکره', 'Approved': 'تأیید شد', 'Preparing': 'در حال آماده‌سازی', 'Shipped': 'ارسال شد', 'Finalized': 'نهایی شد', 'Cancelled': 'لغو شد'};
   @override
-  void dispose() { note.dispose(); super.dispose(); }
+  void dispose() { note.dispose(); assignee.dispose(); message.dispose(); super.dispose(); }
   Future<void> save() async {
-    try { await widget.api.changeStatus(widget.item.id, status, note: note.text); if (note.text.isNotEmpty) await widget.api.addNote(widget.item.id, note.text); if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('درخواست به‌روزرسانی شد.'))); widget.onChanged(); } }
+    try { await widget.api.changeStatus(widget.item.id, status, note: note.text); await widget.api.assign(widget.item.id, assignee.text.trim().isEmpty ? null : assignee.text.trim()); if (note.text.isNotEmpty) await widget.api.addNote(widget.item.id, note.text); if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('درخواست به‌روزرسانی شد.'))); widget.onChanged(); } }
     catch (exception) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString()))); }
   }
   @override
@@ -96,7 +103,10 @@ class _DetailPanelState extends State<_DetailPanel> {
     _line('تماس', widget.item.mobile), _line('شهر و مناسبت', '${widget.item.city} · ${widget.item.occasion}'), _line('تعداد و بسته', '${formatPersianInteger(widget.item.orderQuantity)} · ${widget.item.packageType}'),
     if (widget.item.email != null) _line('ایمیل', widget.item.email!), if (widget.item.description != null) _line('توضیحات', widget.item.description!), const SizedBox(height: 18),
     DropdownButtonFormField<String>(value: status, decoration: const InputDecoration(labelText: 'وضعیت درخواست'), items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) => setState(() => status = value ?? status)), const SizedBox(height: 12),
-    TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'یادداشت داخلی')), const SizedBox(height: 12), FilledButton.icon(onPressed: save, icon: const Icon(Icons.save_rounded), label: const Text('ذخیره تغییرات')),
+    TextField(controller: assignee, decoration: const InputDecoration(labelText: 'مسئول پیگیری / ایمیل ادمین')), const SizedBox(height: 12),
+    TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'یادداشت داخلی')), const SizedBox(height: 12),
+    Row(children: [Expanded(child: FilledButton.icon(onPressed: save, icon: const Icon(Icons.save_rounded), label: const Text('ذخیره تغییرات'))), const SizedBox(width: 8), OutlinedButton.icon(onPressed: () async { final picked = await FilePicker.platform.pickFiles(withData: true); final file = picked?.files.single; if (file?.bytes == null) return; try { await widget.api.uploadProforma(widget.item.id, file!.name, file.bytes!); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('پیش‌فاکتور بارگذاری شد.'))); } catch (exception) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString()))); } }, icon: const Icon(Icons.attach_file_rounded), label: const Text('پیش‌فاکتور'))]), const SizedBox(height: 12),
+    TextField(controller: message, maxLines: 2, decoration: const InputDecoration(labelText: 'پیام/پاسخ مشتری')), const SizedBox(height: 8), OutlinedButton.icon(onPressed: () async { if (message.text.trim().isEmpty) return; try { await widget.api.addMessage(widget.item.id, message.text.trim()); message.clear(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('پیام در تاریخچه ثبت شد.'))); } catch (exception) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString()))); } }, icon: const Icon(Icons.send_rounded), label: const Text('ثبت پیام')),
   ]));
   Widget _line(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 76, child: Text(label, style: const TextStyle(color: AdminColors.muted, fontSize: 11))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)))]));
 }
