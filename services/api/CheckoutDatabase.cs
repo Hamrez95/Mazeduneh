@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Npgsql;
 
 public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<CheckoutDatabase> logger, InventoryLedgerDatabase ledger, CommercePricingDatabase pricing)
@@ -547,10 +548,12 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("id", orderId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
+            {
                 var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(reader.GetString(9))
                     ?? Array.Empty<CheckoutBatchAllocation>();
                 lines.Add(new CheckoutLine(reader.GetString(0), reader.GetString(1), reader.GetString(2),
                     reader.GetInt32(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), allocations));
+            }
         }
 
         var transitions = new List<OrderTransition>();
