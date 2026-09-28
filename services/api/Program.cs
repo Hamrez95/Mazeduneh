@@ -20,6 +20,7 @@ builder.Services.AddCheckout();
 builder.Services.AddPayments();
 builder.Services.AddOrderManagement();
 builder.Services.AddMediaStorage(builder.Configuration);
+builder.Services.AddInventoryBatches();
 builder.Services.AddCommercePricing();
 
 var app = builder.Build();
@@ -33,6 +34,7 @@ app.MapPayments();
 app.MapOrderManagement();
 app.MapInventoryLedger();
 app.MapMediaStorage();
+app.MapInventoryBatches();
 app.MapCommercePricing();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
@@ -41,6 +43,7 @@ if (database.IsConfigured)
 {
     await database.InitializeAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.GetRequiredService<InventoryBatchDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<CommercePricingDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
     if (persistedProducts.Count == 0)
