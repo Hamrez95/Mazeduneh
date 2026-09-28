@@ -2,9 +2,27 @@ public sealed record Product(Guid Id, string Title, string Slug, string Category
     ProductUnitType UnitType, bool IsPublished, IReadOnlyCollection<ProductVariant> Variants, DateTimeOffset CreatedAt,
     string ShortDescription = "", string Description = "", string SeoTitle = "", string SeoDescription = "",
     string SeoKeywords = "", string PrimaryImage = "", IReadOnlyCollection<string>? GalleryImages = null,
-    IReadOnlyDictionary<string, string>? Specifications = null);
+    IReadOnlyDictionary<string, string>? Specifications = null,
+    string? Ingredients = null, IReadOnlyCollection<string>? Allergens = null,
+    IReadOnlyDictionary<string, decimal>? NutritionFacts = null, string? StorageInstructions = null,
+    int? ShelfLifeDays = null, decimal? NetWeight = null, string? NetWeightUnit = null,
+    string? ExpiryLabel = null)
+{
+    public string Ingredients { get; init; } = "";
+    public IReadOnlyCollection<string> Allergens { get; init; } = Array.Empty<string>();
+    public IReadOnlyDictionary<string, decimal> NutritionFacts { get; init; } = new Dictionary<string, decimal>();
+    public string StorageInstructions { get; init; } = "";
+    public int? ShelfLifeDays { get; init; }
+    public decimal? NetWeight { get; init; }
+    public string NetWeightUnit { get; init; } = "gram";
+    public string ExpiryLabel { get; init; } = "best-before";
+};
 
-public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUnit, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0);
+public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUnit, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0)
+{
+    public decimal PackagingCost { get; init; }
+    public decimal AdditionalCost { get; init; }
+};
 
 public sealed record CreateProductRequest(string Title, string Slug, string Category, string Origin, string Currency,
     string UnitType, bool IsPublished, IReadOnlyCollection<CreateProductVariantRequest> Variants,
@@ -38,12 +56,16 @@ public sealed record CreateProductRequest(string Title, string Slug, string Cate
     }
 }
 
-public sealed record CreateProductVariantRequest(string Sku, decimal Quantity, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0);
+public sealed record CreateProductVariantRequest(string Sku, decimal Quantity, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
 
 public sealed record UpdateProductRequest(string Title, string Category, string Origin, string Currency, string UnitType,
     IReadOnlyCollection<CreateProductVariantRequest> Variants, string? ShortDescription = null, string? Description = null,
     string? SeoTitle = null, string? SeoDescription = null, string? SeoKeywords = null, string? PrimaryImage = null,
-    IReadOnlyCollection<string>? GalleryImages = null, IReadOnlyDictionary<string, string>? Specifications = null)
+    IReadOnlyCollection<string>? GalleryImages = null, IReadOnlyDictionary<string, string>? Specifications = null,
+    string? Ingredients = null, IReadOnlyCollection<string>? Allergens = null,
+    IReadOnlyDictionary<string, decimal>? NutritionFacts = null, string? StorageInstructions = null,
+    int? ShelfLifeDays = null, decimal? NetWeight = null, string? NetWeightUnit = null,
+    string? ExpiryLabel = null)
 {
     public Dictionary<string, string[]> Validate() =>
         new CreateProductRequest(Title, "existing", Category, Origin, Currency, UnitType, true, Variants).Validate();
