@@ -69,6 +69,19 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "catalog", "001-bootstrap", sql, cancellationToken);
+        const nutritionCostingSql = """
+            alter table products add column if not exists ingredients text not null default '';
+            alter table products add column if not exists allergens jsonb not null default '[]'::jsonb;
+            alter table products add column if not exists nutrition_facts jsonb not null default '{}'::jsonb;
+            alter table products add column if not exists storage_instructions text not null default '';
+            alter table products add column if not exists shelf_life_days integer;
+            alter table products add column if not exists net_weight numeric(12,3);
+            alter table products add column if not exists net_weight_unit varchar(16) not null default 'gram';
+            alter table products add column if not exists expiry_label varchar(32) not null default 'best-before';
+            alter table product_variants add column if not exists packaging_cost numeric(18,2) not null default 0;
+            alter table product_variants add column if not exists additional_cost numeric(18,2) not null default 0;
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "catalog", "002-nutrition-costing", nutritionCostingSql, cancellationToken);
         logger.LogInformation("Catalog PostgreSQL schema is ready.");
     }
 
@@ -193,7 +206,10 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             select p.id,p.title,p.slug,p.category,p.origin,p.currency,p.unit_type,p.is_published,
                    p.short_description,p.description,p.seo_title,p.seo_description,p.seo_keywords,p.primary_image,
                    p.gallery_images,p.specifications,p.created_at,
-                   v.sku,v.quantity,v.base_unit,v.display_label,v.price,v.available_packages,v.cost_price
+                   p.ingredients,p.allergens,p.nutrition_facts,p.storage_instructions,p.shelf_life_days,
+                   p.net_weight,p.net_weight_unit,p.expiry_label,
+                   v.sku,v.quantity,v.base_unit,v.display_label,v.price,v.available_packages,v.cost_price,
+                   v.packaging_cost,v.additional_cost
             from products p left join product_variants v on v.product_id = p.id
             order by p.category,p.title,v.quantity;
             """;
@@ -213,11 +229,26 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
                     reader.GetString(10), reader.GetString(11), reader.GetString(12), reader.GetString(13),
                     JsonSerializer.Deserialize<IReadOnlyCollection<string>>(reader.GetFieldValue<string>(14)) ?? Array.Empty<string>(),
                     JsonSerializer.Deserialize<IReadOnlyDictionary<string,string>>(reader.GetFieldValue<string>(15)) ?? new Dictionary<string,string>(),
-                    reader.GetFieldValue<DateTimeOffset>(16));
+                    reader.GetFieldValue<DateTimeOffset>(16),
+                    reader.GetString(17),
+                    JsonSerializer.Deserialize<IReadOnlyCollection<string>>(reader.GetFieldValue<string>(18)) ?? Array.Empty<string>(),
+                    JsonSerializer.Deserialize<IReadOnlyDictionary<string,decimal>>(reader.GetFieldValue<string>(19)) ?? new Dictionary<string,decimal>(),
+                    reader.GetString(20),
+                    reader.IsDBNull(21) ? null : reader.GetInt32(21),
+                    reader.IsDBNull(22) ? null : reader.GetDecimal(22),
+                    reader.GetString(23),
+                    reader.GetString(24));
                 products[id] = item;
             }
-            if (!reader.IsDBNull(17))
-                item.Variants.Add(new ProductVariant(reader.GetString(17), reader.GetDecimal(18), reader.GetString(19), reader.GetString(20), reader.GetDecimal(21), reader.GetInt32(22), reader.GetDecimal(23)));
+            if (!reader.IsDBNull(25))
+            {
+                var variant = new ProductVariant(reader.GetString(25), reader.GetDecimal(26), reader.GetString(27), reader.GetString(28), reader.GetDecimal(29), reader.GetInt32(30), reader.GetDecimal(31))
+                {
+                    PackagingCost = reader.GetDecimal(32),
+                    AdditionalCost = reader.GetDecimal(33)
+                };
+                item.Variants.Add(variant);
+            }
         }
         return products.Values.Select(item => item.ToProduct()).ToArray();
     }
@@ -246,7 +277,9 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         const string productSql = """
             update products set title=@title,category=@category,origin=@origin,currency=@currency,unit_type=@unit_type,
               short_description=@short_description,description=@description,seo_title=@seo_title,seo_description=@seo_description,
-              seo_keywords=@seo_keywords,primary_image=@primary_image,gallery_images=@gallery_images,specifications=@specifications
+              seo_keywords=@seo_keywords,primary_image=@primary_image,gallery_images=@gallery_images,specifications=@specifications,
+              ingredients=@ingredients,allergens=@allergens,nutrition_facts=@nutrition_facts,storage_instructions=@storage_instructions,
+              shelf_life_days=@shelf_life_days,net_weight=@net_weight,net_weight_unit=@net_weight_unit,expiry_label=@expiry_label
             where id=@id;
             """;
         await using (var command = new NpgsqlCommand(productSql, connection, transaction))
@@ -257,7 +290,8 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         foreach (var variant in product.Variants)
         {
             const string updateVariant = """
-                update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price,cost_price=@cost_price
+                update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price,cost_price=@cost_price,
+                    packaging_cost=@packaging_cost,additional_cost=@additional_cost
                 where product_id=@product_id and sku=@sku;
                 """;
             await using var command = new NpgsqlCommand(updateVariant, connection, transaction);
@@ -268,6 +302,8 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             command.Parameters.AddWithValue("display_label", variant.DisplayLabel);
             command.Parameters.AddWithValue("price", variant.Price);
             command.Parameters.AddWithValue("cost_price", variant.CostPrice);
+            command.Parameters.AddWithValue("packaging_cost", variant.PackagingCost);
+            command.Parameters.AddWithValue("additional_cost", variant.AdditionalCost);
             if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
@@ -307,8 +343,8 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
     private static async Task InsertProductRowAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Product product, CancellationToken cancellationToken)
     {
         const string sql = """
-            insert into products (id,title,slug,category,origin,currency,unit_type,is_published,created_at,short_description,description,seo_title,seo_description,seo_keywords,primary_image,gallery_images,specifications)
-            values (@id,@title,@slug,@category,@origin,@currency,@unit_type,@is_published,@created_at,@short_description,@description,@seo_title,@seo_description,@seo_keywords,@primary_image,@gallery_images,@specifications);
+            insert into products (id,title,slug,category,origin,currency,unit_type,is_published,created_at,short_description,description,seo_title,seo_description,seo_keywords,primary_image,gallery_images,specifications,ingredients,allergens,nutrition_facts,storage_instructions,shelf_life_days,net_weight,net_weight_unit,expiry_label)
+            values (@id,@title,@slug,@category,@origin,@currency,@unit_type,@is_published,@created_at,@short_description,@description,@seo_title,@seo_description,@seo_keywords,@primary_image,@gallery_images,@specifications,@ingredients,@allergens,@nutrition_facts,@storage_instructions,@shelf_life_days,@net_weight,@net_weight_unit,@expiry_label);
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         AddProductParameters(command, product);
@@ -317,7 +353,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
 
     private static async Task InsertVariantAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid productId, ProductVariant variant, CancellationToken cancellationToken)
     {
-        const string sql = "insert into product_variants (id,product_id,sku,quantity,base_unit,display_label,price,available_packages,cost_price) values (@id,@product_id,@sku,@quantity,@base_unit,@display_label,@price,@available_packages,@cost_price);";
+        const string sql = "insert into product_variants (id,product_id,sku,quantity,base_unit,display_label,price,available_packages,cost_price,packaging_cost,additional_cost) values (@id,@product_id,@sku,@quantity,@base_unit,@display_label,@price,@available_packages,@cost_price,@packaging_cost,@additional_cost);";
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("product_id", productId);
@@ -328,6 +364,8 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         command.Parameters.AddWithValue("price", variant.Price);
         command.Parameters.AddWithValue("available_packages", variant.AvailablePackages);
         command.Parameters.AddWithValue("cost_price", variant.CostPrice);
+        command.Parameters.AddWithValue("packaging_cost", variant.PackagingCost);
+        command.Parameters.AddWithValue("additional_cost", variant.AdditionalCost);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -350,15 +388,35 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         command.Parameters.AddWithValue("primary_image", product.PrimaryImage);
         command.Parameters.AddWithValue("gallery_images", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(product.GalleryImages ?? Array.Empty<string>()));
         command.Parameters.AddWithValue("specifications", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(product.Specifications ?? new Dictionary<string,string>()));
+        command.Parameters.AddWithValue("ingredients", product.Ingredients);
+        command.Parameters.AddWithValue("allergens", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(product.Allergens));
+        command.Parameters.AddWithValue("nutrition_facts", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(product.NutritionFacts));
+        command.Parameters.AddWithValue("storage_instructions", product.StorageInstructions);
+        command.Parameters.AddWithValue("shelf_life_days", (object?)product.ShelfLifeDays ?? DBNull.Value);
+        command.Parameters.AddWithValue("net_weight", (object?)product.NetWeight ?? DBNull.Value);
+        command.Parameters.AddWithValue("net_weight_unit", product.NetWeightUnit);
+        command.Parameters.AddWithValue("expiry_label", product.ExpiryLabel);
     }
 
     private sealed record ProductAccumulator(
         Guid Id,string Title,string Slug,string Category,string Origin,string Currency,ProductUnitType UnitType,bool IsPublished,
         string ShortDescription,string Description,string SeoTitle,string SeoDescription,string SeoKeywords,string PrimaryImage,
-        IReadOnlyCollection<string> GalleryImages,IReadOnlyDictionary<string,string> Specifications,DateTimeOffset CreatedAt)
+        IReadOnlyCollection<string> GalleryImages,IReadOnlyDictionary<string,string> Specifications,DateTimeOffset CreatedAt,
+        string Ingredients,IReadOnlyCollection<string> Allergens,IReadOnlyDictionary<string,decimal> NutritionFacts,
+        string StorageInstructions,int? ShelfLifeDays,decimal? NetWeight,string NetWeightUnit,string ExpiryLabel)
     {
         public List<ProductVariant> Variants { get; } = [];
-        public Product ToProduct() => new(Id,Title,Slug,Category,Origin,Currency,UnitType,IsPublished,Variants.ToArray(),CreatedAt,ShortDescription,Description,SeoTitle,SeoDescription,SeoKeywords,PrimaryImage,GalleryImages,Specifications);
+        public Product ToProduct() => new(Id,Title,Slug,Category,Origin,Currency,UnitType,IsPublished,Variants.ToArray(),CreatedAt,ShortDescription,Description,SeoTitle,SeoDescription,SeoKeywords,PrimaryImage,GalleryImages,Specifications)
+        {
+            Ingredients = Ingredients,
+            Allergens = Allergens,
+            NutritionFacts = NutritionFacts,
+            StorageInstructions = StorageInstructions,
+            ShelfLifeDays = ShelfLifeDays,
+            NetWeight = NetWeight,
+            NetWeightUnit = NetWeightUnit,
+            ExpiryLabel = ExpiryLabel
+        };
     }
 
     private static IReadOnlyCollection<Category> DefaultCategories() =>
