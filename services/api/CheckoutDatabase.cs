@@ -338,7 +338,10 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 command.Parameters.AddWithValue("order_id", orderId);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
-                    l            foreach (var line in lines)
+                    lines.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
+            }
+
+            foreach (var line in lines)
             {
                 var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)
                     ?? Array.Empty<CheckoutBatchAllocation>();
