@@ -6,6 +6,7 @@ import { ProductArtwork } from "./ProductArtwork";
 import styles from "./professional-storefront.module.css";
 import { useCart } from "../cart-context";
 import { StoreFooter, StoreHeader } from "../store-chrome";
+import { CorporateSalesBanner } from "../corporate-sales-banner";
 
 const categoryMeta: Record<string, { icon: string; image: string; hint: string }> = {
   "آجیل و مغزها": { icon: "🥜", image: "/products/almond-pouch-new.webp", hint: "تازه و دست‌چین" },
@@ -105,6 +106,7 @@ export default function ProfessionalStorefront() {
 
       <section className={styles.specialOffer} id="offer"><div className={styles.offerArtwork}><img src="/products/dragon-box-new.webp" alt="جعبهٔ کوکی شکلاتی مزه‌دونه" /></div><div><span>پیشنهاد امروز</span><h2>یک استراحت شکلاتی<br />برای وسط روز</h2><p>کوکی‌های شکلاتی مزه‌دونه با مواد اولیهٔ طبیعی و تکه‌های شکلات واقعی.</p><button type="button" onClick={() => announceAdd(demoProducts.find((product) => product.id === "protein-cookie") ?? demoProducts[0])}>همین حالا سفارش بده <b>←</b></button></div></section>
       <section className={styles.storySection} id="story"><div><span>داستان مزه‌دونه</span><h2>ما باور داریم<br />مزه باید حال آدم را خوب کند.</h2></div><p>از انتخاب دانه‌های خوب تا لحظه‌ای که بسته را باز می‌کنی، مزه‌دونه برای همان لبخند کوچک ساخته شده؛ ساده، خوش‌طعم و صمیمی.</p></section>
+      <CorporateSalesBanner />
       <StoreFooter />
       <nav className={styles.mobileNav} aria-label="ناوبری موبایل"><a href="/profile"><span><Icon name="user" /></span>پروفایل</a><button type="button" onClick={() => { setFavoritesOnly(true); document.getElementById("products")?.scrollIntoView({ behavior: "smooth" }); }}><span><Icon name="heart" /></span>علاقه‌مندی‌ها</button><a className={styles.mobileNavActive} href="#top"><span><Icon name="home" /></span>خانه</a><a href="#categories"><span><Icon name="grid" /></span>دسته‌بندی‌ها</a><button type="button" onClick={() => setCartOpen(true)}><span><Icon name="cart" /><i>{toman(cartCount)}</i></span>سبد خرید</button></nav>
       {toast && <div className={styles.toast} role="status"><span>✓</span>{toast}<button type="button" onClick={() => setCartOpen(true)}>مشاهدهٔ سبد</button></div>}

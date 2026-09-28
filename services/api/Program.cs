@@ -22,6 +22,7 @@ builder.Services.AddOrderManagement();
 builder.Services.AddMediaStorage(builder.Configuration);
 builder.Services.AddInventoryBatches();
 builder.Services.AddCommercePricing();
+builder.Services.AddCorporateSales();
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -36,6 +37,7 @@ app.MapInventoryLedger();
 app.MapMediaStorage();
 app.MapInventoryBatches();
 app.MapCommercePricing();
+app.MapCorporateSales();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
 var database = app.Services.GetRequiredService<CatalogDatabase>();
@@ -45,6 +47,7 @@ if (database.IsConfigured)
     await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<InventoryBatchDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     await app.Services.GetRequiredService<CommercePricingDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
+    await app.Services.GetRequiredService<CorporateRequestDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
     var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
     if (persistedProducts.Count == 0)
     {
@@ -366,4 +369,3 @@ public sealed class ProductCatalog
 }
 
 public partial class Program;
-

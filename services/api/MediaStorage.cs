@@ -46,7 +46,8 @@ public static class MediaStorageContentTypes
         ["image/jpeg"] = ".jpg",
         ["image/png"] = ".png",
         ["image/webp"] = ".webp",
-        ["image/avif"] = ".avif"
+        ["image/avif"] = ".avif",
+        ["application/pdf"] = ".pdf"
     };
 
     public static bool TryGetExtension(string? contentType, out string extension)
@@ -63,6 +64,7 @@ public static class MediaStorageContentTypes
             ".png" => "image/png",
             ".webp" => "image/webp",
             ".avif" => "image/avif",
+            ".pdf" => "application/pdf",
             _ => "image/jpeg"
         };
 }
@@ -213,21 +215,28 @@ public sealed class MediaStorage(IOptions<MediaStorageOptions> options, IMediaSt
         ["image/jpeg"] = ".jpg",
         ["image/png"] = ".png",
         ["image/webp"] = ".webp",
-        ["image/avif"] = ".avif"
+        ["image/avif"] = ".avif",
+        ["application/pdf"] = ".pdf"
     };
 
     private MediaStorageOptions Options => options.Value;
 
-    public async Task<StoredMedia> SaveAsync(IFormFile file, CancellationToken cancellationToken)
+    public Task<StoredMedia> SaveAsync(IFormFile file, CancellationToken cancellationToken) =>
+        SaveAsync(file, "products", cancellationToken);
+
+    public async Task<StoredMedia> SaveAsync(IFormFile file, string folder, CancellationToken cancellationToken)
     {
         if (file.Length <= 0) throw new MediaStorageValidationException("فایل تصویر خالی است.");
         if (file.Length > Options.MaxBytes) throw new MediaStorageValidationException($"حجم تصویر نباید بیشتر از {Options.MaxBytes / (1024 * 1024)} مگابایت باشد.");
 
         var contentType = file.ContentType?.Trim().ToLowerInvariant();
         if (!AllowedTypes.TryGetValue(contentType ?? string.Empty, out var extension))
-            throw new MediaStorageValidationException("فرمت مجاز تصویر فقط JPG، PNG، WEBP یا AVIF است.");
+            throw new MediaStorageValidationException("فرمت مجاز JPG، PNG، WEBP، AVIF یا PDF است.");
 
-        var key = $"products/{Guid.NewGuid():N}{extension}";
+        var normalizedFolder = folder.Trim('/');
+        if (string.IsNullOrWhiteSpace(normalizedFolder) || !SafeKey.IsMatch(normalizedFolder))
+            throw new MediaStorageValidationException("مسیر پوشهٔ رسانه نامعتبر است.");
+        var key = $"{normalizedFolder}/{Guid.NewGuid():N}{extension}";
         await using var content = file.OpenReadStream();
         await provider.PutAsync(key, content, contentType!, file.Length, cancellationToken);
         return new StoredMedia(

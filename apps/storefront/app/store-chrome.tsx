@@ -67,7 +67,7 @@ export function StoreFooter() {
     <div className={styles.footerMain}>
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a><a href="/shop?category=آجیل و مغزها">آجیل و مغزها</a><a href="/shop?category=میوه خشک">میوه خشک</a><a href="/shop?category=کوکی و شیرینی">کوکی و شیرینی</a></div>
-      <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/contact">تماس با ما</a></div>
+      <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">تماس با ما</a></div>
       <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><span>پشتیبانی: هر روز، ۹ تا ۱۸</span><span>نسخهٔ نمایشی؛ سفارش و پرداخت واقعی فعال نیست.</span></div>
     </div>
     <div className={styles.copyright}>© مزه‌دونه · خوش‌خوراکِ هر روز</div>
