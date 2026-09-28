@@ -2,11 +2,7 @@ public sealed record Product(Guid Id, string Title, string Slug, string Category
     ProductUnitType UnitType, bool IsPublished, IReadOnlyCollection<ProductVariant> Variants, DateTimeOffset CreatedAt,
     string ShortDescription = "", string Description = "", string SeoTitle = "", string SeoDescription = "",
     string SeoKeywords = "", string PrimaryImage = "", IReadOnlyCollection<string>? GalleryImages = null,
-    IReadOnlyDictionary<string, string>? Specifications = null,
-    string? Ingredients = null, IReadOnlyCollection<string>? Allergens = null,
-    IReadOnlyDictionary<string, decimal>? NutritionFacts = null, string? StorageInstructions = null,
-    int? ShelfLifeDays = null, decimal? NetWeight = null, string? NetWeightUnit = null,
-    string? ExpiryLabel = null)
+    IReadOnlyDictionary<string, string>? Specifications = null)
 {
     public string Ingredients { get; init; } = "";
     public IReadOnlyCollection<string> Allergens { get; init; } = Array.Empty<string>();
@@ -28,7 +24,11 @@ public sealed record CreateProductRequest(string Title, string Slug, string Cate
     string UnitType, bool IsPublished, IReadOnlyCollection<CreateProductVariantRequest> Variants,
     string? ShortDescription = null, string? Description = null, string? SeoTitle = null, string? SeoDescription = null,
     string? SeoKeywords = null, string? PrimaryImage = null, IReadOnlyCollection<string>? GalleryImages = null,
-    IReadOnlyDictionary<string, string>? Specifications = null)
+    IReadOnlyDictionary<string, string>? Specifications = null,
+    string? Ingredients = null, IReadOnlyCollection<string>? Allergens = null,
+    IReadOnlyDictionary<string, decimal>? NutritionFacts = null, string? StorageInstructions = null,
+    int? ShelfLifeDays = null, decimal? NetWeight = null, string? NetWeightUnit = null,
+    string? ExpiryLabel = null)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -51,6 +51,8 @@ public sealed record CreateProductRequest(string Title, string Slug, string Cate
             if (item.Price < 0) errors[$"Variants[{index}].Price"] = ["قیمت نمی‌تواند منفی باشد."];
             if (item.AvailablePackages < 0) errors[$"Variants[{index}].AvailablePackages"] = ["موجودی نمی‌تواند منفی باشد."];
             if (item.CostPrice < 0) errors[$"Variants[{index}].CostPrice"] = ["قیمت تمام‌شده نمی‌تواند منفی باشد."];
+            if (item.PackagingCost < 0) errors[$"Variants[{index}].PackagingCost"] = ["هزینه بسته‌بندی نمی‌تواند منفی باشد."];
+            if (item.AdditionalCost < 0) errors[$"Variants[{index}].AdditionalCost"] = ["هزینه جانبی نمی‌تواند منفی باشد."];
         }
         return errors;
     }
