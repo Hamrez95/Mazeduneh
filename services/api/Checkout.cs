@@ -164,7 +164,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
                 Guid.NewGuid(),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant(),
                 request.CustomerName.Trim(), request.Mobile.Trim(), request.Province.Trim(), request.City.Trim(),
-                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, quote.Shipping, 0,
+                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, quote.Shipping, quote.ShippingExpense, 0,
                 quote.TaxRatePercent, quote.Tax, quote.Payable, OrderState.AwaitingPayment, now, now.AddMinutes(20),
                 [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")]);
 
@@ -230,7 +230,7 @@ public sealed record CheckoutLine(string ProductTitle, string Sku, string Varian
     IReadOnlyCollection<CheckoutBatchAllocation>? BatchAllocations = null);
 public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string CustomerName, string Mobile, string Province,
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
-    string ShippingMethod, decimal Subtotal, decimal Shipping, decimal Discount, decimal TaxRatePercent, decimal Tax,
+    string ShippingMethod, decimal Subtotal, decimal Shipping, decimal ShippingExpense, decimal Discount, decimal TaxRatePercent, decimal Tax,
     decimal Payable, OrderState State, DateTimeOffset CreatedAt,
     DateTimeOffset ReservationExpiresAt, IReadOnlyCollection<OrderTransition> Transitions);
 public sealed record OrderTransition(OrderState State, string Actor, DateTimeOffset At, string Reason);

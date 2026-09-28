@@ -12,12 +12,13 @@ class CommerceApiException implements Exception {
 }
 
 class ShippingMethod {
-  ShippingMethod({required this.code, required this.title, required this.price, required this.freeAbove, required this.isActive});
+  ShippingMethod({required this.code, required this.title, required this.price, required this.freeAbove, required this.isActive, required this.internalCost});
   String code;
   String title;
   num price;
   num freeAbove;
   bool isActive;
+  num internalCost;
 
   factory ShippingMethod.fromJson(Map<String, dynamic> json) => ShippingMethod(
     code: json['code'] as String? ?? '',
@@ -25,9 +26,10 @@ class ShippingMethod {
     price: json['price'] as num? ?? 0,
     freeAbove: json['freeAbove'] as num? ?? 0,
     isActive: json['isActive'] as bool? ?? true,
+    internalCost: json['internalCost'] as num? ?? 0,
   );
 
-  Map<String, dynamic> toJson() => {'code': code, 'title': title, 'price': price, 'freeAbove': freeAbove, 'isActive': isActive};
+  Map<String, dynamic> toJson() => {'code': code, 'title': title, 'price': price, 'freeAbove': freeAbove, 'isActive': isActive, 'internalCost': internalCost};
 }
 
 class CommerceSettings {

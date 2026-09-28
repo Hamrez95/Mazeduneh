@@ -4,6 +4,16 @@ String toPersianDigits(Object? value) {
   return text.replaceAllMapped(RegExp(r'[0-9]'), (match) => digits[int.parse(match.group(0)!)]);
 }
 
+String normalizeNumberDigits(String value) => value
+    .replaceAll('۰', '0').replaceAll('۱', '1').replaceAll('۲', '2')
+    .replaceAll('۳', '3').replaceAll('۴', '4').replaceAll('۵', '5')
+    .replaceAll('۶', '6').replaceAll('۷', '7').replaceAll('۸', '8')
+    .replaceAll('۹', '9').replaceAll('٫', '.').replaceAll('٬', ',')
+    .replaceAll(',', '');
+
+num? parsePersianNumber(String? value) => num.tryParse(normalizeNumberDigits(value?.trim() ?? ''));
+int? parsePersianInteger(String? value) => parsePersianNumber(value)?.round();
+
 String _groupDigits(String digits) {
   final groups = <String>[];
   for (var end = digits.length; end > 0; end -= 3) {

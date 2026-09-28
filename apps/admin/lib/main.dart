@@ -718,7 +718,7 @@ class _ProductDialogState extends State<ProductDialog> {
       );
 
   String? required(String? value) => value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
-  String? numberRequired(String? value) => num.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null;
+  String? numberRequired(String? value) => parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
 
   Future<void> pickImage() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
@@ -771,7 +771,7 @@ class _ProductDialogState extends State<ProductDialog> {
 
   void submit() {
     if (!formKey.currentState!.validate()) return;
-    final label = unitType == 'Weight' ? '${formatPersianInteger(quantity.toInt())} گرم' : '${quantity.toInt()} عدد';
+    final label = unitType == 'Weight' ? '${formatPersianInteger(quantity.toInt())} گرم' : '${formatPersianInteger(quantity.toInt())} عدد';
     Navigator.pop(
       context,
       CreateProductCommand(
@@ -797,9 +797,9 @@ class _ProductDialogState extends State<ProductDialog> {
             sku: sku.text,
             quantity: quantity,
             displayLabel: label,
-            price: num.parse(price.text),
-            costPrice: num.parse(costPrice.text),
-            availablePackages: int.parse(stock.text),
+            price: parsePersianNumber(price.text)!,
+            costPrice: parsePersianNumber(costPrice.text)!,
+            availablePackages: parsePersianInteger(stock.text)!,
           ),
         ],
       ),
@@ -1203,9 +1203,9 @@ class _BatchDialogState extends State<BatchDialog> {
   final received = TextEditingController();
   final produced = TextEditingController();
   final expires = TextEditingController();
-  final cost = TextEditingController(text: '0');
-  final packaging = TextEditingController(text: '0');
-  final additional = TextEditingController(text: '0');
+  final cost = TextEditingController(text: '۰');
+  final packaging = TextEditingController(text: '۰');
+  final additional = TextEditingController(text: '۰');
 
   @override
   void initState() {
@@ -1215,13 +1215,7 @@ class _BatchDialogState extends State<BatchDialog> {
 
   DateTime? parseDate(String value) => DateTime.tryParse(value.trim());
 
-  num parseNumber(String value) {
-    final normalized = value
-        .replaceAll('٬', '')
-        .replaceAll('٫', '.')
-        .replaceAllMapped(RegExp(r'[۰-۹]'), (match) => String.fromCharCode(match.group(0)!.codeUnitAt(0) - 1728));
-    return num.tryParse(normalized.trim()) ?? 0;
-  }
+  num parseNumber(String value) => parsePersianNumber(value) ?? 0;
 
   @override
   Widget build(BuildContext context) {
@@ -1262,7 +1256,7 @@ class _BatchDialogState extends State<BatchDialog> {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'تعداد بسته دریافتی'),
                   validator: (value) {
-                    final number = int.tryParse(value ?? '');
+                    final number = parsePersianInteger(value);
                     return number == null || number <= 0 ? 'تعداد مثبت وارد کنید.' : null;
                   },
                 ),
@@ -1312,7 +1306,7 @@ class _BatchDialogState extends State<BatchDialog> {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انقضا باید بعد از تولید باشد.')));
               return;
             }
-            final receivedPackages = int.tryParse(received.text) ?? 0;
+            final receivedPackages = parsePersianInteger(received.text) ?? 0;
             Navigator.pop(
               context,
               _BatchCommand(
@@ -1382,7 +1376,7 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
                 labelText: 'تغییر موجودی',
                 hintText: 'مثبت برای ورود، منفی برای خروج',
               ),
-              validator: (value) => int.tryParse(value ?? '') == null ? 'عدد معتبر وارد کنید.' : null,
+              validator: (value) => parsePersianInteger(value) == null ? 'عدد معتبر وارد کنید.' : null,
             ),
             const SizedBox(height: 10),
             TextFormField(
@@ -1398,7 +1392,7 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
         FilledButton(
           onPressed: () {
             if (!formKey.currentState!.validate()) return;
-            Navigator.pop(context, _AdjustmentCommand(int.parse(delta.text), reason.text.trim()));
+            Navigator.pop(context, _AdjustmentCommand(parsePersianInteger(delta.text)!, reason.text.trim()));
           },
           child: const Text('ثبت اصلاح'),
         ),
@@ -1489,6 +1483,7 @@ class _ReportsPageState extends State<ReportsPage> {
           children: [
             _ReportMetric(title: 'درآمد شامل ارسال', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
             _ReportMetric(title: 'هزینه مواد و بسته‌بندی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'هزینه واقعی ارسال', value: '${formatPersianNumber(data.shippingExpense)} ریال', icon: Icons.local_shipping_rounded, tint: const Color(0xFFEAF3EE)),
             _ReportMetric(title: 'مالیات پرداختنی', value: '${formatPersianNumber(data.tax)} ریال', icon: Icons.account_balance_rounded, tint: const Color(0xFFFCE6E0)),
             _ReportMetric(title: 'سود خالص', value: '${formatPersianNumber(data.netProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
             _ReportMetric(title: 'حاشیه سود ناخالص', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
@@ -1502,7 +1497,7 @@ class _ReportsPageState extends State<ReportsPage> {
           const SizedBox(height: 12),
           Text(
             'در ${formatPersianInteger(data.days)} روز گذشته، ${formatPersianInteger(data.orderCount)} سفارش با ${formatPersianInteger(data.unitsSold)} واحد ثبت شده است. '
-            'هزینهٔ مواد، بسته‌بندی و جانبی ${formatPersianNumber(data.cost)} ریال، مالیات پرداختنی ${formatPersianNumber(data.tax)} ریال و سود خالص ${formatPersianNumber(data.netProfit)} ریال بوده است.',
+            'هزینهٔ مواد، بسته‌بندی و جانبی ${formatPersianNumber(data.cost)} ریال، هزینهٔ واقعی ارسال ${formatPersianNumber(data.shippingExpense)} ریال، مالیات پرداختنی ${formatPersianNumber(data.tax)} ریال و سود خالص ${formatPersianNumber(data.netProfit)} ریال بوده است.',
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),
@@ -1653,7 +1648,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
   void initState() {
     super.initState();
     final item = widget.initial;
-    if (item != null) { name.text = item.name; slug.text = item.slug; description.text = item.description; seoTitle.text = item.seoTitle; seoDescription.text = item.seoDescription; sortOrder.text = item.sortOrder.toString(); isActive = item.isActive; }
+    if (item != null) { name.text = item.name; slug.text = item.slug; description.text = item.description; seoTitle.text = item.seoTitle; seoDescription.text = item.seoDescription; sortOrder.text = toPersianDigits(item.sortOrder); isActive = item.isActive; }
   }
 
   @override
@@ -1710,7 +1705,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
             description: description.text.trim(),
             seoTitle: seoTitle.text.trim(),
             seoDescription: seoDescription.text.trim(),
-            sortOrder: int.tryParse(sortOrder.text.trim()) ?? 0,
+            sortOrder: parsePersianInteger(sortOrder.text) ?? 0,
             isActive: isActive,
           ));
         },

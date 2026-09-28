@@ -181,13 +181,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0)
+            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0), coalesce(sum(shipping_expense),0)
             from checkout_orders
             where created_at >= @from and state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int orderCount;
         decimal revenue;
         decimal tax;
+        decimal shippingExpense;
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
@@ -196,6 +197,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             orderCount = reader.GetInt32(0);
             revenue = reader.GetDecimal(1);
             tax = reader.GetDecimal(2);
+            shippingExpense = reader.GetDecimal(3);
         }
 
         const string lineSql = """
@@ -217,9 +219,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         }
 
         var profit = revenue - cost;
-        var netProfit = profit - tax;
+        var netProfit = profit - shippingExpense - tax;
         var margin = revenue <= 0 ? 0 : profit / revenue * 100;
-        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit);
+        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
     }
 
     public async Task<AdminNotifications> NotificationsAsync(CancellationToken cancellationToken)
@@ -429,7 +431,7 @@ public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobi
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock);
-public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0);
+public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }

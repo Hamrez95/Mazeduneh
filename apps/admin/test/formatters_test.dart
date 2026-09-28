@@ -7,5 +7,7 @@ void main() {
     expect(formatPersianInteger(1234567), '۱٬۲۳۴٬۵۶۷');
     expect(formatPersianNumber(1234.5, fractionDigits: 1), '۱٬۲۳۴٫۵');
     expect(formatToman(1200000), '۱۲۰٬۰۰۰');
+    expect(parsePersianNumber('۱٬۲۳۴٫۵'), 1234.5);
+    expect(parsePersianInteger('۱۲ بسته'), isNull);
   });
 }

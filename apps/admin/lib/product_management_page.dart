@@ -335,21 +335,21 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
     ingredients.text = product.ingredients;
     allergens.text = product.allergens.join('، ');
-    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${toPersianDigits(entry.value)}').join('\\n');
     storageInstructions.text = product.storageInstructions;
-    shelfLifeDays.text = product.shelfLifeDays?.toString() ?? '';
-    netWeight.text = product.netWeight?.toString() ?? '';
+    shelfLifeDays.text = product.shelfLifeDays == null ? '' : toPersianDigits(product.shelfLifeDays);
+    netWeight.text = product.netWeight == null ? '' : toPersianDigits(product.netWeight);
     expiryLabel.text = product.expiryLabel;
     for (final variant in variants) variant.dispose();
     variants = product.variants.map((variant) => _VariantDraft(
       sku: variant.sku,
-      quantity: '${variant.quantity}',
+      quantity: toPersianDigits(variant.quantity),
       label: variant.displayLabel,
-      priceToman: '${(variant.price / 10).round()}',
-      costPriceToman: '${(variant.costPrice / 10).round()}',
-      packagingCostToman: '${(variant.packagingCost / 10).round()}',
-      additionalCostToman: '${(variant.additionalCost / 10).round()}',
-      stock: '${variant.availablePackages}',
+      priceToman: toPersianDigits((variant.price / 10).round()),
+      costPriceToman: toPersianDigits((variant.costPrice / 10).round()),
+      packagingCostToman: toPersianDigits((variant.packagingCost / 10).round()),
+      additionalCostToman: toPersianDigits((variant.additionalCost / 10).round()),
+      stock: toPersianDigits(variant.availablePackages),
     )).toList();
   }
 
@@ -435,20 +435,20 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
         allergens: allergens.text.split('،').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
         nutritionFacts: _parseDecimalMap(nutritionFacts.text),
         storageInstructions: storageInstructions.text.trim(),
-        shelfLifeDays: int.tryParse(shelfLifeDays.text.trim()),
-        netWeight: num.tryParse(netWeight.text.trim()),
+        shelfLifeDays: parsePersianInteger(shelfLifeDays.text),
+        netWeight: parsePersianNumber(netWeight.text),
         expiryLabel: expiryLabel.text.trim().isEmpty ? 'best-before' : expiryLabel.text.trim(),
         variants: variants
             .map(
               (variant) => CreateVariantCommand(
                 sku: variant.sku.text.trim().toUpperCase(),
-                quantity: num.parse(variant.quantity.text.trim()),
+                quantity: parsePersianNumber(variant.quantity.text)!,
                 displayLabel: variant.label.text.trim(),
-                price: int.parse(variant.priceToman.text.trim()) * 10,
-                costPrice: int.parse(variant.costPriceToman.text.trim()) * 10,
-                packagingCost: int.parse(variant.packagingCostToman.text.trim()) * 10,
-                additionalCost: int.parse(variant.additionalCostToman.text.trim()) * 10,
-                availablePackages: int.parse(variant.stock.text.trim()),
+                price: parsePersianInteger(variant.priceToman.text)! * 10,
+                costPrice: parsePersianInteger(variant.costPriceToman.text)! * 10,
+                packagingCost: parsePersianInteger(variant.packagingCostToman.text)! * 10,
+                additionalCost: parsePersianInteger(variant.additionalCostToman.text)! * 10,
+                availablePackages: parsePersianInteger(variant.stock.text)!,
               ),
             )
             .toList(),
@@ -837,11 +837,11 @@ class _VariantDraft {
     String sku = '',
     String quantity = '',
     String label = '',
-    String priceToman = '0',
-    String costPriceToman = '0',
-    String packagingCostToman = '0',
-    String additionalCostToman = '0',
-    String stock = '0',
+    String priceToman = '۰',
+    String costPriceToman = '۰',
+    String packagingCostToman = '۰',
+    String additionalCostToman = '۰',
+    String stock = '۰',
   })  : sku = TextEditingController(text: sku),
         quantity = TextEditingController(text: quantity),
         label = TextEditingController(text: label),
@@ -873,14 +873,14 @@ class _VariantDraft {
 }
 
 List<_VariantDraft> _weightVariants() => [
-      _VariantDraft(quantity: '250', label: '۲۵۰ گرم'),
-      _VariantDraft(quantity: '500', label: '۵۰۰ گرم'),
-      _VariantDraft(quantity: '1000', label: '۱۰۰۰ گرم'),
+      _VariantDraft(quantity: '۲۵۰', label: '۲۵۰ گرم'),
+      _VariantDraft(quantity: '۵۰۰', label: '۵۰۰ گرم'),
+      _VariantDraft(quantity: '۱۰۰۰', label: '۱۰۰۰ گرم'),
     ];
 
 List<_VariantDraft> _countVariants() => [
-      _VariantDraft(quantity: '1', label: '۱ عدد'),
-      _VariantDraft(quantity: '4', label: 'پک ۴ عددی'),
+      _VariantDraft(quantity: '۱', label: '۱ عدد'),
+      _VariantDraft(quantity: '۴', label: 'پک ۴ عددی'),
     ];
 
 String? _required(String? value) {
@@ -889,24 +889,24 @@ String? _required(String? value) {
 }
 
 String? _positiveNumber(String? value) {
-  final number = num.tryParse(value ?? '');
+  final number = parsePersianNumber(value);
   if (number == null || number <= 0) return 'عدد مثبت وارد کنید.';
   return null;
 }
 
 String? _optionalNumber(String? value) {
   if (value == null || value.trim().isEmpty) return null;
-  return num.tryParse(value.trim()) == null ? 'عدد معتبر وارد کنید.' : null;
+  return parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
 }
 
 String? _optionalNonNegativeInt(String? value) {
   if (value == null || value.trim().isEmpty) return null;
-  final number = int.tryParse(value.trim());
+  final number = parsePersianInteger(value);
   return number == null || number < 0 ? 'عدد صحیح صفر یا بیشتر وارد کنید.' : null;
 }
 
 String? _nonNegativeInt(String? value) {
-  final number = int.tryParse(value ?? '');
+  final number = parsePersianInteger(value);
   if (number == null || number < 0) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
   return null;
 }
@@ -933,7 +933,7 @@ Map<String, dynamic> _parseDecimalMap(String raw) {
     final separator = line.indexOf(':');
     if (separator <= 0) continue;
     final key = line.substring(0, separator).trim();
-    final value = num.tryParse(line.substring(separator + 1).trim());
+    final value = parsePersianNumber(line.substring(separator + 1));
     if (key.isNotEmpty && value != null) result[key] = value;
   }
   return result;
@@ -996,4 +996,3 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
     actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
   );
 }
-
