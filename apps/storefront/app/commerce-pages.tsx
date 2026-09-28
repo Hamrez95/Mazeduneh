@@ -256,10 +256,17 @@ export function CartPage() {
 
 type CheckoutOrderResponse = {
   id: string;
+  receiptToken: string;
   payable: number;
+  tax: number;
+  shipping: number;
+  shippingMethod: string;
   state: string;
   reservationExpiresAt: string;
 };
+
+type ShippingMethodOption = { code: string; title: string; price: number; freeAbove: number; isActive: boolean };
+type PublicCommerceSettings = { shippingMethods: ShippingMethodOption[] };
 
 
 const checkoutStateLabels: Record<string, string> = {
@@ -295,11 +302,25 @@ function toAsciiDigits(value: string) {
 
 export function CheckoutPage() {
   const { cart, subtotal, shipping, total } = useCart();
-  const [receipt, setReceipt] = useState<{ name: string; orderId: string; payable: number; expiresAt: string; state: string } | null>(null);
+  const [receipt, setReceipt] = useState<{ name: string; orderId: string; receiptToken: string; payable: number; tax: number; shipping: number; expiresAt: string; state: string } | null>(null);
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethodOption[]>([]);
+  const [shippingMethod, setShippingMethod] = useState("post");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
   const unsupportedLines = cart.filter((line) => !line.sku);
+
+  useEffect(() => {
+    if (!apiBaseUrl) return;
+    fetch(`${apiBaseUrl}/api/v1/commerce/shipping-methods`, { cache: "no-store" })
+      .then((response) => response.ok ? response.json() as Promise<PublicCommerceSettings> : Promise.reject(new Error("shipping-settings")))
+      .then((settings) => {
+        const active = (settings.shippingMethods ?? []).filter((item) => item.isActive);
+        setShippingMethods(active);
+        if (active.length && !active.some((item) => item.code === shippingMethod)) setShippingMethod(active[0].code);
+      })
+      .catch(() => setShippingMethods([]));
+  }, [apiBaseUrl, shippingMethod]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -322,6 +343,7 @@ export function CheckoutPage() {
       city: String(data.get("city") ?? ""),
       address: String(data.get("address") ?? ""),
       postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
+      shippingMethod: String(data.get("shippingMethod") ?? shippingMethod),
       lines: cart.map((line) => ({ sku: line.sku!, quantity: line.quantity })),
     };
 
@@ -344,7 +366,7 @@ export function CheckoutPage() {
       if (!body.id || typeof body.payable !== "number" || !body.reservationExpiresAt) {
         throw new Error("پاسخ سرویس سفارش کامل نبود؛ وضعیت سفارش را پیش از تلاش دوباره بررسی کن.");
       }
-      setReceipt({ name, orderId: body.id, payable: body.payable, expiresAt: body.reservationExpiresAt, state: body.state ?? "AwaitingPayment" });
+      setReceipt({ name, orderId: body.id, receiptToken: body.receiptToken ?? "", payable: body.payable, tax: body.tax ?? 0, shipping: body.shipping ?? 0, expiresAt: body.reservationExpiresAt, state: body.state ?? "AwaitingPayment" });
     } catch (submitError) {
       setError(submitError instanceof TypeError
         ? "ارتباط با سرویس سفارش برقرار نشد. نشانی سرویس یا دسترسی ارسال را بررسی کن و دوباره تلاش کن."
@@ -354,7 +376,7 @@ export function CheckoutPage() {
     }
   }
 
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان</p>{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. پرداخت هنوز انجام نشده است و خرید تا تأیید درگاه کامل نمی‌شود.</p>}<a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></div></section><StoreFooter /></main>;
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. پرداخت هنوز انجام نشده است و خرید تا تأیید درگاه کامل نمی‌شود.</p>}<div className={styles.pageActions}><a className={styles.primaryAction} href={receipt.receiptToken ? `${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/invoice?receiptToken=${encodeURIComponent(receipt.receiptToken)}` : "#"}>دانلود فاکتور</a><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
     <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>
@@ -368,6 +390,7 @@ export function CheckoutPage() {
           <div className={styles.field}><label htmlFor="province">استان</label><select id="province" name="province" required defaultValue=""><option value="" disabled>انتخاب استان</option><option>تهران</option><option>اصفهان</option><option>خراسان رضوی</option><option>فارس</option></select></div>
           <div className={styles.field}><label htmlFor="city">شهر</label><input id="city" name="city" autoComplete="address-level2" required placeholder="شهر" /></div>
           <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="address">نشانی کامل</label><textarea id="address" name="address" autoComplete="street-address" required placeholder="خیابان، کوچه، پلاک و واحد" /></div>
+          <div className={styles.field}><label htmlFor="shippingMethod">روش ارسال</label><select id="shippingMethod" name="shippingMethod" value={shippingMethod} onChange={(event) => setShippingMethod(event.target.value)} required>{shippingMethods.length ? shippingMethods.map((item) => <option key={item.code} value={item.code}>{item.title} · {toman(Math.round(item.price / 10))} تومان</option>) : <option value="post">پست (محاسبه نهایی در سرور)</option>}</select></div>
           <div className={styles.field}><label htmlFor="postal">کد پستی</label><input id="postal" name="postal" inputMode="numeric" autoComplete="postal-code" pattern="[0-9۰-۹]{10}" required placeholder="۱۰ رقم" /></div>
         </div>
         <div className={styles.paymentInfo}><b>ارسال پستی برای این مرحله در نظر گرفته شده است.</b><br />هزینهٔ ارسال نهایی را سرور محاسبه می‌کند. ثبت سفارش به‌معنی پرداخت نیست؛ خرید پس از اتصال و تأیید درگاه کامل می‌شود.</div>

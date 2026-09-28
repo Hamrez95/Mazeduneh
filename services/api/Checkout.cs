@@ -49,6 +49,19 @@ public static class CheckoutModule
                 ? Results.Ok(order)
                 : Results.NotFound(new { message = "سفارش پیدا نشد." }));
 
+        checkout.MapGet("/orders/{orderId:guid}/invoice", async (
+            Guid orderId,
+            string receiptToken,
+            CheckoutService service,
+            HttpResponse response,
+            CancellationToken cancellationToken) =>
+        {
+            var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
+            if (order is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
+            response.Headers.ContentDisposition = $"attachment; filename=\"mazeduneh-invoice-{orderId:N}.html\"";
+            return Results.Content(InvoiceRenderer.Render(order), "text/html; charset=utf-8", Encoding.UTF8);
+        });
+
         endpoints.MapCustomerIdentity();
         return endpoints;
     }
