@@ -144,7 +144,7 @@ class CatalogApiClient {
 }
 
 class Product {
-  const Product({required this.id, required this.title, required this.slug, required this.category, required this.origin, required this.unitType, required this.isPublished, required this.variants, this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}});
+  const Product({required this.id, required this.title, required this.slug, required this.category, required this.origin, required this.unitType, required this.isPublished, required this.variants, this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}, this.ingredients = '', this.allergens = const [], this.nutritionFacts = const {}, this.storageInstructions = '', this.shelfLifeDays, this.netWeight, this.netWeightUnit = 'gram', this.expiryLabel = 'best-before'});
   final String id;
   final String title;
   final String slug;
@@ -161,6 +161,14 @@ class Product {
   final String primaryImage;
   final List<String> galleryImages;
   final Map<String, dynamic> specifications;
+  final String ingredients;
+  final List<String> allergens;
+  final Map<String, dynamic> nutritionFacts;
+  final String storageInstructions;
+  final int? shelfLifeDays;
+  final num? netWeight;
+  final String netWeightUnit;
+  final String expiryLabel;
   int get totalStock => variants.fold(0, (sum, item) => sum + item.availablePackages);
   bool get isWeight => unitType.toLowerCase() == 'weight';
 
@@ -174,26 +182,38 @@ class Product {
         seoKeywords: json['seoKeywords'] as String? ?? '', primaryImage: json['primaryImage'] as String? ?? '',
         galleryImages: (json['galleryImages'] as List<dynamic>? ?? const []).whereType<String>().toList(),
         specifications: (json['specifications'] as Map?)?.map((key, value) => MapEntry(key.toString(), value)) ?? const {},
+        ingredients: json['ingredients'] as String? ?? '',
+        allergens: (json['allergens'] as List<dynamic>? ?? const []).whereType<String>().toList(),
+        nutritionFacts: (json['nutritionFacts'] as Map?)?.map((key, value) => MapEntry(key.toString(), value)) ?? const {},
+        storageInstructions: json['storageInstructions'] as String? ?? '',
+        shelfLifeDays: (json['shelfLifeDays'] as num?)?.toInt(),
+        netWeight: json['netWeight'] as num?,
+        netWeightUnit: json['netWeightUnit'] as String? ?? 'gram',
+        expiryLabel: json['expiryLabel'] as String? ?? 'best-before',
       );
 }
 
 class ProductVariant {
-  const ProductVariant({required this.sku, required this.quantity, required this.displayLabel, required this.price, required this.availablePackages, this.costPrice = 0});
+  const ProductVariant({required this.sku, required this.quantity, required this.displayLabel, required this.price, required this.availablePackages, this.costPrice = 0, this.packagingCost = 0, this.additionalCost = 0});
   final String sku;
   final num quantity;
   final String displayLabel;
   final num price;
   final int availablePackages;
   final num costPrice;
+  final num packagingCost;
+  final num additionalCost;
   factory ProductVariant.fromJson(Map<String, dynamic> json) => ProductVariant(
         sku: json['sku'] as String, quantity: json['quantity'] as num, displayLabel: json['displayLabel'] as String,
         price: json['price'] as num, availablePackages: (json['availablePackages'] as num?)?.toInt() ?? 0,
         costPrice: json['costPrice'] as num? ?? 0,
+        packagingCost: json['packagingCost'] as num? ?? 0,
+        additionalCost: json['additionalCost'] as num? ?? 0,
       );
 }
 
 class CreateProductCommand {
-  const CreateProductCommand({required this.title, required this.slug, required this.category, required this.origin, required this.unitType, required this.variants, this.isPublished = false, this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}});
+  const CreateProductCommand({required this.title, required this.slug, required this.category, required this.origin, required this.unitType, required this.variants, this.isPublished = false, this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}, this.ingredients = '', this.allergens = const [], this.nutritionFacts = const {}, this.storageInstructions = '', this.shelfLifeDays, this.netWeight, this.netWeightUnit = 'gram', this.expiryLabel = 'best-before'});
   final String title;
   final String slug;
   final String category;
@@ -209,28 +229,41 @@ class CreateProductCommand {
   final String primaryImage;
   final List<String> galleryImages;
   final Map<String, dynamic> specifications;
+  final String ingredients;
+  final List<String> allergens;
+  final Map<String, dynamic> nutritionFacts;
+  final String storageInstructions;
+  final int? shelfLifeDays;
+  final num? netWeight;
+  final String netWeightUnit;
+  final String expiryLabel;
   Map<String, dynamic> toJson() => {
         'title': title, 'slug': slug, 'category': category, 'origin': origin, 'currency': 'IRR',
         'unitType': unitType, 'isPublished': isPublished, 'shortDescription': shortDescription, 'description': description,
         'seoTitle': seoTitle, 'seoDescription': seoDescription, 'seoKeywords': seoKeywords, 'primaryImage': primaryImage,
         'galleryImages': galleryImages, 'specifications': specifications,
+        'ingredients': ingredients, 'allergens': allergens, 'nutritionFacts': nutritionFacts,
+        'storageInstructions': storageInstructions, 'shelfLifeDays': shelfLifeDays, 'netWeight': netWeight,
+        'netWeightUnit': netWeightUnit, 'expiryLabel': expiryLabel,
         'variants': variants.map((item) => item.toJson()).toList(),
       };
 }
 
 class CreateVariantCommand {
-  const CreateVariantCommand({required this.sku, required this.quantity, required this.displayLabel, required this.price, required this.availablePackages, this.costPrice = 0});
+  const CreateVariantCommand({required this.sku, required this.quantity, required this.displayLabel, required this.price, required this.availablePackages, this.costPrice = 0, this.packagingCost = 0, this.additionalCost = 0});
   final String sku;
   final num quantity;
   final String displayLabel;
   final num price;
   final int availablePackages;
   final num costPrice;
-  Map<String, dynamic> toJson() => {'sku': sku, 'quantity': quantity, 'displayLabel': displayLabel, 'price': price, 'availablePackages': availablePackages, 'costPrice': costPrice};
+  final num packagingCost;
+  final num additionalCost;
+  Map<String, dynamic> toJson() => {'sku': sku, 'quantity': quantity, 'displayLabel': displayLabel, 'price': price, 'availablePackages': availablePackages, 'costPrice': costPrice, 'packagingCost': packagingCost, 'additionalCost': additionalCost};
 }
 
 class UpdateProductCommand {
-  const UpdateProductCommand({required this.title, required this.category, required this.origin, required this.unitType, required this.variants, this.currency = 'IRR', this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}});
+  const UpdateProductCommand({required this.title, required this.category, required this.origin, required this.unitType, required this.variants, this.currency = 'IRR', this.shortDescription = '', this.description = '', this.seoTitle = '', this.seoDescription = '', this.seoKeywords = '', this.primaryImage = '', this.galleryImages = const [], this.specifications = const {}, this.ingredients = '', this.allergens = const [], this.nutritionFacts = const {}, this.storageInstructions = '', this.shelfLifeDays, this.netWeight, this.netWeightUnit = 'gram', this.expiryLabel = 'best-before'});
   final String title;
   final String category;
   final String origin;
@@ -245,10 +278,21 @@ class UpdateProductCommand {
   final String primaryImage;
   final List<String> galleryImages;
   final Map<String, dynamic> specifications;
+  final String ingredients;
+  final List<String> allergens;
+  final Map<String, dynamic> nutritionFacts;
+  final String storageInstructions;
+  final int? shelfLifeDays;
+  final num? netWeight;
+  final String netWeightUnit;
+  final String expiryLabel;
   Map<String, dynamic> toJson() => {
     'title': title, 'category': category, 'origin': origin, 'currency': currency, 'unitType': unitType,
     'shortDescription': shortDescription, 'description': description, 'seoTitle': seoTitle, 'seoDescription': seoDescription,
     'seoKeywords': seoKeywords, 'primaryImage': primaryImage, 'galleryImages': galleryImages, 'specifications': specifications,
+    'ingredients': ingredients, 'allergens': allergens, 'nutritionFacts': nutritionFacts,
+    'storageInstructions': storageInstructions, 'shelfLifeDays': shelfLifeDays, 'netWeight': netWeight,
+    'netWeightUnit': netWeightUnit, 'expiryLabel': expiryLabel,
     'variants': variants.map((item) => item.toJson()).toList(),
   };
 }
