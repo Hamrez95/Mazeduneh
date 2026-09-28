@@ -6,6 +6,7 @@ import 'catalog_api.dart';
 import 'order_api.dart';
 import 'media_api.dart';
 import 'customer_management_page.dart';
+import 'commerce_settings_page.dart';
 import 'package:file_picker/file_picker.dart';
 
 class AdminColors {
@@ -69,6 +70,7 @@ class _AdminShellState extends State<AdminShell> {
     ('گزارش‌ها', Icons.query_stats_rounded),
     ('اعلان‌ها', Icons.notifications_active_rounded),
     ('مشتری‌ها', Icons.people_alt_rounded),
+    ('قیمت و ارسال', Icons.percent_rounded),
   ];
 
   @override
@@ -82,6 +84,7 @@ class _AdminShellState extends State<AdminShell> {
       const ReportsPage(),
       const NotificationsPage(),
       const CustomerManagementPage(),
+      const CommerceSettingsPage(),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand()),
