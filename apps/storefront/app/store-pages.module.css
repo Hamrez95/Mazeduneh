@@ -77,6 +77,22 @@
 .facts { margin-top:27px; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
 .fact { min-height:74px; padding:13px; border:1px solid var(--line); border-radius:14px; background:#fff; }
 .fact small { display:block; color:#909b93; font-size:9px; }.fact b { display:block; margin-top:4px; color:#52675a; font-size:11px; }
+.foodDetails {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.72);
+  display: grid;
+  gap: 14px;
+}
+.foodDetails h2 { margin: 0; font-size: 1rem; }
+.foodDetails h3 { margin: 0 0 5px; font-size: .78rem; color: var(--green-700); }
+.foodDetails p { margin: 0; color: var(--muted); line-height: 1.9; font-size: .78rem; }
+.foodDetails dl { margin: 0; display: grid; gap: 6px; }
+.foodDetails dl > div { display: flex; justify-content: space-between; gap: 14px; border-bottom: 1px dashed var(--line); padding-bottom: 5px; font-size: .76rem; }
+.foodDetails dt { color: var(--muted); }
+.foodDetails dd { margin: 0; color: var(--green-900); font-weight: 800; }
 .detailNotice { margin-top:14px; padding:14px; border-radius:14px; color:#806237; background:#fbf0dd; font-size:10px; line-height:1.9; }
 .detailTabs { width:min(1190px,calc(100% - 48px)); margin:0 auto 66px; padding:28px 0; border-block:1px solid var(--line); }
 .detailTabs h2 { margin:0 0 13px; color:#304a3c; font-size:22px; }
