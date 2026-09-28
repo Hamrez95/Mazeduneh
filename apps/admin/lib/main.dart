@@ -204,7 +204,6 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 6),
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
             ])),
-            OutlinedButton.icon(onPressed: products.isEmpty ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('دریافت بچ')),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
           ]),
           const SizedBox(height: 24),
@@ -384,25 +383,6 @@ class CatalogPageState extends State<CatalogPage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
     } finally {
       if (mounted) setState(() => changingPublication.remove(product.slug));
-    }
-  }
-
-  Future<void> receiveBatch() async {
-    final result = await showDialog<_BatchCommand>(context: context, builder: (_) => BatchDialog(products: products));
-    if (result == null) return;
-    setState(() => busySku = result.sku);
-    try {
-      await orders.receiveInventoryBatch(
-        sku: result.sku, batchCode: result.batchCode, receivedPackages: result.receivedPackages,
-        producedAt: result.producedAt, expiresAt: result.expiresAt, costPrice: result.costPrice,
-        packagingCost: result.packagingCost, additionalCost: result.additionalCost,
-      );
-      await load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('بچ و تاریخ انقضا ثبت شد.')));
-    } catch (exception) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
-    } finally {
-      if (mounted) setState(() => busySku = null);
     }
   }
 
@@ -1055,6 +1035,30 @@ class _InventoryPageState extends State<InventoryPage> {
     }
   }
 
+  Future<void> receiveBatch() async {
+    final result = await showDialog<_BatchCommand>(context: context, builder: (_) => BatchDialog(products: products));
+    if (result == null) return;
+    setState(() => busySku = result.sku);
+    try {
+      await orders.receiveInventoryBatch(
+        sku: result.sku,
+        batchCode: result.batchCode,
+        receivedPackages: result.receivedPackages,
+        producedAt: result.producedAt,
+        expiresAt: result.expiresAt,
+        costPrice: result.costPrice,
+        packagingCost: result.packagingCost,
+        additionalCost: result.additionalCost,
+      );
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('بچ و تاریخ انقضا ثبت شد.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => busySku = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(24),
@@ -1064,6 +1068,8 @@ class _InventoryPageState extends State<InventoryPage> {
           Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
           const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
         ])),
+        OutlinedButton.icon(onPressed: products.isEmpty ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('دریافت بچ')),
+        const SizedBox(width: 8),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
       ]),
       const SizedBox(height: 18),
@@ -1161,9 +1167,16 @@ class _InventoryPageState extends State<InventoryPage> {
 
 class _BatchCommand {
   const _BatchCommand({
-    required this.sku, required this.batchCode, required this.receivedPackages, required this.producedAt,
-    required this.expiresAt, required this.costPrice, required this.packagingCost, required this.additionalCost,
+    required this.sku,
+    required this.batchCode,
+    required this.receivedPackages,
+    required this.producedAt,
+    required this.expiresAt,
+    required this.costPrice,
+    required this.packagingCost,
+    required this.additionalCost,
   });
+
   final String sku;
   final String batchCode;
   final int receivedPackages;
@@ -1176,7 +1189,9 @@ class _BatchCommand {
 
 class BatchDialog extends StatefulWidget {
   const BatchDialog({super.key, required this.products});
+
   final List<Product> products;
+
   @override
   State<BatchDialog> createState() => _BatchDialogState();
 }
@@ -1193,55 +1208,142 @@ class _BatchDialogState extends State<BatchDialog> {
   final additional = TextEditingController(text: '0');
 
   @override
-  void initState() { super.initState(); sku = widget.products.first.variants.first.sku; }
+  void initState() {
+    super.initState();
+    sku = widget.products.first.variants.first.sku;
+  }
 
   DateTime? parseDate(String value) => DateTime.tryParse(value.trim());
 
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('دریافت بچ جدید'),
-    content: SizedBox(width: 520, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      DropdownButtonFormField<String>(value: sku, decoration: const InputDecoration(labelText: 'SKU'), items: widget.products.expand((product) => product.variants.map((variant) => DropdownMenuItem(value: variant.sku, child: Text('${product.title} · ${variant.sku}')))).toList(), onChanged: (value) => setState(() => sku = value ?? sku)),
-      const SizedBox(height: 10),
-      TextFormField(controller: batchCode, decoration: const InputDecoration(labelText: 'کد بچ', hintText: 'LOT-1405-01'), validator: (value) => value == null || value.trim().isEmpty ? 'کد بچ الزامی است.' : null),
-      const SizedBox(height: 10),
-      TextFormField(controller: received, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تعداد بسته دریافتی'), validator: (value) { final number = int.tryParse(value ?? ''); return number == null || number <= 0 ? 'تعداد مثبت وارد کنید.' : null; }),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: TextFormField(controller: produced, decoration: const InputDecoration(labelText: 'تولید (YYYY-MM-DD)'), validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null)),
-        const SizedBox(width: 10),
-        Expanded(child: TextFormField(controller: expires, decoration: const InputDecoration(labelText: 'انقضا (YYYY-MM-DD)'), validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null)),
-      ]),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: TextFormField(controller: cost, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'خرید/مواد (ریال)'))),
-        const SizedBox(width: 10),
-        Expanded(child: TextFormField(controller: packaging, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'بسته‌بندی (ریال)'))),
-        const SizedBox(width: 10),
-        Expanded(child: TextFormField(controller: additional, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'جانبی (ریال)'))),
-      ]),
-    ]))),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
-      FilledButton(onPressed: () {
-        if (!formKey.currentState!.validate()) return;
-        final productionDate = parseDate(produced.text)!;
-        final expiryDate = parseDate(expires.text)!;
-        if (expiryDate <= productionDate) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انقضا باید بعد از تولید باشد.')));
-          return;
-        }
-        Navigator.pop(context, _BatchCommand(
-          sku: sku, batchCode: batchCode.text.trim(), receivedPackages: int.parse(received.text),
-          producedAt: productionDate, expiresAt: expiryDate, costPrice: num.tryParse(cost.text) ?? 0,
-          packagingCost: num.tryParse(packaging.text) ?? 0, additionalCost: num.tryParse(additional.text) ?? 0,
-        ));
-      }, child: const Text('ثبت بچ')),
-    ],
-  );
+  num parseNumber(String value) {
+    final normalized = value
+        .replaceAll('٬', '')
+        .replaceAll('٫', '.')
+        .replaceAllMapped(RegExp(r'[۰-۹]'), (match) => String.fromCharCode(match.group(0)!.codeUnitAt(0) - 1728));
+    return num.tryParse(normalized.trim()) ?? 0;
+  }
 
   @override
-  void dispose() { batchCode.dispose(); received.dispose(); produced.dispose(); expires.dispose(); cost.dispose(); packaging.dispose(); additional.dispose(); super.dispose(); }
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('دریافت بچ جدید'),
+      content: SizedBox(
+        width: 520,
+        child: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: sku,
+                  decoration: const InputDecoration(labelText: 'SKU'),
+                  items: widget.products
+                      .expand(
+                        (product) => product.variants.map(
+                          (variant) => DropdownMenuItem<String>(
+                            value: variant.sku,
+                            child: Text('\${product.title} · \${variant.sku}'),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() => sku = value ?? sku),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: batchCode,
+                  decoration: const InputDecoration(labelText: 'کد بچ', hintText: 'LOT-1405-01'),
+                  validator: (value) => value == null || value.trim().isEmpty ? 'کد بچ الزامی است.' : null,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: received,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'تعداد بسته دریافتی'),
+                  validator: (value) {
+                    final number = int.tryParse(value ?? '');
+                    return number == null || number <= 0 ? 'تعداد مثبت وارد کنید.' : null;
+                  },
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: produced,
+                        decoration: const InputDecoration(labelText: 'تولید (YYYY-MM-DD)'),
+                        validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: expires,
+                        decoration: const InputDecoration(labelText: 'انقضا (YYYY-MM-DD)'),
+                        validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(child: TextFormField(controller: cost, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'خرید/مواد (ریال)'))),
+                    const SizedBox(width: 10),
+                    Expanded(child: TextFormField(controller: packaging, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'بسته‌بندی (ریال)'))),
+                    const SizedBox(width: 10),
+                    Expanded(child: TextFormField(controller: additional, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'جانبی (ریال)'))),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+        FilledButton(
+          onPressed: () {
+            if (!formKey.currentState!.validate()) return;
+            final productionDate = parseDate(produced.text)!;
+            final expiryDate = parseDate(expires.text)!;
+            if (!expiryDate.isAfter(productionDate)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انقضا باید بعد از تولید باشد.')));
+              return;
+            }
+            final receivedPackages = int.tryParse(received.text) ?? 0;
+            Navigator.pop(
+              context,
+              _BatchCommand(
+                sku: sku,
+                batchCode: batchCode.text.trim(),
+                receivedPackages: receivedPackages,
+                producedAt: productionDate,
+                expiresAt: expiryDate,
+                costPrice: parseNumber(cost.text),
+                packagingCost: parseNumber(packaging.text),
+                additionalCost: parseNumber(additional.text),
+              ),
+            );
+          },
+          child: const Text('ثبت بچ'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    batchCode.dispose();
+    received.dispose();
+    produced.dispose();
+    expires.dispose();
+    cost.dispose();
+    packaging.dispose();
+    additional.dispose();
+    super.dispose();
+  }
 }
 
 class _AdjustmentCommand {
