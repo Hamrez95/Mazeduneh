@@ -83,7 +83,10 @@ function productFacts(product: DemoProduct) {
   const details = Object.entries(product.specifications ?? {})
     .filter(([label]) => label !== "مبدأ")
     .slice(0, 3);
-  return [["مبدأ", product.origin], ...details] as Array<[string, string]>;
+  const weight = product.netWeight && product.netWeightUnit
+    ? [["وزن خالص", toPersianDigits(product.netWeight) + " " + toPersianDigits(product.netWeightUnit)]]
+    : [];
+  return [["مبدأ", product.origin], ...weight, ...details] as Array<[string, string]>;
 }
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
@@ -164,6 +167,16 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
         </div>
         <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={() => add(selectedProduct)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
         <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
+        {(product.ingredients || product.allergens?.length || product.storageInstructions || (product.nutritionFacts && Object.keys(product.nutritionFacts).length) || product.shelfLifeDays) && (
+          <section className={styles.foodDetails} aria-labelledby="food-details-title">
+            <h2 id="food-details-title">اطلاعات خوراکی و نگهداری</h2>
+            {product.ingredients && <div><h3>مواد تشکیل‌دهنده</h3><p>{product.ingredients}</p></div>}
+            {product.allergens?.length ? <div><h3>آلرژن‌ها</h3><p>{product.allergens.join("، ")}</p></div> : null}
+            {product.nutritionFacts && Object.keys(product.nutritionFacts).length > 0 && <div><h3>ارزش غذایی</h3><dl>{Object.entries(product.nutritionFacts).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{toPersianDigits(value)}</dd></div>)}</dl></div>}
+            {product.storageInstructions && <div><h3>نحوه نگهداری</h3><p>{product.storageInstructions}</p></div>}
+            {product.shelfLifeDays ? <div><h3>تاریخ و ماندگاری</h3><p>{toPersianDigits(product.expiryLabel || "best-before")} · {toPersianDigits(product.shelfLifeDays)} روز از تاریخ تولید، تاریخ دقیق روی بسته ثبت می‌شود.</p></div> : null}
+          </section>
+        )}
         <div className={styles.detailNotice}>{live ? "این اطلاعات از کاتالوگ منتشرشدهٔ سرویس فروش خوانده شده‌اند؛ جزئیات غذایی نهایی باید با بسته‌بندی تطبیق داده شوند." : "اطلاعات و قیمت‌های این نسخه نمونه‌اند. مشخصات قطعی ترکیبات، حساسیت‌زاها و وزن باید پیش از فروش از پنل محصول تأیید شوند."}</div>
       </div>
     </div>
