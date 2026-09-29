@@ -91,11 +91,12 @@ function productFacts(product: DemoProduct) {
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
   const { add } = useCart();
+  const [cartFeedback, setCartFeedback] = useState("");
   const variants = product.variants?.length
     ? product.variants
     : [{ sku: product.sku ?? `${product.id}-preview`, packageLabel: product.packageLabel, price: product.price, stock: product.stock }];
-  const [selectedSku, setSelectedSku] = useState(variants[0].sku);
-  useEffect(() => setSelectedSku(variants[0].sku), [product.id, product.sku]);
+  const [selectedSku, setSelectedSku] = useState(product.sku ?? variants[0].sku);
+  useEffect(() => setSelectedSku(product.sku ?? variants[0].sku), [product.id, product.sku]);
   const selectedVariant = variants.find((variant) => variant.sku === selectedSku) ?? variants[0];
   const selectedProduct: DemoProduct = {
     ...product,
@@ -104,6 +105,10 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     price: selectedVariant.price,
     stock: selectedVariant.stock,
   };
+  function addSelectedProduct() {
+    add(selectedProduct);
+    setCartFeedback(`${selectedProduct.packageLabel} به سبد خرید اضافه شد.`);
+  }
   const [reviews, setReviews] = useState<{ name: string; rating: string; text: string }[]>([]);
   function addReview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -158,14 +163,15 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
               role="option"
               aria-selected={variant.sku === selectedVariant.sku}
               className={variant.sku === selectedVariant.sku ? styles.variantOptionActive : styles.variantOption}
-              onClick={() => setSelectedSku(variant.sku)}
+              onClick={() => { setSelectedSku(variant.sku); setCartFeedback(""); }}
             >
               <span>{variant.packageLabel}</span>
               <small>{toman(variant.price)} تومان · {formatInventory(variant.stock)}</small>
             </button>
           ))}
         </div>
-        <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={() => add(selectedProduct)}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
+        <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={addSelectedProduct}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
+        {cartFeedback && <p className={styles.cartFeedback} role="status" aria-live="polite">✓ {cartFeedback} <a href="/cart">مشاهدهٔ سبد</a></p>}
         <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
         {(product.ingredients || product.allergens?.length || product.storageInstructions || (product.nutritionFacts && Object.keys(product.nutritionFacts).length) || product.shelfLifeDays || product.earliestAvailableExpiryAt) && (
           <section className={styles.foodDetails} aria-labelledby="food-details-title">
@@ -243,9 +249,9 @@ export function CartPage() {
     <section className={styles.cartLayout}>
       <div className={styles.cartPanel}>
         <h2>{cart.length ? `محصول‌ها (${toman(cart.reduce((n, line) => n + line.quantity, 0))})` : "سبد خرید خالی است"}</h2>
-        {cart.length ? cart.map((line) => <article className={styles.cartLine} key={line.id}>
+        {cart.length ? cart.map((line) => <article className={styles.cartLine} key={line.sku ?? line.id}>
           <a href={`/product/${line.id}`} className={`${styles.cartThumb} ${styles[line.accent]}`}><ProductArtwork product={line} /></a>
-          <div><a href={`/product/${line.id}`}><h3>{line.title}</h3></a><p>{line.packageLabel}</p><button className={styles.remove} type="button" onClick={() => remove(line.id)}>حذف از سبد</button></div>
+          <div><a href={`/product/${line.id}`}><h3>{line.title}</h3></a><p>{line.packageLabel}</p><button className={styles.remove} type="button" onClick={() => remove(line.sku ?? line.id)}>حذف از سبد</button></div>
           <strong className={styles.linePrice}>{toman(line.price * line.quantity)} تومان</strong>
           <div className={styles.quantity} aria-label={`تعداد ${line.title}`}><button type="button" onClick={() => change(line.sku ?? line.id, 1)} aria-label="افزایش تعداد">+</button><span>{toman(line.quantity)}</span><button type="button" onClick={() => change(line.sku ?? line.id, -1)} aria-label="کاهش تعداد">−</button></div>
         </article>) : <div className={styles.emptyCart}><span className={styles.cartIcon}>د</span><strong>یک چیز خوشمزه انتخاب کن.</strong><p>سبد خریدت فعلاً منتظر انتخاب‌های توست.</p><a href="/shop" className={styles.primaryAction}>رفتن به فروشگاه</a></div>}

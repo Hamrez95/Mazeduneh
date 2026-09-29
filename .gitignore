@@ -9,6 +9,7 @@ node_modules/
 out/
 coverage/
 *.log
+*.tsbuildinfo
 
 # .NET
 bin/
@@ -34,3 +35,4 @@ secrets/
 # Local infrastructure
 .pgdata/
 .redis-data/
+.local-dev/

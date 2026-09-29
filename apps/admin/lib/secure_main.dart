@@ -7,6 +7,10 @@ import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'order_api.dart';
 import 'product_management_page.dart';
+import 'customer_management_page.dart';
+import 'commerce_settings_page.dart';
+import 'corporate_requests_page.dart';
+import 'main.dart' show NotificationsPage, ReportsPage;
 
 void main() => runApp(const MazedunehSecureAdminApp());
 
@@ -238,6 +242,11 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
     NavigationDestination(icon: Icon(Icons.receipt_long_rounded), label: 'سفارش‌ها'),
     NavigationDestination(icon: Icon(Icons.inventory_2_rounded), label: 'محصولات'),
     NavigationDestination(icon: Icon(Icons.warehouse_rounded), label: 'انبار'),
+    NavigationDestination(icon: Icon(Icons.query_stats_rounded), label: 'گزارش‌ها'),
+    NavigationDestination(icon: Icon(Icons.notifications_active_rounded), label: 'اعلان‌ها'),
+    NavigationDestination(icon: Icon(Icons.people_alt_rounded), label: 'مشتری‌ها'),
+    NavigationDestination(icon: Icon(Icons.percent_rounded), label: 'قیمت و ارسال'),
+    NavigationDestination(icon: Icon(Icons.business_center_rounded), label: 'فروش سازمانی'),
   ];
 
   @override
@@ -352,34 +361,66 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
             Badge(
               isLabelVisible: notifications!.count > 0,
               label: Text('${notifications!.count}'),
-              child: IconButton(onPressed: loading ? null : loadAll, tooltip: 'اعلان‌ها', icon: const Icon(Icons.notifications_none_rounded)),
+              child: IconButton(
+                onPressed: loading ? null : () => setState(() => selectedIndex = 5),
+                tooltip: 'رفتن به اعلان‌ها',
+                icon: const Icon(Icons.notifications_none_rounded),
+              ),
             ),
           IconButton(onPressed: loading ? null : loadAll, tooltip: 'تازه‌سازی', icon: const Icon(Icons.refresh_rounded)),
           IconButton(onPressed: OwnerSession.instance.clear, tooltip: 'خروج امن', icon: const Icon(Icons.logout_rounded)),
           const SizedBox(width: 8),
         ],
       ),
-      bottomNavigationBar: wide
+      drawer: wide
           ? null
-          : NavigationBar(
-              selectedIndex: selectedIndex,
-              destinations: destinations,
-              onDestinationSelected: (index) => setState(() => selectedIndex = index),
+          : Drawer(
+              child: SafeArea(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Row(children: [BrandMark(size: 38), SizedBox(width: 10), Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800))]),
+                    ),
+                    for (var i = 0; i < destinations.length; i++)
+                      ListTile(
+                        selected: selectedIndex == i,
+                        leading: destinations[i].icon,
+                        title: Text(destinations[i].label),
+                        onTap: () {
+                          setState(() => selectedIndex = i);
+                          Navigator.pop(context);
+                        },
+                      ),
+                  ],
+                ),
+              ),
             ),
       body: Row(
         children: [
           if (wide)
-            NavigationRail(
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) => setState(() => selectedIndex = index),
-              labelType: NavigationRailLabelType.all,
-              groupAlignment: -0.8,
-              destinations: const [
-                NavigationRailDestination(icon: Icon(Icons.space_dashboard_rounded), label: Text('داشبورد')),
-                NavigationRailDestination(icon: Icon(Icons.receipt_long_rounded), label: Text('سفارش‌ها')),
-                NavigationRailDestination(icon: Icon(Icons.inventory_2_rounded), label: Text('محصولات')),
-                NavigationRailDestination(icon: Icon(Icons.warehouse_rounded), label: Text('انبار')),
-              ],
+            SizedBox(
+              width: 220,
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, 16),
+                    child: Row(children: [BrandMark(size: 38), SizedBox(width: 10), Expanded(child: Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800)))]),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: destinations.length,
+                      itemBuilder: (context, index) => ListTile(
+                        selected: selectedIndex == index,
+                        leading: destinations[index].icon,
+                        title: Text(destinations[index].label),
+                        onTap: () => setState(() => selectedIndex = index),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           Expanded(
             child: SafeArea(
@@ -414,7 +455,13 @@ class _AdminOperationsShellState extends State<AdminOperationsShell> {
       0 => dashboardView(),
       1 => ordersView(),
       2 => ProductManagementPage(products: products, categories: categories, api: catalogApi, onReload: loadAll),
-      _ => inventoryView(),
+      3 => inventoryView(),
+      4 => ReportsPage(api: orderApi),
+      5 => NotificationsPage(api: orderApi),
+      6 => const CustomerManagementPage(),
+      7 => const CommerceSettingsPage(),
+      8 => const CorporateRequestsPage(),
+      _ => dashboardView(),
     };
   }
 

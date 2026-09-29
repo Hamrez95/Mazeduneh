@@ -11,43 +11,34 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 
 ## Local development
 
-### One-command Windows launcher
+### Local demo on Windows
 
 ```powershell
-./scripts/dev.ps1
+pwsh -File ./scripts/dev.ps1
 ```
 
-You can also run one component:
+The launcher opens the storefront and the secure admin web app in your browser, and starts the API with demo-only credentials. Everything listens on `127.0.0.1`; it does not use Supabase, PostgreSQL, Cloudflare, Vercel, or Liara. Demo products and API data are held in memory, so changes made in the admin panel reset when the API is stopped.
+
+Use these commands from the repository root:
 
 ```powershell
-./scripts/dev.ps1 -Component storefront
-./scripts/dev.ps1 -Component api
-./scripts/dev.ps1 -Component admin
+pwsh -File ./scripts/dev.ps1 -Status
+pwsh -File ./scripts/dev.ps1 -Stop
 ```
 
-### Manual commands
+The admin login is printed when the launcher starts. Its random local-demo password is stored in the ignored `.local-dev` folder so it remains the same between runs. Keep this launcher bound to this computer; it is not a public deployment setup.
 
-```bash
-cd apps/storefront
-npm install
-npm run dev
-```
+To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app.
 
-```bash
-cd services/api
-dotnet watch run
-```
-
-```bash
-cd apps/admin
-flutter create --platforms=android,web --project-name mazeduneh_admin .
-flutter pub get
-flutter run -d chrome
-```
+Prerequisites: PowerShell 7.4+, Node.js/npm, .NET 10 SDK, and Flutter stable. On first run the launcher installs missing app dependencies.
 
 ### Storefront order submission
 
 Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. The checkout submits orders only for products whose SKU mapping is present in `apps/storefront/app/commerce-pages.tsx`; unsupported demo products stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until a real payment provider is integrated and confirms payment server-side.
+
+### Liara deployment preparation
+
+Docker deployment files and the release checklist are in [`docs/LIARA_DEPLOYMENT.md`](docs/LIARA_DEPLOYMENT.md). Deploying remains separate until production data, secrets, domains, and Liara services are ready.
 
 ## Branching
 

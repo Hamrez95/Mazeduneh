@@ -72,6 +72,8 @@
 .variantTitle { margin:21px 0 9px; color:#647269; font-size:11px; font-weight:800; }
 .variantChoice { min-height:43px; padding:0 14px; display:inline-flex; align-items:center; gap:9px; border:1px solid #73927a; border-radius:12px; color:#4b7568; background:#f3f7f0; font-size:11px; font-weight:800; }
 .detailBuy { margin-top:22px; display:flex; gap:10px; }
+.cartFeedback { margin:10px 0 0; padding:11px 14px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; border:1px solid #cfe1ce; border-radius:12px; color:#285442; background:#f0f7ef; font-size:12px; font-weight:700; }
+.cartFeedback a { color:#174f43; text-decoration:underline; text-underline-offset:3px; }
 .detailBuy button,.detailBuy a { min-height:49px; padding:0 20px; display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:13px; color:white; background:var(--deep); font:inherit; font-size:12px; font-weight:900; text-decoration:none; cursor:pointer; }
 .detailBuy a { color:var(--deep); border:1px solid #d5dfd2; background:white; }
 .facts { margin-top:27px; display:grid; grid-template-columns:1fr 1fr; gap:9px; }

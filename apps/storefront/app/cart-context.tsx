@@ -93,9 +93,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       total: subtotal + shipping,
       add(product) {
         setCart((current) => {
-          const found = current.find((line) => product.sku ? line.sku === product.sku : line.id === product.id);
+          const matchesProduct = (line: CartLine) => product.sku
+            ? line.sku === product.sku || (!line.sku && line.id === product.id && line.packageLabel === product.packageLabel)
+            : line.id === product.id && line.packageLabel === product.packageLabel;
+          const found = current.find(matchesProduct);
           if (!found) return [...current, { ...product, quantity: 1 }];
-          return current.map((line) => (product.sku ? line.sku === product.sku : line.id === product.id)
+          return current.map((line) => matchesProduct(line)
             ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) }
             : line);
         });

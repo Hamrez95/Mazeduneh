@@ -87,6 +87,12 @@ export const demoProducts: DemoProduct[] = [
   },
   {
     id: "almond",
+    sku: "NU-ALM-500",
+    variants: [
+      { sku: "NU-ALM-250", packageLabel: "بسته ۲۵۰ گرمی", price: 175000, stock: 25 },
+      { sku: "NU-ALM-500", packageLabel: "بسته ۵۰۰ گرمی", price: 330000, stock: 16 },
+      { sku: "NU-ALM-1000", packageLabel: "بسته ۱۰۰۰ گرمی", price: 640000, stock: 8 },
+    ],
     title: "بادام درختی خام",
     subtitle: "بدون نمک، ترد و مناسب میان‌وعده",
     category: "آجیل و مغزها",
