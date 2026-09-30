@@ -34,3 +34,11 @@ secrets/
 # Local infrastructure
 .pgdata/
 .redis-data/
+
+# Graphify local caches and transient analysis files
+graphify-out/cache/
+graphify-out/.graphify_*.json
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_version
+graphify-out/graph.html
