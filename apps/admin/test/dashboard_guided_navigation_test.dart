@@ -68,13 +68,7 @@ void main() {
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
-    final exception = tester.takeException();
-    if (exception is FlutterError) {
-      for (final diagnostic in exception.diagnostics) {
-        debugPrint(diagnostic.toStringDeep());
-      }
-    }
-    expect(exception, isNull);
+    expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('پیگیری سفارش‌ها'));
     expect(destination, 1);
