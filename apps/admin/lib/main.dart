@@ -240,8 +240,8 @@ class _DashboardPageState extends State<DashboardPage> {
         padding: const EdgeInsets.all(28),
         children: [
           if (error != null) AdminStaleBanner(detail: 'داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
-          Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
               const SizedBox(height: 6),
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
@@ -249,9 +249,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SizedBox(height: 5),
                 Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
               ],
-            ])),
-            IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-          ]),
+            ]);
+            final refresh = IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
+            return constraints.maxWidth < 500
+                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: refresh), heading])
+                : Row(children: [Expanded(child: heading), refresh]);
+          }),
           const SizedBox(height: 24),
           Wrap(spacing: 14, runSpacing: 14, children: [
             MetricCard('فروش امروز', '${formatPersianNumber(data.todayRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
