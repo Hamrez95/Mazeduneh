@@ -37,6 +37,8 @@ class AuthApiClient {
     final token = body['accessToken'] as String?;
     final expiresAtRaw = body['expiresAt'] as String?;
     final ownerEmail = body['email'] as String? ?? email.trim();
+    final role = body['role'] as String? ?? 'Owner';
+    final permissions = _stringList(body['permissions']);
     if (token == null || expiresAtRaw == null) {
       throw AuthApiException('پاسخ ورود از سرور کامل نیست.');
     }
@@ -45,6 +47,8 @@ class AuthApiClient {
       accessToken: token,
       expiresAt: DateTime.parse(expiresAtRaw),
       email: ownerEmail,
+      role: role,
+      permissions: permissions,
     );
   }
 
@@ -60,7 +64,16 @@ class AuthApiClient {
       if (response.statusCode == 401) OwnerSession.instance.clear();
       throw AuthApiException(_message(response), statusCode: response.statusCode);
     }
+    final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    OwnerSession.instance.updateIdentity(
+      role: body['role'] as String? ?? OwnerSession.instance.role ?? 'Owner',
+      permissions: body.containsKey('permissions') ? _stringList(body['permissions']) : OwnerSession.instance.permissions,
+    );
   }
+
+  List<String> _stringList(Object? value) => value is List
+      ? value.whereType<String>().map((item) => item.trim()).where((item) => item.isNotEmpty).toList()
+      : const [];
 
   String _message(http.Response response) {
     if (response.statusCode == 401) return 'ایمیل یا رمز عبور صحیح نیست.';

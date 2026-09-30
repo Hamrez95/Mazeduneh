@@ -23,6 +23,7 @@ void main() {
           'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),
           'email': 'owner@example.com',
           'role': 'Owner',
+          'permissions': ['orders.read', 'products.write'],
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -37,6 +38,32 @@ void main() {
     expect(OwnerSession.instance.isAuthenticated, isTrue);
     expect(OwnerSession.instance.bearerToken, 'signed-token');
     expect(OwnerSession.instance.email, 'owner@example.com');
+    expect(OwnerSession.instance.role, 'Owner');
+    expect(OwnerSession.instance.can('orders.read'), isTrue);
+    expect(OwnerSession.instance.permissions, contains('products.write'));
+  });
+
+  test('session validation refreshes role and permissions from the server', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'signed-token',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+      role: 'StoreManager',
+    );
+    final client = MockClient((request) async {
+      expect(request.url.path, '/api/v1/admin/auth/session');
+      return http.Response(
+        jsonEncode({'authenticated': true, 'email': 'owner@example.com', 'role': 'StoreManager', 'permissions': ['orders.read'], 'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String()}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+
+    await AuthApiClient(client: client, baseUrl: 'https://api.example.com').validateSession();
+
+    expect(OwnerSession.instance.role, 'StoreManager');
+    expect(OwnerSession.instance.can('orders.read'), isTrue);
+    expect(OwnerSession.instance.can('products.write'), isFalse);
   });
 
   test('admin catalog request sends bearer token', () async {
