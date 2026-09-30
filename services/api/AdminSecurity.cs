@@ -42,7 +42,8 @@ public static class AdminSecurityExtensions
                 accessToken = issued.Token,
                 tokenType = "Bearer",
                 expiresAt = issued.ExpiresAt,
-                role = "Owner",
+                role = issued.Role,
+                permissions = issued.Permissions,
                 email = tokens.OwnerEmail
             });
         })
@@ -53,7 +54,7 @@ public static class AdminSecurityExtensions
         {
             var token = AdminTokenService.ReadBearerToken(context.Request);
             return token is not null && tokens.TryValidate(token, out var principal)
-                ? Results.Ok(new { authenticated = true, email = principal.Email, role = "Owner", expiresAt = principal.ExpiresAt })
+                ? Results.Ok(new { authenticated = true, email = principal.Email, role = principal.Role, permissions = principal.Permissions, expiresAt = principal.ExpiresAt })
                 : Results.Unauthorized();
         })
         .WithTags("Admin Auth");
@@ -63,8 +64,31 @@ public static class AdminSecurityExtensions
 }
 
 public sealed record AdminLoginRequest(string Email, string Password);
-public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt);
-public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt);
+public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions);
+public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions);
+
+public static class AdminPermissionCatalog
+{
+    public const string DashboardRead = "dashboard.read";
+    public const string OrdersRead = "orders.read";
+    public const string OrdersWrite = "orders.write";
+    public const string ProductsRead = "products.read";
+    public const string ProductsWrite = "products.write";
+    public const string InventoryRead = "inventory.read";
+    public const string InventoryWrite = "inventory.write";
+    public const string CustomersRead = "customers.read";
+    public const string ReportsRead = "reports.read";
+    public const string PricingWrite = "pricing.write";
+    public const string ContentWrite = "content.write";
+    public const string SettingsWrite = "settings.write";
+
+    public static IReadOnlyList<string> Owner { get; } =
+    [
+        DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite,
+        InventoryRead, InventoryWrite, CustomersRead, ReportsRead, PricingWrite,
+        ContentWrite, SettingsWrite
+    ];
+}
 
 public sealed class AdminTokenService
 {
@@ -97,11 +121,13 @@ public sealed class AdminTokenService
     public IssuedAdminToken Issue(string email)
     {
         var expiresAt = DateTimeOffset.UtcNow.Add(_lifetime);
-        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{Guid.NewGuid():N}";
+        var role = "Owner";
+        var permissions = AdminPermissionCatalog.Owner;
+        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{Guid.NewGuid():N}|{role}|{string.Join(',', permissions)}";
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
         var token = $"{Base64Url(payloadBytes)}.{Base64Url(signature)}";
-        return new IssuedAdminToken(token, expiresAt);
+        return new IssuedAdminToken(token, expiresAt, role, permissions);
     }
 
     public bool TryValidate(string token, out AdminPrincipal principal)
@@ -113,11 +139,15 @@ public sealed class AdminTokenService
         var expectedSignature = HMACSHA256.HashData(_signingKey, payloadBytes);
         if (!CryptographicOperations.FixedTimeEquals(signature, expectedSignature)) return false;
 
-        var fields = Encoding.UTF8.GetString(payloadBytes).Split('|', 3);
-        if (fields.Length != 3 || !long.TryParse(fields[1], out var unixExpiry)) return false;
+        var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
+        if (fields.Length < 3 || !long.TryParse(fields[1], out var unixExpiry)) return false;
         var expiresAt = DateTimeOffset.FromUnixTimeSeconds(unixExpiry);
         if (expiresAt <= DateTimeOffset.UtcNow || !string.Equals(fields[0], OwnerEmail, StringComparison.OrdinalIgnoreCase)) return false;
-        principal = new AdminPrincipal(fields[0], expiresAt);
+        var role = fields.Length > 3 && !string.IsNullOrWhiteSpace(fields[3]) ? fields[3] : "Owner";
+        var permissions = fields.Length > 4
+            ? fields[4].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : AdminPermissionCatalog.Owner;
+        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions);
         return true;
     }
 
