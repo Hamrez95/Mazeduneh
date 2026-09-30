@@ -142,7 +142,23 @@ jobs:
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
             --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/login.json', encoding='utf-8'))
+          assert login['accessToken']
+          assert login['tokenType'] == 'Bearer'
+          assert login['role'] == 'Owner'
+          PY
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/auth/session \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/session.json
+          python3 - <<'PY'
+          import json
+          session = json.load(open('/tmp/session.json', encoding='utf-8'))
+          assert session['authenticated'] is True
+          assert session['role'] == 'Owner'
+          assert session['email'] == 'ci-owner@mazeduneh.test'
+          PY
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/corporate-requests \
             -H 'Content-Type: application/json' \
