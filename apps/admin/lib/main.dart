@@ -92,7 +92,7 @@ class _AdminShellState extends State<AdminShell> {
       const CorporateRequestsPage(),
     ];
     return Scaffold(
-      appBar: desktop ? null : AppBar(title: const Brand()),
+      appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
       bottomNavigationBar: desktop
           ? null
           : NavigationBar(
@@ -138,26 +138,59 @@ class _AdminShellState extends State<AdminShell> {
               icon: const Icon(Icons.add_rounded),
               label: const Text('محصول جدید'),
             )
-          : null,
+      : null,
     );
+  }
+
+  Future<void> _openMoreMenu() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            ),
+            for (var i = 4; i < items.length; i++)
+              ListTile(
+                selected: index == i,
+                selectedTileColor: AdminColors.mintSoft,
+                leading: Icon(items[i].$2, color: AdminColors.ink),
+                title: Text(items[i].$1),
+                trailing: const Icon(Icons.arrow_back_rounded, size: 18),
+                onTap: () => Navigator.pop(context, i),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted) setState(() => index = selected);
   }
 }
 
 class Brand extends StatelessWidget {
-  const Brand({super.key, this.dark = false});
+  const Brand({super.key, this.dark = false, this.compact = false});
   final bool dark;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Image.asset('assets/mazedooneh-mark.png', width: 45, height: 45, fit: BoxFit.cover),
+          borderRadius: BorderRadius.circular(compact ? 11 : 15),
+          child: Image.asset('assets/mazedooneh-mark.png', width: compact ? 34 : 45, height: compact ? 34 : 45, fit: BoxFit.cover),
         ),
         const SizedBox(width: 10),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
-          Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
-        ]),
+        if (compact)
+          Text('مدیریت مزه‌دونه', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: dark ? Colors.white : null))
+        else
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
+            Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
+          ]),
       ]);
 }
 
@@ -207,8 +240,8 @@ class _DashboardPageState extends State<DashboardPage> {
         padding: const EdgeInsets.all(28),
         children: [
           if (error != null) AdminStaleBanner(detail: 'داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
-          Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          LayoutBuilder(builder: (context, constraints) {
+            final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
               const SizedBox(height: 6),
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
@@ -216,9 +249,12 @@ class _DashboardPageState extends State<DashboardPage> {
                 const SizedBox(height: 5),
                 Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
               ],
-            ])),
-            IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-          ]),
+            ]);
+            final refresh = IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
+            return constraints.maxWidth < 500
+                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: refresh), heading])
+                : Row(children: [Expanded(child: heading), refresh]);
+          }),
           const SizedBox(height: 24),
           Wrap(spacing: 14, runSpacing: 14, children: [
             MetricCard('فروش امروز', '${formatPersianNumber(data.todayRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
@@ -284,34 +320,6 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Future<void> _openMoreMenu() async {
-    final selected = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-            ),
-            for (var i = 4; i < items.length; i++)
-              ListTile(
-                selected: index == i,
-                selectedTileColor: AdminColors.mintSoft,
-                leading: Icon(items[i].$2, color: AdminColors.ink),
-                title: Text(items[i].$1),
-                trailing: const Icon(Icons.arrow_back_rounded, size: 18),
-                onTap: () => Navigator.pop(context, i),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (selected != null && mounted) setState(() => index = selected);
-  }
 }
 
 class _DashboardSectionTitle extends StatelessWidget {
@@ -366,20 +374,36 @@ class _DashboardQuickAction extends StatelessWidget {
           child: InkWell(
             onTap: onPressed,
             borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                Container(width: 42, height: 42, decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle), child: Icon(action.icon, color: AdminColors.ink)),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
-                  const SizedBox(height: 4),
-                  Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted)),
-                ])),
-                const SizedBox(width: 6),
-                const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
-              ]),
-            ),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final compact = constraints.maxWidth < 320;
+              final icon = Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle),
+                child: Icon(action.icon, color: AdminColors.ink),
+              );
+              final title = Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep));
+              final detail = Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted));
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: compact
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Align(alignment: AlignmentDirectional.centerEnd, child: const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink)),
+                        icon,
+                        const SizedBox(height: 10),
+                        title,
+                        const SizedBox(height: 6),
+                        detail,
+                      ])
+                    : Row(children: [
+                        icon,
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, const SizedBox(height: 4), detail])),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
+                      ]),
+              );
+            }),
           ),
         ),
       );
@@ -392,7 +416,7 @@ class _DashboardPanel extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [Icon(icon, color: AdminColors.ink), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
+    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [Icon(icon, color: AdminColors.ink), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
     const SizedBox(height: 12), child,
   ])));
 }

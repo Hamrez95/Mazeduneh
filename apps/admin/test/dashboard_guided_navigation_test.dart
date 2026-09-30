@@ -62,10 +62,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
+    await tester.pumpAndSettle();
+
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    final exception = tester.takeException();
+    if (exception is FlutterError) {
+      for (final diagnostic in exception.diagnostics) {
+        debugPrint(diagnostic.toStringDeep());
+      }
+    }
+    expect(exception, isNull);
 
     await tester.tap(find.text('پیگیری سفارش‌ها'));
     expect(destination, 1);
