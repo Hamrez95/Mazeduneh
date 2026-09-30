@@ -148,6 +148,8 @@ jobs:
           assert login['accessToken']
           assert login['tokenType'] == 'Bearer'
           assert login['role'] == 'Owner'
+          assert 'orders.read' in login['permissions']
+          assert 'products.write' in login['permissions']
           PY
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
           curl -fsS http://127.0.0.1:5099/api/v1/admin/auth/session \
@@ -158,6 +160,8 @@ jobs:
           assert session['authenticated'] is True
           assert session['role'] == 'Owner'
           assert session['email'] == 'ci-owner@mazeduneh.test'
+          assert 'orders.read' in session['permissions']
+          assert 'products.write' in session['permissions']
           PY
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/corporate-requests \
