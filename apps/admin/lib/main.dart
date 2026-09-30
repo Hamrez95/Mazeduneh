@@ -975,6 +975,8 @@ class _OrdersPageState extends State<OrdersPage> {
   };
   List<AdminOrder> orders = const [];
   String selectedState = '';
+  final searchController = TextEditingController();
+  String searchQuery = '';
   Object? error;
   bool loading = true;
   String? busyOrder;
@@ -991,13 +993,19 @@ class _OrdersPageState extends State<OrdersPage> {
       error = null;
     });
     try {
-      final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState);
+      final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
       if (mounted) setState(() => orders = result);
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> advance(AdminOrder order) async {
@@ -1035,27 +1043,51 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-                const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
-              ]),
+          LayoutBuilder(builder: (context, constraints) {
+            final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+              const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ]);
+            final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              DropdownButton<String>(
+                value: selectedState,
+                items: states.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => selectedState = value);
+                  load();
+                },
+              ),
+              IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+            ]);
+            return constraints.maxWidth < 560
+                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [heading, const SizedBox(height: 10), controls])
+                : Row(children: [Expanded(child: heading), controls]);
+          }),
+          const SizedBox(height: 12),
+          TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (value) {
+              setState(() => searchQuery = value.trim());
+              load();
+            },
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded),
+              hintText: 'جست‌وجو با شماره سفارش، نام، موبایل یا شهر',
+              suffixIcon: searchQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'پاک‌کردن جست‌وجو',
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() => searchQuery = '');
+                        load();
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    ),
             ),
-            DropdownButton<String>(
-              value: selectedState,
-              items: states.entries
-                  .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value)))
-                  .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => selectedState = value);
-                load();
-              },
-            ),
-            const SizedBox(width: 8),
-            IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-          ]),
+          ),
           const SizedBox(height: 18),
           Expanded(child: _body()),
         ]),
@@ -1072,7 +1104,11 @@ class _OrdersPageState extends State<OrdersPage> {
           AdminEmptyState(
             icon: Icons.receipt_long_rounded,
             title: selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'سفارشی با این وضعیت وجود ندارد',
-            detail: selectedState.isEmpty ? 'سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.' : 'فیلتر وضعیت را تغییر دهید یا همه سفارش‌ها را ببینید.',
+            detail: searchQuery.isNotEmpty
+                ? 'عبارت جست‌وجو یا فیلتر وضعیت را تغییر دهید.'
+                : selectedState.isEmpty
+                    ? 'سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.'
+                    : 'فیلتر وضعیت را تغییر دهید یا همه سفارش‌ها را ببینید.',
           ),
         ]),
       );

@@ -16,13 +16,14 @@ public static class OrderManagementModule
 
         admin.MapGet("/orders", async (
             string? state,
+            string? q,
             int? limit,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
         {
             if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
-            return Results.Ok(await database.ListAsync(state, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
+            return Results.Ok(await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/dashboard", async (
@@ -97,6 +98,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 
     public async Task<IReadOnlyCollection<AdminOrderSummary>> ListAsync(
         string? state,
+        string? query,
         int limit,
         CancellationToken cancellationToken)
     {
@@ -109,6 +111,10 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             left join checkout_order_lines l on l.order_id=o.id
             left join payments p on p.order_id=o.id
             where (@state = '' or lower(o.state)=lower(@state))
+              and (@query = '' or o.id::text ilike '%' || @query || '%'
+                   or o.customer_name ilike '%' || @query || '%'
+                   or o.mobile ilike '%' || @query || '%'
+                   or o.city ilike '%' || @query || '%')
             group by o.id,p.reference,p.state
             order by o.created_at desc
             limit @limit;
@@ -117,6 +123,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("state", state?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("limit", limit);
         var result = new List<AdminOrderSummary>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
