@@ -62,7 +62,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, CancellationToken cancellationToken)
+    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, string actor, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
         if (request.QuantityDelta == 0) return StockAdjustmentResult.Failed("مقدار تغییر باید صفر نباشد.");
@@ -87,7 +87,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         var sku = reader.GetString(0);
         var balance = reader.GetInt32(1);
         await reader.CloseAsync();
-        await RecordAsync(connection, transaction, sku, request.QuantityDelta, "ManualAdjustment", balance, null, "owner", request.Reason.Trim(), cancellationToken);
+        await RecordAsync(connection, transaction, sku, request.QuantityDelta, "ManualAdjustment", balance, null, actor, request.Reason.Trim(), cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return StockAdjustmentResult.Success(sku, balance);
     }
@@ -133,11 +133,12 @@ public static class InventoryLedgerModule
 {
     public static IEndpointRouteBuilder MapInventoryLedger(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/v1/admin/inventory/adjust", async (StockAdjustmentRequest request, InventoryLedgerDatabase database, CancellationToken cancellationToken) =>
+        endpoints.MapPost("/api/v1/admin/inventory/adjust", async (StockAdjustmentRequest request, InventoryLedgerDatabase database, HttpContext context, CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(request.Sku) || string.IsNullOrWhiteSpace(request.Reason))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Sku)] = ["SKU و دلیل تغییر الزامی است."] });
-            var result = await database.AdjustAsync(request, cancellationToken);
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var result = await database.AdjustAsync(request, actor, cancellationToken);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
