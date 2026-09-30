@@ -92,7 +92,7 @@ class _AdminShellState extends State<AdminShell> {
       const CorporateRequestsPage(),
     ];
     return Scaffold(
-      appBar: desktop ? null : AppBar(title: const Brand()),
+      appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
       bottomNavigationBar: desktop
           ? null
           : NavigationBar(
@@ -173,20 +173,24 @@ class _AdminShellState extends State<AdminShell> {
 }
 
 class Brand extends StatelessWidget {
-  const Brand({super.key, this.dark = false});
+  const Brand({super.key, this.dark = false, this.compact = false});
   final bool dark;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Image.asset('assets/mazedooneh-mark.png', width: 45, height: 45, fit: BoxFit.cover),
+          borderRadius: BorderRadius.circular(compact ? 11 : 15),
+          child: Image.asset('assets/mazedooneh-mark.png', width: compact ? 34 : 45, height: compact ? 34 : 45, fit: BoxFit.cover),
         ),
         const SizedBox(width: 10),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
-          Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
-        ]),
+        if (compact)
+          Text('مدیریت مزه‌دونه', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: dark ? Colors.white : null))
+        else
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
+            Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
+          ]),
       ]);
 }
 
