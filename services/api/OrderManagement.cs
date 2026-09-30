@@ -23,6 +23,8 @@ public static class OrderManagementModule
         {
             if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
+            if (q?.Length > 120)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
             return Results.Ok(await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
