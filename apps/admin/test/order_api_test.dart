@@ -39,10 +39,11 @@ void main() {
       ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
 
-    final orders = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOrders(state: 'Paid');
+    final orders = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOrders(state: 'Paid', query: 'Mina');
     expect(captured.headers['authorization'], 'Bearer order-test-token');
     expect(captured.url.path, '/api/v1/admin/orders');
     expect(captured.url.queryParameters['state'], 'Paid');
+    expect(captured.url.queryParameters['q'], 'Mina');
     expect(orders.single.nextState, 'Preparing');
     expect(orders.single.paymentReference, 'SANDBOX-1');
   });

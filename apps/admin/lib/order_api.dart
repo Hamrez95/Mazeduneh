@@ -24,9 +24,9 @@ class OrderApiClient {
     return {'authorization': 'Bearer $token', if (json) 'content-type': 'application/json; charset=utf-8'};
   }
 
-  Future<List<AdminOrder>> fetchOrders({String? state, int limit = 100}) async {
-    final query = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state};
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders').replace(queryParameters: query), headers: _headers());
+  Future<List<AdminOrder>> fetchOrders({String? state, String? query, int limit = 100}) async {
+    final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders').replace(queryParameters: params), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
