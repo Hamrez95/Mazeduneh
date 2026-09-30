@@ -371,20 +371,33 @@ class _DashboardQuickAction extends StatelessWidget {
           child: InkWell(
             onTap: onPressed,
             borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                Container(width: 42, height: 42, decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle), child: Icon(action.icon, color: AdminColors.ink)),
-                const SizedBox(width: 12),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
-                  const SizedBox(height: 4),
-                  Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted)),
-                ])),
-                const SizedBox(width: 6),
-                const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
-              ]),
-            ),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final compact = constraints.maxWidth < 320;
+              final icon = Container(
+                width: 42,
+                height: 42,
+                decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle),
+                child: Icon(action.icon, color: AdminColors.ink),
+              );
+              final title = Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep));
+              final detail = Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted));
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: compact
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [icon, const SizedBox(width: 12), Expanded(child: title), const SizedBox(width: 6), const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink)]),
+                        const SizedBox(height: 8),
+                        Padding(padding: const EdgeInsetsDirectional.only(start: 54), child: detail),
+                      ])
+                    : Row(children: [
+                        icon,
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, const SizedBox(height: 4), detail])),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
+                      ]),
+              );
+            }),
           ),
         ),
       );
