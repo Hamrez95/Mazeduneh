@@ -54,7 +54,8 @@ class MazedunehAdminApp extends StatelessWidget {
 }
 
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key});
+  const AdminShell({super.key, this.dashboardApi});
+  final OrderApiClient? dashboardApi;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -79,7 +80,7 @@ class _AdminShellState extends State<AdminShell> {
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final pages = [
-      const DashboardPage(),
+      DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination)),
       const OrdersPage(),
       CatalogPage(key: catalogKey),
       const InventoryPage(),
@@ -160,8 +161,9 @@ class Brand extends StatelessWidget {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, this.api});
+  const DashboardPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
+  final ValueChanged<int>? onNavigate;
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
@@ -172,6 +174,7 @@ class _DashboardPageState extends State<DashboardPage> {
   AdminNotifications? notifications;
   Object? error;
   bool loading = true;
+  DateTime? lastLoadedAt;
 
   @override
   void initState() { super.initState(); load(); }
@@ -183,6 +186,7 @@ class _DashboardPageState extends State<DashboardPage> {
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
+        lastLoadedAt = DateTime.now();
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception);
@@ -193,21 +197,26 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return AdminErrorState(error: error!, onRetry: load);
+    if (loading && dashboard == null) return const Center(child: CircularProgressIndicator());
+    if (error != null && dashboard == null) return AdminErrorState(error: error!, onRetry: load);
     final data = dashboard!;
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
         padding: const EdgeInsets.all(28),
         children: [
+          if (error != null) _DashboardStaleBanner(error: error!, onRetry: load),
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
               const SizedBox(height: 6),
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
+              if (lastLoadedAt != null) ...[
+                const SizedBox(height: 5),
+                Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+              ],
             ])),
-        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+            IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
           ]),
           const SizedBox(height: 24),
           Wrap(spacing: 14, runSpacing: 14, children: [
@@ -217,54 +226,174 @@ class _DashboardPageState extends State<DashboardPage> {
             MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
           ]),
           const SizedBox(height: 24),
+          const _DashboardSectionTitle(
+            eyebrow: 'مسیرهای سریع',
+            title: 'امروز چه کاری انجام دهید؟',
+            detail: 'از همین‌جا به کاری بروید که بیشترین اثر را روی عملیات امروز دارد.',
+          ),
+          const SizedBox(height: 12),
+          _DashboardQuickActions(onNavigate: widget.onNavigate),
+          const SizedBox(height: 28),
           Builder(builder: (context) {
             final alertItems = notifications?.items ?? const <AdminNotification>[];
-            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(
-                child: _DashboardPanel(
-                  title: 'هشدارهای عملیاتی',
-                  icon: Icons.notifications_active_rounded,
-                  child: alertItems.isEmpty
-                      ? const Text('مورد فوری وجود ندارد.', style: TextStyle(color: AdminColors.muted))
-                      : Column(children: [
-                          for (final item in alertItems.take(4))
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: const CircleAvatar(
-                                backgroundColor: AdminColors.mintSoft,
-                                child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18),
-                              ),
-                              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                              subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)),
+            final panels = [
+              _DashboardPanel(
+                title: 'هشدارهای عملیاتی',
+                icon: Icons.notifications_active_rounded,
+                child: alertItems.isEmpty
+                    ? const _DashboardEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
+                    : Column(children: [
+                        for (final item in alertItems.take(4))
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const CircleAvatar(
+                              backgroundColor: AdminColors.mintSoft,
+                              child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18),
                             ),
-                        ]),
-                ),
+                            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)),
+                          ),
+                      ]),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _DashboardPanel(
-                  title: 'موجودی کم',
-                  icon: Icons.warning_amber_rounded,
-                  child: data.lowStock.isEmpty
-                      ? const Text('همه موجودی‌ها در وضعیت مناسب هستند.', style: TextStyle(color: AdminColors.muted))
-                      : Column(children: [
-                          for (final item in data.lowStock.take(4))
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                              subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                              trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
-                            ),
-                        ]),
-                ),
+              _DashboardPanel(
+                title: 'موجودی کم',
+                icon: Icons.warning_amber_rounded,
+                child: data.lowStock.isEmpty
+                    ? const _DashboardEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
+                    : Column(children: [
+                        for (final item in data.lowStock.take(4))
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                            trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                          ),
+                      ]),
               ),
-            ]);
+            ];
+            return LayoutBuilder(builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 720;
+              return stacked
+                  ? Column(children: [panels[0], const SizedBox(height: 14), panels[1]])
+                  : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: panels[0]), const SizedBox(width: 14), Expanded(child: panels[1])]);
+            });
           }),
         ],
       ),
     );
   }
 }
+
+class _DashboardStaleBanner extends StatelessWidget {
+  const _DashboardStaleBanner({required this.error, required this.onRetry});
+  final Object error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: const Color(0xFFFFF4E3),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(children: [
+            const Icon(Icons.sync_problem_rounded, color: Color(0xFF8C5A15)),
+            const SizedBox(width: 10),
+            Expanded(child: Text('داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error)}', style: const TextStyle(color: Color(0xFF704A17), fontSize: 12))),
+            TextButton(onPressed: onRetry, child: const Text('تلاش دوباره')),
+          ]),
+        ),
+      );
+}
+
+class _DashboardSectionTitle extends StatelessWidget {
+  const _DashboardSectionTitle({required this.eyebrow, required this.title, required this.detail});
+  final String eyebrow;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(eyebrow, style: const TextStyle(color: AdminColors.ink, fontSize: 12, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 4),
+        Text(title, style: const TextStyle(color: AdminColors.inkDeep, fontSize: 20, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 4),
+        Text(detail, style: const TextStyle(color: AdminColors.muted, fontSize: 12)),
+      ]);
+}
+
+class _DashboardQuickActions extends StatelessWidget {
+  const _DashboardQuickActions({required this.onNavigate});
+  final ValueChanged<int>? onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    const actions = [
+      (title: 'ثبت محصول', detail: 'محصول جدید را به‌صورت پیش‌نویس بسازید.', icon: Icons.add_box_rounded, destination: 2),
+      (title: 'پیگیری سفارش‌ها', detail: 'سفارش‌های جدید و منتظر پرداخت را ببینید.', icon: Icons.receipt_long_rounded, destination: 1),
+      (title: 'اصلاح موجودی', detail: 'دریافت کالا یا اصلاح یک SKU را ثبت کنید.', icon: Icons.inventory_2_rounded, destination: 3),
+      (title: 'پیگیری فروش سازمانی', detail: 'درخواست‌های جدید را از دست ندهید.', icon: Icons.business_center_rounded, destination: 8),
+    ];
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 1050 ? 4 : constraints.maxWidth >= 650 ? 2 : 1;
+      final width = (constraints.maxWidth - ((columns - 1) * 12)) / columns;
+      return Wrap(spacing: 12, runSpacing: 12, children: [
+        for (final action in actions)
+          SizedBox(width: width, child: _DashboardQuickAction(action: action, onPressed: onNavigate == null ? null : () => onNavigate!(action.destination))),
+      ]);
+    });
+  }
+}
+
+class _DashboardQuickAction extends StatelessWidget {
+  const _DashboardQuickAction({required this.action, required this.onPressed});
+  final ({String title, String detail, IconData icon, int destination}) action;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        button: true,
+        label: '${action.title}: ${action.detail}',
+        child: Card(
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                Container(width: 42, height: 42, decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle), child: Icon(action.icon, color: AdminColors.ink)),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+                  const SizedBox(height: 4),
+                  Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted)),
+                ])),
+                const SizedBox(width: 6),
+                const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
+              ]),
+            ),
+          ),
+        ),
+      );
+}
+
+class _DashboardEmptyState extends StatelessWidget {
+  const _DashboardEmptyState({required this.icon, required this.title, required this.detail});
+  final IconData icon;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(children: [
+          Icon(icon, color: AdminColors.ink, size: 24),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 3),
+            Text(detail, style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
+          ])),
+        ]),
+      );
 
 class _DashboardPanel extends StatelessWidget {
   const _DashboardPanel({required this.title, required this.icon, required this.child});
