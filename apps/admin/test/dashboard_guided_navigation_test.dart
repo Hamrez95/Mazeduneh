@@ -62,7 +62,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scroll(find.byType(ListView), const Offset(0, -1400));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
     await tester.pumpAndSettle();
 
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
