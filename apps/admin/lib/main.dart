@@ -79,6 +79,7 @@ class _AdminShellState extends State<AdminShell> {
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
+    final mobileItems = [...items.take(4), ('بیشتر', Icons.more_horiz_rounded)];
     final pages = [
       DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination)),
       const OrdersPage(),
@@ -95,9 +96,9 @@ class _AdminShellState extends State<AdminShell> {
       bottomNavigationBar: desktop
           ? null
           : NavigationBar(
-              selectedIndex: index,
-              onDestinationSelected: (value) => setState(() => index = value),
-              destinations: [for (final item in items) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
+              selectedIndex: index < mobileItems.length - 1 ? index : mobileItems.length - 1,
+              onDestinationSelected: (value) => value == mobileItems.length - 1 ? _openMoreMenu() : setState(() => index = value),
+              destinations: [for (final item in mobileItems) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
             ),
       body: Row(children: [
         if (desktop)
@@ -137,8 +138,37 @@ class _AdminShellState extends State<AdminShell> {
               icon: const Icon(Icons.add_rounded),
               label: const Text('محصول جدید'),
             )
-          : null,
+      : null,
     );
+  }
+
+  Future<void> _openMoreMenu() async {
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            ),
+            for (var i = 4; i < items.length; i++)
+              ListTile(
+                selected: index == i,
+                selectedTileColor: AdminColors.mintSoft,
+                leading: Icon(items[i].$2, color: AdminColors.ink),
+                title: Text(items[i].$1),
+                trailing: const Icon(Icons.arrow_back_rounded, size: 18),
+                onTap: () => Navigator.pop(context, i),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null && mounted) setState(() => index = selected);
   }
 }
 
@@ -282,6 +312,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
 }
 
 class _DashboardSectionTitle extends StatelessWidget {
