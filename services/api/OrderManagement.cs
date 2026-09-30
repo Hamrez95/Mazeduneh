@@ -49,12 +49,14 @@ public static class OrderManagementModule
             SetOrderStateRequest request,
             OrderManagementDatabase database,
             ProductCatalog catalog,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             if (!Enum.TryParse<OrderState>(request.State, true, out var requestedState))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.State)] = ["وضعیت سفارش معتبر نیست."] });
 
-            var result = await database.TransitionAsync(orderId, requestedState, request.Reason, cancellationToken);
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, cancellationToken);
             if (result.StockLevels is not null)
                 foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
 
@@ -262,6 +264,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         Guid orderId,
         OrderState requestedState,
         string? reason,
+        string actor,
         CancellationToken cancellationToken)
     {
         if (!IsConfigured) return OrderOperationResult.Conflict("دیتابیس سفارش تنظیم نشده است.");
@@ -343,7 +346,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                     var availablePackages = Convert.ToInt32(available);
                     await ledger.RecordAsync(
                         connection, transaction, line.Sku, line.Quantity, "ReservationReleased",
-                        availablePackages, orderId, "owner", "owner-cancelled-before-payment", cancellationToken);
+                        availablePackages, orderId, actor, "owner-cancelled-before-payment", cancellationToken);
                     stockLevels.Add(new StockLevelChange(line.Sku, availablePackages));
                 }
             }        }
@@ -356,12 +359,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
         await using (var command = new NpgsqlCommand(
-            "insert into checkout_order_transitions (id,order_id,state,actor,occurred_at,reason) values (@transition_id,@order_id,@state,'owner',@at,@reason);",
+            "insert into checkout_order_transitions (id,order_id,state,actor,occurred_at,reason) values (@transition_id,@order_id,@state,@actor,@at,@reason);",
             connection, transaction))
         {
             command.Parameters.AddWithValue("transition_id", Guid.NewGuid());
             command.Parameters.AddWithValue("order_id", orderId);
             command.Parameters.AddWithValue("state", requestedState.ToString());
+            command.Parameters.AddWithValue("actor", actor);
             command.Parameters.AddWithValue("at", now);
             command.Parameters.AddWithValue("reason", string.IsNullOrWhiteSpace(reason) ? $"owner-{requestedState.ToString().ToLowerInvariant()}" : reason.Trim());
             await command.ExecuteNonQueryAsync(cancellationToken);
