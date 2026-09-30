@@ -66,3 +66,60 @@ class AdminErrorState extends StatelessWidget {
     );
   }
 }
+
+class AdminEmptyState extends StatelessWidget {
+  const AdminEmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.detail,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 42, color: const Color(0xFF718078)),
+            const SizedBox(height: 12),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF19352C))),
+            const SizedBox(height: 5),
+            Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF718078), fontSize: 12, height: 1.6)),
+            if (actionLabel != null && onAction != null) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(onPressed: onAction, icon: const Icon(Icons.arrow_back_rounded), label: Text(actionLabel!)),
+            ],
+          ],
+        ),
+      );
+}
+
+class AdminStaleBanner extends StatelessWidget {
+  const AdminStaleBanner({super.key, required this.detail, required this.onRetry});
+
+  final String detail;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: const Color(0xFFFFF4E3),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(children: [
+            const Icon(Icons.sync_problem_rounded, color: Color(0xFF8C5A15)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(detail, style: const TextStyle(color: Color(0xFF704A17), fontSize: 12))),
+            TextButton(onPressed: onRetry, child: const Text('تلاش دوباره')),
+          ]),
+        ),
+      );
+}

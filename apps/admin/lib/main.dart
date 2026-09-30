@@ -205,7 +205,7 @@ class _DashboardPageState extends State<DashboardPage> {
       child: ListView(
         padding: const EdgeInsets.all(28),
         children: [
-          if (error != null) _DashboardStaleBanner(error: error!, onRetry: load),
+          if (error != null) AdminStaleBanner(detail: 'داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
@@ -241,7 +241,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 title: 'هشدارهای عملیاتی',
                 icon: Icons.notifications_active_rounded,
                 child: alertItems.isEmpty
-                    ? const _DashboardEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
+                    ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
                     : Column(children: [
                         for (final item in alertItems.take(4))
                           ListTile(
@@ -259,7 +259,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 title: 'موجودی کم',
                 icon: Icons.warning_amber_rounded,
                 child: data.lowStock.isEmpty
-                    ? const _DashboardEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
+                    ? const AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
                     : Column(children: [
                         for (final item in data.lowStock.take(4))
                           ListTile(
@@ -282,26 +282,6 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
-}
-
-class _DashboardStaleBanner extends StatelessWidget {
-  const _DashboardStaleBanner({required this.error, required this.onRetry});
-  final Object error;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Card(
-        color: const Color(0xFFFFF4E3),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(children: [
-            const Icon(Icons.sync_problem_rounded, color: Color(0xFF8C5A15)),
-            const SizedBox(width: 10),
-            Expanded(child: Text('داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error)}', style: const TextStyle(color: Color(0xFF704A17), fontSize: 12))),
-            TextButton(onPressed: onRetry, child: const Text('تلاش دوباره')),
-          ]),
-        ),
-      );
 }
 
 class _DashboardSectionTitle extends StatelessWidget {
@@ -374,26 +354,6 @@ class _DashboardQuickAction extends StatelessWidget {
         ),
       );
 }
-
-class _DashboardEmptyState extends StatelessWidget {
-  const _DashboardEmptyState({required this.icon, required this.title, required this.detail});
-  final IconData icon;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Row(children: [
-          Icon(icon, color: AdminColors.ink, size: 24),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 3),
-            Text(detail, style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
-          ])),
-        ]),
-      );
 
 class _DashboardPanel extends StatelessWidget {
   const _DashboardPanel({required this.title, required this.icon, required this.child});
@@ -557,7 +517,7 @@ class CatalogPageState extends State<CatalogPage> {
     if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final visible = showDrafts ? products : products.where((item) => item.isPublished).toList();
-    if (visible.isEmpty) return const Center(child: Text('محصولی با این وضعیت وجود ندارد.'));
+    if (visible.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'محصولی پیدا نشد', detail: 'با تغییر فیلتر یا ثبت محصول جدید، فهرست را کامل کنید.'));
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
       return GridView.builder(
@@ -1055,7 +1015,11 @@ class _OrdersPageState extends State<OrdersPage> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Icon(Icons.receipt_long_rounded, size: 56, color: Color(0xFF9EACA1)),
           const SizedBox(height: 12),
-          Text(selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است.' : 'سفارشی با این وضعیت وجود ندارد.'),
+          AdminEmptyState(
+            icon: Icons.receipt_long_rounded,
+            title: selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'سفارشی با این وضعیت وجود ندارد',
+            detail: selectedState.isEmpty ? 'سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.' : 'فیلتر وضعیت را تغییر دهید یا همه سفارش‌ها را ببینید.',
+          ),
         ]),
       );
     }
@@ -1254,7 +1218,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: movements.isEmpty ? const Center(child: Text('گردشی ثبت نشده است.')) : ListView.separated(
+            Expanded(child: movements.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
               itemCount: movements.length,
               separatorBuilder: (_, __) => const Divider(height: 16),
               itemBuilder: (_, index) {
@@ -1276,7 +1240,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('بچ‌ها و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const Center(child: Text('هنوز بچی ثبت نشده است.')) : ListView.separated(
+            Expanded(child: batches.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز بچی ثبت نشده است', detail: 'برای کنترل FEFO، اولین دریافت کالا را ثبت کنید.')) : ListView.separated(
               itemCount: batches.length,
               separatorBuilder: (_, __) => const Divider(height: 14),
               itemBuilder: (_, index) {
@@ -1910,7 +1874,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final items = data?.items ?? const <AdminNotification>[];
-    if (items.isEmpty) return const Center(child: Text('فعلاً اعلان مهمی ندارید.', style: TextStyle(color: AdminColors.muted)));
+    if (items.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.notifications_none_rounded, title: 'فعلاً اعلان مهمی ندارید', detail: 'اعلان سفارش، موجودی یا پیگیری بعدی اینجا نمایش داده می‌شود.'));
     return ListView.separated(
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
