@@ -388,9 +388,12 @@ class _DashboardQuickAction extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: compact
                     ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [icon, const SizedBox(width: 12), Expanded(child: title), const SizedBox(width: 6), const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink)]),
-                        const SizedBox(height: 8),
-                        Padding(padding: const EdgeInsetsDirectional.only(start: 54), child: detail),
+                        Align(alignment: AlignmentDirectional.centerEnd, child: const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink)),
+                        icon,
+                        const SizedBox(height: 10),
+                        title,
+                        const SizedBox(height: 6),
+                        detail,
                       ])
                     : Row(children: [
                         icon,
@@ -413,7 +416,7 @@ class _DashboardPanel extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [Icon(icon, color: AdminColors.ink), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
+    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [Icon(icon, color: AdminColors.ink), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
     const SizedBox(height: 12), child,
   ])));
 }
