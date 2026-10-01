@@ -51,6 +51,21 @@ public static class OrderManagementModule
             return note is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", note);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapPatch("/orders/{orderId:guid}/shipping", async (
+            Guid orderId,
+            AdminShipmentUpdateInput input,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+            if (input.Carrier is { Length: > 120 }) errors[nameof(input.Carrier)] = ["نام شرکت حمل نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
+            if (input.TrackingCode is { Length: > 120 }) errors[nameof(input.TrackingCode)] = ["کد رهگیری نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
+            if (input.ActualShippingCost is < 0 or > 1_000_000_000) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var updated = await database.UpdateShippingAsync(orderId, input, cancellationToken);
+            return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(updated);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/dashboard", async (
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
@@ -129,6 +144,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             create index if not exists ix_order_internal_notes_order on order_internal_notes(order_id, created_at desc);
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "002-internal-notes", notesSql, cancellationToken);
+        const string shippingDetailsSql = """
+            alter table checkout_orders add column if not exists shipping_carrier varchar(120);
+            alter table checkout_orders add column if not exists tracking_code varchar(120);
+            alter table checkout_orders add column if not exists shipped_at timestamptz;
+            create index if not exists ix_checkout_orders_tracking_code on checkout_orders(tracking_code);
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "003-shipping-details", shippingDetailsSql, cancellationToken);
         logger.LogInformation("Order-management schema constraints are ready.");
     }
 
@@ -183,7 +205,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         const string orderSql = """
             select o.id,o.customer_name,o.mobile,o.province,o.city,o.address,o.postal_code,
                    o.currency,o.subtotal,o.shipping,o.shipping_expense,o.discount,o.payable,
-                   o.tax_rate_percent,o.tax,o.shipping_method,o.state,o.created_at,o.reservation_expires_at,
+                   o.tax_rate_percent,o.tax,o.shipping_method,o.shipping_carrier,o.tracking_code,o.shipped_at,
+                   o.state,o.created_at,o.reservation_expires_at,
                    count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,'')
             from checkout_orders o
             left join checkout_order_lines l on l.order_id=o.id
@@ -198,13 +221,15 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 
         var summary = new AdminOrderSummary(
             reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-            reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(16)),
-            reader.GetFieldValue<DateTimeOffset>(17), reader.GetFieldValue<DateTimeOffset>(18), reader.GetInt32(19),
-            EmptyToNull(reader.GetString(20)), EmptyToNull(reader.GetString(21)));
+            reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(19)),
+            reader.GetFieldValue<DateTimeOffset>(20), reader.GetFieldValue<DateTimeOffset>(21), reader.GetInt32(22),
+            EmptyToNull(reader.GetString(23)), EmptyToNull(reader.GetString(24)));
         var detail = new AdminOrderDetail(
             summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
             reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
-            reader.GetString(15), Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
+            reader.GetString(15), EmptyToNull(reader.GetString(16)), EmptyToNull(reader.GetString(17)),
+            reader.IsDBNull(18) ? null : reader.GetFieldValue<DateTimeOffset>(18),
+            Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
         await reader.CloseAsync();
 
         var lines = new List<AdminOrderLine>();
@@ -271,6 +296,26 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return await reader.ReadAsync(cancellationToken)
             ? new AdminOrderNote(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3))
             : null;
+    }
+
+    public async Task<AdminOrderDetail?> UpdateShippingAsync(Guid orderId, AdminShipmentUpdateInput input, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        const string sql = """
+            update checkout_orders
+            set shipping_carrier=@carrier, tracking_code=@tracking_code, shipping_expense=@expense,
+                shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
+            where id=@id;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("carrier", (object?)input.Carrier?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("tracking_code", (object?)input.TrackingCode?.Trim() ?? DBNull.Value);
+        command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
+        command.Parameters.AddWithValue("id", orderId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+        return await GetDetailAsync(orderId, cancellationToken);
     }
 
     public async Task<AdminDashboard> DashboardAsync(CancellationToken cancellationToken)
@@ -572,11 +617,13 @@ public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase dat
 
 public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
+public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost);
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
     int LineCount, string? PaymentReference, string? PaymentState);
 public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address, string PostalCode, decimal Subtotal,
     decimal Shipping, decimal ShippingExpense, decimal Discount, decimal Tax, decimal TaxRatePercent, string ShippingMethod,
+    string? ShippingCarrier, string? TrackingCode, DateTimeOffset? ShippedAt,
     IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions,
     IReadOnlyCollection<AdminOrderNote> Notes, AdminPayment? Payment = null)
 {

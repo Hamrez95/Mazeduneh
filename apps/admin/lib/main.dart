@@ -1190,7 +1190,11 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   Object? error;
   bool loading = true;
   bool savingNote = false;
+  bool savingShipping = false;
   final noteController = TextEditingController();
+  final carrierController = TextEditingController();
+  final trackingController = TextEditingController();
+  final shippingExpenseController = TextEditingController();
 
   @override
   void initState() {
@@ -1205,7 +1209,12 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
     });
     try {
       final result = await widget.api.fetchOrderDetail(widget.order.id);
-      if (mounted) setState(() => detail = result);
+      if (mounted) {
+        carrierController.text = result.shippingCarrier ?? '';
+        trackingController.text = result.trackingCode ?? '';
+        shippingExpenseController.text = result.shippingExpense == 0 ? '' : formatPersianNumber(result.shippingExpense);
+        setState(() => detail = result);
+      }
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
@@ -1216,6 +1225,9 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   @override
   void dispose() {
     noteController.dispose();
+    carrierController.dispose();
+    trackingController.dispose();
+    shippingExpenseController.dispose();
     super.dispose();
   }
 
@@ -1232,6 +1244,26 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
     } finally {
       if (mounted) setState(() => savingNote = false);
+    }
+  }
+
+  Future<void> saveShipping() async {
+    final expense = shippingExpenseController.text.trim().isEmpty ? null : parsePersianNumber(shippingExpenseController.text);
+    if (shippingExpenseController.text.trim().isNotEmpty && (expense == null || expense < 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هزینه واقعی ارسال را به‌صورت عدد معتبر وارد کنید.')));
+      return;
+    }
+    setState(() => savingShipping = true);
+    try {
+      final result = await widget.api.updateShipping(widget.order.id, carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(), trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(), actualShippingCost: expense);
+      if (mounted) {
+        setState(() => detail = result);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اطلاعات ارسال ذخیره شد.')));
+      }
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+    } finally {
+      if (mounted) setState(() => savingShipping = false);
     }
   }
 
@@ -1276,6 +1308,19 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
             _detailValue('روش ارسال', detail.shippingMethod),
             _detailValue('نشانی', detail.address, width: 320),
             _detailValue('کد پستی', detail.postalCode),
+          ])),
+          const SizedBox(height: 12),
+          _detailCard(title: 'ارسال و هزینه واقعی', icon: Icons.local_shipping_outlined, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              SizedBox(width: 220, child: TextField(controller: carrierController, decoration: const InputDecoration(labelText: 'شرکت حمل'))),
+              SizedBox(width: 220, child: TextField(controller: trackingController, decoration: const InputDecoration(labelText: 'کد رهگیری'))),
+              SizedBox(width: 220, child: TextField(controller: shippingExpenseController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال', suffixText: 'ریال'))),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: Text(detail.shippedAt == null ? 'هنوز زمان ارسال ثبت نشده است.' : 'ارسال‌شده در ${formatPersianDateTime(detail.shippedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
+              FilledButton.tonalIcon(onPressed: savingShipping ? null : saveShipping, icon: savingShipping ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined), label: const Text('ذخیره ارسال')),
+            ]),
           ])),
           const SizedBox(height: 12),
           _detailCard(title: 'اقلام سفارش', icon: Icons.shopping_bag_outlined, child: detail.lines.isEmpty
