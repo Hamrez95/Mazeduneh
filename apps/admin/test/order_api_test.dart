@@ -88,7 +88,7 @@ void main() {
         'lineCount': 1, 'paymentReference': 'SANDBOX-1', 'paymentState': 'Succeeded',
         'address': 'خیابان ولیعصر', 'postalCode': '1111111111', 'subtotal': 2400000,
         'shipping': 50000, 'shippingExpense': 30000, 'discount': 0, 'tax': 0,
-        'taxRatePercent': 0, 'shippingMethod': 'post',
+        'taxRatePercent': 0, 'shippingMethod': 'post', 'shippingCarrier': 'پست', 'trackingCode': 'TR-1', 'shippedAt': '2026-07-31T08:03:00Z',
         'lines': [{'productTitle': 'آجیل', 'sku': 'AJ-1', 'variantLabel': '۵۰۰ گرم', 'quantity': 1, 'unitPrice': 2400000, 'lineTotal': 2400000}],
         'transitions': [{'state': 'AwaitingPayment', 'actor': 'customer', 'occurredAt': '2026-07-31T08:00:00Z', 'reason': 'checkout-created'}],
         'notes': [{'id': 'note-1', 'note': 'با مشتری تماس گرفته شد.', 'actor': 'owner@example.com', 'createdAt': '2026-07-31T08:02:00Z'}],
@@ -117,6 +117,25 @@ void main() {
     expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/notes');
     expect(jsonDecode(captured.body), {'note': 'پیگیری شد.'});
     expect(note.note, 'پیگیری شد.');
+  });
+
+  test('updateShipping sends tracking and actual expense', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'id': '11111111-1111-1111-1111-111111111111', 'customerName': 'Mina', 'mobile': '09120000000', 'province': 'Tehran', 'city': 'Tehran',
+        'payable': 2450000, 'currency': 'IRR', 'state': 'Shipped', 'createdAt': '2026-07-31T08:00:00Z', 'reservationExpiresAt': '2026-07-31T08:20:00Z',
+        'lineCount': 1, 'paymentReference': null, 'paymentState': null, 'address': 'خیابان ولیعصر', 'postalCode': '1111111111', 'subtotal': 2400000,
+        'shipping': 50000, 'shippingExpense': 45000, 'discount': 0, 'tax': 0, 'taxRatePercent': 0, 'shippingMethod': 'post', 'shippingCarrier': 'پست',
+        'trackingCode': 'TR-2', 'shippedAt': '2026-07-31T08:03:00Z', 'lines': [], 'transitions': [], 'notes': [], 'payment': null,
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').updateShipping('11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2', actualShippingCost: 45000);
+    expect(captured.method, 'PATCH');
+    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
+    expect(jsonDecode(captured.body), {'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000});
+    expect(detail.trackingCode, 'TR-2');
   });
 
   test('401 clears owner session', () async {

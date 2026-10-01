@@ -131,6 +131,17 @@ class OrderApiClient {
     return AdminOrderNote.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost}) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/shipping'),
+      headers: _headers(json: true),
+      body: jsonEncode({'carrier': carrier, 'trackingCode': trackingCode, 'actualShippingCost': actualShippingCost}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminOrderDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   void _guard(http.Response response) {
     if (response.statusCode == 401) {
       OwnerSession.instance.clear();
@@ -185,6 +196,9 @@ class AdminOrderDetail {
     required this.tax,
     required this.taxRatePercent,
     required this.shippingMethod,
+    required this.shippingCarrier,
+    required this.trackingCode,
+    required this.shippedAt,
     required this.lines,
     required this.transitions,
     required this.notes,
@@ -201,6 +215,9 @@ class AdminOrderDetail {
   final num tax;
   final num taxRatePercent;
   final String shippingMethod;
+  final String? shippingCarrier;
+  final String? trackingCode;
+  final DateTime? shippedAt;
   final List<AdminOrderLine> lines;
   final List<AdminOrderTransition> transitions;
   final List<AdminOrderNote> notes;
@@ -217,6 +234,9 @@ class AdminOrderDetail {
         tax: json['tax'] as num,
         taxRatePercent: json['taxRatePercent'] as num,
         shippingMethod: json['shippingMethod'] as String,
+        shippingCarrier: json['shippingCarrier'] as String?,
+        trackingCode: json['trackingCode'] as String?,
+        shippedAt: json['shippedAt'] == null ? null : DateTime.parse(json['shippedAt'] as String),
         lines: (json['lines'] as List<dynamic>).map((item) => AdminOrderLine.fromJson(item as Map<String, dynamic>)).toList(),
         transitions: (json['transitions'] as List<dynamic>).map((item) => AdminOrderTransition.fromJson(item as Map<String, dynamic>)).toList(),
         notes: (json['notes'] as List<dynamic>? ?? const []).map((item) => AdminOrderNote.fromJson(item as Map<String, dynamic>)).toList(),
