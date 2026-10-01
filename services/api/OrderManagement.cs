@@ -28,6 +28,15 @@ public static class OrderManagementModule
             return Results.Ok(await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/orders/{orderId:guid}", async (
+            Guid orderId,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var detail = await database.GetDetailAsync(orderId, cancellationToken);
+            return detail is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(detail);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/dashboard", async (
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
@@ -138,6 +147,72 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12))));
         }
         return result;
+    }
+
+    public async Task<AdminOrderDetail?> GetDetailAsync(Guid orderId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        const string orderSql = """
+            select o.id,o.customer_name,o.mobile,o.province,o.city,o.address,o.postal_code,
+                   o.currency,o.subtotal,o.shipping,o.shipping_expense,o.discount,o.payable,
+                   o.tax_rate_percent,o.tax,o.shipping_method,o.state,o.created_at,o.reservation_expires_at,
+                   count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,'')
+            from checkout_orders o
+            left join checkout_order_lines l on l.order_id=o.id
+            left join payments p on p.order_id=o.id
+            where o.id=@id
+            group by o.id,p.reference,p.state;
+            """;
+        await using var orderCommand = new NpgsqlCommand(orderSql, connection);
+        orderCommand.Parameters.AddWithValue("id", orderId);
+        await using var reader = await orderCommand.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+
+        var summary = new AdminOrderSummary(
+            reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+            reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(16)),
+            reader.GetFieldValue<DateTimeOffset>(17), reader.GetFieldValue<DateTimeOffset>(18), reader.GetInt32(19),
+            EmptyToNull(reader.GetString(20)), EmptyToNull(reader.GetString(21)));
+        var detail = new AdminOrderDetail(
+            summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
+            reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
+            reader.GetString(15), Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>());
+        await reader.CloseAsync();
+
+        var lines = new List<AdminOrderLine>();
+        const string linesSql = "select product_title,sku,variant_label,quantity,unit_price,line_total from checkout_order_lines where order_id=@id order by id;";
+        await using (var command = new NpgsqlCommand(linesSql, connection))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var lineReader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await lineReader.ReadAsync(cancellationToken))
+                lines.Add(new AdminOrderLine(lineReader.GetString(0), lineReader.GetString(1), lineReader.GetString(2), lineReader.GetInt32(3), lineReader.GetDecimal(4), lineReader.GetDecimal(5)));
+        }
+
+        var transitions = new List<AdminOrderTransition>();
+        const string transitionsSql = "select state,actor,occurred_at,reason from checkout_order_transitions where order_id=@id order by occurred_at;";
+        await using (var command = new NpgsqlCommand(transitionsSql, connection))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var transitionReader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await transitionReader.ReadAsync(cancellationToken))
+                transitions.Add(new AdminOrderTransition(Enum.Parse<OrderState>(transitionReader.GetString(0)), transitionReader.GetString(1), transitionReader.GetFieldValue<DateTimeOffset>(2), transitionReader.GetString(3)));
+        }
+
+        AdminPayment? payment = null;
+        const string paymentSql = "select provider,amount,currency,state,reference,created_at,completed_at from payments where order_id=@id;";
+        await using (var command = new NpgsqlCommand(paymentSql, connection))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var paymentReader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await paymentReader.ReadAsync(cancellationToken))
+                payment = new AdminPayment(paymentReader.GetString(0), paymentReader.GetDecimal(1), paymentReader.GetString(2), Enum.Parse<PaymentState>(paymentReader.GetString(3)), EmptyToNull(paymentReader.GetString(4)), paymentReader.GetFieldValue<DateTimeOffset>(5), paymentReader.IsDBNull(6) ? null : paymentReader.GetFieldValue<DateTimeOffset>(6));
+        }
+
+        return detail with { Lines = lines, Transitions = transitions, Payment = payment };
     }
 
     public async Task<AdminDashboard> DashboardAsync(CancellationToken cancellationToken)
@@ -441,6 +516,27 @@ public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
     int LineCount, string? PaymentReference, string? PaymentState);
+public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address, string PostalCode, decimal Subtotal,
+    decimal Shipping, decimal ShippingExpense, decimal Discount, decimal Tax, decimal TaxRatePercent, string ShippingMethod,
+    IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions, AdminPayment? Payment = null)
+{
+    public Guid Id => Summary.Id;
+    public string CustomerName => Summary.CustomerName;
+    public string Mobile => Summary.Mobile;
+    public string Province => Summary.Province;
+    public string City => Summary.City;
+    public decimal Payable => Summary.Payable;
+    public string Currency => Summary.Currency;
+    public OrderState State => Summary.State;
+    public DateTimeOffset CreatedAt => Summary.CreatedAt;
+    public DateTimeOffset ReservationExpiresAt => Summary.ReservationExpiresAt;
+    public int LineCount => Summary.LineCount;
+    public string? PaymentReference => Summary.PaymentReference;
+    public string? PaymentState => Summary.PaymentState;
+}
+public sealed record AdminOrderLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
+public sealed record AdminOrderTransition(OrderState State, string Actor, DateTimeOffset OccurredAt, string Reason);
+public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock);

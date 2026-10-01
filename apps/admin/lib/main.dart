@@ -1039,6 +1039,14 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  Future<void> openDetail(AdminOrder order) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _OrderDetailSheet(api: api, order: order),
+      );
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(24),
@@ -1121,7 +1129,10 @@ class _OrdersPageState extends State<OrdersPage> {
         final next = order.nextState;
         final busy = busyOrder == order.id;
         return Card(
-          child: Padding(
+          child: InkWell(
+            onTap: () => openDetail(order),
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
             padding: const EdgeInsets.all(18),
             child: Wrap(
               alignment: WrapAlignment.spaceBetween,
@@ -1153,8 +1164,10 @@ class _OrdersPageState extends State<OrdersPage> {
                   )
                 else
                   const Text('فرآیند تکمیل شده', style: TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700)),
+                const Icon(Icons.chevron_left_rounded, color: AdminColors.muted),
               ],
             ),
+          ),
           ),
         );
       },
@@ -1162,6 +1175,152 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 }
 
+
+class _OrderDetailSheet extends StatefulWidget {
+  const _OrderDetailSheet({required this.api, required this.order});
+  final OrderApiClient api;
+  final AdminOrder order;
+
+  @override
+  State<_OrderDetailSheet> createState() => _OrderDetailSheetState();
+}
+
+class _OrderDetailSheetState extends State<_OrderDetailSheet> {
+  AdminOrderDetail? detail;
+  Object? error;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await widget.api.fetchOrderDetail(widget.order.id);
+      if (mounted) setState(() => detail = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception);
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final body = loading
+        ? const Center(child: CircularProgressIndicator())
+        : error != null
+            ? AdminErrorState(error: error!, onRetry: load)
+            : _content(detail!);
+    return Material(
+      color: AdminColors.canvas,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * .9,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+            child: Row(children: [
+              Expanded(child: Text('جزئیات سفارش', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900))),
+              IconButton(onPressed: () => Navigator.pop(context), tooltip: 'بستن', icon: const Icon(Icons.close_rounded)),
+            ]),
+          ),
+          Expanded(child: body),
+        ]),
+      ),
+    );
+  }
+
+  Widget _content(AdminOrderDetail detail) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        children: [
+          Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text('سفارش ${detail.order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+            Chip(label: Text(_stateLabel(detail.order.state)), backgroundColor: AdminColors.mintSoft),
+          ]),
+          const SizedBox(height: 16),
+          _detailCard(title: 'مشتری و تحویل', icon: Icons.person_pin_circle_outlined, child: Wrap(spacing: 28, runSpacing: 14, children: [
+            _detailValue('مشتری', detail.order.customerName),
+            _detailValue('تماس', detail.order.mobile),
+            _detailValue('شهر', '${detail.order.province}، ${detail.order.city}'),
+            _detailValue('روش ارسال', detail.shippingMethod),
+            _detailValue('نشانی', detail.address, width: 320),
+            _detailValue('کد پستی', detail.postalCode),
+          ])),
+          const SizedBox(height: 12),
+          _detailCard(title: 'اقلام سفارش', icon: Icons.shopping_bag_outlined, child: detail.lines.isEmpty
+              ? const AdminEmptyState(icon: Icons.shopping_bag_outlined, title: 'قلمی ثبت نشده است', detail: 'اطلاعات اقلام این سفارش در دسترس نیست.')
+              : Column(children: [for (var i = 0; i < detail.lines.length; i++) ...[
+                  if (i > 0) const Divider(height: 22),
+                  _lineRow(detail.lines[i]),
+                ]])),
+          const SizedBox(height: 12),
+          _detailCard(title: 'جمع سفارش', icon: Icons.receipt_long_outlined, child: Column(children: [
+            _moneyRow('جمع کالا', detail.subtotal, detail.order.currency),
+            _moneyRow('ارسال', detail.shipping, detail.order.currency),
+            if (detail.discount > 0) _moneyRow('تخفیف', -detail.discount, detail.order.currency),
+            _moneyRow('مالیات', detail.tax, detail.order.currency),
+            const Divider(height: 20),
+            _moneyRow('مبلغ نهایی', detail.order.payable, detail.order.currency, strong: true),
+            if (detail.shippingExpense > 0) _moneyRow('هزینه واقعی ارسال', detail.shippingExpense, detail.order.currency),
+          ])),
+          if (detail.payment != null) ...[
+            const SizedBox(height: 12),
+            _detailCard(title: 'پرداخت', icon: Icons.payments_outlined, child: Wrap(spacing: 28, runSpacing: 14, children: [
+              _detailValue('وضعیت', detail.payment!.state),
+              _detailValue('درگاه', detail.payment!.provider),
+              _detailValue('مبلغ', '${formatPersianNumber(detail.payment!.amount)} ${detail.payment!.currency}'),
+              if (detail.payment!.reference != null) _detailValue('شناسه پیگیری', detail.payment!.reference!),
+            ])),
+          ],
+          const SizedBox(height: 12),
+          _detailCard(title: 'مسیر سفارش', icon: Icons.route_rounded, child: detail.transitions.isEmpty
+              ? const AdminEmptyState(icon: Icons.route_rounded, title: 'تاریخچه‌ای ثبت نشده است', detail: 'تغییرات وضعیت این سفارش هنوز ثبت نشده است.')
+              : Column(children: [for (var i = 0; i < detail.transitions.length; i++) _timelineRow(detail.transitions[i], isLast: i == detail.transitions.length - 1)])),
+        ],
+      );
+
+  Widget _detailCard({required String title, required IconData icon, required Widget child}) => Card(
+        child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Icon(icon, size: 20, color: AdminColors.ink), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep))]),
+          const SizedBox(height: 16),
+          child,
+        ])),
+      );
+
+  Widget _detailValue(String label, String value, {double? width}) => SizedBox(
+        width: width,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 11, color: AdminColors.muted)), const SizedBox(height: 4), Text(value, style: const TextStyle(fontWeight: FontWeight.w700))]),
+      );
+
+  Widget _lineRow(AdminOrderLine line) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(line.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('${line.variantLabel} · ${line.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))])),
+        Text('${formatPersianInteger(line.quantity)} × ${formatPersianNumber(line.unitPrice)}', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
+        const SizedBox(width: 12),
+        Text('${formatPersianNumber(line.lineTotal)} ریال', style: const TextStyle(fontWeight: FontWeight.w800)),
+      ]);
+
+  Widget _moneyRow(String label, num value, String currency, {bool strong = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [Expanded(child: Text(label, style: TextStyle(color: strong ? AdminColors.inkDeep : AdminColors.muted, fontWeight: strong ? FontWeight.w900 : FontWeight.w500))), Text('${formatPersianNumber(value)} $currency', style: TextStyle(fontWeight: strong ? FontWeight.w900 : FontWeight.w700, color: value < 0 ? AdminColors.coral : AdminColors.inkDeep))]),
+      );
+
+  Widget _timelineRow(AdminOrderTransition item, {required bool isLast}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 28, child: Column(children: [Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: AdminColors.ink)), if (!isLast) Container(width: 1, height: 48, color: AdminColors.border)])),
+        Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_stateLabel(item.state), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text('${formatPersianDateTime(item.occurredAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), if (item.reason.isNotEmpty) Text(item.reason, style: const TextStyle(fontSize: 12, color: AdminColors.muted))]))),
+      ]);
+
+  String _stateLabel(String value) => const {
+        'AwaitingPayment': 'در انتظار پرداخت', 'Paid': 'پرداخت‌شده', 'Preparing': 'در حال آماده‌سازی',
+        'Shipped': 'ارسال‌شده', 'Delivered': 'تحویل‌شده', 'Cancelled': 'لغوشده', 'Expired': 'منقضی‌شده',
+      }[value] ?? value;
+}
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key, this.catalog, this.orders});

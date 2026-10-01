@@ -113,6 +113,13 @@ class OrderApiClient {
     return AdminOrder.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<AdminOrderDetail> fetchOrderDetail(String orderId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminOrderDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   void _guard(http.Response response) {
     if (response.statusCode == 401) {
       OwnerSession.instance.clear();
@@ -153,6 +160,109 @@ class AdminOrder {
     currency: json['currency'] as String, state: json['state'].toString(), createdAt: DateTime.parse(json['createdAt'] as String),
     reservationExpiresAt: DateTime.parse(json['reservationExpiresAt'] as String), lineCount: json['lineCount'] as int,
     paymentReference: json['paymentReference'] as String?, paymentState: json['paymentState'] as String?);
+}
+
+class AdminOrderDetail {
+  const AdminOrderDetail({
+    required this.order,
+    required this.address,
+    required this.postalCode,
+    required this.subtotal,
+    required this.shipping,
+    required this.shippingExpense,
+    required this.discount,
+    required this.tax,
+    required this.taxRatePercent,
+    required this.shippingMethod,
+    required this.lines,
+    required this.transitions,
+    this.payment,
+  });
+
+  final AdminOrder order;
+  final String address;
+  final String postalCode;
+  final num subtotal;
+  final num shipping;
+  final num shippingExpense;
+  final num discount;
+  final num tax;
+  final num taxRatePercent;
+  final String shippingMethod;
+  final List<AdminOrderLine> lines;
+  final List<AdminOrderTransition> transitions;
+  final AdminPayment? payment;
+
+  factory AdminOrderDetail.fromJson(Map<String, dynamic> json) => AdminOrderDetail(
+        order: AdminOrder.fromJson(json),
+        address: json['address'] as String,
+        postalCode: json['postalCode'] as String,
+        subtotal: json['subtotal'] as num,
+        shipping: json['shipping'] as num,
+        shippingExpense: json['shippingExpense'] as num,
+        discount: json['discount'] as num,
+        tax: json['tax'] as num,
+        taxRatePercent: json['taxRatePercent'] as num,
+        shippingMethod: json['shippingMethod'] as String,
+        lines: (json['lines'] as List<dynamic>).map((item) => AdminOrderLine.fromJson(item as Map<String, dynamic>)).toList(),
+        transitions: (json['transitions'] as List<dynamic>).map((item) => AdminOrderTransition.fromJson(item as Map<String, dynamic>)).toList(),
+        payment: json['payment'] is Map<String, dynamic> ? AdminPayment.fromJson(json['payment'] as Map<String, dynamic>) : null,
+      );
+}
+
+class AdminOrderLine {
+  const AdminOrderLine({required this.productTitle, required this.sku, required this.variantLabel, required this.quantity, required this.unitPrice, required this.lineTotal});
+  final String productTitle;
+  final String sku;
+  final String variantLabel;
+  final int quantity;
+  final num unitPrice;
+  final num lineTotal;
+
+  factory AdminOrderLine.fromJson(Map<String, dynamic> json) => AdminOrderLine(
+        productTitle: json['productTitle'] as String,
+        sku: json['sku'] as String,
+        variantLabel: json['variantLabel'] as String,
+        quantity: json['quantity'] as int,
+        unitPrice: json['unitPrice'] as num,
+        lineTotal: json['lineTotal'] as num,
+      );
+}
+
+class AdminOrderTransition {
+  const AdminOrderTransition({required this.state, required this.actor, required this.occurredAt, required this.reason});
+  final String state;
+  final String actor;
+  final DateTime occurredAt;
+  final String reason;
+
+  factory AdminOrderTransition.fromJson(Map<String, dynamic> json) => AdminOrderTransition(
+        state: json['state'].toString(),
+        actor: json['actor'] as String,
+        occurredAt: DateTime.parse(json['occurredAt'] as String),
+        reason: json['reason'] as String,
+      );
+}
+
+class AdminPayment {
+  const AdminPayment({required this.provider, required this.amount, required this.currency, required this.state, this.reference, required this.createdAt, this.completedAt});
+  final String provider;
+  final num amount;
+  final String currency;
+  final String state;
+  final String? reference;
+  final DateTime createdAt;
+  final DateTime? completedAt;
+
+  factory AdminPayment.fromJson(Map<String, dynamic> json) => AdminPayment(
+        provider: json['provider'] as String,
+        amount: json['amount'] as num,
+        currency: json['currency'] as String,
+        state: json['state'].toString(),
+        reference: json['reference'] as String?,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        completedAt: json['completedAt'] == null ? null : DateTime.parse(json['completedAt'] as String),
+      );
 }
 
 class InventoryBatch {
