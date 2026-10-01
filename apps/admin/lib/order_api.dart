@@ -120,6 +120,13 @@ class OrderApiClient {
     return AdminOrderDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<String> fetchInvoiceHtml(String orderId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/invoice'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return utf8.decode(response.bodyBytes);
+  }
+
   Future<AdminOrderNote> addOrderNote(String orderId, String note) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/notes'),

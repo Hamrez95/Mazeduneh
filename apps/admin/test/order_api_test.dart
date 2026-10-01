@@ -119,6 +119,18 @@ void main() {
     expect(note.note, 'پیگیری شد.');
   });
 
+  test('fetchInvoiceHtml uses the authenticated admin invoice endpoint', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response('<html dir="rtl">فاکتور</html>', 200, headers: {'content-type': 'text/html; charset=utf-8'});
+    });
+    final html = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchInvoiceHtml('11111111-1111-1111-1111-111111111111');
+    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/invoice');
+    expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(html, contains('فاکتور'));
+  });
+
   test('updateShipping sends tracking and actual expense', () async {
     late http.Request captured;
     final client = MockClient((request) async {
