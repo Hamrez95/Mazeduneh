@@ -120,6 +120,17 @@ class OrderApiClient {
     return AdminOrderDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<AdminOrderNote> addOrderNote(String orderId, String note) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/notes'),
+      headers: _headers(json: true),
+      body: jsonEncode({'note': note}),
+    );
+    _guard(response);
+    if (response.statusCode != 201) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminOrderNote.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   void _guard(http.Response response) {
     if (response.statusCode == 401) {
       OwnerSession.instance.clear();
@@ -176,6 +187,7 @@ class AdminOrderDetail {
     required this.shippingMethod,
     required this.lines,
     required this.transitions,
+    required this.notes,
     this.payment,
   });
 
@@ -191,6 +203,7 @@ class AdminOrderDetail {
   final String shippingMethod;
   final List<AdminOrderLine> lines;
   final List<AdminOrderTransition> transitions;
+  final List<AdminOrderNote> notes;
   final AdminPayment? payment;
 
   factory AdminOrderDetail.fromJson(Map<String, dynamic> json) => AdminOrderDetail(
@@ -206,6 +219,7 @@ class AdminOrderDetail {
         shippingMethod: json['shippingMethod'] as String,
         lines: (json['lines'] as List<dynamic>).map((item) => AdminOrderLine.fromJson(item as Map<String, dynamic>)).toList(),
         transitions: (json['transitions'] as List<dynamic>).map((item) => AdminOrderTransition.fromJson(item as Map<String, dynamic>)).toList(),
+        notes: (json['notes'] as List<dynamic>? ?? const []).map((item) => AdminOrderNote.fromJson(item as Map<String, dynamic>)).toList(),
         payment: json['payment'] is Map<String, dynamic> ? AdminPayment.fromJson(json['payment'] as Map<String, dynamic>) : null,
       );
 }
@@ -241,6 +255,21 @@ class AdminOrderTransition {
         actor: json['actor'] as String,
         occurredAt: DateTime.parse(json['occurredAt'] as String),
         reason: json['reason'] as String,
+      );
+}
+
+class AdminOrderNote {
+  const AdminOrderNote({required this.id, required this.note, required this.actor, required this.createdAt});
+  final String id;
+  final String note;
+  final String actor;
+  final DateTime createdAt;
+
+  factory AdminOrderNote.fromJson(Map<String, dynamic> json) => AdminOrderNote(
+        id: json['id'].toString(),
+        note: json['note'] as String,
+        actor: json['actor'] as String,
+        createdAt: DateTime.parse(json['createdAt'] as String),
       );
 }
 
