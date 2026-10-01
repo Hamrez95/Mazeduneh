@@ -37,6 +37,20 @@ public static class OrderManagementModule
             return detail is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(detail);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapPost("/orders/{orderId:guid}/notes", async (
+            Guid orderId,
+            AdminOrderNoteInput input,
+            OrderManagementDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.Note) || input.Note.Trim().Length > 2_000)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(input.Note)] = ["یادداشت باید بین ۱ تا ۲۰۰۰ نویسه باشد."] });
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var note = await database.AddNoteAsync(orderId, input.Note, actor, cancellationToken);
+            return note is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", note);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/dashboard", async (
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
@@ -104,6 +118,17 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "001-bootstrap", sql, cancellationToken);
+        const string notesSql = """
+            create table if not exists order_internal_notes (
+                id uuid primary key,
+                order_id uuid not null references checkout_orders(id) on delete cascade,
+                note text not null check (char_length(note) between 1 and 2000),
+                actor varchar(180) not null,
+                created_at timestamptz not null
+            );
+            create index if not exists ix_order_internal_notes_order on order_internal_notes(order_id, created_at desc);
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "002-internal-notes", notesSql, cancellationToken);
         logger.LogInformation("Order-management schema constraints are ready.");
     }
 
@@ -179,7 +204,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var detail = new AdminOrderDetail(
             summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
             reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
-            reader.GetString(15), Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>());
+            reader.GetString(15), Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
         await reader.CloseAsync();
 
         var lines = new List<AdminOrderLine>();
@@ -202,6 +227,16 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 transitions.Add(new AdminOrderTransition(Enum.Parse<OrderState>(transitionReader.GetString(0)), transitionReader.GetString(1), transitionReader.GetFieldValue<DateTimeOffset>(2), transitionReader.GetString(3)));
         }
 
+        var notes = new List<AdminOrderNote>();
+        const string notesSql = "select id,note,actor,created_at from order_internal_notes where order_id=@id order by created_at desc;";
+        await using (var command = new NpgsqlCommand(notesSql, connection))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var noteReader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await noteReader.ReadAsync(cancellationToken))
+                notes.Add(new AdminOrderNote(noteReader.GetGuid(0), noteReader.GetString(1), noteReader.GetString(2), noteReader.GetFieldValue<DateTimeOffset>(3)));
+        }
+
         AdminPayment? payment = null;
         const string paymentSql = "select provider,amount,currency,state,reference,created_at,completed_at from payments where order_id=@id;";
         await using (var command = new NpgsqlCommand(paymentSql, connection))
@@ -212,7 +247,30 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 payment = new AdminPayment(paymentReader.GetString(0), paymentReader.GetDecimal(1), paymentReader.GetString(2), Enum.Parse<PaymentState>(paymentReader.GetString(3)), EmptyToNull(paymentReader.GetString(4)), paymentReader.GetFieldValue<DateTimeOffset>(5), paymentReader.IsDBNull(6) ? null : paymentReader.GetFieldValue<DateTimeOffset>(6));
         }
 
-        return detail with { Lines = lines, Transitions = transitions, Payment = payment };
+        return detail with { Lines = lines, Transitions = transitions, Notes = notes, Payment = payment };
+    }
+
+    public async Task<AdminOrderNote?> AddNoteAsync(Guid orderId, string note, string actor, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        const string sql = """
+            insert into order_internal_notes(id,order_id,note,actor,created_at)
+            select @id,@order_id,@note,@actor,now()
+            where exists(select 1 from checkout_orders where id=@order_id)
+            returning id,note,actor,created_at;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection);
+        var id = Guid.NewGuid();
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("order_id", orderId);
+        command.Parameters.AddWithValue("note", note.Trim());
+        command.Parameters.AddWithValue("actor", actor);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new AdminOrderNote(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3))
+            : null;
     }
 
     public async Task<AdminDashboard> DashboardAsync(CancellationToken cancellationToken)
@@ -513,12 +571,14 @@ public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase dat
 }
 
 public sealed record SetOrderStateRequest(string State, string? Reason);
+public sealed record AdminOrderNoteInput(string Note);
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
     int LineCount, string? PaymentReference, string? PaymentState);
 public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address, string PostalCode, decimal Subtotal,
     decimal Shipping, decimal ShippingExpense, decimal Discount, decimal Tax, decimal TaxRatePercent, string ShippingMethod,
-    IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions, AdminPayment? Payment = null)
+    IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions,
+    IReadOnlyCollection<AdminOrderNote> Notes, AdminPayment? Payment = null)
 {
     public Guid Id => Summary.Id;
     public string CustomerName => Summary.CustomerName;
@@ -536,6 +596,7 @@ public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address,
 }
 public sealed record AdminOrderLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
 public sealed record AdminOrderTransition(OrderState State, string Actor, DateTimeOffset OccurredAt, string Reason);
+public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTimeOffset CreatedAt);
 public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,

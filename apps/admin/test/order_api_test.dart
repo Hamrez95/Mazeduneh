@@ -91,6 +91,7 @@ void main() {
         'taxRatePercent': 0, 'shippingMethod': 'post',
         'lines': [{'productTitle': 'آجیل', 'sku': 'AJ-1', 'variantLabel': '۵۰۰ گرم', 'quantity': 1, 'unitPrice': 2400000, 'lineTotal': 2400000}],
         'transitions': [{'state': 'AwaitingPayment', 'actor': 'customer', 'occurredAt': '2026-07-31T08:00:00Z', 'reason': 'checkout-created'}],
+        'notes': [{'id': 'note-1', 'note': 'با مشتری تماس گرفته شد.', 'actor': 'owner@example.com', 'createdAt': '2026-07-31T08:02:00Z'}],
         'payment': {'provider': 'sandbox', 'amount': 2450000, 'currency': 'IRR', 'state': 'Succeeded', 'reference': 'SANDBOX-1', 'createdAt': '2026-07-31T08:01:00Z', 'completedAt': '2026-07-31T08:01:10Z'},
       }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
@@ -101,7 +102,21 @@ void main() {
     expect(captured.headers['authorization'], 'Bearer order-test-token');
     expect(detail.lines.single.sku, 'AJ-1');
     expect(detail.transitions.single.actor, 'customer');
+    expect(detail.notes.single.actor, 'owner@example.com');
     expect(detail.payment?.reference, 'SANDBOX-1');
+  });
+
+  test('addOrderNote posts the internal note contract', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({'id': 'note-1', 'note': 'پیگیری شد.', 'actor': 'owner@example.com', 'createdAt': '2026-07-31T08:02:00Z'}), 201, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final note = await OrderApiClient(client: client, baseUrl: 'https://api.test').addOrderNote('11111111-1111-1111-1111-111111111111', 'پیگیری شد.');
+    expect(captured.method, 'POST');
+    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/notes');
+    expect(jsonDecode(captured.body), {'note': 'پیگیری شد.'});
+    expect(note.note, 'پیگیری شد.');
   });
 
   test('401 clears owner session', () async {

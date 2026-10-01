@@ -1189,6 +1189,8 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   AdminOrderDetail? detail;
   Object? error;
   bool loading = true;
+  bool savingNote = false;
+  final noteController = TextEditingController();
 
   @override
   void initState() {
@@ -1208,6 +1210,28 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    noteController.dispose();
+    super.dispose();
+  }
+
+  Future<void> saveNote() async {
+    final note = noteController.text.trim();
+    if (note.isEmpty) return;
+    setState(() => savingNote = true);
+    try {
+      await widget.api.addOrderNote(widget.order.id, note);
+      noteController.clear();
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('یادداشت داخلی ثبت شد.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+    } finally {
+      if (mounted) setState(() => savingNote = false);
     }
   }
 
@@ -1283,6 +1307,21 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           _detailCard(title: 'مسیر سفارش', icon: Icons.route_rounded, child: detail.transitions.isEmpty
               ? const AdminEmptyState(icon: Icons.route_rounded, title: 'تاریخچه‌ای ثبت نشده است', detail: 'تغییرات وضعیت این سفارش هنوز ثبت نشده است.')
               : Column(children: [for (var i = 0; i < detail.transitions.length; i++) _timelineRow(detail.transitions[i], isLast: i == detail.transitions.length - 1)])),
+          const SizedBox(height: 12),
+          _detailCard(title: 'یادداشت داخلی', icon: Icons.sticky_note_2_outlined, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (detail.notes.isEmpty)
+              const AdminEmptyState(icon: Icons.sticky_note_2_outlined, title: 'هنوز یادداشتی ثبت نشده است', detail: 'برای هماهنگی با همکاران، نتیجه تماس یا نکته مهم سفارش را اینجا بنویسید.'),
+            if (detail.notes.isNotEmpty) ...[
+              for (var i = 0; i < detail.notes.length; i++) ...[
+                if (i > 0) const Divider(height: 22),
+                _noteRow(detail.notes[i]),
+              ],
+              const SizedBox(height: 14),
+            ],
+            TextField(controller: noteController, maxLines: 3, maxLength: 2000, decoration: const InputDecoration(labelText: 'یادداشت جدید', hintText: 'مثلاً: مشتری زمان تحویل را تأیید کرد.')),
+            const SizedBox(height: 8),
+            Align(alignment: AlignmentDirectional.centerStart, child: FilledButton.icon(onPressed: savingNote ? null : saveNote, icon: savingNote ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined), label: const Text('ثبت یادداشت'))),
+          ])),
         ],
       );
 
@@ -1314,6 +1353,12 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   Widget _timelineRow(AdminOrderTransition item, {required bool isLast}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: 28, child: Column(children: [Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: AdminColors.ink)), if (!isLast) Container(width: 1, height: 48, color: AdminColors.border)])),
         Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_stateLabel(item.state), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text('${formatPersianDateTime(item.occurredAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), if (item.reason.isNotEmpty) Text(item.reason, style: const TextStyle(fontSize: 12, color: AdminColors.muted))]))),
+      ]);
+
+  Widget _noteRow(AdminOrderNote item) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(item.note, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5)),
+        const SizedBox(height: 4),
+        Text('${formatPersianDateTime(item.createdAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
       ]);
 
   String _stateLabel(String value) => const {
