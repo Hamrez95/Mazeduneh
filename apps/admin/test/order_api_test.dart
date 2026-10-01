@@ -76,6 +76,34 @@ void main() {
     expect(jsonDecode(captured.body), {'state': 'Preparing', 'reason': 'ready'});
   });
 
+  test('fetchOrderDetail requests the authenticated order detail contract', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'id': '11111111-1111-1111-1111-111111111111',
+        'customerName': 'Mina', 'mobile': '09120000000', 'province': 'Tehran', 'city': 'Tehran',
+        'payable': 2450000, 'currency': 'IRR', 'state': 'Paid',
+        'createdAt': '2026-07-31T08:00:00Z', 'reservationExpiresAt': '2026-07-31T08:20:00Z',
+        'lineCount': 1, 'paymentReference': 'SANDBOX-1', 'paymentState': 'Succeeded',
+        'address': 'خیابان ولیعصر', 'postalCode': '1111111111', 'subtotal': 2400000,
+        'shipping': 50000, 'shippingExpense': 30000, 'discount': 0, 'tax': 0,
+        'taxRatePercent': 0, 'shippingMethod': 'post',
+        'lines': [{'productTitle': 'آجیل', 'sku': 'AJ-1', 'variantLabel': '۵۰۰ گرم', 'quantity': 1, 'unitPrice': 2400000, 'lineTotal': 2400000}],
+        'transitions': [{'state': 'AwaitingPayment', 'actor': 'customer', 'occurredAt': '2026-07-31T08:00:00Z', 'reason': 'checkout-created'}],
+        'payment': {'provider': 'sandbox', 'amount': 2450000, 'currency': 'IRR', 'state': 'Succeeded', 'reference': 'SANDBOX-1', 'createdAt': '2026-07-31T08:01:00Z', 'completedAt': '2026-07-31T08:01:10Z'},
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+
+    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOrderDetail('11111111-1111-1111-1111-111111111111');
+    expect(captured.method, 'GET');
+    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111');
+    expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(detail.lines.single.sku, 'AJ-1');
+    expect(detail.transitions.single.actor, 'customer');
+    expect(detail.payment?.reference, 'SANDBOX-1');
+  });
+
   test('401 clears owner session', () async {
     final client = MockClient((request) async => http.Response('', 401));
     final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
