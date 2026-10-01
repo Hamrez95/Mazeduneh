@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using Npgsql;
 
 public static class OrderManagementModule
@@ -35,6 +36,18 @@ public static class OrderManagementModule
         {
             var detail = await database.GetDetailAsync(orderId, cancellationToken);
             return detail is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(detail);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapGet("/orders/{orderId:guid}/invoice", async (
+            Guid orderId,
+            OrderManagementDatabase database,
+            HttpResponse response,
+            CancellationToken cancellationToken) =>
+        {
+            var detail = await database.GetDetailAsync(orderId, cancellationToken);
+            if (detail is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
+            response.Headers.ContentDisposition = $"inline; filename=\"mazeduneh-invoice-{orderId:N}.html\"";
+            return Results.Content(InvoiceRenderer.Render(detail.ToCheckoutOrder()), "text/html; charset=utf-8", Encoding.UTF8);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapPost("/orders/{orderId:guid}/notes", async (
@@ -640,6 +653,12 @@ public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address,
     public int LineCount => Summary.LineCount;
     public string? PaymentReference => Summary.PaymentReference;
     public string? PaymentState => Summary.PaymentState;
+
+    public CheckoutOrder ToCheckoutOrder() => new(
+        Id, string.Empty, CustomerName, Mobile, Province, City, Address, PostalCode, Currency,
+        Lines.Select(line => new CheckoutLine(line.ProductTitle, line.Sku, line.VariantLabel, line.Quantity, line.UnitPrice, line.LineTotal)).ToArray(),
+        ShippingMethod, Subtotal, Shipping, ShippingExpense, Discount, TaxRatePercent, Tax, Payable, State, CreatedAt,
+        ReservationExpiresAt, Transitions.Select(item => new OrderTransition(item.State, item.Actor, item.OccurredAt, item.Reason)).ToArray());
 }
 public sealed record AdminOrderLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
 public sealed record AdminOrderTransition(OrderState State, string Actor, DateTimeOffset OccurredAt, string Reason);
