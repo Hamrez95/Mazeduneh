@@ -66,6 +66,17 @@ class OrderApiClient {
     return AdminAnalytics.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<List<AdminProductProfitability>> fetchProductProfitability({int days = 30}) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/analytics/products').replace(queryParameters: {'days': '$days'}),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => AdminProductProfitability.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
   Future<AdminNotifications> fetchNotifications() async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/notifications'), headers: _headers());
     _guard(response);
@@ -498,6 +509,36 @@ class StockMovement {
         actor: json['actor'] as String,
         reason: json['reason'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+}
+
+class AdminProductProfitability {
+  const AdminProductProfitability({
+    required this.productTitle,
+    required this.sku,
+    required this.variantLabel,
+    required this.unitsSold,
+    required this.revenue,
+    required this.cost,
+    required this.grossProfit,
+  });
+
+  final String productTitle;
+  final String sku;
+  final String variantLabel;
+  final int unitsSold;
+  final num revenue;
+  final num cost;
+  final num grossProfit;
+
+  factory AdminProductProfitability.fromJson(Map<String, dynamic> json) => AdminProductProfitability(
+        productTitle: json['productTitle'] as String,
+        sku: json['sku'] as String,
+        variantLabel: json['variantLabel'] as String,
+        unitsSold: (json['unitsSold'] as num).toInt(),
+        revenue: json['revenue'] as num,
+        cost: json['cost'] as num,
+        grossProfit: json['grossProfit'] as num,
       );
 }
 
