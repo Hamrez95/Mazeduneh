@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -59,6 +60,15 @@ public static class AdminSecurityExtensions
         })
         .WithTags("Admin Auth");
 
+        endpoints.MapPost("/api/v1/admin/auth/logout", (AdminTokenService tokens, HttpContext context) =>
+        {
+            var token = AdminTokenService.ReadBearerToken(context.Request);
+            if (token is null || !tokens.TryValidate(token, out _)) return Results.Unauthorized();
+            tokens.Revoke(token);
+            return Results.NoContent();
+        })
+        .WithTags("Admin Auth");
+
         return endpoints;
     }
 }
@@ -95,6 +105,7 @@ public sealed class AdminTokenService
     private readonly byte[] _signingKey;
     private readonly byte[] _configuredPasswordHash;
     private readonly TimeSpan _lifetime;
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new(StringComparer.Ordinal);
 
     public AdminTokenService(IConfiguration configuration)
     {
@@ -130,6 +141,14 @@ public sealed class AdminTokenService
         return new IssuedAdminToken(token, expiresAt, role, permissions);
     }
 
+    public void Revoke(string token)
+    {
+        var now = DateTimeOffset.UtcNow;
+        _revokedTokens[Fingerprint(token)] = now;
+        foreach (var item in _revokedTokens)
+            if (now - item.Value > _lifetime) _revokedTokens.TryRemove(item.Key, out _);
+    }
+
     public bool TryValidate(string token, out AdminPrincipal principal)
     {
         principal = default!;
@@ -138,6 +157,7 @@ public sealed class AdminTokenService
         if (parts.Length != 2 || !TryBase64Url(parts[0], out var payloadBytes) || !TryBase64Url(parts[1], out var signature)) return false;
         var expectedSignature = HMACSHA256.HashData(_signingKey, payloadBytes);
         if (!CryptographicOperations.FixedTimeEquals(signature, expectedSignature)) return false;
+        if (_revokedTokens.ContainsKey(Fingerprint(token))) return false;
 
         var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
         if (fields.Length < 3 || !long.TryParse(fields[1], out var unixExpiry)) return false;
@@ -158,6 +178,8 @@ public sealed class AdminTokenService
     }
 
     private static string Base64Url(byte[] value) => Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string Fingerprint(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static bool TryBase64Url(string value, out byte[] bytes)
     {

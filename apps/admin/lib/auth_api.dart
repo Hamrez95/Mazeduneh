@@ -71,6 +71,22 @@ class AuthApiClient {
     );
   }
 
+  Future<void> logout() async {
+    final token = OwnerSession.instance.bearerToken;
+    if (token == null) return;
+    try {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/api/v1/admin/auth/logout'),
+        headers: {'authorization': 'Bearer $token'},
+      );
+      if (response.statusCode != 204 && response.statusCode != 401) {
+        throw AuthApiException(_message(response), statusCode: response.statusCode);
+      }
+    } finally {
+      OwnerSession.instance.clear();
+    }
+  }
+
   List<String> _stringList(Object? value) => value is List
       ? value.whereType<String>().map((item) => item.trim()).where((item) => item.isNotEmpty).toList()
       : const [];
