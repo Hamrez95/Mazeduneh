@@ -25,7 +25,7 @@ Issue: #91
 
 ## گام‌های بعدی
 
-1. ساخت UI مدیریت کاربران و نقش‌ها با مسیر روشن، حالت‌های loading/empty/error/forbidden/success/stale و تست responsive/accessibility با `@frontend-design`.
+1. UI مدیریت کاربران و نقش‌ها با مسیر روشن، حالت‌های loading/empty/error/forbidden/success/stale و تست responsive/accessibility با `@frontend-design` در پنل اضافه شد.
 2. resolve کردن Store Context از hostname/session/token به‌جای اعتماد به query string.
 3. اتصال احراز هویت واقعی به membershipها، سپس MFA و step-up approval برای عملیات حساس.
 4. افزودن integration test جداسازی دو فروشگاه و audit تغییرات membership.

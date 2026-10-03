@@ -173,7 +173,7 @@ flowchart TD
 
 ## وضعیت Slice مدیریت کاربران
 
-Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل و اتصال واقعی هر membership به احراز هویت در Sliceهای بعدی انجام می‌شود.
+Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، نقش‌ها، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل Owner-only «امنیت ← کاربران» با فرم کوتاه و حالت‌های آموزشی اضافه شده است؛ اتصال واقعی هر membership به احراز هویت، MFA و step-up approval در Sliceهای بعدی انجام می‌شود.
 
 ## ۹. جدول Issueها
 
@@ -194,7 +194,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #76 | Versioned migrations/environments | P0 | Backend/Infra | L | ناقص |
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
-| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI و foundation مدیریت عضویت/کاربر تکمیل؛ UI مدیریت کاربران، اتصال عضویت به ورود، MFA و step-up approval باقی است |
+| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI و UI/API مدیریت عضویت تکمیل؛ اتصال عضویت به ورود، MFA و step-up approval باقی است |
 | #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | dashboard پایه و KPI بازه‌ای تکمیل؛ هشدارها و گزارش‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | جدید |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |

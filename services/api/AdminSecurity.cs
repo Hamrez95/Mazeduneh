@@ -88,6 +88,14 @@ public static class AdminSecurityExtensions
             .AddEndpointFilter<OwnerAuthorizationFilter>()
             .WithTags("Admin Users");
 
+        endpoints.MapGet("/api/v1/admin/users/roles", () =>
+            Results.Ok(AdminPermissionCatalog.DefaultRoles.Select(item => new AdminRoleSummary(
+                item.Key,
+                item.Value,
+                AdminPermissionCatalog.RoleLabel(item.Key)))))
+            .AddEndpointFilter<OwnerAuthorizationFilter>()
+            .WithTags("Admin Users");
+
         endpoints.MapPost("/api/v1/admin/users", async (
             AdminUserCreateRequest request,
             string? storeId,
@@ -185,6 +193,21 @@ public static class AdminPermissionCatalog
             ["MarketingManager"] = [DashboardRead, ProductsRead, CustomersRead, ReportsRead, PricingRead, PricingWrite, ContentRead, ContentWrite, CorporateRead],
             ["ReadOnlyAnalyst"] = [DashboardRead, OrdersRead, ProductsRead, InventoryRead, CustomersRead, ReportsRead, PricingRead, CorporateRead],
         };
+
+    public static string RoleLabel(string role) => role switch
+    {
+        "Owner" => "مدیر اصلی",
+        "StoreManager" => "مدیر فروشگاه",
+        "SalesOperator" => "اپراتور فروش",
+        "WarehouseOperator" => "اپراتور انبار",
+        "Accountant" => "حسابدار",
+        "CustomerSupport" => "پشتیبانی مشتری",
+        "CorporateSales" => "فروش سازمانی",
+        "ContentManager" => "مدیر محتوا",
+        "MarketingManager" => "مدیر بازاریابی",
+        "ReadOnlyAnalyst" => "تحلیلگر فقط‌خواندنی",
+        _ => role
+    };
 
     public static string NormalizeRole(string? role) =>
         role is not null && DefaultRoles.ContainsKey(role.Trim()) ? role.Trim() : "Owner";
