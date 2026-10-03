@@ -200,7 +200,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
 | #95 | Promotions/campaign engine | P1 | Full-stack | L | جدید |
 | #96 | Notifications/automation | P1 | Full-stack/Infra | L | جدید |
-| #97 | Corporate pipeline/packages | P1 | Full-stack | M | جدید |
+| #97 | Corporate pipeline/packages | P1 | Full-stack | M | pipeline، assignment، follow-up و فیلتر پیگیری عقب‌افتاده تکمیل؛ Package catalog، reminder automation و conversion analytics باقی |
 | #98 | Store settings/theme/onboarding | P1 | Full-stack | L | جدید |
 | #99 | Multi-store/white-label | P2 | Architecture | XL | جدید |
 | #100 | Launch gate/observability | P0 | Infra/QA | L | جدید |
