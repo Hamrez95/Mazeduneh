@@ -183,7 +183,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #3 | Checkout/order/payment | P0 | Full-stack | XL | ناقص، پایه موجود |
 | #4 | Admin operations/PWA | P0 | Admin | XL | ناقص |
 | #5 | Inventory/FEFO/fulfillment | P0/P1 | Full-stack | XL | ناقص، ledger/batch موجود |
-| #6 | Reports/analytics | P1 | Analytics | L | ناقص، margin پایه موجود |
+| #6 | Reports/analytics | P1 | Analytics | L | revenue/cost/margin پایه، هزینه واقعی ارسال و سود تفکیکی محصول/Variant تکمیل؛ reconciliation/refund/cohort/export پیشرفته باقی |
 | #7 | Brand/content foundation | P1 | UX/Storefront | M | ناقص |
 | #8 | Production readiness | P0 | Infra/QA | L | باز، CI موجود |
 | #28 | Storefront discovery/product UX | P1 | Storefront | L | ناقص |
