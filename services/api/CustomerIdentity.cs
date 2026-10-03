@@ -201,11 +201,14 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
 
         const string sql = """
             select c.id,c.full_name,c.mobile,c.mobile_normalized,c.marketing_consent,
-                   c.created_at,c.updated_at,count(o.id)::int
+                   c.created_at,c.updated_at,count(o.id)::int,
+                   coalesce(sum(o.payable) filter (where o.state not in ('Cancelled', 'Expired')), 0),
+                   coalesce(avg(o.payable) filter (where o.state not in ('Cancelled', 'Expired')), 0),
+                   max(o.created_at) filter (where o.state not in ('Cancelled', 'Expired'))
             from customers c
             left join checkout_orders o on o.customer_id = c.id
             where (@query = '' or c.full_name ilike '%' || @query || '%' or c.mobile ilike '%' || @query || '%' or c.mobile_normalized ilike '%' || @query || '%')
-              and (@marketing_consent is null or c.marketing_consent = @marketing_consent)
+              and (cast(@marketing_consent as boolean) is null or c.marketing_consent = cast(@marketing_consent as boolean))
             group by c.id
             order by c.updated_at desc
             limit @limit;
@@ -229,7 +232,10 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
                 reader.GetBoolean(4),
                 reader.GetFieldValue<DateTimeOffset>(5),
                 reader.GetFieldValue<DateTimeOffset>(6),
-                reader.GetInt32(7)));
+                reader.GetInt32(7),
+                reader.GetDecimal(8),
+                reader.GetDecimal(9),
+                reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10)));
         }
         return customers;
     }
@@ -240,7 +246,10 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
 
         const string sql = """
             select c.id,c.full_name,c.mobile,c.mobile_normalized,c.marketing_consent,
-                   c.created_at,c.updated_at,count(o.id)::int
+                   c.created_at,c.updated_at,count(o.id)::int,
+                   coalesce(sum(o.payable) filter (where o.state not in ('Cancelled', 'Expired')), 0),
+                   coalesce(avg(o.payable) filter (where o.state not in ('Cancelled', 'Expired')), 0),
+                   max(o.created_at) filter (where o.state not in ('Cancelled', 'Expired'))
             from customers c
             left join checkout_orders o on o.customer_id = c.id
             where c.id = @id
@@ -261,7 +270,10 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
             reader.GetBoolean(4),
             reader.GetFieldValue<DateTimeOffset>(5),
             reader.GetFieldValue<DateTimeOffset>(6),
-            reader.GetInt32(7));
+            reader.GetInt32(7),
+            reader.GetDecimal(8),
+            reader.GetDecimal(9),
+            reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10));
     }
 
     public async Task<CustomerSummary?> FindProfileAsync(Guid customerId, CancellationToken cancellationToken)
@@ -316,6 +328,9 @@ public sealed record CustomerSummary(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     int OrderCount,
+    decimal TotalSpend,
+    decimal AverageOrderValue,
+    DateTimeOffset? LastPurchaseAt,
     IReadOnlyCollection<CustomerAddressSummary> Addresses = null!);
 
 public sealed class CustomerIdentitySchemaInitializer(CustomerIdentityDatabase database) : IHostedService

@@ -30,6 +30,9 @@ void main() {
           'createdAt': '2026-07-31T08:00:00Z',
           'updatedAt': '2026-07-31T08:10:00Z',
           'orderCount': 3,
+          'totalSpend': 7200000,
+          'averageOrderValue': 2400000,
+          'lastPurchaseAt': '2026-07-30T12:00:00Z',
           'addresses': [],
         }
       ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -44,6 +47,9 @@ void main() {
     expect(captured.headers['authorization'], 'Bearer customer-test-token');
     expect(customers.single.marketingConsent, isTrue);
     expect(customers.single.orderCount, 3);
+    expect(customers.single.totalSpend, 7200000);
+    expect(customers.single.averageOrderValue, 2400000);
+    expect(customers.single.lastPurchaseAt, isNotNull);
   });
 
   test('exportCustomersCsv sends the authenticated filtered export contract', () async {

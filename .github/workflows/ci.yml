@@ -163,6 +163,26 @@ jobs:
           assert 'orders.read' in session['permissions']
           assert 'products.write' in session['permissions']
           PY
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/customers/?q=0912" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/customers.json
+          python3 - <<'PY'
+          import json
+          customers = json.load(open('/tmp/customers.json', encoding='utf-8'))
+          assert len(customers) == 1
+          assert customers[0]['totalSpend'] > 0
+          assert customers[0]['averageOrderValue'] > 0
+          assert customers[0]['lastPurchaseAt']
+          PY
+
+          PUBLISH_GUARD_STATUS=$(curl -s -o /tmp/publish-guard.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/products/ \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"title":"محصول ناقص","slug":"invalid-publish","category":"آزمایشی","origin":"ایران","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"INVALID-1","quantity":250,"displayLabel":"۲۵۰ گرم","price":0,"availablePackages":0}]}' )
+          test "${PUBLISH_GUARD_STATUS}" = "400"
+          python3 - <<'PY'
+          import json
+          errors = json.load(open('/tmp/publish-guard.json', encoding='utf-8'))['errors']
+          assert 'publication.variants' in errors
+          PY
 
           PUBLISH_GUARD_STATUS=$(curl -s -o /tmp/publish-guard.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/products/ \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
