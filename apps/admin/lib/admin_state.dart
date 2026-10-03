@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'audit_log_api.dart';
 import 'media_api.dart';
@@ -7,6 +8,7 @@ import 'order_api.dart';
 import 'corporate_api.dart';
 
 int? requestStatusCode(Object error) {
+  if (error is AdminPermissionException) return 403;
   if (error is CatalogApiException) return error.statusCode;
   if (error is OrderApiException) return error.statusCode;
   if (error is MediaApiException) return error.statusCode;
@@ -27,6 +29,30 @@ String requestErrorMessage(Object error) {
   if (error is CorporateApiException) return error.message;
   if (error is AuditLogApiException) return error.message;
   return 'ارتباط با سرویس برقرار نشد؛ اتصال و نشانی API را بررسی کنید.';
+}
+
+class AdminPermissionException implements Exception {
+  const AdminPermissionException(this.permission);
+
+  final String permission;
+}
+
+class AdminPermissionGate extends StatelessWidget {
+  const AdminPermissionGate({super.key, required this.permission, required this.child});
+
+  final String permission;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<bool>(
+        stream: OwnerSession.instance.changes,
+        initialData: OwnerSession.instance.isAuthenticated,
+        builder: (context, snapshot) => OwnerSession.instance.isAuthenticated && !OwnerSession.instance.can(permission)
+            ? const AdminErrorState(error: AdminPermissionException('forbidden'), onRetry: _noop)
+            : child,
+      );
+
+  static void _noop() {}
 }
 
 class AdminErrorState extends StatelessWidget {
