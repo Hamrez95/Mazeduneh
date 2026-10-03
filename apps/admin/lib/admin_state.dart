@@ -69,9 +69,10 @@ class AdminErrorState extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               Icon(
                 forbidden ? Icons.lock_outline_rounded : Icons.cloud_off_rounded,
                 size: 56,
@@ -88,7 +89,8 @@ class AdminErrorState extends StatelessWidget {
               const SizedBox(height: 16),
               if (!forbidden)
                 FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
-            ],
+              ],
+            ),
           ),
         ),
       ),
