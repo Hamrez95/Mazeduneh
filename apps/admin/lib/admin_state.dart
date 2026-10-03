@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
+import 'audit_log_api.dart';
 import 'media_api.dart';
 import 'order_api.dart';
 import 'corporate_api.dart';
@@ -10,6 +11,7 @@ int? requestStatusCode(Object error) {
   if (error is OrderApiException) return error.statusCode;
   if (error is MediaApiException) return error.statusCode;
   if (error is CorporateApiException) return error.statusCode;
+  if (error is AuditLogApiException) return error.statusCode;
   return null;
 }
 
@@ -23,6 +25,7 @@ String requestErrorMessage(Object error) {
   if (error is OrderApiException) return error.message;
   if (error is MediaApiException) return error.message;
   if (error is CorporateApiException) return error.message;
+  if (error is AuditLogApiException) return error.message;
   return 'ارتباط با سرویس برقرار نشد؛ اتصال و نشانی API را بررسی کنید.';
 }
 
