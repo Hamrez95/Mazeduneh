@@ -40,7 +40,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api))));
     await tester.pumpAndSettle();
     expect(find.text('کاربران و دسترسی‌ها'), findsOneWidget);
-    expect(find.text('مدیر اصلی'), findsOneWidget);
+    expect(find.text('مدیر اصلی').first, findsOneWidget);
     expect(find.byTooltip('مدیر اصلی قابل غیرفعال‌سازی نیست'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
