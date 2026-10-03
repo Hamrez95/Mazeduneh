@@ -208,7 +208,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
             from customers c
             left join checkout_orders o on o.customer_id = c.id
             where (@query = '' or c.full_name ilike '%' || @query || '%' or c.mobile ilike '%' || @query || '%' or c.mobile_normalized ilike '%' || @query || '%')
-              and (@marketing_consent is null or c.marketing_consent = @marketing_consent)
+              and (cast(@marketing_consent as boolean) is null or c.marketing_consent = cast(@marketing_consent as boolean))
             group by c.id
             order by c.updated_at desc
             limit @limit;
