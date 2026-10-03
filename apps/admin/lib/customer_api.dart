@@ -109,6 +109,9 @@ class CustomerSummary {
     required this.createdAt,
     required this.updatedAt,
     required this.orderCount,
+    required this.totalSpend,
+    required this.averageOrderValue,
+    required this.lastPurchaseAt,
     this.addresses = const [],
   });
 
@@ -120,6 +123,9 @@ class CustomerSummary {
   final DateTime createdAt;
   final DateTime updatedAt;
   final int orderCount;
+  final num totalSpend;
+  final num averageOrderValue;
+  final DateTime? lastPurchaseAt;
   final List<CustomerAddress> addresses;
 
   factory CustomerSummary.fromJson(Map<String, dynamic> json) => CustomerSummary(
@@ -131,6 +137,9 @@ class CustomerSummary {
         createdAt: DateTime.parse(json['createdAt'] as String),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         orderCount: (json['orderCount'] as num?)?.toInt() ?? 0,
+        totalSpend: json['totalSpend'] as num? ?? 0,
+        averageOrderValue: json['averageOrderValue'] as num? ?? 0,
+        lastPurchaseAt: json['lastPurchaseAt'] == null ? null : DateTime.parse(json['lastPurchaseAt'] as String),
         addresses: (json['addresses'] as List<dynamic>? ?? const [])
             .whereType<Map<String, dynamic>>()
             .map(CustomerAddress.fromJson)
