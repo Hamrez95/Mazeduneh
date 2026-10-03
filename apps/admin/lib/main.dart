@@ -475,7 +475,7 @@ class MetricCard extends StatelessWidget {
   final Color tint;
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 250, height: 142,
+    width: 250, height: 150,
     child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
       const Spacer(),
