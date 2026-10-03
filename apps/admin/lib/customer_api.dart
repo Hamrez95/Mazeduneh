@@ -31,9 +31,12 @@ class CustomerApiClient {
     return {'authorization': 'Bearer $token'};
   }
 
-  Future<List<CustomerSummary>> fetchCustomers() async {
+  Future<List<CustomerSummary>> fetchCustomers({String? query, bool? marketingConsent, int limit = 200}) async {
+    final queryParameters = <String, String>{'limit': '$limit'};
+    if (query != null && query.trim().isNotEmpty) queryParameters['q'] = query.trim();
+    if (marketingConsent != null) queryParameters['marketingConsent'] = '$marketingConsent';
     final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/admin/customers/'),
+      Uri.parse('$baseUrl/api/v1/admin/customers/').replace(queryParameters: queryParameters),
       headers: _headers(),
     );
     _guard(response);
@@ -44,6 +47,21 @@ class CustomerApiClient {
     return decoded
         .map((item) => CustomerSummary.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<int>> exportCustomersCsv({String? query, bool? marketingConsent, int limit = 1000}) async {
+    final queryParameters = <String, String>{'limit': '$limit'};
+    if (query != null && query.trim().isNotEmpty) queryParameters['q'] = query.trim();
+    if (marketingConsent != null) queryParameters['marketingConsent'] = '$marketingConsent';
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/customers/export.csv').replace(queryParameters: queryParameters),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CustomerApiException(_message(response), statusCode: response.statusCode);
+    }
+    return response.bodyBytes;
   }
 
   Future<CustomerSummary> fetchCustomer(String id) async {

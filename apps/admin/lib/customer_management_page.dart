@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_state.dart';
 import 'customer_api.dart';
@@ -20,6 +21,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
   CustomerSummary? selected;
   Object? error;
   bool loading = true;
+  bool exporting = false;
 
   @override
   void initState() {
@@ -56,6 +58,27 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
     }
   }
 
+  Future<void> exportCsv() async {
+    setState(() => exporting = true);
+    try {
+      final bytes = await api.exportCustomersCsv(query: searchController.text.trim());
+      final opened = await launchUrl(
+        Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: const {'charset': 'utf-8'}),
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened) throw CustomerApiException('بازکردن فایل خروجی ممکن نشد.');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('خروجی مشتری‌ها آماده شد؛ فیلتر جست‌وجو هم اعمال شد.')),
+        );
+      }
+    } on CustomerApiException catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.message)));
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   List<CustomerSummary> get filtered {
     final query = searchController.text.trim().toLowerCase();
     if (query.isEmpty) return customers;
@@ -81,9 +104,13 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
           return ListView(
             padding: const EdgeInsets.all(28),
             children: [
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: constraints.maxWidth < 560 ? constraints.maxWidth - 56 : constraints.maxWidth - 210,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -102,10 +129,22 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: load,
-                    icon: const Icon(Icons.refresh_rounded),
-                    tooltip: 'بارگذاری مجدد',
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      FilledButton.tonalIcon(
+                        onPressed: exporting ? null : exportCsv,
+                        icon: exporting
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.download_rounded),
+                        label: const Text('خروجی CSV'),
+                      ),
+                      IconButton(
+                        onPressed: load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        tooltip: 'بارگذاری مجدد',
+                      ),
+                    ],
                   ),
                 ],
               ),

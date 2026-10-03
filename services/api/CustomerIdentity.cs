@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Npgsql;
 
 public static class CustomerIdentityModule
@@ -12,8 +14,51 @@ public static class CustomerIdentityModule
     public static IEndpointRouteBuilder MapCustomerIdentity(this IEndpointRouteBuilder endpoints)
     {
         var customers = endpoints.MapGroup("/api/v1/admin/customers").WithTags("Customers");
-        customers.MapGet("/", async (CustomerIdentityDatabase database, CancellationToken cancellationToken) =>
-                Results.Ok(await database.ListAsync(cancellationToken)))
+        customers.MapGet("/", async (
+                string? q,
+                bool? marketingConsent,
+                int? limit,
+                CustomerIdentityDatabase database,
+                CancellationToken cancellationToken) =>
+        {
+            if (q?.Length > 120)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
+            return Results.Ok(await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 200, 1, 500), cancellationToken));
+        })
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        customers.MapGet("/export.csv", async (
+                string? q,
+                bool? marketingConsent,
+                int? limit,
+                CustomerIdentityDatabase database,
+                CancellationToken cancellationToken) =>
+        {
+            if (q?.Length > 120)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
+            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken);
+            static string Csv(object? value)
+            {
+                var text = value?.ToString() ?? string.Empty;
+                return $"\"{text.Replace("\"", "\"\"")}\"";
+            }
+
+            var builder = new StringBuilder("\uFEFFشناسه مشتری,نام,موبایل,تعداد سفارش,رضایت ارتباطی,اولین ثبت,آخرین فعالیت\n");
+            foreach (var customer in rows)
+            {
+                builder.Append(string.Join(',', new[]
+                {
+                    Csv(customer.Id),
+                    Csv(customer.FullName),
+                    Csv(customer.Mobile),
+                    Csv(customer.OrderCount),
+                    Csv(customer.MarketingConsent ? "دارد" : "ثبت نشده"),
+                    Csv(customer.CreatedAt.ToString("O", CultureInfo.InvariantCulture)),
+                    Csv(customer.UpdatedAt.ToString("O", CultureInfo.InvariantCulture))
+                })).Append('\n');
+            }
+
+            return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-customers.csv");
+        })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         customers.MapGet("/{customerId:guid}", async (
                 Guid customerId,
@@ -146,7 +191,11 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
         logger.LogInformation("Customer identity schema and checkout trigger are ready.");
     }
 
-    public async Task<IReadOnlyCollection<CustomerSummary>> ListAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<CustomerSummary>> ListAsync(
+        string? query,
+        bool? marketingConsent,
+        int limit,
+        CancellationToken cancellationToken)
     {
         if (!IsConfigured) return Array.Empty<CustomerSummary>();
 
@@ -155,14 +204,19 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
                    c.created_at,c.updated_at,count(o.id)::int
             from customers c
             left join checkout_orders o on o.customer_id = c.id
+            where (@query = '' or c.full_name ilike '%' || @query || '%' or c.mobile ilike '%' || @query || '%' or c.mobile_normalized ilike '%' || @query || '%')
+              and (@marketing_consent is null or c.marketing_consent = @marketing_consent)
             group by c.id
             order by c.updated_at desc
-            limit 200;
+            limit @limit;
             """;
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("marketing_consent", (object?)marketingConsent ?? DBNull.Value);
+        command.Parameters.AddWithValue("limit", limit);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var customers = new List<CustomerSummary>();
         while (await reader.ReadAsync(cancellationToken))
