@@ -56,6 +56,7 @@
 | Corporate | landing، upload logo، pipeline status، assignment، follow-up، notes، messages و proforma | پایهٔ عملیاتی؛ package/analytics/conversion/reminder تکمیلی لازم |
 | Finance | tax، shipping، purchase/packaging/additional cost، invoice و margin پایه | ناقص در accounting رسمی، reconciliation، refund و net profit کامل |
 | Admin UX | palette، Vazirmatn، Persian formatter، shared request error states و PWA manifest | نیازمند modular architecture، RBAC و QA کامل |
+| Security | Owner bearer، rate-limit ورود، logout قابل revoke و Audit Log پایه برای انتشار/اصلاح موجودی | ناقص در RBAC پایدار، MFA، user management و Audit UI کامل |
 | CI | workflow برای Storefront، API/PostgreSQL، Flutter analyze/test/build و artifact | سبز روی main؛ release/deploy evidence ناقص |
 
 ## ۳. چه چیزهایی دوباره ساخته نمی‌شوند؟
@@ -189,7 +190,7 @@ flowchart TD
 | #76 | Versioned migrations/environments | P0 | Backend/Infra | L | ناقص |
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
-| #91 | RBAC/audit/session | P0 | Security | L | جدید |
+| #91 | RBAC/audit/session | P0 | Security | L | session revoke و audit foundation تکمیل؛ RBAC/MFA/Audit UI باقی است |
 | #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | dashboard پایه و KPI بازه‌ای تکمیل؛ هشدارها و گزارش‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | جدید |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |

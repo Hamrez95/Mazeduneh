@@ -69,6 +69,16 @@ public static class AdminSecurityExtensions
         })
         .WithTags("Admin Auth");
 
+        endpoints.MapGet("/api/v1/admin/audit-log", async (
+            string? entityType,
+            string? entityId,
+            int? limit,
+            AdminAuditLogDatabase database,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(entityType, entityId, Math.Clamp(limit ?? 100, 1, 250), cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>()
+            .WithTags("Admin Security");
+
         return endpoints;
     }
 }
