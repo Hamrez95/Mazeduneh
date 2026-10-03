@@ -35,6 +35,10 @@ void main() {
             'delivered': 8,
             'paidRevenue': 1200000,
             'todayRevenue': 850000,
+            'periodDays': 1,
+            'periodOrderCount': 2,
+            'periodRevenue': 850000,
+            'averageOrderValue': 425000,
             'lowStock': [],
           }),
           200,
@@ -70,6 +74,8 @@ void main() {
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('پیگیری سفارش‌ها'));
     expect(destination, 1);
   });
