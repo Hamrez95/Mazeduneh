@@ -95,7 +95,7 @@ void main() {
     late http.Request captured;
     final client = MockClient((request) async {
       captured = request;
-      return http.Response(jsonEncode({'updated': [{'id': '1'}], 'failed': [{'id': '2', 'message': 'مسیر نامعتبر'}]}), 200);
+      return http.Response.bytes(utf8.encode(jsonEncode({'updated': [{'id': '1'}], 'failed': [{'id': '2', 'message': 'مسیر نامعتبر'}]})), 200);
     });
     final result = await OrderApiClient(client: client, baseUrl: 'https://api.test')
         .bulkTransition(['1', '2'], 'Preparing', reason: 'آماده‌سازی گروهی');
