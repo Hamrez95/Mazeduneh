@@ -14,6 +14,7 @@ import 'customer_management_page.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
 import 'audit_log_page.dart';
+import 'admin_users_page.dart';
 import 'package:file_picker/file_picker.dart';
 
 class AdminColors {
@@ -81,6 +82,7 @@ class _AdminShellState extends State<AdminShell> {
     ('قیمت و ارسال', Icons.percent_rounded, AdminPermissions.pricingRead),
     ('فروش سازمانی', Icons.business_center_rounded, AdminPermissions.corporateRead),
     ('امنیت', Icons.shield_outlined, AdminPermissions.auditRead),
+    ('کاربران', Icons.manage_accounts_outlined, AdminPermissions.usersRead),
   ];
 
   @override
@@ -101,6 +103,7 @@ class _AdminShellState extends State<AdminShell> {
       const AdminPermissionGate(permission: AdminPermissions.pricingRead, child: CommerceSettingsPage()),
       const AdminPermissionGate(permission: AdminPermissions.corporateRead, child: CorporateRequestsPage()),
       const AdminPermissionGate(permission: AdminPermissions.auditRead, child: AuditLogPage()),
+      const AdminPermissionGate(permission: AdminPermissions.usersRead, child: AdminUsersPage()),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand(compact: true)),

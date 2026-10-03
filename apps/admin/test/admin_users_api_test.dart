@@ -1,0 +1,70 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:mazeduneh_admin/admin_users_api.dart';
+import 'package:mazeduneh_admin/auth_session.dart';
+
+void main() {
+  setUp(() {
+    OwnerSession.instance.establish(
+      accessToken: 'users-token',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+  });
+  tearDown(OwnerSession.instance.clear);
+
+  test('parses users and roles and sends authenticated mutations', () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/roles')) {
+        return http.Response(utf8Body(jsonEncode([
+          {'role': 'WarehouseOperator', 'permissions': ['inventory.read', 'inventory.write'], 'titleFa': 'اپراتور انبار'},
+        ])), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      if (request.method == 'POST') {
+        return http.Response(utf8Body(jsonEncode(userJson(isActive: true))), 201, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      if (request.method == 'PATCH') {
+        return http.Response(utf8Body(jsonEncode(userJson(isActive: false, deactivatedAt: '2026-10-03T12:00:00Z'))), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(utf8Body(jsonEncode([userJson()])), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: client);
+
+    final users = await api.fetchUsers();
+    final roles = await api.fetchRoles();
+    final created = await api.createUser(email: 'warehouse@example.com', displayName: 'اپراتور انبار', role: 'WarehouseOperator');
+    final disabled = await api.setStatus(created.id, false);
+
+    expect(users.single.displayName, 'اپراتور انبار');
+    expect(roles.single.titleFa, 'اپراتور انبار');
+    expect(created.isActive, isTrue);
+    expect(disabled.isActive, isFalse);
+    expect(requests.where((request) => request.headers['authorization'] == 'Bearer users-token'), hasLength(4));
+    expect(jsonDecode(requests[2].body)['role'], 'WarehouseOperator');
+    expect(jsonDecode(requests[3].body)['isActive'], isFalse);
+  });
+
+  test('clears the session when the server returns unauthorized', () async {
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: MockClient((_) async => http.Response.bytes(utf8.encode('باید دوباره وارد شوید'), 401, headers: {'content-type': 'text/plain; charset=utf-8'})));
+    await expectLater(api.fetchUsers(), throwsA(isA<AdminUsersApiException>()));
+    expect(OwnerSession.instance.isAuthenticated, isFalse);
+  });
+}
+
+String utf8Body(String value) => value;
+
+Map<String, dynamic> userJson({bool isActive = true, String? deactivatedAt}) => {
+      'id': 'user-1',
+      'email': 'warehouse@example.com',
+      'displayName': 'اپراتور انبار',
+      'role': 'WarehouseOperator',
+      'isActive': isActive,
+      'permissions': ['inventory.read', 'inventory.write'],
+      'createdAt': '2026-10-03T12:00:00Z',
+      'deactivatedAt': deactivatedAt,
+    };

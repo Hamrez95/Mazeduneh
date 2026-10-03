@@ -8,4 +8,5 @@ abstract final class AdminPermissions {
   static const pricingRead = 'pricing.read';
   static const corporateRead = 'corporate.read';
   static const auditRead = 'audit.read';
+  static const usersRead = 'users.read';
 }

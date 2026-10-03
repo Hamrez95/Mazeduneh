@@ -140,6 +140,7 @@ public sealed class AdminUserSchemaInitializer(AdminUsersDatabase database) : IH
 }
 
 public sealed record AdminUserSummary(Guid Id, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt);
+public sealed record AdminRoleSummary(string Role, IReadOnlyList<string> Permissions, string TitleFa);
 public sealed record AdminUserCreateRequest(string Email, string DisplayName, string Role)
 {
     public Dictionary<string, string[]> Validate()

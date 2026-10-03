@@ -93,12 +93,15 @@ class AdminAuditLogEntry {
   String get actionLabel => switch (action) {
         'inventory.adjustment' => 'اصلاح موجودی',
         'product.publication' => 'تغییر انتشار محصول',
+        'admin-user.created' => 'افزودن کاربر مدیریتی',
+        'admin-user.status-changed' => 'تغییر وضعیت کاربر مدیریتی',
         _ => action,
       };
 
   String get entityLabel => switch (entityType) {
         'ProductVariant' => 'SKU محصول',
         'Product' => 'محصول',
+        'AdminUser' => 'کاربر مدیریتی',
         _ => entityType,
       };
 

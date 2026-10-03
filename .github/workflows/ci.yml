@@ -190,6 +190,15 @@ jobs:
           assert owner['isActive'] is True
           assert 'inventory.write' in owner['permissions']
           PY
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/users/roles \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-roles.json
+          python3 - <<'PY'
+          import json
+          roles = json.load(open('/tmp/admin-roles.json', encoding='utf-8'))
+          warehouse = next(item for item in roles if item['role'] == 'WarehouseOperator')
+          assert warehouse['titleFa'] == 'اپراتور انبار'
+          assert 'inventory.write' in warehouse['permissions']
+          PY
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
