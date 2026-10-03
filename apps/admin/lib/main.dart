@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'catalog_api.dart';
 import 'order_api.dart';
 import 'media_api.dart';
-import 'auth_api.dart';
 import 'customer_management_page.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
@@ -58,9 +57,8 @@ class MazedunehAdminApp extends StatelessWidget {
 }
 
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key, this.dashboardApi, this.authApi});
+  const AdminShell({super.key, this.dashboardApi});
   final OrderApiClient? dashboardApi;
-  final AuthApiClient? authApi;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -68,7 +66,6 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   var index = 0;
-  bool loggingOut = false;
   final catalogKey = GlobalKey<CatalogPageState>();
   static const items = [
     ('داشبورد', Icons.space_dashboard_rounded),
@@ -98,16 +95,7 @@ class _AdminShellState extends State<AdminShell> {
       const CorporateRequestsPage(),
     ];
     return Scaffold(
-      appBar: desktop ? null : AppBar(
-        title: const Brand(compact: true),
-        actions: [
-          IconButton(
-            onPressed: loggingOut ? null : _logout,
-            tooltip: 'خروج امن',
-            icon: loggingOut ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.logout_rounded),
-          ),
-        ],
-      ),
+      appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
       bottomNavigationBar: desktop
           ? null
           : NavigationBar(
@@ -143,12 +131,6 @@ class _AdminShellState extends State<AdminShell> {
                 title: Text('حمیدرضا', style: TextStyle(color: Colors.white)),
                 subtitle: Text('مدیر اصلی', style: TextStyle(color: Color(0xFF9EACA1))),
               ),
-              TextButton.icon(
-                onPressed: loggingOut ? null : _logout,
-                icon: loggingOut ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.logout_rounded),
-                label: const Text('خروج امن'),
-                style: TextButton.styleFrom(foregroundColor: Colors.white),
-              ),
             ]),
           ),
         Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
@@ -161,18 +143,6 @@ class _AdminShellState extends State<AdminShell> {
             )
       : null,
     );
-  }
-
-  Future<void> _logout() async {
-    setState(() => loggingOut = true);
-    try {
-      await (widget.authApi ?? AuthApiClient()).logout();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('از پنل خارج شدید. برای ادامه دوباره وارد شوید.')));
-    } catch (exception) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
-    } finally {
-      if (mounted) setState(() => loggingOut = false);
-    }
   }
 
   Future<void> _openMoreMenu() async {

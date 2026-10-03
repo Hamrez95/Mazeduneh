@@ -15,6 +15,8 @@ builder.Services.AddCors(options => options.AddPolicy("Storefront", policy =>
 builder.Services.AddSingleton<ProductCatalog>();
 builder.Services.AddSingleton<CatalogDatabase>();
 builder.Services.AddSingleton<InventoryLedgerDatabase>();
+builder.Services.AddSingleton<AdminAuditLogDatabase>();
+builder.Services.AddHostedService<AdminAuditLogSchemaInitializer>();
 builder.Services.AddAdminSecurity(builder.Configuration);
 builder.Services.AddCheckout();
 builder.Services.AddPayments();
@@ -227,6 +229,8 @@ products.MapPatch("/{slug}/publication", async (
     SetProductPublicationRequest request,
     ProductCatalog productCatalog,
     CatalogDatabase db,
+    AdminAuditLogDatabase audit,
+    HttpContext context,
     CancellationToken cancellationToken) =>
 {
     var existing = productCatalog.FindBySlug(slug);
@@ -241,6 +245,17 @@ products.MapPatch("/{slug}/publication", async (
     var updated = existing with { IsPublished = request.IsPublished };
     await db.SetPublicationAsync(existing.Id, request.IsPublished, cancellationToken);
     productCatalog.Add(updated);
+    var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+    await audit.RecordAsync(
+        actor,
+        "product.publication",
+        "Product",
+        existing.Id.ToString(),
+        new { existing.Slug, existing.IsPublished },
+        new { updated.Slug, updated.IsPublished },
+        request.IsPublished ? "انتشار محصول" : "خارج کردن محصول از انتشار",
+        context.TraceIdentifier,
+        cancellationToken);
 
     return Results.Ok(new
     {

@@ -1,6 +1,6 @@
 using Npgsql;
 
-public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogger<InventoryLedgerDatabase> logger)
+public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogger<InventoryLedgerDatabase> logger, AdminAuditLogDatabase audit)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -62,7 +62,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, string actor, CancellationToken cancellationToken)
+    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
         if (request.QuantityDelta == 0) return StockAdjustmentResult.Failed("مقدار تغییر باید صفر نباشد.");
@@ -88,6 +88,18 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         var balance = reader.GetInt32(1);
         await reader.CloseAsync();
         await RecordAsync(connection, transaction, sku, request.QuantityDelta, "ManualAdjustment", balance, null, actor, request.Reason.Trim(), cancellationToken);
+        await audit.RecordAsync(
+            connection,
+            transaction,
+            actor,
+            "inventory.adjustment",
+            "ProductVariant",
+            sku,
+            new { sku, availablePackages = balance - request.QuantityDelta },
+            new { sku, availablePackages = balance },
+            request.Reason.Trim(),
+            requestId,
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return StockAdjustmentResult.Success(sku, balance);
     }
@@ -138,7 +150,7 @@ public static class InventoryLedgerModule
             if (string.IsNullOrWhiteSpace(request.Sku) || string.IsNullOrWhiteSpace(request.Reason))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Sku)] = ["SKU و دلیل تغییر الزامی است."] });
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var result = await database.AdjustAsync(request, actor, cancellationToken);
+            var result = await database.AdjustAsync(request, actor, context.TraceIdentifier, cancellationToken);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
