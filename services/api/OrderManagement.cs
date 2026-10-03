@@ -406,6 +406,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return new AdminDashboard(0, 0, 0, 0, 0, 0, Array.Empty<LowStockItem>());
+        var from = days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days);
         const string orderSql = """
             select
               count(*) filter (where state='AwaitingPayment')::int,
@@ -425,7 +426,6 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         decimal paidRevenue, periodRevenue, averageOrderValue;
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
-            var from = days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days);
             command.Parameters.AddWithValue("from", from);
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
@@ -454,7 +454,40 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             while (await reader.ReadAsync(cancellationToken))
                 lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
 
-        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, days, periodOrderCount, periodRevenue, averageOrderValue);
+        const string expirySql = """
+            select p.title,v.sku,v.display_label,min(b.expires_at),sum(b.remaining_packages)::int
+            from inventory_batches b
+            join product_variants v on upper(v.sku)=upper(b.sku)
+            join products p on p.id=v.product_id
+            where b.remaining_packages > 0 and b.expires_at > now() and b.expires_at <= now() + interval '30 days'
+            group by p.title,v.sku,v.display_label
+            order by min(b.expires_at),p.title
+            limit 20;
+            """;
+        var expiringSoon = new List<ExpiringStockItem>();
+        await using (var command = new NpgsqlCommand(expirySql, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken))
+                expiringSoon.Add(new ExpiringStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetInt32(4)));
+
+        const string summarySql = """
+            select
+              (select count(*)::int from customers where created_at >= @from),
+              (select count(*)::int from corporate_requests where status='New'),
+              (select count(*)::int from checkout_orders where state in ('Cancelled','Expired') and created_at >= @from);
+            """;
+        int newCustomers, corporateNewRequests, problemOrders;
+        await using (var command = new NpgsqlCommand(summarySql, connection))
+        {
+            command.Parameters.AddWithValue("from", from);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            newCustomers = reader.GetInt32(0);
+            corporateNewRequests = reader.GetInt32(1);
+            problemOrders = reader.GetInt32(2);
+        }
+
+        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, days, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
     }
 
     public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
@@ -747,9 +780,11 @@ public sealed record AdminOrderTransition(OrderState State, string Actor, DateTi
 public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTimeOffset CreatedAt);
 public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
+public sealed record ExpiringStockItem(string ProductTitle, string Sku, string VariantLabel, DateTimeOffset ExpiresAt, int RemainingPackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
-    int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0);
+    int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
+    IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);

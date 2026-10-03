@@ -66,9 +66,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
-    await tester.pumpAndSettle();
-
+    await tester.scrollUntilVisible(
+      find.text('امروز چه کاری انجام دهید؟'),
+      500,
+      maxScrolls: 10,
+    );
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
