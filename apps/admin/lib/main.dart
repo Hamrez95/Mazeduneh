@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'admin_state.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog_api.dart';
 import 'order_api.dart';
@@ -1191,6 +1194,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   bool loading = true;
   bool savingNote = false;
   bool savingShipping = false;
+  bool openingPackingSlip = false;
   final noteController = TextEditingController();
   final carrierController = TextEditingController();
   final trackingController = TextEditingController();
@@ -1267,6 +1271,22 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
     }
   }
 
+  Future<void> openPackingSlip() async {
+    setState(() => openingPackingSlip = true);
+    try {
+      final html = await widget.api.fetchPackingSlipHtml(widget.order.id);
+      final opened = await launchUrl(
+        Uri.dataFromString(html, mimeType: 'text/html', encoding: utf8),
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('برگه باز نشد؛ اجازه بازکردن صفحه جدید را بررسی کنید.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+    } finally {
+      if (mounted) setState(() => openingPackingSlip = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = loading
@@ -1299,6 +1319,11 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('سفارش ${detail.order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
             Chip(label: Text(_stateLabel(detail.order.state)), backgroundColor: AdminColors.mintSoft),
+            FilledButton.tonalIcon(
+              onPressed: openingPackingSlip ? null : openPackingSlip,
+              icon: openingPackingSlip ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.inventory_2_outlined),
+              label: const Text('برگه بسته‌بندی'),
+            ),
           ]),
           const SizedBox(height: 16),
           _detailCard(title: 'مشتری و تحویل', icon: Icons.person_pin_circle_outlined, child: Wrap(spacing: 28, runSpacing: 14, children: [
@@ -1517,17 +1542,10 @@ class _InventoryPageState extends State<InventoryPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 1100 ? 2 : 1;
-      final expiredCount = batches.where((item) => item.isExpired && item.remainingPackages > 0).length;
-      final expiringCount = batches.where((item) => item.isExpiringSoon && item.remainingPackages > 0).length;
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (expiredCount > 0 || expiringCount > 0) ...[
-          _InventoryAttentionBanner(expiredCount: expiredCount, expiringCount: expiringCount),
-          const SizedBox(height: 14),
-        ],
-        Expanded(child: GridView.count(
-          crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 2.7 : 1.9,
-          children: [
+      return GridView.count(
+        crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
+        childAspectRatio: columns == 1 ? 2.7 : 1.9,
+        children: [
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
@@ -1592,56 +1610,18 @@ class _InventoryPageState extends State<InventoryPage> {
               itemBuilder: (_, index) {
                 final item = batches[index];
                 final expired = item.isExpired;
-                final expiringSoon = item.isExpiringSoon && !expired;
                 return ListTile(
                   dense: true, contentPadding: EdgeInsets.zero,
-                  leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
+                  leading: Icon(expired ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
+                  subtitle: Text('${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · انقضا ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : AdminColors.muted)),
                 );
               },
             )),
           ]))),
-          ],
-        )),
-      ]);
+        ],
+      );
     });
-  }
-}
-
-class _InventoryAttentionBanner extends StatelessWidget {
-  const _InventoryAttentionBanner({required this.expiredCount, required this.expiringCount});
-
-  final int expiredCount;
-  final int expiringCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final expiredText = expiredCount == 0 ? '' : '${formatPersianInteger(expiredCount)} بچ منقضی با موجودی باقی‌مانده';
-    final expiringText = expiringCount == 0 ? '' : '${formatPersianInteger(expiringCount)} بچ تا ۳۰ روز آینده منقضی می‌شود';
-    final detail = [expiredText, expiringText].where((value) => value.isNotEmpty).join(' · ');
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      label: 'هشدار موجودی: $detail',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: expiredCount > 0 ? const Color(0xFFFFECE8) : const Color(0xFFFFF5DF),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: expiredCount > 0 ? const Color(0xFFF1C5BB) : const Color(0xFFF0D69A)),
-        ),
-        child: Row(children: [
-          Icon(expiredCount > 0 ? Icons.priority_high_rounded : Icons.schedule_rounded, color: expiredCount > 0 ? AdminColors.coral : const Color(0xFF9A661D)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(detail, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.4)),
-            const SizedBox(height: 3),
-            const Text('اولویت با برداشت FEFO', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
-          ])),
-        ]),
-      ),
-    );
   }
 }
 

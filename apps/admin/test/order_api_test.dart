@@ -131,23 +131,16 @@ void main() {
     expect(html, contains('فاکتور'));
   });
 
-  test('fetchInventoryBatches requests the warning window and parses expiry state', () async {
+  test('fetchPackingSlipHtml uses the authenticated packing slip endpoint', () async {
     late http.Request captured;
     final client = MockClient((request) async {
       captured = request;
-      return http.Response(jsonEncode([
-        {
-          'id': 'batch-1', 'sku': 'AJ-1', 'productTitle': 'آجیل', 'variantLabel': '۵۰۰ گرم', 'batchCode': 'LOT-1',
-          'receivedPackages': 10, 'remainingPackages': 6, 'producedAt': '2026-07-01T08:00:00Z', 'expiresAt': '2026-07-20T08:00:00Z',
-          'costPrice': 100, 'packagingCost': 2, 'additionalCost': 1, 'isExpired': false, 'isExpiringSoon': true,
-        }
-      ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      return http.Response('<html dir="rtl">برگه بسته‌بندی</html>', 200, headers: {'content-type': 'text/html; charset=utf-8'});
     });
-    final batches = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchInventoryBatches(expiryWarningDays: 14, limit: 25);
-    expect(captured.url.path, '/api/v1/admin/inventory/batches');
-    expect(captured.url.queryParameters['expiryWarningDays'], '14');
-    expect(captured.url.queryParameters['limit'], '25');
-    expect(batches.single.isExpiringSoon, isTrue);
+    final html = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchPackingSlipHtml('11111111-1111-1111-1111-111111111111');
+    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/packing-slip');
+    expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(html, contains('برگه بسته‌بندی'));
   });
 
   test('updateShipping sends tracking and actual expense', () async {
