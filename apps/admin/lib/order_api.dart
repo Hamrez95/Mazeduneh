@@ -73,8 +73,8 @@ class OrderApiClient {
     return decoded.map((item) => StockMovement.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<List<InventoryBatch>> fetchInventoryBatches({String? sku, bool includeExpired = true, int expiryWarningDays = 30, int limit = 100}) async {
-    final query = <String, String>{'limit': '$limit', 'includeExpired': '$includeExpired', 'expiryWarningDays': '$expiryWarningDays', if (sku != null && sku.isNotEmpty) 'sku': sku};
+  Future<List<InventoryBatch>> fetchInventoryBatches({String? sku, bool includeExpired = true, int limit = 100}) async {
+    final query = <String, String>{'limit': '$limit', 'includeExpired': '$includeExpired', if (sku != null && sku.isNotEmpty) 'sku': sku};
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/inventory/batches').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
@@ -122,6 +122,13 @@ class OrderApiClient {
 
   Future<String> fetchInvoiceHtml(String orderId) async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/invoice'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return utf8.decode(response.bodyBytes);
+  }
+
+  Future<String> fetchPackingSlipHtml(String orderId) async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/packing-slip'), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return utf8.decode(response.bodyBytes);
@@ -326,7 +333,7 @@ class InventoryBatch {
     required this.id, required this.sku, required this.productTitle, required this.variantLabel,
     required this.batchCode, required this.receivedPackages, required this.remainingPackages,
     required this.producedAt, required this.expiresAt, required this.costPrice,
-    required this.packagingCost, required this.additionalCost, required this.isExpired, required this.isExpiringSoon,
+    required this.packagingCost, required this.additionalCost, required this.isExpired,
   });
   final String id;
   final String sku;
@@ -341,7 +348,6 @@ class InventoryBatch {
   final num packagingCost;
   final num additionalCost;
   final bool isExpired;
-  final bool isExpiringSoon;
 
   factory InventoryBatch.fromJson(Map<String, dynamic> json) => InventoryBatch(
     id: json['id'].toString(), sku: json['sku'] as String, productTitle: json['productTitle'] as String,
@@ -350,7 +356,6 @@ class InventoryBatch {
     producedAt: DateTime.parse(json['producedAt'] as String), expiresAt: DateTime.parse(json['expiresAt'] as String),
     costPrice: json['costPrice'] as num, packagingCost: json['packagingCost'] as num,
     additionalCost: json['additionalCost'] as num, isExpired: json['isExpired'] as bool,
-    isExpiringSoon: json['isExpiringSoon'] as bool? ?? false,
   );
 }
 

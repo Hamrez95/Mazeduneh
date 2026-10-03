@@ -50,6 +50,18 @@ public static class OrderManagementModule
             return Results.Content(InvoiceRenderer.Render(detail.ToCheckoutOrder()), "text/html; charset=utf-8", Encoding.UTF8);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/orders/{orderId:guid}/packing-slip", async (
+            Guid orderId,
+            OrderManagementDatabase database,
+            HttpResponse response,
+            CancellationToken cancellationToken) =>
+        {
+            var detail = await database.GetDetailAsync(orderId, cancellationToken);
+            if (detail is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
+            response.Headers.ContentDisposition = $"inline; filename=\"mazeduneh-packing-slip-{orderId:N}.html\"";
+            return Results.Content(PackingSlipRenderer.Render(detail.ToCheckoutOrder()), "text/html; charset=utf-8", Encoding.UTF8);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapPost("/orders/{orderId:guid}/notes", async (
             Guid orderId,
             AdminOrderNoteInput input,
