@@ -255,9 +255,14 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                         child: CircularProgressIndicator(strokeWidth: 2),
                                       )
                                     else
-                                      OutlinedButton(
-                                        onPressed: () => _togglePublication(product),
-                                        child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار'),
+                                      Tooltip(
+                                        message: product.isPublished
+                                            ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.'
+                                            : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
+                                        child: OutlinedButton(
+                                          onPressed: () => _togglePublication(product),
+                                          child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار'),
+                                        ),
                                       ),
                                   ],
                                 ),
