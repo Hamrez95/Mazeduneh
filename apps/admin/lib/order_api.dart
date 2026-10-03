@@ -121,6 +121,21 @@ class OrderApiClient {
     return AdminOrder.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<(int updated, int failed)> bulkTransition(List<String> orderIds, String state, {String? reason}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/orders/bulk-state'),
+      headers: _headers(json: true),
+      body: jsonEncode({'orderIds': orderIds, 'state': state, 'reason': reason}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    return (
+      (decoded['updated'] as List<dynamic>? ?? const []).length,
+      (decoded['failed'] as List<dynamic>? ?? const []).length,
+    );
+  }
+
   Future<AdminOrderDetail> fetchOrderDetail(String orderId) async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId'), headers: _headers());
     _guard(response);

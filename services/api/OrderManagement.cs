@@ -159,6 +159,40 @@ public static class OrderManagementModule
             };
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapPost("/orders/bulk-state", async (
+            BulkOrderStateRequest request,
+            OrderManagementDatabase database,
+            ProductCatalog catalog,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (!Enum.TryParse<OrderState>(request.State, true, out var requestedState))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.State)] = ["وضعیت سفارش معتبر نیست."] });
+            if (request.OrderIds is null || request.OrderIds.Count is < 1 or > 50)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.OrderIds)] = ["برای عملیات گروهی بین ۱ تا ۵۰ سفارش انتخاب کنید."] });
+            if (request.OrderIds.Distinct().Count() != request.OrderIds.Count)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.OrderIds)] = ["شناسه سفارش‌ها نباید تکراری باشد."] });
+            if (request.Reason is { Length: > 500 })
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Reason)] = ["دلیل عملیات نمی‌تواند بیشتر از ۵۰۰ نویسه باشد."] });
+
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var updated = new List<AdminOrderSummary>();
+            var failed = new List<object>();
+            foreach (var orderId in request.OrderIds)
+            {
+                var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, cancellationToken);
+                if (result.Status == OrderOperationStatus.Updated && result.Order is not null)
+                {
+                    updated.Add(result.Order);
+                    if (result.StockLevels is not null)
+                        foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
+                }
+                else failed.Add(new { id = orderId, message = result.Message ?? "تغییر وضعیت انجام نشد." });
+            }
+
+            return Results.Ok(new { updated, failed });
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         return endpoints;
     }
 }
@@ -666,6 +700,7 @@ public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase dat
 }
 
 public sealed record SetOrderStateRequest(string State, string? Reason);
+public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
 public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost);
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
