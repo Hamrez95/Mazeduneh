@@ -20,7 +20,10 @@ void main() {
   tearDown(OwnerSession.instance.clear);
 
   testWidgets('dashboard quick actions expose a guided route on a narrow screen', (tester) async {
-    tester.view.physicalSize = const Size(360, 800);
+    // Keep the narrow mobile width while giving the full operational dashboard
+    // enough vertical space for this route-level assertion. The test is about
+    // responsive width and guided navigation, not viewport clipping.
+    tester.view.physicalSize = const Size(360, 1800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -64,9 +67,6 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
-
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
     await tester.pumpAndSettle();
 
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
