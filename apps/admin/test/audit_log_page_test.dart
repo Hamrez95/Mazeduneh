@@ -28,7 +28,7 @@ void main() {
           'beforeJson': '{"isPublished":false}', 'afterJson': '{"isPublished":true}',
           'reason': 'انتشار محصول', 'requestId': 'trace-1', 'occurredAt': '2026-08-01T08:00:00Z',
         }
-      ]), 200)),
+      ]), 200, headers: {'content-type': 'application/json; charset=utf-8'})),
     );
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
     await tester.pump();
@@ -45,7 +45,7 @@ void main() {
   testWidgets('renders the educational empty state', (tester) async {
     final api = AuditLogApiClient(
       baseUrl: 'https://api.test',
-      client: MockClient((_) async => http.Response('[]', 200)),
+      client: MockClient((_) async => http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'})),
     );
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
     await tester.pumpAndSettle();
