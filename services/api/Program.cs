@@ -17,6 +17,8 @@ builder.Services.AddSingleton<CatalogDatabase>();
 builder.Services.AddSingleton<InventoryLedgerDatabase>();
 builder.Services.AddSingleton<AdminAuditLogDatabase>();
 builder.Services.AddHostedService<AdminAuditLogSchemaInitializer>();
+builder.Services.AddSingleton<AdminUsersDatabase>();
+builder.Services.AddHostedService<AdminUserSchemaInitializer>();
 builder.Services.AddAdminSecurity(builder.Configuration);
 builder.Services.AddCheckout();
 builder.Services.AddPayments();
