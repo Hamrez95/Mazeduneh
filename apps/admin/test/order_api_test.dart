@@ -234,7 +234,10 @@ void main() {
           'shippedAt': '2026-09-21T10:00:00Z',
           'daysOverdue': 5,
         },
-      ]), 200);
+      ]),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
     });
     final shipments = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOverdueShipments(days: 5);
     expect(captured.url.path, '/api/v1/admin/shipping/overdue');
