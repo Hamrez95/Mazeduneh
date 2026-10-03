@@ -38,12 +38,10 @@ public sealed record InventoryBatch(
     decimal PackagingCost,
     decimal AdditionalCost,
     bool IsExpired,
-    bool IsExpiringSoon,
     DateTimeOffset CreatedAt);
 
 public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger<InventoryBatchDatabase> logger, InventoryLedgerDatabase ledger)
 {
-    public const int DefaultExpiryWarningDays = 30;
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
@@ -151,8 +149,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         await transaction.CommitAsync(cancellationToken);
         return (new InventoryBatch(id, sku, title, label, request.BatchCode.Trim(), request.ReceivedPackages,
             request.ReceivedPackages, request.ProducedAt, request.ExpiresAt, request.CostPrice,
-            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow,
-            request.ExpiresAt > DateTimeOffset.UtcNow && request.ExpiresAt <= DateTimeOffset.UtcNow.AddDays(DefaultExpiryWarningDays), createdAt), null);
+            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt), null);
     }
 
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> EarliestExpiryBySkuAsync(CancellationToken cancellationToken)
@@ -174,7 +171,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         return result;
     }
 
-    public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int expiryWarningDays, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int limit, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return Array.Empty<InventoryBatch>();
         const string sql = """
@@ -197,14 +194,10 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         var result = new List<InventoryBatch>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-        {
-            var expiresAt = reader.GetFieldValue<DateTimeOffset>(8);
-            var now = DateTimeOffset.UtcNow;
             result.Add(new InventoryBatch(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
                 reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetFieldValue<DateTimeOffset>(7),
-                expiresAt, reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
-                expiresAt <= now, expiresAt > now && expiresAt <= now.AddDays(expiryWarningDays), reader.GetFieldValue<DateTimeOffset>(12)));
-        }
+                reader.GetFieldValue<DateTimeOffset>(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
+                reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12)));
         return result;
     }
 }
@@ -234,11 +227,10 @@ public static class InventoryBatchModule
         endpoints.MapGet("/api/v1/admin/inventory/batches", async (
             string? sku,
             bool? includeExpired,
-            int? expiryWarningDays,
             int? limit,
             InventoryBatchDatabase database,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.ListAsync(sku, includeExpired ?? true, Math.Clamp(expiryWarningDays ?? InventoryBatchDatabase.DefaultExpiryWarningDays, 1, 365), Math.Clamp(limit ?? 100, 1, 250), cancellationToken)))
+            Results.Ok(await database.ListAsync(sku, includeExpired ?? true, Math.Clamp(limit ?? 100, 1, 250), cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         return endpoints;
     }
