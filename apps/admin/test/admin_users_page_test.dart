@@ -40,6 +40,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api))));
     await tester.pumpAndSettle();
     expect(find.text('کاربران و دسترسی‌ها'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('مدیر اصلی'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('مدیر اصلی'), findsOneWidget);
     expect(find.byTooltip('مدیر اصلی قابل غیرفعال‌سازی نیست'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -61,6 +62,7 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api))));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.textContaining('هنوز کاربر دیگری برای این فروشگاه ثبت نشده است'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.textContaining('هنوز کاربر دیگری برای این فروشگاه ثبت نشده است'), findsOneWidget);
     await tester.tap(find.text('افزودن کاربر').last);
     await tester.pumpAndSettle();
