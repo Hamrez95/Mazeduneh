@@ -19,7 +19,7 @@ void main() {
   tearDown(OwnerSession.instance.clear);
 
   testWidgets('shows responsive user cards and protects the owner account', (tester) async {
-    tester.view.physicalSize = const Size(360, 800);
+    tester.view.physicalSize = const Size(360, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
