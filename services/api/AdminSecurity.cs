@@ -97,17 +97,78 @@ public static class AdminPermissionCatalog
     public const string InventoryRead = "inventory.read";
     public const string InventoryWrite = "inventory.write";
     public const string CustomersRead = "customers.read";
+    public const string CustomersExport = "customers.export";
     public const string ReportsRead = "reports.read";
+    public const string CategoriesRead = "categories.read";
+    public const string CategoriesWrite = "categories.write";
+    public const string PricingRead = "pricing.read";
     public const string PricingWrite = "pricing.write";
+    public const string CorporateRead = "corporate.read";
+    public const string CorporateWrite = "corporate.write";
+    public const string ContentRead = "content.read";
     public const string ContentWrite = "content.write";
+    public const string AuditRead = "audit.read";
     public const string SettingsWrite = "settings.write";
 
     public static IReadOnlyList<string> Owner { get; } =
     [
         DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite,
-        InventoryRead, InventoryWrite, CustomersRead, ReportsRead, PricingWrite,
-        ContentWrite, SettingsWrite
+        InventoryRead, InventoryWrite, CustomersRead, CustomersExport, ReportsRead,
+        CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
     ];
+
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultRoles { get; } =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Owner"] = Owner,
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CorporateRead],
+            ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite],
+            ["Accountant"] = [DashboardRead, OrdersRead, ReportsRead, PricingRead],
+            ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead],
+            ["CorporateSales"] = [DashboardRead, CorporateRead, CorporateWrite, CustomersRead],
+            ["ContentManager"] = [DashboardRead, ProductsRead, ProductsWrite, CategoriesRead, CategoriesWrite, ContentRead, ContentWrite],
+            ["MarketingManager"] = [DashboardRead, ProductsRead, CustomersRead, ReportsRead, PricingRead, PricingWrite, ContentRead, ContentWrite, CorporateRead],
+            ["ReadOnlyAnalyst"] = [DashboardRead, OrdersRead, ProductsRead, InventoryRead, CustomersRead, ReportsRead, PricingRead, CorporateRead],
+        };
+
+    public static string NormalizeRole(string? role) =>
+        role is not null && DefaultRoles.ContainsKey(role.Trim()) ? role.Trim() : "Owner";
+
+    public static IReadOnlyList<string> Resolve(string? role, IReadOnlyList<string>? overridePermissions = null)
+    {
+        if (overridePermissions is { Count: > 0 })
+            return overridePermissions.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return DefaultRoles.TryGetValue(NormalizeRole(role), out var permissions) ? permissions : Owner;
+    }
+
+    public static bool Allows(AdminPrincipal principal, string permission) =>
+        string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase) ||
+        principal.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+
+    public static string? RequiredPermission(HttpContext context)
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        var method = context.Request.Method;
+        if (path.StartsWith("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase)) return AuditRead;
+        if (path.StartsWith("/api/v1/admin/orders", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
+        if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/v1/admin/analytics", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/v1/admin/notifications", StringComparison.OrdinalIgnoreCase)) return DashboardRead;
+        if (path.StartsWith("/api/v1/admin/inventory", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
+        if (path.StartsWith("/api/v1/admin/customers/export", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
+        if (path.StartsWith("/api/v1/admin/customers", StringComparison.OrdinalIgnoreCase)) return CustomersRead;
+        if (path.StartsWith("/api/v1/admin/corporate-requests", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
+        if (path.StartsWith("/api/v1/admin/commerce/settings", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? PricingRead : PricingWrite;
+        if (path.StartsWith("/api/v1/admin/media/metadata", StringComparison.OrdinalIgnoreCase)) return ContentRead;
+        if (path.StartsWith("/api/v1/admin/media", StringComparison.OrdinalIgnoreCase)) return ContentWrite;
+        if (path.StartsWith("/api/v1/categories/admin", StringComparison.OrdinalIgnoreCase)) return CategoriesRead;
+        if (path.StartsWith("/api/v1/categories", StringComparison.OrdinalIgnoreCase)) return CategoriesWrite;
+        if (path.StartsWith("/api/v1/products/admin", StringComparison.OrdinalIgnoreCase)) return ProductsRead;
+        if (path.StartsWith("/api/v1/products", StringComparison.OrdinalIgnoreCase)) return ProductsWrite;
+        return null;
+    }
 }
 
 public sealed class AdminTokenService
@@ -115,6 +176,8 @@ public sealed class AdminTokenService
     private readonly byte[] _signingKey;
     private readonly byte[] _configuredPasswordHash;
     private readonly TimeSpan _lifetime;
+    private readonly string _configuredRole;
+    private readonly IReadOnlyList<string> _configuredPermissions;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new(StringComparer.Ordinal);
 
     public AdminTokenService(IConfiguration configuration)
@@ -123,6 +186,8 @@ public sealed class AdminTokenService
         _signingKey = Encoding.UTF8.GetBytes(configuration["Admin:TokenSigningKey"] ?? string.Empty);
         _configuredPasswordHash = ParseHex(configuration["Admin:PasswordHash"]);
         _lifetime = TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Admin:AccessTokenMinutes", 15), 5, 60));
+        _configuredRole = AdminPermissionCatalog.NormalizeRole(configuration["Admin:Role"]);
+        _configuredPermissions = ParsePermissions(configuration["Admin:Permissions"]);
     }
 
     public string OwnerEmail { get; }
@@ -142,8 +207,8 @@ public sealed class AdminTokenService
     public IssuedAdminToken Issue(string email)
     {
         var expiresAt = DateTimeOffset.UtcNow.Add(_lifetime);
-        var role = "Owner";
-        var permissions = AdminPermissionCatalog.Owner;
+        var role = _configuredRole;
+        var permissions = AdminPermissionCatalog.Resolve(role, _configuredPermissions);
         var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{Guid.NewGuid():N}|{role}|{string.Join(',', permissions)}";
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
@@ -213,6 +278,11 @@ public sealed class AdminTokenService
         try { return Convert.FromHexString(value); }
         catch (FormatException) { return []; }
     }
+
+    private static IReadOnlyList<string> ParsePermissions(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
 public sealed class OwnerAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
@@ -224,6 +294,9 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens) : IEndpoi
             return Results.Unauthorized();
 
         context.HttpContext.Items["AdminPrincipal"] = principal;
+        var requiredPermission = AdminPermissionCatalog.RequiredPermission(context.HttpContext);
+        if (requiredPermission is not null && !AdminPermissionCatalog.Allows(principal, requiredPermission))
+            return Results.Json(new { message = "این عملیات برای نقش فعلی مجاز نیست." }, statusCode: StatusCodes.Status403Forbidden);
         return await next(context);
     }
 }

@@ -86,7 +86,24 @@ jobs:
             kill "$API_PID" || true
             wait "$API_PID" || true
           }
-          trap 'stop_api' EXIT
+          start_role_api() {
+            Admin__Role=ReadOnlyAnalyst dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5100 > /tmp/mazeduneh-role-api.log 2>&1 &
+            ROLE_API_PID=$!
+            export ROLE_API_PID
+            for attempt in $(seq 1 40); do
+              if curl -fsS http://127.0.0.1:5100/health > /dev/null; then return 0; fi
+              sleep 1
+            done
+            cat /tmp/mazeduneh-role-api.log
+            return 1
+          }
+          stop_role_api() {
+            if [[ -n "${ROLE_API_PID:-}" ]]; then
+              kill "$ROLE_API_PID" || true
+              wait "$ROLE_API_PID" || true
+            fi
+          }
+          trap 'stop_api; stop_role_api' EXIT
           start_api
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/checkout/orders \
@@ -325,6 +342,25 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}")" = "401"
 
           stop_api
+          start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/read-only-login.json
+          ROLE_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/read-only-login.json'))['accessToken'])")
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/read-only-login.json', encoding='utf-8'))
+          assert login['role'] == 'ReadOnlyAnalyst'
+          assert 'orders.read' in login['permissions']
+          assert 'orders.write' not in login['permissions']
+          PY
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
+          ROLE_FORBIDDEN_STATUS=$(curl -s -o /tmp/read-only-forbidden.json -w '%{http_code}' -X POST http://127.0.0.1:5100/api/v1/admin/inventory/adjust \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"must-be-forbidden"}')
+          test "${ROLE_FORBIDDEN_STATUS}" = "403"
+          stop_role_api
           start_api
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
