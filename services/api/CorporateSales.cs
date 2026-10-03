@@ -90,8 +90,8 @@ public static class CorporateSalesModule
                 ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." }));
 
         var admin = endpoints.MapGroup("/api/v1/admin/corporate-requests").WithTags("Admin Corporate Sales");
-        admin.MapGet("", async (string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
-            Results.Ok(await database.ListAsync(status, city, query, from, to, minQuantity, maxQuantity, cancellationToken)))
+        admin.MapGet("", async (string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, bool? overdue, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(status, city, query, from, to, minQuantity, maxQuantity, overdue ?? false, cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapGet("/summary", async (CorporateRequestDatabase database, CancellationToken cancellationToken) => Results.Ok(await database.SummaryAsync(cancellationToken))).AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapGet("/{id:guid}", async (Guid id, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
@@ -188,11 +188,11 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
         await command.ExecuteNonQueryAsync(ct); return (id, token);
     }
 
-    public async Task<IReadOnlyCollection<CorporateRequestSummary>> ListAsync(string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, CancellationToken ct)
+    public async Task<IReadOnlyCollection<CorporateRequestSummary>> ListAsync(string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, bool overdueOnly, CancellationToken ct)
     {
         if (!IsConfigured) return [];
-        const string sql = """select id,customer_name,company_name,mobile,city,occasion,order_quantity,package_type,status,assigned_to,next_follow_up_at,created_at,updated_at from corporate_requests where (@status='' or status=@status) and (@city='' or city ilike '%'||@city||'%') and (@query='' or customer_name ilike '%'||@query||'%' or company_name ilike '%'||@query||'%' or mobile ilike '%'||@query||'%') and (@from is null or created_at>=@from) and (@to is null or created_at<=@to) and (@min is null or order_quantity>=@min) and (@max is null or order_quantity<=@max) order by created_at desc limit 250;""";
-        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"status",status?.Trim()??""); Add(command,"city",city?.Trim()??""); Add(command,"query",query?.Trim()??""); AddTyped(command,"from",NpgsqlDbType.TimestampTz,from); AddTyped(command,"to",NpgsqlDbType.TimestampTz,to); AddTyped(command,"min",NpgsqlDbType.Integer,minQuantity); AddTyped(command,"max",NpgsqlDbType.Integer,maxQuantity);
+        const string sql = """select id,customer_name,company_name,mobile,city,occasion,order_quantity,package_type,status,assigned_to,next_follow_up_at,created_at,updated_at from corporate_requests where (@status='' or status=@status) and (@city='' or city ilike '%'||@city||'%') and (@query='' or customer_name ilike '%'||@query||'%' or company_name ilike '%'||@query||'%' or mobile ilike '%'||@query||'%') and (@from is null or created_at>=@from) and (@to is null or created_at<=@to) and (@min is null or order_quantity>=@min) and (@max is null or order_quantity<=@max) and (@overdue=false or (next_follow_up_at is not null and next_follow_up_at<=now() and status not in ('Finalized','Cancelled'))) order by created_at desc limit 250;""";
+        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"status",status?.Trim()??""); Add(command,"city",city?.Trim()??""); Add(command,"query",query?.Trim()??""); AddTyped(command,"from",NpgsqlDbType.TimestampTz,from); AddTyped(command,"to",NpgsqlDbType.TimestampTz,to); AddTyped(command,"min",NpgsqlDbType.Integer,minQuantity); AddTyped(command,"max",NpgsqlDbType.Integer,maxQuantity); Add(command,"overdue",overdueOnly);
         var result = new List<CorporateRequestSummary>(); await using var reader = await command.ExecuteReaderAsync(ct); while (await reader.ReadAsync(ct)) result.Add(ReadSummary(reader)); return result;
     }
 
