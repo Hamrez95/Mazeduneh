@@ -181,6 +181,11 @@ products.MapPost("/", async (
         return Results.Conflict(new { message = "حداقل یک SKU قبلاً استفاده شده است." });
 
     var product = productCatalog.Build(request);
+    if (request.IsPublished)
+    {
+        var publicationErrors = productCatalog.ValidateForPublication(product);
+        if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
+    }
     try
     {
         await db.InsertAsync(product, cancellationToken);
@@ -206,6 +211,11 @@ products.MapPut("/{slug}", async (
     var errors = request.Validate();
     if (errors.Count > 0) return Results.ValidationProblem(errors);
     var updated = productCatalog.Update(existing, request);
+    if (existing.IsPublished)
+    {
+        var publicationErrors = productCatalog.ValidateForPublication(updated);
+        if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
+    }
     await db.UpdateAsync(updated, cancellationToken);
     productCatalog.Add(updated);
     return Results.Ok(updated);
@@ -223,6 +233,11 @@ products.MapPatch("/{slug}/publication", async (
     if (existing is null)
         return Results.NotFound(new { message = "محصول موردنظر پیدا نشد." });
 
+    if (request.IsPublished)
+    {
+        var publicationErrors = productCatalog.ValidateForPublication(existing);
+        if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
+    }
     var updated = existing with { IsPublished = request.IsPublished };
     await db.SetPublicationAsync(existing.Id, request.IsPublished, cancellationToken);
     productCatalog.Add(updated);
@@ -284,6 +299,18 @@ public sealed class ProductCatalog
     {
         var requested = skus.Select(item => item.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return _products.Values.SelectMany(item => item.Variants).Any(item => requested.Contains(item.Sku));
+    }
+
+    public Dictionary<string, string[]> ValidateForPublication(Product product)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(product.Title) || string.IsNullOrWhiteSpace(product.Category) || string.IsNullOrWhiteSpace(product.Origin))
+            errors["publication"] = ["عنوان، دسته‌بندی و مبدأ محصول باید پیش از انتشار کامل باشند."];
+        if (product.Variants.Count == 0)
+            errors["publication.variants"] = ["برای انتشار حداقل یک بسته قابل فروش ثبت کنید."];
+        else if (product.Variants.Any(variant => string.IsNullOrWhiteSpace(variant.Sku) || string.IsNullOrWhiteSpace(variant.DisplayLabel) || variant.Price <= 0))
+            errors["publication.variants"] = ["برای همه بسته‌ها SKU، عنوان بسته و قیمت بیشتر از صفر ثبت کنید."];
+        return errors;
     }
 
     public Product Build(CreateProductRequest request)
