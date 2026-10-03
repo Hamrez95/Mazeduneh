@@ -289,6 +289,10 @@ jobs:
           assert dashboard['todayRevenue'] > 0
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/logout \
+            -H "Authorization: Bearer ${TOKEN}" -o /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}")" = "401"
+
           stop_api
           start_api
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json

@@ -103,4 +103,22 @@ void main() {
       throwsA(isA<AuthApiException>().having((error) => error.message, 'message', contains('کمی بعد'))),
     );
   });
+
+  test('logout revokes the bearer session and clears local state', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'logout-token',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/admin/auth/logout');
+      expect(request.headers['authorization'], 'Bearer logout-token');
+      return http.Response('', 204);
+    });
+
+    await AuthApiClient(client: client, baseUrl: 'https://api.example.com').logout();
+
+    expect(OwnerSession.instance.isAuthenticated, isFalse);
+  });
 }
