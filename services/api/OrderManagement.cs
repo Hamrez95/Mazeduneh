@@ -130,6 +130,17 @@ public static class OrderManagementModule
             Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/analytics/products", async (
+            int? days,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var windowDays = days ?? 30;
+            if (windowDays is < 1 or > 365)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["بازه گزارش باید بین ۱ تا ۳۶۵ روز باشد."] });
+            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/notifications", async (
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
@@ -551,6 +562,43 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
     }
 
+    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<AdminProductProfitability>();
+        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        const string sql = """
+            select l.product_title,l.sku,l.variant_label,
+                   sum(l.quantity)::int,
+                   coalesce(sum(l.line_total),0),
+                   coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)
+            from checkout_order_lines l
+            join checkout_orders o on o.id=l.order_id
+            where o.created_at >= @from
+              and o.state in ('Paid','Preparing','Shipped','Delivered')
+            group by l.product_title,l.sku,l.variant_label
+            order by (coalesce(sum(l.line_total),0) -
+                      coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)) desc,
+                     l.product_title
+            limit 200;
+            """;
+
+        var rows = new List<AdminProductProfitability>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("from", from);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var revenue = reader.GetDecimal(4);
+            var cost = reader.GetDecimal(5);
+            rows.Add(new AdminProductProfitability(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                reader.GetInt32(3), revenue, cost, revenue - cost));
+        }
+        return rows;
+    }
+
     public async Task<AdminNotifications> NotificationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
@@ -836,6 +884,7 @@ public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shi
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
     IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0);
+public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);

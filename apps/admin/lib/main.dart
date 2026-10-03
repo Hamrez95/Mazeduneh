@@ -2170,6 +2170,7 @@ class ReportsPage extends StatefulWidget {
 class _ReportsPageState extends State<ReportsPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminAnalytics? analytics;
+  List<AdminProductProfitability> profitability = const [];
   int days = 30;
   bool loading = true;
   Object? error;
@@ -2180,8 +2181,14 @@ class _ReportsPageState extends State<ReportsPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final result = await api.fetchAnalytics(days: days);
-      if (mounted) setState(() => analytics = result);
+      final result = await Future.wait([
+        api.fetchAnalytics(days: days),
+        api.fetchProductProfitability(days: days),
+      ]);
+      if (mounted) setState(() {
+        analytics = result[0] as AdminAnalytics;
+        profitability = result[1] as List<AdminProductProfitability>;
+      });
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
@@ -2252,6 +2259,47 @@ class _ReportsPageState extends State<ReportsPage> {
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),
+        const SizedBox(height: 18),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('سود به تفکیک محصول و Variant', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
+              const SizedBox(height: 6),
+              const Text('هزینه از snapshot قیمت خرید، بسته‌بندی و هزینه جانبی هر سفارش خوانده می‌شود.', style: TextStyle(color: AdminColors.muted, fontSize: 12)),
+              const SizedBox(height: 14),
+              if (profitability.isEmpty)
+                const AdminEmptyState(icon: Icons.query_stats_rounded, title: 'برای این بازه محصولی فروخته نشده است', detail: 'با ثبت سفارش پرداخت‌شده، سود هر SKU در اینجا نمایش داده می‌شود.')
+              else
+                Column(
+                  children: [
+                    for (final item in profitability.take(20))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          runSpacing: 8,
+                          spacing: 16,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 220,
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                                Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                              ]),
+                            ),
+                            Text('${formatPersianInteger(item.unitsSold)} واحد', style: const TextStyle(color: AdminColors.muted)),
+                            Text('فروش ${formatPersianNumber(item.revenue)} ریال', style: const TextStyle(fontSize: 12)),
+                            Text('سود ${formatPersianNumber(item.grossProfit)} ریال', style: TextStyle(fontWeight: FontWeight.w900, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.ink)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+            ]),
+          ),
+        ),
       ]);
     });
   }
