@@ -35,7 +35,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('گزارش فعالیت‌های حساس'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('تغییر انتشار محصول'), 400);
+    await tester.scrollUntilVisible(find.text('تغییر انتشار محصول'), 400, scrollable: find.byType(Scrollable).first);
     expect(find.text('تغییر انتشار محصول'), findsOneWidget);
     await tester.tap(find.text('تغییر انتشار محصول'));
     await tester.pumpAndSettle();
@@ -50,7 +50,7 @@ void main() {
     );
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('هنوز فعالیت حساسی ثبت نشده است'), 400);
+    await tester.scrollUntilVisible(find.text('هنوز فعالیت حساسی ثبت نشده است'), 400, scrollable: find.byType(Scrollable).first);
     expect(find.text('هنوز فعالیت حساسی ثبت نشده است'), findsOneWidget);
   });
 }
