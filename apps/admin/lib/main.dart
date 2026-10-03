@@ -1049,7 +1049,10 @@ class _OrdersPageState extends State<OrdersPage> {
     'Expired': 'منقضی‌شده',
   };
   List<AdminOrder> orders = const [];
+  List<AdminOverdueShipment> overdueShipments = const [];
   String selectedState = '';
+  bool overdueOnly = false;
+  int overdueDays = 3;
   final searchController = TextEditingController();
   String searchQuery = '';
   Object? error;
@@ -1071,12 +1074,24 @@ class _OrdersPageState extends State<OrdersPage> {
       error = null;
     });
     try {
-      final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
-      if (mounted) {
-        setState(() {
-          orders = result;
-          selectedOrders.removeWhere((id) => !result.any((order) => order.id == id));
-        });
+      if (overdueOnly) {
+        final result = await api.fetchOverdueShipments(days: overdueDays);
+        if (mounted) {
+          setState(() {
+            overdueShipments = result;
+            orders = const [];
+            selectedOrders.clear();
+          });
+        }
+      } else {
+        final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+        if (mounted) {
+          setState(() {
+            orders = result;
+            overdueShipments = const [];
+            selectedOrders.removeWhere((id) => !result.any((order) => order.id == id));
+          });
+        }
       }
     } catch (exception) {
       if (mounted) setState(() => error = exception);
@@ -1187,6 +1202,27 @@ class _OrdersPageState extends State<OrdersPage> {
               const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
             ]);
             final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              FilterChip(
+                label: const Text('ارسال‌های تأخیردار'),
+                selected: overdueOnly,
+                onSelected: (value) {
+                  setState(() {
+                    overdueOnly = value;
+                    selectedOrders.clear();
+                  });
+                  load();
+                },
+              ),
+              if (overdueOnly)
+                DropdownButton<int>(
+                  value: overdueDays,
+                  items: const [1, 3, 5, 7, 14].map((days) => DropdownMenuItem(value: days, child: Text('بیش از $days روز'))).toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => overdueDays = value);
+                    load();
+                  },
+                ),
               DropdownButton<String>(
                 value: selectedState,
                 items: states.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(),
@@ -1249,9 +1285,69 @@ class _OrdersPageState extends State<OrdersPage> {
         ]),
       );
 
+  Widget _overdueBody() {
+    if (overdueShipments.isEmpty) {
+      return const Center(
+        child: AdminEmptyState(
+          icon: Icons.local_shipping_outlined,
+          title: 'ارسال تأخیردار پیدا نشد',
+          detail: 'سفارش‌های ارسال‌شدهٔ قدیمی‌تر از بازه انتخابی اینجا نمایش داده می‌شوند.',
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: overdueShipments.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, index) {
+        final shipment = overdueShipments[index];
+        return Card(
+          child: InkWell(
+            onTap: () => openDetail(shipment.toAdminOrder()),
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                runSpacing: 12,
+                spacing: 18,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 210,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('سفارش ${shipment.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 5),
+                      Text(shipment.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text('${shipment.province}، ${shipment.city} · ${formatPersianInteger(shipment.lineCount)} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    ]),
+                  ),
+                  Chip(
+                    label: Text('${formatPersianInteger(shipment.daysOverdue)} روز تأخیر'),
+                    backgroundColor: const Color(0xFFFCE6E0),
+                  ),
+                  Text(
+                    shipment.trackingCode?.isNotEmpty == true ? 'رهگیری: ${shipment.trackingCode}' : 'کد رهگیری ثبت نشده',
+                    style: const TextStyle(fontSize: 11, color: AdminColors.muted),
+                  ),
+                  Text(
+                    shipment.shippingCarrier?.isNotEmpty == true ? shipment.shippingCarrier! : 'شرکت حمل ثبت نشده',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text('ارسال: ${formatPersianDateTime(shipment.shippedAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                  const Icon(Icons.chevron_left_rounded, color: AdminColors.muted),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
+    if (overdueOnly) return _overdueBody();
     if (orders.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

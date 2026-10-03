@@ -136,6 +136,17 @@ public static class OrderManagementModule
             Results.Ok(await database.NotificationsAsync(cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/shipping/overdue", async (
+            int? days,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var windowDays = days ?? 3;
+            if (windowDays is < 1 or > 60)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["بازه تأخیر باید بین ۱ تا ۶۰ روز باشد."] });
+            return Results.Ok(await database.ListOverdueShipmentsAsync(windowDays, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapPatch("/orders/{orderId:guid}/state", async (
             Guid orderId,
             SetOrderStateRequest request,
@@ -574,6 +585,42 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items);
     }
 
+    public async Task<IReadOnlyCollection<AdminOverdueShipment>> ListOverdueShipmentsAsync(int days, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<AdminOverdueShipment>();
+
+        const string sql = """
+            select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
+                   o.created_at,o.reservation_expires_at,
+                   coalesce((select count(*) from checkout_order_lines l where l.order_id=o.id),0)::int,
+                   coalesce(o.shipping_carrier,''),coalesce(o.tracking_code,''),o.shipped_at,
+                   greatest(1, floor(extract(epoch from (now() - o.shipped_at)) / 86400))::int
+            from checkout_orders o
+            where o.state='Shipped'
+              and o.shipped_at is not null
+              and o.shipped_at <= now() - (@days * interval '1 day')
+            order by o.shipped_at asc
+            limit 250;
+            """;
+
+        var shipments = new List<AdminOverdueShipment>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("days", days);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            shipments.Add(new AdminOverdueShipment(
+                reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
+                reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
+                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)),
+                reader.GetFieldValue<DateTimeOffset>(13), reader.GetInt32(14)));
+        }
+        return shipments;
+    }
+
     public async Task<OrderOperationResult> TransitionAsync(
         Guid orderId,
         OrderState requestedState,
@@ -746,6 +793,10 @@ public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
 public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost);
+public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string Mobile, string Province, string City,
+    decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
+    int LineCount, string? ShippingCarrier, string? TrackingCode, DateTimeOffset ShippedAt, int DaysOverdue);
+
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
     int LineCount, string? PaymentReference, string? PaymentState);
