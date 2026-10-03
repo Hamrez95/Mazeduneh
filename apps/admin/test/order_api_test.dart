@@ -212,6 +212,37 @@ void main() {
     expect(detail.trackingCode, 'TR-2');
   });
 
+  test('fetchOverdueShipments sends the delay window and parses tracking context', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode([
+        {
+          'id': '11111111-1111-1111-1111-111111111111',
+          'customerName': 'مشتری تست',
+          'mobile': '09120000000',
+          'province': 'تهران',
+          'city': 'تهران',
+          'payable': 120000,
+          'currency': 'IRR',
+          'state': 'Shipped',
+          'createdAt': '2026-09-20T10:00:00Z',
+          'reservationExpiresAt': '2026-09-20T10:20:00Z',
+          'lineCount': 2,
+          'shippingCarrier': 'پست',
+          'trackingCode': 'TR-42',
+          'shippedAt': '2026-09-21T10:00:00Z',
+          'daysOverdue': 5,
+        },
+      ]), 200);
+    });
+    final shipments = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOverdueShipments(days: 5);
+    expect(captured.url.path, '/api/v1/admin/shipping/overdue');
+    expect(captured.url.queryParameters['days'], '5');
+    expect(shipments.single.trackingCode, 'TR-42');
+    expect(shipments.single.daysOverdue, 5);
+  });
+
   test('401 clears owner session', () async {
     final client = MockClient((request) async => http.Response('', 401));
     final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
