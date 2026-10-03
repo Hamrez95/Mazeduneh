@@ -50,7 +50,7 @@ void main() {
   });
 
   test('clears the session when the server returns unauthorized', () async {
-    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: MockClient((_) async => http.Response('باید دوباره وارد شوید', 401)));
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: MockClient((_) async => http.Response.bytes(utf8.encode('باید دوباره وارد شوید'), 401, headers: {'content-type': 'text/plain; charset=utf-8'})));
     await expectLater(api.fetchUsers(), throwsA(isA<AdminUsersApiException>()));
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
