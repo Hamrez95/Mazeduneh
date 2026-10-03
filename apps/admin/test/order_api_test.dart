@@ -253,6 +253,33 @@ void main() {
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
 
+  test('fetchProductProfitability sends the selected period and parses margin rows', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        jsonEncode([
+          {
+            'productTitle': 'پسته اکبری',
+            'sku': 'PI-AKB-250',
+            'variantLabel': '۲۵۰ گرم',
+            'unitsSold': 4,
+            'revenue': 9800000,
+            'cost': 5600000,
+            'grossProfit': 4200000,
+          },
+        ]),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+    final rows = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchProductProfitability(days: 90);
+    expect(captured.url.path, '/api/v1/admin/analytics/products');
+    expect(captured.url.queryParameters['days'], '90');
+    expect(rows.single.sku, 'PI-AKB-250');
+    expect(rows.single.grossProfit, 4200000);
+  });
+
   test('fetchDashboard sends the selected sales period', () async {
     late http.Request captured;
     final client = MockClient((request) async {
