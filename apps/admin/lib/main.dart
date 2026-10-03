@@ -212,6 +212,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Object? error;
   bool loading = true;
   DateTime? lastLoadedAt;
+  int dashboardDays = 1;
 
   @override
   void initState() { super.initState(); load(); }
@@ -219,7 +220,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final result = await Future.wait([api.fetchDashboard(), api.fetchNotifications()]);
+      final result = await Future.wait([api.fetchDashboard(days: dashboardDays), api.fetchNotifications()]);
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
@@ -259,8 +260,18 @@ class _DashboardPageState extends State<DashboardPage> {
                 : Row(children: [Expanded(child: heading), refresh]);
           }),
           const SizedBox(height: 24),
+          _DashboardPeriodSelector(
+            selectedDays: dashboardDays,
+            onChanged: (days) {
+              setState(() => dashboardDays = days);
+              load();
+            },
+          ),
+          const SizedBox(height: 14),
           Wrap(spacing: 14, runSpacing: 14, children: [
-            MetricCard('فروش امروز', '${formatPersianNumber(data.todayRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8)),
+            MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9)),
             MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
             MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
             MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
@@ -323,6 +334,35 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  String _periodLabel(int days) => switch (days) {
+        1 => 'فروش امروز',
+        7 => 'فروش ۷ روز اخیر',
+        30 => 'فروش ۳۰ روز اخیر',
+        _ => 'فروش بازهٔ انتخابی',
+      };
+
+}
+
+class _DashboardPeriodSelector extends StatelessWidget {
+  const _DashboardPeriodSelector({required this.selectedDays, required this.onChanged});
+  final int selectedDays;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('بازهٔ فروش', style: TextStyle(fontWeight: FontWeight.w900)),
+          for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
+            ChoiceChip(
+              label: Text(option.$2),
+              selected: selectedDays == option.$1,
+              onSelected: (_) => onChanged(option.$1),
+            ),
+        ],
+      );
 }
 
 class _DashboardSectionTitle extends StatelessWidget {

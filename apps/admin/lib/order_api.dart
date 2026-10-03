@@ -41,8 +41,8 @@ class OrderApiClient {
     return response.bodyBytes;
   }
 
-  Future<AdminDashboard> fetchDashboard() async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard'), headers: _headers());
+  Future<AdminDashboard> fetchDashboard({int days = 1}) async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: {'days': '$days'}), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
@@ -473,7 +473,7 @@ class StockAdjustmentResult {
 }
 
 class AdminDashboard {
-  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock});
+  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock, required this.periodDays, required this.periodOrderCount, required this.periodRevenue, required this.averageOrderValue});
   final int awaitingPayment;
   final int processing;
   final int shipped;
@@ -481,10 +481,18 @@ class AdminDashboard {
   final num paidRevenue;
   final num todayRevenue;
   final List<LowStockItem> lowStock;
+  final int periodDays;
+  final int periodOrderCount;
+  final num periodRevenue;
+  final num averageOrderValue;
   factory AdminDashboard.fromJson(Map<String, dynamic> json) => AdminDashboard(
     awaitingPayment: json['awaitingPayment'] as int, processing: json['processing'] as int, shipped: json['shipped'] as int,
     delivered: json['delivered'] as int, paidRevenue: json['paidRevenue'] as num, todayRevenue: json['todayRevenue'] as num,
-    lowStock: (json['lowStock'] as List<dynamic>).map((item) => LowStockItem.fromJson(item as Map<String, dynamic>)).toList());
+    lowStock: (json['lowStock'] as List<dynamic>? ?? const []).map((item) => LowStockItem.fromJson(item as Map<String, dynamic>)).toList(),
+    periodDays: (json['periodDays'] as num?)?.toInt() ?? 1,
+    periodOrderCount: (json['periodOrderCount'] as num?)?.toInt() ?? 0,
+    periodRevenue: json['periodRevenue'] as num? ?? json['todayRevenue'] as num? ?? 0,
+    averageOrderValue: json['averageOrderValue'] as num? ?? 0);
 }
 
 class LowStockItem {

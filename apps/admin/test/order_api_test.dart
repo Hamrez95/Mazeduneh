@@ -218,4 +218,16 @@ void main() {
     await expectLater(api.fetchDashboard(), throwsA(isA<OrderApiException>()));
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
+
+  test('fetchDashboard sends the selected sales period', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0, 'paidRevenue': 0, 'todayRevenue': 0, 'lowStock': [], 'periodDays': 7, 'periodOrderCount': 3, 'periodRevenue': 900000, 'averageOrderValue': 300000}), 200);
+    });
+    final dashboard = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchDashboard(days: 7);
+    expect(captured.url.queryParameters['days'], '7');
+    expect(dashboard.periodOrderCount, 3);
+    expect(dashboard.averageOrderValue, 300000);
+  });
 }

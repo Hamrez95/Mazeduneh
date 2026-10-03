@@ -50,7 +50,7 @@
 | Media | upload/download/metadata/delete و provider Local/S3 | قرارداد موجود؛ credential/runtime واقعی نیازمند Launch gate |
 | Storefront | routeهای چندصفحه‌ای، catalog live، gallery، cart و checkout مهمان | عملیاتی پایه؛ جست‌وجو/فیلتر/اعتماد/SEO پیشرفته ناقص |
 | Checkout | reservation، persistence، idempotency، tax/shipping/cost snapshot، receipt token | عملیاتی پایه؛ payment واقعی/reconciliation/refund ناقص |
-| Orders | لیست Admin، dashboard، analytics، notification پایه و تغییر state | ناقص در stateهای کامل، timeline، bulk، print، refund و tracking |
+| Orders | لیست Admin، dashboard، analytics، notification پایه، تغییر state و عملیات گروهی تا ۵۰ سفارش | ناقص در stateهای کامل، timeline، Kanban، print، refund و tracking |
 | Inventory | stock_movements، adjustment، batches، expiry و FEFO پایه | ناقص در receiving/supplier/fulfillment/return/waste/reorder |
 | Customer | customer پایدار، mobile normalization، address و لیست/پروفایل Admin | ناقص در OTP، consent، segment و privacy workflow |
 | Corporate | landing، upload logo، pipeline status، assignment، follow-up، notes، messages و proforma | پایهٔ عملیاتی؛ package/analytics/conversion/reminder تکمیلی لازم |
@@ -190,7 +190,7 @@ flowchart TD
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
 | #91 | RBAC/audit/session | P0 | Security | L | جدید |
-| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | جدید |
+| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | dashboard پایه و KPI بازه‌ای تکمیل؛ هشدارها و گزارش‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | جدید |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
 | #95 | Promotions/campaign engine | P1 | Full-stack | L | جدید |

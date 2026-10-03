@@ -117,9 +117,10 @@ public static class OrderManagementModule
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/dashboard", async (
+            int? days,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.DashboardAsync(cancellationToken)))
+            Results.Ok(await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/analytics", async (
@@ -402,7 +403,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return await GetDetailAsync(orderId, cancellationToken);
     }
 
-    public async Task<AdminDashboard> DashboardAsync(CancellationToken cancellationToken)
+    public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return new AdminDashboard(0, 0, 0, 0, 0, 0, Array.Empty<LowStockItem>());
         const string orderSql = """
@@ -412,14 +413,20 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
               count(*) filter (where state='Shipped')::int,
               count(*) filter (where state='Delivered')::int,
               coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered')),0),
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= date_trunc('day',now())),0)
+              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from),0),
+              count(*) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from)::int,
+              coalesce(avg(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from),0)
             from checkout_orders;
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         int awaiting, processing, shipped, delivered;
-        decimal paidRevenue, todayRevenue;
+        int periodOrderCount;
+        decimal paidRevenue, periodRevenue, averageOrderValue;
         await using (var command = new NpgsqlCommand(orderSql, connection))
+        {
+            var from = days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days);
+            command.Parameters.AddWithValue("from", from);
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             await reader.ReadAsync(cancellationToken);
@@ -428,7 +435,10 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             shipped = reader.GetInt32(2);
             delivered = reader.GetInt32(3);
             paidRevenue = reader.GetDecimal(4);
-            todayRevenue = reader.GetDecimal(5);
+            periodRevenue = reader.GetDecimal(5);
+            periodOrderCount = reader.GetInt32(6);
+            averageOrderValue = reader.GetDecimal(7);
+        }
         }
 
         const string stockSql = """
@@ -444,7 +454,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             while (await reader.ReadAsync(cancellationToken))
                 lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
 
-        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, todayRevenue, lowStock);
+        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, days, periodOrderCount, periodRevenue, averageOrderValue);
     }
 
     public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
@@ -738,7 +748,8 @@ public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTime
 public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
-    decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock);
+    decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
+    int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
