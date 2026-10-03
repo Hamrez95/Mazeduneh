@@ -40,7 +40,8 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api))));
     await tester.pumpAndSettle();
     expect(find.text('کاربران و دسترسی‌ها'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('مدیر اصلی'), 300, scrollable: find.byType(ListView));
+    final mainScroll = find.byWidgetPredicate((widget) => widget is Scrollable).at(0);
+    await tester.scrollUntilVisible(find.text('مدیر اصلی'), 300, scrollable: mainScroll);
     expect(find.text('مدیر اصلی'), findsOneWidget);
     expect(find.byTooltip('مدیر اصلی قابل غیرفعال‌سازی نیست'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -62,9 +63,10 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api))));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('هنوز کاربر دیگری برای این فروشگاه ثبت نشده است'), 300, scrollable: find.byType(ListView));
+    final mainScroll = find.byWidgetPredicate((widget) => widget is Scrollable).at(0);
+    await tester.scrollUntilVisible(find.textContaining('هنوز کاربر دیگری برای این فروشگاه ثبت نشده است'), 300, scrollable: mainScroll);
     expect(find.textContaining('هنوز کاربر دیگری برای این فروشگاه ثبت نشده است'), findsOneWidget);
-    await tester.scrollUntilVisible(find.widgetWithText(OutlinedButton, 'افزودن کاربر'), 300, scrollable: find.byType(ListView));
+    await tester.scrollUntilVisible(find.widgetWithText(OutlinedButton, 'افزودن کاربر'), 300, scrollable: mainScroll);
     await tester.tap(find.widgetWithText(OutlinedButton, 'افزودن کاربر'));
     await tester.pumpAndSettle();
     expect(find.text('برای شروع فقط اطلاعات ضروری را وارد کنید؛ رمز عبور و token در این صفحه ذخیره نمی‌شود.'), findsOneWidget);
