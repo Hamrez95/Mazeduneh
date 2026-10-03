@@ -29,6 +29,31 @@ public static class OrderManagementModule
             return Results.Ok(await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/orders/export.csv", async (
+            string? state,
+            string? q,
+            int? limit,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
+            if (q?.Length > 120)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
+            var orders = await database.ListAsync(state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken);
+            static string Csv(object? value)
+            {
+                var text = value?.ToString() ?? string.Empty;
+                return $"\"{text.Replace("\"", "\"\"")}\"";
+            }
+            var builder = new StringBuilder("\uFEFFشناسه سفارش,مشتری,موبایل,شهر,وضعیت,مبلغ,ارز,تعداد اقلام,زمان ثبت,وضعیت پرداخت,شناسه پرداخت\n");
+            foreach (var order in orders)
+                builder.AppendJoin(',', new[] { Csv(order.Id), Csv(order.CustomerName), Csv(order.Mobile), Csv($"{order.Province}، {order.City}"),
+                    Csv(order.State), Csv(order.Payable.ToString("0.##")), Csv(order.Currency), Csv(order.LineCount),
+                    Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
+            return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-orders.csv");
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
             OrderManagementDatabase database,
