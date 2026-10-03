@@ -27,6 +27,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   String status = '';
   Object? error;
   bool loading = true;
+  bool overdueOnly = false;
 
   @override
   void initState() { super.initState(); load(); }
@@ -36,7 +37,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final values = await Future.wait([api.fetchRequests(status: status, query: search.text, city: city.text.trim()), api.fetchSummary()]);
+      final values = await Future.wait([api.fetchRequests(status: status, query: search.text, city: city.text.trim(), overdueOnly: overdueOnly), api.fetchSummary()]);
       if (mounted) setState(() { items = values[0] as List<CorporateRequestSummary>; summary = values[1] as CorporateSummary; });
     } catch (exception) { if (mounted) setState(() => error = exception); }
     finally { if (mounted) setState(() => loading = false); }
@@ -66,12 +67,32 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
     Row(children: [
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('فروش سازمانی', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)), const SizedBox(height: 6), Text('${formatPersianInteger(items.length)} درخواست قابل پیگیری', style: const TextStyle(color: AdminColors.muted))])),
       if ((summary?.newCount ?? 0) > 0) Chip(avatar: const Icon(Icons.notifications_active_rounded, size: 17), label: Text('${formatPersianInteger(summary!.newCount)} جدید')),
+      FilterChip(
+        label: const Text('پیگیری‌های عقب‌افتاده'),
+        selected: overdueOnly,
+        onSelected: (value) {
+          setState(() => overdueOnly = value);
+          load();
+        },
+      ),
       IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
     ]),
     const SizedBox(height: 18),
     Row(children: [Expanded(child: TextField(controller: search, onSubmitted: (_) => load(), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجو با نام، شرکت یا شماره'))), const SizedBox(width: 8), SizedBox(width: 125, child: TextField(controller: city, onSubmitted: (_) => load(), decoration: const InputDecoration(hintText: 'شهر'))), const SizedBox(width: 8), DropdownButton<String>(value: status, items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) { setState(() => status = value ?? ''); load(); })]),
     const SizedBox(height: 18),
-    if (items.isEmpty) const Padding(padding: EdgeInsets.all(40), child: Column(children: [Icon(Icons.business_center_outlined, size: 48, color: AdminColors.muted), SizedBox(height: 12), Text('درخواستی ثبت نشده است'), Text('درخواست‌های جدید اینجا نمایش داده می‌شوند.', style: TextStyle(color: AdminColors.muted))]))
+    if (items.isEmpty) Padding(
+      padding: const EdgeInsets.all(40),
+      child: Column(children: [
+        const Icon(Icons.business_center_outlined, size: 48, color: AdminColors.muted),
+        const SizedBox(height: 12),
+        Text(overdueOnly ? 'پیگیری عقب‌افتاده‌ای پیدا نشد' : 'درخواستی ثبت نشده است'),
+        Text(
+          overdueOnly ? 'درخواست‌های فعال با زمان پیگیری گذشته در این فهرست دیده می‌شوند.' : 'درخواست‌های جدید اینجا نمایش داده می‌شوند.',
+          style: const TextStyle(color: AdminColors.muted),
+          textAlign: TextAlign.center,
+        ),
+      ]),
+    )
     else ...items.map((item) => Card(child: ListTile(onTap: () => open(item), leading: const CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Icon(Icons.business_center_rounded, color: AdminColors.ink)), title: Text('${item.companyName} · ${item.customerName}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${item.city} · ${formatPersianInteger(item.orderQuantity)} سفارش · ${statuses[item.status] ?? item.status}'), trailing: const Icon(Icons.chevron_left_rounded)))),
   ]);
 }
