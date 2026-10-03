@@ -180,6 +180,44 @@ jobs:
           assert 'orders.read' in session['permissions']
           assert 'products.write' in session['permissions']
           PY
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-users.json
+          python3 - <<'PY'
+          import json
+          users = json.load(open('/tmp/admin-users.json', encoding='utf-8'))
+          owner = next(item for item in users if item['email'] == 'ci-owner@mazeduneh.test')
+          assert owner['role'] == 'Owner'
+          assert owner['isActive'] is True
+          assert 'inventory.write' in owner['permissions']
+          PY
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
+          USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['id'])")
+          python3 - <<'PY'
+          import json
+          created = json.load(open('/tmp/admin-user-created.json', encoding='utf-8'))
+          assert created['role'] == 'WarehouseOperator'
+          assert created['isActive'] is True
+          assert 'inventory.write' in created['permissions']
+          PY
+          curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/users/${USER_ID}/status" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"isActive":false}' > /tmp/admin-user-disabled.json
+          python3 - <<'PY'
+          import json
+          disabled = json.load(open('/tmp/admin-user-disabled.json', encoding='utf-8'))
+          assert disabled['isActive'] is False
+          assert disabled['deactivatedAt']
+          PY
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=AdminUser&entityId=${USER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-user-audit.json
+          python3 - <<'PY'
+          import json
+          events = json.load(open('/tmp/admin-user-audit.json', encoding='utf-8'))
+          assert {item['action'] for item in events} >= {'admin-user.created', 'admin-user.status-changed'}
+          assert all(item['actor'] == 'ci-owner@mazeduneh.test' for item in events)
+          PY
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/customers/?q=0912" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/customers.json
           python3 - <<'PY'

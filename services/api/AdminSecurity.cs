@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
+using Npgsql;
 
 public static class AdminSecurityExtensions
 {
@@ -79,6 +80,56 @@ public static class AdminSecurityExtensions
             .AddEndpointFilter<OwnerAuthorizationFilter>()
             .WithTags("Admin Security");
 
+        endpoints.MapGet("/api/v1/admin/users", async (
+            string? storeId,
+            AdminUsersDatabase database,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(storeId, cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>()
+            .WithTags("Admin Users");
+
+        endpoints.MapPost("/api/v1/admin/users", async (
+            AdminUserCreateRequest request,
+            string? storeId,
+            AdminUsersDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            try
+            {
+                var created = await database.CreateAsync(request, actor, storeId, context.TraceIdentifier, cancellationToken);
+                return Results.Created($"/api/v1/admin/users/{created.Id}", created);
+            }
+            catch (AdminUserValidationException exception)
+            {
+                return Results.ValidationProblem(exception.Errors);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                return Results.Conflict(new { message = "کاربری با این ایمیل در این فروشگاه وجود دارد." });
+            }
+        })
+        .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .WithTags("Admin Users");
+
+        endpoints.MapPatch("/api/v1/admin/users/{id:guid}/status", async (
+            Guid id,
+            AdminUserStatusRequest request,
+            string? storeId,
+            AdminUsersDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var updated = await database.SetStatusAsync(id, request.IsActive, storeId, actor, context.TraceIdentifier, cancellationToken);
+            return updated is null
+                ? Results.NotFound(new { message = "کاربر پیدا نشد." })
+                : Results.Ok(updated);
+        })
+        .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .WithTags("Admin Users");
+
         return endpoints;
     }
 }
@@ -109,6 +160,8 @@ public static class AdminPermissionCatalog
     public const string ContentWrite = "content.write";
     public const string AuditRead = "audit.read";
     public const string SettingsWrite = "settings.write";
+    public const string UsersRead = "users.read";
+    public const string UsersWrite = "users.write";
 
     public static IReadOnlyList<string> Owner { get; } =
     [
@@ -151,6 +204,7 @@ public static class AdminPermissionCatalog
     {
         var path = context.Request.Path.Value ?? string.Empty;
         var method = context.Request.Method;
+        if (path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
         if (path.StartsWith("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase)) return AuditRead;
         if (path.StartsWith("/api/v1/admin/orders", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
         if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||

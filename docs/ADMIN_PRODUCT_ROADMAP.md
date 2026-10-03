@@ -171,6 +171,10 @@ flowchart TD
 - cross-store isolation با integration/security test اجباری است.
 - migrationها باید backfill امن و قابل ارتقا داشته باشند.
 
+## وضعیت Slice مدیریت کاربران
+
+Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل و اتصال واقعی هر membership به احراز هویت در Sliceهای بعدی انجام می‌شود.
+
 ## ۹. جدول Issueها
 
 | Issue | حوزه | Priority | نوع | Effort | وضعیت فعلی |
@@ -190,7 +194,7 @@ flowchart TD
 | #76 | Versioned migrations/environments | P0 | Backend/Infra | L | ناقص |
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
-| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission و Audit UI تکمیل؛ user management، MFA و step-up approval باقی است |
+| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI و foundation مدیریت عضویت/کاربر تکمیل؛ UI مدیریت کاربران، اتصال عضویت به ورود، MFA و step-up approval باقی است |
 | #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | dashboard پایه و KPI بازه‌ای تکمیل؛ هشدارها و گزارش‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | جدید |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
