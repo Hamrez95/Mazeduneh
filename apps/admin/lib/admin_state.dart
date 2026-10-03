@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'audit_log_api.dart';
 import 'media_api.dart';
@@ -7,6 +8,7 @@ import 'order_api.dart';
 import 'corporate_api.dart';
 
 int? requestStatusCode(Object error) {
+  if (error is AdminPermissionException) return 403;
   if (error is CatalogApiException) return error.statusCode;
   if (error is OrderApiException) return error.statusCode;
   if (error is MediaApiException) return error.statusCode;
@@ -29,6 +31,30 @@ String requestErrorMessage(Object error) {
   return 'ارتباط با سرویس برقرار نشد؛ اتصال و نشانی API را بررسی کنید.';
 }
 
+class AdminPermissionException implements Exception {
+  const AdminPermissionException(this.permission);
+
+  final String permission;
+}
+
+class AdminPermissionGate extends StatelessWidget {
+  const AdminPermissionGate({super.key, required this.permission, required this.child});
+
+  final String permission;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<bool>(
+        stream: OwnerSession.instance.changes,
+        initialData: OwnerSession.instance.isAuthenticated,
+        builder: (context, snapshot) => OwnerSession.instance.isAuthenticated && !OwnerSession.instance.can(permission)
+            ? const AdminErrorState(error: AdminPermissionException('forbidden'), onRetry: _noop)
+            : child,
+      );
+
+  static void _noop() {}
+}
+
 class AdminErrorState extends StatelessWidget {
   const AdminErrorState({super.key, required this.error, required this.onRetry});
 
@@ -43,9 +69,10 @@ class AdminErrorState extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
               Icon(
                 forbidden ? Icons.lock_outline_rounded : Icons.cloud_off_rounded,
                 size: 56,
@@ -62,7 +89,8 @@ class AdminErrorState extends StatelessWidget {
               const SizedBox(height: 16),
               if (!forbidden)
                 FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
-            ],
+              ],
+            ),
           ),
         ),
       ),

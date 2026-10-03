@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'admin_state.dart';
+import 'admin_permissions.dart';
+import 'auth_session.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -69,42 +71,45 @@ class _AdminShellState extends State<AdminShell> {
   var index = 0;
   final catalogKey = GlobalKey<CatalogPageState>();
   static const items = [
-    ('داشبورد', Icons.space_dashboard_rounded),
-    ('سفارش‌ها', Icons.receipt_long_rounded),
-    ('محصولات', Icons.inventory_2_rounded),
-    ('انبار', Icons.warehouse_rounded),
-    ('گزارش‌ها', Icons.query_stats_rounded),
-    ('اعلان‌ها', Icons.notifications_active_rounded),
-    ('مشتری‌ها', Icons.people_alt_rounded),
-    ('قیمت و ارسال', Icons.percent_rounded),
-    ('فروش سازمانی', Icons.business_center_rounded),
-    ('امنیت', Icons.shield_outlined),
+    ('داشبورد', Icons.space_dashboard_rounded, AdminPermissions.dashboardRead),
+    ('سفارش‌ها', Icons.receipt_long_rounded, AdminPermissions.ordersRead),
+    ('محصولات', Icons.inventory_2_rounded, AdminPermissions.productsRead),
+    ('انبار', Icons.warehouse_rounded, AdminPermissions.inventoryRead),
+    ('گزارش‌ها', Icons.query_stats_rounded, AdminPermissions.reportsRead),
+    ('اعلان‌ها', Icons.notifications_active_rounded, AdminPermissions.dashboardRead),
+    ('مشتری‌ها', Icons.people_alt_rounded, AdminPermissions.customersRead),
+    ('قیمت و ارسال', Icons.percent_rounded, AdminPermissions.pricingRead),
+    ('فروش سازمانی', Icons.business_center_rounded, AdminPermissions.corporateRead),
+    ('امنیت', Icons.shield_outlined, AdminPermissions.auditRead),
   ];
 
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
-    final mobileItems = [...items.take(4), ('بیشتر', Icons.more_horiz_rounded)];
+    final visibleIndexes = [for (var i = 0; i < items.length; i++) if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(items[i].$3)) i];
+    final primaryIndexes = visibleIndexes.take(4).toList();
+    final secondaryIndexes = visibleIndexes.skip(4).toList();
+    final selectedPrimary = primaryIndexes.indexOf(index);
     final pages = [
-      DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination)),
-      const OrdersPage(),
-      CatalogPage(key: catalogKey),
-      const InventoryPage(),
-      const ReportsPage(),
-      const NotificationsPage(),
-      const CustomerManagementPage(),
-      const CommerceSettingsPage(),
-      const CorporateRequestsPage(),
-      const AuditLogPage(),
+      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination))),
+      const AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage()),
+      AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
+      const AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage()),
+      const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
+      const AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage()),
+      const AdminPermissionGate(permission: AdminPermissions.customersRead, child: CustomerManagementPage()),
+      const AdminPermissionGate(permission: AdminPermissions.pricingRead, child: CommerceSettingsPage()),
+      const AdminPermissionGate(permission: AdminPermissions.corporateRead, child: CorporateRequestsPage()),
+      const AdminPermissionGate(permission: AdminPermissions.auditRead, child: AuditLogPage()),
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
       bottomNavigationBar: desktop
           ? null
           : NavigationBar(
-              selectedIndex: index < mobileItems.length - 1 ? index : mobileItems.length - 1,
-              onDestinationSelected: (value) => value == mobileItems.length - 1 ? _openMoreMenu() : setState(() => index = value),
-              destinations: [for (final item in mobileItems) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
+              selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
+              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : setState(() => index = primaryIndexes[value]),
+              destinations: [for (final item in [for (final i in primaryIndexes) items[i], if (secondaryIndexes.isNotEmpty) ('بیشتر', Icons.more_horiz_rounded, '')]) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
             ),
       body: Row(children: [
         if (desktop)
@@ -116,7 +121,7 @@ class _AdminShellState extends State<AdminShell> {
             child: Column(children: [
               const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
               const SizedBox(height: 20),
-              for (var i = 0; i < items.length; i++)
+              for (final i in visibleIndexes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: ListTile(
@@ -148,7 +153,7 @@ class _AdminShellState extends State<AdminShell> {
     );
   }
 
-  Future<void> _openMoreMenu() async {
+  Future<void> _openMoreMenu(List<int> secondaryIndexes) async {
     final selected = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
@@ -161,7 +166,7 @@ class _AdminShellState extends State<AdminShell> {
               padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             ),
-            for (var i = 4; i < items.length; i++)
+            for (final i in secondaryIndexes)
               ListTile(
                 selected: index == i,
                 selectedTileColor: AdminColors.mintSoft,
