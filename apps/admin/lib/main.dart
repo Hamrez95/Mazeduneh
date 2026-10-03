@@ -349,19 +349,22 @@ class _DashboardPeriodSelector extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   @override
-  Widget build(BuildContext context) => Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          const Text('بازهٔ فروش', style: TextStyle(fontWeight: FontWeight.w900)),
-          for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
-            ChoiceChip(
-              label: Text(option.$2),
-              selected: selectedDays == option.$1,
-              onSelected: (_) => onChanged(option.$1),
-            ),
-        ],
+  Widget build(BuildContext context) => Material(
+        type: MaterialType.transparency,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            const Text('بازهٔ فروش', style: TextStyle(fontWeight: FontWeight.w900)),
+            for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
+              ChoiceChip(
+                label: Text(option.$2),
+                selected: selectedDays == option.$1,
+                onSelected: (_) => onChanged(option.$1),
+              ),
+          ],
+        ),
       );
 }
 
