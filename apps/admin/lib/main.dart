@@ -286,6 +286,9 @@ class _DashboardPageState extends State<DashboardPage> {
             MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
             MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
             MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
+            MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0)),
+            MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8)),
+            MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8)),
           ]),
           const SizedBox(height: 24),
           const _DashboardSectionTitle(
@@ -332,12 +335,27 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                       ]),
               ),
+              _DashboardPanel(
+                title: 'نزدیک به انقضا',
+                icon: Icons.event_busy_rounded,
+                child: data.expiringSoon.isEmpty
+                    ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
+                    : Column(children: [
+                        for (final item in data.expiringSoon.take(5))
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                            trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
+                          ),
+                      ]),
+              ),
             ];
             return LayoutBuilder(builder: (context, constraints) {
               final stacked = constraints.maxWidth < 720;
               return stacked
-                  ? Column(children: [panels[0], const SizedBox(height: 14), panels[1]])
-                  : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: panels[0]), const SizedBox(width: 14), Expanded(child: panels[1])]);
+                  ? Column(children: [panels[0], const SizedBox(height: 14), panels[1], const SizedBox(height: 14), panels[2]])
+                  : Column(children: [Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: panels[0]), const SizedBox(width: 14), Expanded(child: panels[1])]), const SizedBox(height: 14), panels[2]]);
             });
           }),
         ],

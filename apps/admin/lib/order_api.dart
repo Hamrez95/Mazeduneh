@@ -473,7 +473,7 @@ class StockAdjustmentResult {
 }
 
 class AdminDashboard {
-  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock, required this.periodDays, required this.periodOrderCount, required this.periodRevenue, required this.averageOrderValue});
+  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock, required this.periodDays, required this.periodOrderCount, required this.periodRevenue, required this.averageOrderValue, required this.expiringSoon, required this.newCustomers, required this.corporateNewRequests, required this.problemOrders});
   final int awaitingPayment;
   final int processing;
   final int shipped;
@@ -485,6 +485,10 @@ class AdminDashboard {
   final int periodOrderCount;
   final num periodRevenue;
   final num averageOrderValue;
+  final List<ExpiringStockItem> expiringSoon;
+  final int newCustomers;
+  final int corporateNewRequests;
+  final int problemOrders;
   factory AdminDashboard.fromJson(Map<String, dynamic> json) => AdminDashboard(
     awaitingPayment: json['awaitingPayment'] as int, processing: json['processing'] as int, shipped: json['shipped'] as int,
     delivered: json['delivered'] as int, paidRevenue: json['paidRevenue'] as num, todayRevenue: json['todayRevenue'] as num,
@@ -492,7 +496,11 @@ class AdminDashboard {
     periodDays: (json['periodDays'] as num?)?.toInt() ?? 1,
     periodOrderCount: (json['periodOrderCount'] as num?)?.toInt() ?? 0,
     periodRevenue: json['periodRevenue'] as num? ?? json['todayRevenue'] as num? ?? 0,
-    averageOrderValue: json['averageOrderValue'] as num? ?? 0);
+    averageOrderValue: json['averageOrderValue'] as num? ?? 0,
+    expiringSoon: (json['expiringSoon'] as List<dynamic>? ?? const []).map((item) => ExpiringStockItem.fromJson(item as Map<String, dynamic>)).toList(),
+    newCustomers: (json['newCustomers'] as num?)?.toInt() ?? 0,
+    corporateNewRequests: (json['corporateNewRequests'] as num?)?.toInt() ?? 0,
+    problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0);
 }
 
 class LowStockItem {
@@ -502,4 +510,20 @@ class LowStockItem {
   final String variantLabel;
   final int availablePackages;
   factory LowStockItem.fromJson(Map<String, dynamic> json) => LowStockItem(productTitle: json['productTitle'] as String, sku: json['sku'] as String, variantLabel: json['variantLabel'] as String, availablePackages: json['availablePackages'] as int);
+}
+
+class ExpiringStockItem {
+  const ExpiringStockItem({required this.productTitle, required this.sku, required this.variantLabel, required this.expiresAt, required this.remainingPackages});
+  final String productTitle;
+  final String sku;
+  final String variantLabel;
+  final DateTime expiresAt;
+  final int remainingPackages;
+  factory ExpiringStockItem.fromJson(Map<String, dynamic> json) => ExpiringStockItem(
+        productTitle: json['productTitle'] as String? ?? '',
+        sku: json['sku'] as String? ?? '',
+        variantLabel: json['variantLabel'] as String? ?? '',
+        expiresAt: DateTime.parse(json['expiresAt'] as String),
+        remainingPackages: (json['remainingPackages'] as num?)?.toInt() ?? 0,
+      );
 }

@@ -382,6 +382,10 @@ jobs:
           assert dashboard['delivered'] == 1
           assert dashboard['paidRevenue'] > 0
           assert dashboard['todayRevenue'] > 0
+          assert 'expiringSoon' in dashboard
+          assert dashboard['newCustomers'] >= 1
+          assert dashboard['corporateNewRequests'] == 0
+          assert dashboard['problemOrders'] == 0
           PY
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/logout \
