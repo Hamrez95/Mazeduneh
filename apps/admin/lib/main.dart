@@ -983,6 +983,8 @@ class _OrdersPageState extends State<OrdersPage> {
   Object? error;
   bool loading = true;
   bool exporting = false;
+  final selectedOrders = <String>{};
+  bool bulkBusy = false;
   String? busyOrder;
 
   @override
@@ -998,7 +1000,12 @@ class _OrdersPageState extends State<OrdersPage> {
     });
     try {
       final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
-      if (mounted) setState(() => orders = result);
+      if (mounted) {
+        setState(() {
+          orders = result;
+          selectedOrders.removeWhere((id) => !result.any((order) => order.id == id));
+        });
+      }
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
@@ -1067,6 +1074,37 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  Future<void> bulkAdvance(String next) async {
+    if (selectedOrders.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('تغییر وضعیت گروهی'),
+        content: Text('${formatPersianInteger(selectedOrders.length)} سفارش به «${states[next] ?? next}» منتقل شود؟ سفارش‌هایی که مسیرشان مجاز نباشد، جدا گزارش می‌شوند.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('تأیید عملیات')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => bulkBusy = true);
+    try {
+      final result = await api.bulkTransition(selectedOrders.toList(), next, reason: 'عملیات گروهی از پنل');
+      await load();
+      if (mounted) {
+        setState(() => selectedOrders.clear());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${formatPersianInteger(result.$1)} سفارش به‌روزرسانی شد${result.$2 == 0 ? '' : ' و ${formatPersianInteger(result.$2)} مورد نیازمند بررسی است.'}')),
+        );
+      }
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+    } finally {
+      if (mounted) setState(() => bulkBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(24),
@@ -1091,6 +1129,19 @@ class _OrdersPageState extends State<OrdersPage> {
                 icon: exporting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.file_download_outlined),
                 label: const Text('خروجی CSV'),
               ),
+              if (selectedOrders.isNotEmpty)
+                PopupMenuButton<String>(
+                  onSelected: bulkAdvance,
+                  itemBuilder: (_) => states.entries
+                      .where((entry) => entry.key.isNotEmpty)
+                      .map((entry) => PopupMenuItem(value: entry.key, child: Text('انتقال به ${entry.value}')))
+                      .toList(),
+                  child: FilledButton.tonalIcon(
+                    onPressed: bulkBusy ? null : () {},
+                    icon: bulkBusy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.playlist_add_check_rounded),
+                    label: Text('عملیات گروهی (${formatPersianInteger(selectedOrders.length)})'),
+                  ),
+                ),
               IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
             ]);
             return constraints.maxWidth < 560
@@ -1165,6 +1216,11 @@ class _OrdersPageState extends State<OrdersPage> {
               spacing: 20,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                Checkbox(
+                  value: selectedOrders.contains(order.id),
+                  onChanged: bulkBusy ? null : (value) => setState(() => value == true ? selectedOrders.add(order.id) : selectedOrders.remove(order.id)),
+                  semanticLabel: 'انتخاب سفارش ${order.id.substring(0, 8)} برای عملیات گروهی',
+                ),
                 SizedBox(
                   width: 210,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

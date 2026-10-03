@@ -91,6 +91,22 @@ void main() {
     expect(jsonDecode(captured.body), {'state': 'Preparing', 'reason': 'ready'});
   });
 
+  test('bulkTransition posts bounded order ids and returns update counts', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response.bytes(utf8.encode(jsonEncode({'updated': [{'id': '1'}], 'failed': [{'id': '2', 'message': 'مسیر نامعتبر'}]})), 200);
+    });
+    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test')
+        .bulkTransition(['1', '2'], 'Preparing', reason: 'آماده‌سازی گروهی');
+    expect(captured.method, 'POST');
+    expect(captured.url.path, '/api/v1/admin/orders/bulk-state');
+    expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(jsonDecode(captured.body), {'orderIds': ['1', '2'], 'state': 'Preparing', 'reason': 'آماده‌سازی گروهی'});
+    expect(result.$1, 1);
+    expect(result.$2, 1);
+  });
+
   test('fetchOrderDetail requests the authenticated order detail contract', () async {
     late http.Request captured;
     final client = MockClient((request) async {

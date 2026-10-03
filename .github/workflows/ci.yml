@@ -262,7 +262,17 @@ jobs:
           assert any(item['movementType'] == 'Reserved' and item['quantityDelta'] == -1 for item in movements)
           PY
 
-          for STATE in Preparing Shipped Delivered; do
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/orders/bulk-state" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data "{\"orderIds\":[\"${ORDER_ID}\"],\"state\":\"Preparing\",\"reason\":\"ci-bulk\"}" > /tmp/order-bulk.json
+          python3 - <<'PY'
+          import json
+          bulk = json.load(open('/tmp/order-bulk.json', encoding='utf-8'))
+          assert len(bulk['updated']) == 1
+          assert not bulk['failed']
+          PY
+
+          for STATE in Shipped Delivered; do
             curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/state" \
               -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
               --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" > "/tmp/order-${STATE}.json"
