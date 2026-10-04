@@ -7,7 +7,7 @@ Check((valid with { ReceivedPackages = 0 }).Validate().ContainsKey("ReceivedPack
 Check((valid with { CostPrice = -1 }).Validate().ContainsKey("CostPrice"), "Negative cost accepted");
 Check((valid with { Supplier = new string('x', 201) }).Validate().ContainsKey("Supplier"), "Long supplier accepted");
 Check((valid with { ExpiresAt = valid.ProducedAt }).Validate().ContainsKey("ExpiresAt"), "Invalid expiry accepted");
-Check((valid with { PurchasedAt = null, Supplier = null }).Validate().Count == 0, "Legacy receipt rejected");
+Check((valid with { PurchasedAt = null, Supplier = null }).Validate().ContainsKey("Supplier"), "New receipt without supplier accepted");
 Console.WriteLine("Receipt validation unit checks passed");
 
 var recipe = new InventoryPriceRecipe(Guid.NewGuid(), 500, 1.2m, 10, 100, 5, 25, 10);
