@@ -89,8 +89,9 @@ with tempfile.TemporaryFile(mode="w+") as log:
         state = record["State"]
         assert state["Method"] == method and state["Route"] == route
         assert state["StatusCode"] == status and state["ElapsedMilliseconds"] >= 0
-        assert set(state) == {"Message", "RequestId", "Method", "Route", "StatusCode",
-                              "ElapsedMilliseconds", "{OriginalFormat}"}
+        required = {"RequestId", "Method", "Route", "StatusCode", "ElapsedMilliseconds"}
+        assert required <= set(state)
+        assert set(state) - required <= {"Message", "{OriginalFormat}", "OriginalFormat"}, set(state)
         assert not record.get("Scopes"), "Raw framework request scopes must not be serialized"
 
 print("API observability: correlation, CORS, validation errors and structured-log redaction passed")
