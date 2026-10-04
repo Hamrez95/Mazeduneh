@@ -67,8 +67,10 @@ def invite(owner_token, email, name):
     return result
 
 
-def accept_and_login(invitation, email, password):
-    assert request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})[0] == 401
+def accept_and_login(invitation, email, password, check_unaccepted_login=True):
+    if check_unaccepted_login:
+        status, _ = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})
+        assert status == 401, status
     status, _ = request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})
     assert status == 204, status
@@ -99,7 +101,7 @@ with tempfile.TemporaryFile() as log:
         second_email = "membership-two@example.test"
         second_password = "Membership-CI-Password-2!"
         second_invitation = invite(owner_token, second_email, "CI member two")
-        second_token = accept_and_login(second_invitation, second_email, second_password)
+        second_token = accept_and_login(second_invitation, second_email, second_password, check_unaccepted_login=False)
         member_id = second_invitation["user"]["id"]
         status, disabled = request("/api/v1/admin/users/" + member_id + "/status", "PATCH",
                                    {"isActive": False}, owner_token)
