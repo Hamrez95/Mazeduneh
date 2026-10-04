@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/inventory_receipt_dialog.dart';
-import 'package:mazeduneh_admin/order_api.dart';
 
 const product = Product(id: '1', title: 'پسته', slug: 'pistachio', category: 'nuts', origin: 'IR', unitType: 'Weight',
   isPublished: true, variants: [ProductVariant(sku: 'PI-250', quantity: 250, displayLabel: '۲۵۰ گرم', price: 1000, availablePackages: 0)]);

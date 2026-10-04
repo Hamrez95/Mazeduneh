@@ -107,6 +107,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         await using var reader = await variant.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
+            await reader.CloseAsync();
             await transaction.RollbackAsync(cancellationToken);
             return (null, "SKU پیدا نشد.");
         }
