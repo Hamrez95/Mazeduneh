@@ -91,7 +91,18 @@ with tempfile.TemporaryFile() as log:
         status, session = request("/api/v1/admin/auth/session", token=first_token)
         assert status == 200 and session["authenticated"] is True and session["storeId"] == "default"
         assert request("/api/v1/admin/users", token=first_token)[0] == 403
-        assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=another-store", token=first_token)[0] == 403
+        assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=default", token=first_token)[0] == 200
+        wrong_store_requests = [
+            ("/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=another-store", "GET", None),
+            ("/api/v1/admin/orders?storeId=another-store", "GET", None),
+            ("/api/v1/admin/inventory/adjust?storeId=another-store", "POST",
+             {"sku": "UNKNOWN", "quantityDelta": 1, "reason": "cross-store-must-not-write"}),
+            ("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/status?storeId=another-store", "PATCH",
+             {"isActive": False}),
+        ]
+        for path, method, body in wrong_store_requests:
+            status, denial = request(path, method, body, first_token)
+            assert status == 403 and denial["message"] == "به این فروشگاه دسترسی ندارید.", (path, status, denial)
         status, audit = request("/api/v1/admin/audit-log?entityType=AdminUser&entityId=" + first_invitation["user"]["id"], token=owner_token)
         assert status == 200
         assert any(item["action"] == "admin-user.invitation-accepted" for item in audit)
