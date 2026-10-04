@@ -92,6 +92,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       shipping,
       total: subtotal + shipping,
       add(product) {
+        if (product.stock <= 0) return;
         setCart((current) => {
           const matchesProduct = (line: CartLine) => product.sku
             ? line.sku === product.sku || (!line.sku && line.id === product.id && line.packageLabel === product.packageLabel)

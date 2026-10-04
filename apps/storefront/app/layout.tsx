@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./commerce.css";
 import { CartProvider } from "./cart-context";
+import { CatalogProvider } from "./catalog-context";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://mazeduneh-storefront.vercel.app"),
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fa" dir="rtl">
-      <body><CartProvider>{children}</CartProvider></body>
+      <body><CatalogProvider><CartProvider>{children}</CartProvider></CatalogProvider></body>
     </html>
   );
 }

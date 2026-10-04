@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { categories, demoProducts, toman, type DemoProduct } from "./demo/catalog";
+import { toman, type DemoProduct } from "./demo/catalog";
 import { ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import styles from "./store-pages.module.css";
+import { useCatalog } from "./catalog-context";
 
 function CartGlyph() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
@@ -25,6 +26,7 @@ export function BrandLogo({ light = false }: { light?: boolean }) {
 }
 
 export function StoreHeader() {
+  const { categories: catalogCategories } = useCatalog();
   const { count } = useCart();
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -45,9 +47,7 @@ export function StoreHeader() {
             <button aria-label="جست‌وجو">جست‌وجو</button>
           </form>
           <a href="/shop" onClick={() => setMenuOpen(false)}>همهٔ محصولات</a>
-          <a href="/shop?category=آجیل و مغزها" onClick={() => setMenuOpen(false)}>آجیل و مغزها</a>
-          <a href="/shop?category=میوه خشک" onClick={() => setMenuOpen(false)}>میوه خشک</a>
-          <a href="/shop?category=کوکی و شیرینی" onClick={() => setMenuOpen(false)}>کوکی و شیرینی</a>
+          {catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`} onClick={() => setMenuOpen(false)}>{name}</a>)}
           <a href="/about" onClick={() => setMenuOpen(false)}>داستان ما</a>
         </nav>
         <div className={styles.headerActions}>
@@ -62,11 +62,12 @@ export function StoreHeader() {
 }
 
 export function StoreFooter() {
+  const { categories: catalogCategories } = useCatalog();
   return <footer className={styles.footer}>
     <img className={styles.footerArt} src="/products/gift-boxes-new.webp" alt="" aria-hidden="true" loading="lazy" />
     <div className={styles.footerMain}>
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
-      <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a><a href="/shop?category=آجیل و مغزها">آجیل و مغزها</a><a href="/shop?category=میوه خشک">میوه خشک</a><a href="/shop?category=کوکی و شیرینی">کوکی و شیرینی</a></div>
+      <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a>{catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`}>{name}</a>)}</div>
       <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">تماس با ما</a></div>
       <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><span>پشتیبانی: هر روز، ۹ تا ۱۸</span><span>نسخهٔ نمایشی؛ سفارش و پرداخت واقعی فعال نیست.</span></div>
     </div>
@@ -86,13 +87,15 @@ export function ProductCard({ product }: { product: DemoProduct }) {
       <small>{product.category} <span>·</span> {product.packageLabel}</small>
       <a href={`/product/${product.id}`}><h3>{product.title}</h3></a>
       <p>{product.subtitle}</p>
-      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><button type="button" onClick={() => add(product)} aria-label={`افزودن ${product.title} به سبد`}>افزودن <b>+</b></button></div>
+      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><button type="button" onClick={() => add(product)} disabled={product.stock <= 0} aria-label={`افزودن ${product.title} به سبد`}>{product.stock > 0 ? "افزودن" : "ناموجود"} <b>+</b></button></div>
     </div>
   </article>;
 }
 
 export function RelatedProducts({ currentId }: { currentId?: string }) {
-  const items = demoProducts.filter((item) => item.id !== currentId).slice(0, 4);
+  const { products } = useCatalog();
+  const items = products.filter((item) => item.id !== currentId).slice(0, 4);
+  if (!items.length) return null;
   return <section className={styles.related}><div className={styles.sectionTitle}><div><span>برای چشیدن بعدی</span><h2>شاید این‌ها را هم دوست داشته باشی</h2></div><a href="/shop">مشاهدهٔ همه ←</a></div><div className={styles.productGrid}>{items.map((product) => <ProductCard key={product.id} product={product} />)}</div></section>;
 }
 
@@ -118,5 +121,3 @@ export function ShopShell({ children, title, kicker, description }: { children: 
     </div>
   </section>{children}<StoreFooter /></main>;
 }
-
-export function categoriesForUi() { return categories; }

@@ -54,3 +54,5 @@
 - Native customer app only when usage data justifies it.
 
 - Inventory purchase history: SKU filter across cursor pages and protection against stale concurrent refresh, with mobile/text-scale and API isolation regression (refs #5 #82). No inventory valuation or bulk-packing claim.
+
+- Shared local Admin/Storefront catalog: active launcher entrypoint, unified home/shop/related/category reads, no live-to-demo fallback, sold-out catalog visibility and browser/API regressions. Store content/settings are a separate #98 slice.
