@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
+import 'auth_api.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
