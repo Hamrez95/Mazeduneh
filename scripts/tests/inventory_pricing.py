@@ -86,7 +86,7 @@ with tempfile.TemporaryFile() as log:
         receipt = {'sku': SKU, 'batchCode': 'CI-PRICE-ONE', 'receivedPackages': 12,
                    'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
                    'costPrice': 4000, 'packagingCost': 500, 'additionalCost': 100,
-                   'purchasedAt': '2026-01-01T00:00:00Z'}
+                   'purchasedAt': '2026-01-01T00:00:00Z', 'supplier': 'CI price supplier'}
         status, batch = request('/api/v1/admin/inventory/batches', 'POST', receipt, token)
         assert status == 201
         old_order = checkout('ci-price-before')
