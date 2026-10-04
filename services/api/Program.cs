@@ -4,6 +4,7 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton<ApiHealthProbe>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddCors(options => options.AddPolicy("Storefront", policy =>
@@ -64,36 +65,7 @@ if (database.IsConfigured)
     }
 }
 
-app.MapGet("/health", async (
-    CatalogDatabase db,
-    AdminTokenService adminTokens,
-    PaymentDatabase paymentDatabase,
-    IConfiguration configuration,
-    CancellationToken cancellationToken) =>
-{
-    var databaseStatus = !db.IsConfigured ? "not-configured" :
-        await db.CanConnectAsync(cancellationToken) ? "healthy" : "unhealthy";
-    var migrations = db.IsConfigured
-        ? await DatabaseMigrationRunner.ListAsync(configuration, cancellationToken)
-        : Array.Empty<DatabaseMigrationInfo>();
-    var latestMigration = migrations.LastOrDefault();
-
-    return Results.Ok(new
-    {
-        status = databaseStatus == "unhealthy" ? "degraded" : "healthy",
-        service = "mazeduneh-api",
-        database = databaseStatus,
-        migrations = new
-        {
-            status = db.IsConfigured ? "tracked" : "not-configured",
-            applied = migrations.Count,
-            latest = latestMigration is null ? null : new { component = latestMigration.Component, version = latestMigration.Version }
-        },
-        adminAuthentication = adminTokens.IsConfigured ? "configured" : "not-configured",
-        paymentSandbox = paymentDatabase.SandboxEnabled ? "enabled" : "disabled",
-        utc = DateTimeOffset.UtcNow
-    });
-});
+app.MapApiHealth();
 
 app.MapGet("/api/v1/categories", async (CatalogDatabase db, CancellationToken cancellationToken) => Results.Ok(await db.LoadCategoriesAsync(cancellationToken)));
 app.MapGet("/api/v1/categories/admin", async (CatalogDatabase db, CancellationToken cancellationToken) => Results.Ok(await db.LoadCategoriesAsync(cancellationToken)))
