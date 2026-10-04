@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'admin_state.dart';
 import 'admin_users_api.dart';
@@ -92,9 +93,34 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     );
     if (draft == null || !mounted) return;
     try {
-      await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role);
+      final invitation = await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('کاربر با موفقیت اضافه شد.')));
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('دعوت آماده است'),
+          content: SizedBox(
+            width: 480,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('پیوند فعال‌سازی برای ${invitation.user.email} فقط یک بار قابل استفاده است و تا ${formatPersianDateTime(invitation.expiresAt)} اعتبار دارد.'),
+              const SizedBox(height: 14),
+              SelectableText(invitation.shareUrl, textDirection: TextDirection.ltr),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('بستن')),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: invitation.shareUrl));
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('پیوند دعوت کپی شد.')));
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: const Text('کپی پیوند'),
+            ),
+          ],
+        ),
+      );
       await load();
     } on AdminUsersApiException catch (exception) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.message)));
@@ -191,6 +217,8 @@ class _UsersList extends StatelessWidget {
                       final details = Wrap(spacing: 8, runSpacing: 8, children: [
                         _Chip(label: user.roleLabel, color: AdminColors.mintSoft),
                         _Chip(label: user.isActive ? 'فعال' : 'غیرفعال', color: user.isActive ? const Color(0xFFE6F5E8) : const Color(0xFFF0ECE8)),
+                        if (user.role != 'Owner' && !user.hasPassword)
+                          const _Chip(label: 'در انتظار فعال‌سازی', color: Color(0xFFFFF2D9)),
                         _Chip(label: '${formatPersianInteger(user.permissions.length)} دسترسی', color: const Color(0xFFF6F3EC)),
                       ]);
                       final action = user.email == OwnerSession.instance.email
