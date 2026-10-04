@@ -226,7 +226,7 @@ jobs:
           python3 - <<'PY'
           import json
           events = json.load(open('/tmp/admin-user-audit.json', encoding='utf-8'))
-          assert {item['action'] for item in events} >= {'admin-user.created', 'admin-user.status-changed'}
+          assert {item['action'] for item in events} >= {'admin-user.invited', 'admin-user.status-changed'}
           assert all(item['actor'] == 'ci-owner@mazeduneh.test' for item in events)
           PY
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/customers/?q=0912" \
