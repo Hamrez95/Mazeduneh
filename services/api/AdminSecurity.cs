@@ -27,18 +27,35 @@ public static class AdminSecurityExtensions
 
     public static IEndpointRouteBuilder MapAdminSecurity(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/api/v1/admin/auth/login", (AdminLoginRequest request, AdminTokenService tokens) =>
+        endpoints.MapPost("/api/v1/admin/auth/login", async Task<IResult> (
+            AdminLoginRequest request, AdminTokenService tokens, AdminUsersDatabase users, CancellationToken cancellationToken) =>
         {
-            if (!tokens.IsConfigured)
+            if (!tokens.CanIssueTokens || (!tokens.IsConfigured && !users.IsConfigured))
                 return Results.Problem(
                     title: "ورود مدیر پیکربندی نشده است.",
-                    detail: "متغیرهای Admin__Email، Admin__PasswordHash و Admin__TokenSigningKey باید در محیط اجرا تنظیم شوند.",
+                    detail: "تنظیم کلید امضای نشست و دیتابیس کاربران الزامی است.",
                     statusCode: StatusCodes.Status503ServiceUnavailable);
 
-            if (!tokens.ValidateCredentials(request.Email, request.Password))
-                return Results.Unauthorized();
+            if (tokens.ValidateCredentials(request.Email, request.Password) &&
+                (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
+            {
+                var owner = tokens.Issue(request.Email);
+                return Results.Ok(new
+                {
+                    accessToken = owner.Token,
+                    tokenType = "Bearer",
+                    expiresAt = owner.ExpiresAt,
+                    role = owner.Role,
+                    permissions = owner.Permissions,
+                    email = tokens.OwnerEmail,
+                    storeId = "default"
+                });
+            }
 
-            var issued = tokens.Issue(request.Email);
+            var member = await users.AuthenticateAsync(request.Email, request.Password, request.StoreId, cancellationToken);
+            if (member is null) return Results.Unauthorized();
+            var issued = tokens.Issue(member);
+            await users.CreateSessionAsync(member.Id, member.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
             return Results.Ok(new
             {
                 accessToken = issued.Token,
@@ -46,26 +63,44 @@ public static class AdminSecurityExtensions
                 expiresAt = issued.ExpiresAt,
                 role = issued.Role,
                 permissions = issued.Permissions,
-                email = tokens.OwnerEmail
+                email = member.Email,
+                storeId = member.StoreId
             });
         })
         .RequireRateLimiting("admin-login")
         .WithTags("Admin Auth");
 
-        endpoints.MapGet("/api/v1/admin/auth/session", (AdminTokenService tokens, HttpContext context) =>
+        endpoints.MapPost("/api/v1/admin/auth/accept-invite", async Task<IResult> (
+            AdminInviteAcceptRequest request, AdminUsersDatabase users, CancellationToken cancellationToken) =>
+        {
+            var accepted = await users.AcceptInvitationAsync(request.Token, request.Password, cancellationToken);
+            return accepted
+                ? Results.NoContent()
+                : Results.BadRequest(new { message = "دعوت معتبر نیست یا منقضی شده است. از مدیر فروشگاه دعوت تازه بگیرید." });
+        })
+        .RequireRateLimiting("admin-login")
+        .WithTags("Admin Auth");
+
+        endpoints.MapGet("/api/v1/admin/auth/session", async Task<IResult> (
+            AdminTokenService tokens, AdminUsersDatabase users, HttpContext context, CancellationToken cancellationToken) =>
         {
             var token = AdminTokenService.ReadBearerToken(context.Request);
-            return token is not null && tokens.TryValidate(token, out var principal)
-                ? Results.Ok(new { authenticated = true, email = principal.Email, role = principal.Role, permissions = principal.Permissions, expiresAt = principal.ExpiresAt })
-                : Results.Unauthorized();
+            if (token is null || !tokens.TryValidate(token, out var principal)) return Results.Unauthorized();
+            if (principal.UserId is Guid userId &&
+                !await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
+                return Results.Unauthorized();
+            return Results.Ok(new { authenticated = true, email = principal.Email, role = principal.Role, permissions = principal.Permissions, storeId = principal.StoreId, expiresAt = principal.ExpiresAt });
         })
         .WithTags("Admin Auth");
 
-        endpoints.MapPost("/api/v1/admin/auth/logout", (AdminTokenService tokens, HttpContext context) =>
+        endpoints.MapPost("/api/v1/admin/auth/logout", async Task<IResult> (
+            AdminTokenService tokens, AdminUsersDatabase users, HttpContext context, CancellationToken cancellationToken) =>
         {
             var token = AdminTokenService.ReadBearerToken(context.Request);
-            if (token is null || !tokens.TryValidate(token, out _)) return Results.Unauthorized();
+            if (token is null || !tokens.TryValidate(token, out var principal)) return Results.Unauthorized();
             tokens.Revoke(token);
+            if (principal.UserId is Guid userId)
+                await users.RevokeSessionAsync(userId, principal.StoreId, principal.SessionId, cancellationToken);
             return Results.NoContent();
         })
         .WithTags("Admin Auth");
@@ -107,7 +142,7 @@ public static class AdminSecurityExtensions
             try
             {
                 var created = await database.CreateAsync(request, actor, storeId, context.TraceIdentifier, cancellationToken);
-                return Results.Created($"/api/v1/admin/users/{created.Id}", created);
+                return Results.Created($"/api/v1/admin/users/{created.User.Id}", new { user = created.User, invitationToken = created.InvitationToken, expiresAt = created.ExpiresAt });
             }
             catch (AdminUserValidationException exception)
             {
@@ -142,9 +177,10 @@ public static class AdminSecurityExtensions
     }
 }
 
-public sealed record AdminLoginRequest(string Email, string Password);
-public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions);
-public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions);
+public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null);
+public sealed record AdminInviteAcceptRequest(string Token, string Password);
+public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
+public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId);
 
 public static class AdminPermissionCatalog
 {
@@ -270,9 +306,10 @@ public sealed class AdminTokenService
     }
 
     public string OwnerEmail { get; }
+    public bool CanIssueTokens => _signingKey.Length >= 32;
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(OwnerEmail) &&
-        _signingKey.Length >= 32 &&
+        CanIssueTokens &&
         _configuredPasswordHash.Length == 32;
 
     public bool ValidateCredentials(string? email, string? password)
@@ -283,16 +320,22 @@ public sealed class AdminTokenService
         return CryptographicOperations.FixedTimeEquals(suppliedHash, _configuredPasswordHash);
     }
 
-    public IssuedAdminToken Issue(string email)
+    public IssuedAdminToken Issue(string email) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions), null, "default");
+
+    public IssuedAdminToken Issue(AdminUserSummary member) =>
+        Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
+
+    private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId)
     {
+        if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
         var expiresAt = DateTimeOffset.UtcNow.Add(_lifetime);
-        var role = _configuredRole;
-        var permissions = AdminPermissionCatalog.Resolve(role, _configuredPermissions);
-        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{Guid.NewGuid():N}|{role}|{string.Join(',', permissions)}";
+        var sessionId = Guid.NewGuid();
+        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{sessionId:N}|{role}|{string.Join(',', permissions)}|{userId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(storeId))}";
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
         var token = $"{Base64Url(payloadBytes)}.{Base64Url(signature)}";
-        return new IssuedAdminToken(token, expiresAt, role, permissions);
+        return new IssuedAdminToken(token, expiresAt, role, permissions, sessionId);
     }
 
     public void Revoke(string token)
@@ -306,7 +349,7 @@ public sealed class AdminTokenService
     public bool TryValidate(string token, out AdminPrincipal principal)
     {
         principal = default!;
-        if (!IsConfigured) return false;
+        if (!CanIssueTokens) return false;
         var parts = token.Split('.', 2);
         if (parts.Length != 2 || !TryBase64Url(parts[0], out var payloadBytes) || !TryBase64Url(parts[1], out var signature)) return false;
         var expectedSignature = HMACSHA256.HashData(_signingKey, payloadBytes);
@@ -321,7 +364,16 @@ public sealed class AdminTokenService
         var permissions = fields.Length > 4
             ? fields[4].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : AdminPermissionCatalog.Owner;
-        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions);
+        if (!Guid.TryParseExact(fields[2], "N", out var sessionId)) return false;
+        Guid? userId = fields.Length > 5 && Guid.TryParse(fields[5], out var parsedUserId) ? parsedUserId : null;
+        var storeId = "default";
+        if (fields.Length > 6)
+        {
+            if (!TryBase64Url(fields[6], out var storeBytes)) return false;
+            storeId = Encoding.UTF8.GetString(storeBytes);
+            if (string.IsNullOrWhiteSpace(storeId) || storeId.Length > 120) return false;
+        }
+        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions, sessionId, userId, storeId);
         return true;
     }
 
@@ -364,13 +416,22 @@ public sealed class AdminTokenService
             : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
-public sealed class OwnerAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUsersDatabase users) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var token = AdminTokenService.ReadBearerToken(context.HttpContext.Request);
         if (token is null || !tokens.TryValidate(token, out var principal))
             return Results.Unauthorized();
+
+        if (principal.UserId is Guid userId)
+        {
+            if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, context.HttpContext.RequestAborted))
+                return Results.Unauthorized();
+            var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
+            if (!string.IsNullOrWhiteSpace(requestedStore) && !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
+                return Results.Json(new { message = "به این فروشگاه دسترسی ندارید." }, statusCode: StatusCodes.Status403Forbidden);
+        }
 
         context.HttpContext.Items["AdminPrincipal"] = principal;
         var requiredPermission = AdminPermissionCatalog.RequiredPermission(context.HttpContext);
