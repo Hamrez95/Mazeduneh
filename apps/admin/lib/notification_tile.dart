@@ -39,7 +39,7 @@ class AdminNotificationTile extends StatelessWidget {
         Text(toPersianDigits(item.detail), style: TextStyle(color: colors.onSurface)),
         if (item.type == 'critical')
           const Padding(padding: EdgeInsets.only(top: 5), child: Text('فوری')),
-        if (canNavigate && route != null)
+        if (canNavigate)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: TextButton.icon(
