@@ -359,7 +359,7 @@ public sealed class AdminTokenService
         var fields = Encoding.UTF8.GetString(payloadBytes).Split('|');
         if (fields.Length < 3 || !long.TryParse(fields[1], out var unixExpiry)) return false;
         var expiresAt = DateTimeOffset.FromUnixTimeSeconds(unixExpiry);
-        if (expiresAt <= DateTimeOffset.UtcNow || !string.Equals(fields[0], OwnerEmail, StringComparison.OrdinalIgnoreCase)) return false;
+        if (expiresAt <= DateTimeOffset.UtcNow || string.IsNullOrWhiteSpace(fields[0])) return false;
         var role = fields.Length > 3 && !string.IsNullOrWhiteSpace(fields[3]) ? fields[3] : "Owner";
         var permissions = fields.Length > 4
             ? fields[4].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
