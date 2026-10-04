@@ -265,3 +265,8 @@ Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. 
 - لاگ JSON تکمیل درخواست با route template، status و زمان؛ بدون path/query/body/token در event جدید.
 - تست CI برای همبستگی Audit، خطای validation، CORS و عدم ثبت دادهٔ حساس درخواست.
 - راهنمای عملیات: `docs/API_OBSERVABILITY.md`؛ alert، log sink/retention و تأیید deployment واقعی همچنان باز است.
+
+
+## چرخهٔ ۴ اکتبر ۲۰۲۶ — فیلتر اعلان‌ها در سرور (#96/#91)
+
+خروجی Notification API بر اساس permissionهای نشست به سفارش و انبار محدود می‌شود؛ title/SKU و count حوزهٔ نامجاز برنمی‌گردد و query آن اجرا نمی‌شود. قرارداد JSON و خروجی Owner حفظ شده است. تست integration با fixture واقعی و processهای دارای permission متفاوت در CI اضافه شد. جزئیات: `docs/NOTIFICATION_PERMISSIONS.md`. Store isolation و membership login همچنان در #91/#99 باز هستند.
