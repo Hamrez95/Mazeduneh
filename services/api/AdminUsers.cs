@@ -274,7 +274,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
     {
         await using var command = new NpgsqlCommand("""
             select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null
-        from admin_users where id=@id;
+            from admin_users where id=@id;
             """, connection, transaction);
         command.Parameters.AddWithValue("id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
