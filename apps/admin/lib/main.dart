@@ -1,3 +1,4 @@
+import 'inventory_pricing_dialog.dart';
 import 'inventory_receipt_dialog.dart';
 import 'dart:convert';
 
@@ -1778,6 +1779,13 @@ class _InventoryPageState extends State<InventoryPage> {
           const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
         ]);
         final controls = Wrap(spacing: 8, children: [
+        OutlinedButton.icon(onPressed: products.isEmpty ? null : () async {
+          final applied = await showDialog<bool>(context: context, builder: (_) => InventoryPricingDialog(products: products, orders: orders));
+          if (applied == true) {
+            await load();
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.')));
+          }
+        }, icon: const Icon(Icons.calculate_outlined), label: const Text('محاسبه قیمت فروش')),
         OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید')),
         const SizedBox(width: 8),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),

@@ -447,6 +447,9 @@ jobs:
       - name: Dated inventory purchase contract
         run: python3 scripts/tests/inventory_purchase.py
 
+      - name: Batch selling price contract and snapshot regression
+        run: python3 scripts/tests/inventory_pricing.py
+
   admin:
     name: Admin Flutter
     runs-on: ubuntu-latest

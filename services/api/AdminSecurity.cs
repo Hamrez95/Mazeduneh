@@ -233,6 +233,8 @@ public static class AdminPermissionCatalog
         if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/api/v1/admin/analytics", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/api/v1/admin/notifications", StringComparison.OrdinalIgnoreCase)) return DashboardRead;
+        if (path.StartsWith("/api/v1/admin/inventory/pricing", StringComparison.OrdinalIgnoreCase))
+            return HttpMethods.IsGet(method) || path.EndsWith("/preview", StringComparison.OrdinalIgnoreCase) ? InventoryRead : PricingWrite;
         if (path.StartsWith("/api/v1/admin/inventory", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
         if (path.StartsWith("/api/v1/admin/customers/export", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
         if (path.StartsWith("/api/v1/admin/customers", StringComparison.OrdinalIgnoreCase)) return CustomersRead;
