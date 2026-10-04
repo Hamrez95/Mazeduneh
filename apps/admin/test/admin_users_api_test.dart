@@ -26,7 +26,7 @@ void main() {
         ])), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.method == 'POST') {
-        return http.Response(utf8Body(jsonEncode(userJson(isActive: true))), 201, headers: {'content-type': 'application/json; charset=utf-8'});
+        return http.Response(utf8Body(jsonEncode({'user': userJson(isActive: true), 'invitationToken': 'invite-once', 'expiresAt': '2026-10-04T12:00:00Z'})), 201, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       if (request.method == 'PATCH') {
         return http.Response(utf8Body(jsonEncode(userJson(isActive: false, deactivatedAt: '2026-10-03T12:00:00Z'))), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -38,11 +38,11 @@ void main() {
     final users = await api.fetchUsers();
     final roles = await api.fetchRoles();
     final created = await api.createUser(email: 'warehouse@example.com', displayName: 'اپراتور انبار', role: 'WarehouseOperator');
-    final disabled = await api.setStatus(created.id, false);
+    final disabled = await api.setStatus(created.user.id, false);
 
     expect(users.single.displayName, 'اپراتور انبار');
     expect(roles.single.titleFa, 'اپراتور انبار');
-    expect(created.isActive, isTrue);
+    expect(created.user.isActive, isTrue);
     expect(disabled.isActive, isFalse);
     expect(requests.where((request) => request.headers['authorization'] == 'Bearer users-token'), hasLength(4));
     expect(jsonDecode(requests[2].body)['role'], 'WarehouseOperator');
