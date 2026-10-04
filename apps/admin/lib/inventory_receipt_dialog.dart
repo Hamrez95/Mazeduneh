@@ -6,8 +6,9 @@ import 'order_api.dart';
 class InventoryReceiptCommand {
   const InventoryReceiptCommand({required this.sku, required this.batchCode, required this.receivedPackages,
     required this.producedAt, required this.expiresAt, required this.purchasedAt, required this.supplier,
-    required this.costPrice, required this.packagingCost, required this.additionalCost});
-  final String sku, batchCode, supplier;
+    required this.supplierContactName, required this.supplierPhone, required this.supplierEmail,
+    required this.supplierAddress, required this.supplierNotes, required this.costPrice, required this.packagingCost, required this.additionalCost});
+  final String sku, batchCode, supplier, supplierContactName, supplierPhone, supplierEmail, supplierAddress, supplierNotes;
   final int receivedPackages;
   final DateTime producedAt, expiresAt, purchasedAt;
   final num costPrice, packagingCost, additionalCost;
@@ -24,7 +25,7 @@ class BatchDialog extends StatefulWidget {
 class _BatchDialogState extends State<BatchDialog> {
   final form = GlobalKey<FormState>();
   final fields = <String, TextEditingController>{
-    for (final key in ['batch', 'quantity', 'supplier', 'produced', 'expires', 'purchased', 'cost', 'packaging', 'additional'])
+    for (final key in ['batch', 'quantity', 'supplier', 'supplierContactName', 'supplierPhone', 'supplierEmail', 'supplierAddress', 'supplierNotes', 'produced', 'expires', 'purchased', 'cost', 'packaging', 'additional'])
       key: TextEditingController(text: ['cost', 'packaging', 'additional'].contains(key) ? '۰' : ''),
   };
   late String sku;
@@ -66,6 +67,9 @@ class _BatchDialogState extends State<BatchDialog> {
     try {
       final batch = await widget.onSave(InventoryReceiptCommand(sku: sku, batchCode: fields['batch']!.text.trim(),
         receivedPackages: parsePersianNumber(fields['quantity']!.text)!.toInt(), supplier: fields['supplier']!.text.trim(),
+        supplierContactName: fields['supplierContactName']!.text.trim(), supplierPhone: fields['supplierPhone']!.text.trim(),
+        supplierEmail: fields['supplierEmail']!.text.trim(), supplierAddress: fields['supplierAddress']!.text.trim(),
+        supplierNotes: fields['supplierNotes']!.text.trim(),
         producedAt: date(fields['produced']!.text)!, expiresAt: date(fields['expires']!.text)!, purchasedAt: date(fields['purchased']!.text)!,
         costPrice: parsePersianNumber(fields['cost']!.text)! * 10, packagingCost: parsePersianNumber(fields['packaging']!.text)! * 10,
         additionalCost: parsePersianNumber(fields['additional']!.text)! * 10));
@@ -87,7 +91,14 @@ class _BatchDialogState extends State<BatchDialog> {
           onChanged: (value) => setState(() => sku = value ?? sku)),
         TextFormField(controller: fields['batch'], maxLength: 80, decoration: const InputDecoration(labelText: 'کد خرید / بچ'),
           validator: (v) => v == null || v.trim().isEmpty ? 'کد خرید الزامی است.' : null),
-        TextFormField(controller: fields['supplier'], maxLength: 200, decoration: const InputDecoration(labelText: 'تأمین‌کننده (اختیاری)')),
+        TextFormField(controller: fields['supplier'], maxLength: 200, decoration: const InputDecoration(labelText: 'نام تأمین‌کننده'),
+          validator: (v) => v == null || v.trim().isEmpty ? 'نام تأمین‌کننده را وارد کنید.' : null),
+        TextFormField(controller: fields['supplierContactName'], maxLength: 200, decoration: const InputDecoration(labelText: 'نام شخص تماس (اختیاری)')),
+        TextFormField(controller: fields['supplierPhone'], maxLength: 40, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'شماره تماس تأمین‌کننده (اختیاری)')),
+        TextFormField(controller: fields['supplierEmail'], maxLength: 254, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'ایمیل تأمین‌کننده (اختیاری)'),
+          validator: (v) { final email = v?.trim() ?? ''; return email.isEmpty || RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email) ? null : 'ایمیل معتبر وارد کنید.'; }),
+        TextFormField(controller: fields['supplierAddress'], maxLength: 500, maxLines: 2, decoration: const InputDecoration(labelText: 'نشانی تأمین‌کننده (اختیاری)')),
+        TextFormField(controller: fields['supplierNotes'], maxLength: 1000, maxLines: 2, decoration: const InputDecoration(labelText: 'یادداشت دربارهٔ تأمین‌کننده (اختیاری)')),
         TextFormField(controller: fields['quantity'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تعداد بستهٔ خریداری‌شده'),
           validator: (v) { final n = parsePersianNumber(v); return n == null || !n.isFinite || n <= 0 || n > 1000000 || n != n.round() ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.' : null; }),
         dateField('purchased', 'تاریخ خرید'), dateField('produced', 'تاریخ تولید'), dateField('expires', 'تاریخ انقضا'),

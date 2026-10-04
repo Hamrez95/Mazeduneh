@@ -144,6 +144,11 @@ class OrderApiClient {
     required num additionalCost,
     DateTime? purchasedAt,
     String? supplier,
+    String? supplierContactName,
+    String? supplierPhone,
+    String? supplierEmail,
+    String? supplierAddress,
+    String? supplierNotes,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/inventory/batches'),
@@ -154,6 +159,11 @@ class OrderApiClient {
         'costPrice': costPrice, 'packagingCost': packagingCost, 'additionalCost': additionalCost,
         if (purchasedAt != null) 'purchasedAt': purchasedAt.toUtc().toIso8601String(),
         if (supplier != null) 'supplier': supplier,
+        if (supplierContactName?.trim().isNotEmpty == true) 'supplierContactName': supplierContactName!.trim(),
+        if (supplierPhone?.trim().isNotEmpty == true) 'supplierPhone': supplierPhone!.trim(),
+        if (supplierEmail?.trim().isNotEmpty == true) 'supplierEmail': supplierEmail!.trim(),
+        if (supplierAddress?.trim().isNotEmpty == true) 'supplierAddress': supplierAddress!.trim(),
+        if (supplierNotes?.trim().isNotEmpty == true) 'supplierNotes': supplierNotes!.trim(),
       }),
     );
     _guard(response);
@@ -474,7 +484,8 @@ class InventoryBatch {
     required this.batchCode, required this.receivedPackages, required this.remainingPackages,
     required this.producedAt, required this.expiresAt, required this.costPrice,
     required this.packagingCost, required this.additionalCost, required this.isExpired, required this.isExpiringSoon,
-    this.purchasedAt, this.supplier,
+    this.purchasedAt, this.supplier, this.supplierContactName, this.supplierPhone, this.supplierEmail,
+    this.supplierAddress, this.supplierNotes,
   });
   final String id;
   final String sku;
@@ -483,6 +494,7 @@ class InventoryBatch {
   final String batchCode;
   final DateTime? purchasedAt;
   final String? supplier;
+  final String? supplierContactName, supplierPhone, supplierEmail, supplierAddress, supplierNotes;
   final int receivedPackages;
   final int remainingPackages;
   final DateTime producedAt;
@@ -502,6 +514,9 @@ class InventoryBatch {
     additionalCost: json['additionalCost'] as num, isExpired: json['isExpired'] as bool,
     isExpiringSoon: json['isExpiringSoon'] as bool? ?? false,
     purchasedAt: DateTime.tryParse(json['purchasedAt']?.toString() ?? ''), supplier: json['supplier'] as String?,
+    supplierContactName: json['supplierContactName'] as String?, supplierPhone: json['supplierPhone'] as String?,
+    supplierEmail: json['supplierEmail'] as String?, supplierAddress: json['supplierAddress'] as String?,
+    supplierNotes: json['supplierNotes'] as String?,
   );
 }
 

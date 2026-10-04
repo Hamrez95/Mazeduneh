@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Npgsql;
 
@@ -11,7 +12,12 @@ public sealed record InventoryBatchRequest(
     decimal PackagingCost = 0,
     decimal AdditionalCost = 0,
     DateTimeOffset? PurchasedAt = null,
-    string? Supplier = null)
+    string? Supplier = null,
+    string? SupplierContactName = null,
+    string? SupplierPhone = null,
+    string? SupplierEmail = null,
+    string? SupplierAddress = null,
+    string? SupplierNotes = null)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -24,7 +30,14 @@ public sealed record InventoryBatchRequest(
         if (PackagingCost is < 0 or > 1_000_000_000_000m) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی باید بین صفر و ۱ تریلیون ریال باشد."];
         if (AdditionalCost is < 0 or > 1_000_000_000_000m) errors[nameof(AdditionalCost)] = ["هزینه جانبی باید بین صفر و ۱ تریلیون ریال باشد."];
         if (BatchCode?.Trim().Length > 80) errors[nameof(BatchCode)] = ["کد بچ حداکثر ۸۰ کاراکتر است."];
+        if (string.IsNullOrWhiteSpace(Supplier)) errors[nameof(Supplier)] = ["نام تأمین‌کننده الزامی است."];
         if (Supplier?.Trim().Length > 200) errors[nameof(Supplier)] = ["نام تأمین‌کننده حداکثر ۲۰۰ کاراکتر است."];
+        if (SupplierContactName?.Trim().Length > 200) errors[nameof(SupplierContactName)] = ["نام شخص تماس حداکثر ۲۰۰ کاراکتر است."];
+        if (SupplierPhone?.Trim().Length > 40) errors[nameof(SupplierPhone)] = ["شماره تماس حداکثر ۴۰ کاراکتر است."];
+        if (SupplierEmail?.Trim() is { Length: > 0 } email && !new EmailAddressAttribute().IsValid(email)) errors[nameof(SupplierEmail)] = ["ایمیل تأمین‌کننده معتبر نیست."];
+        if (SupplierEmail?.Trim().Length > 254) errors[nameof(SupplierEmail)] = ["ایمیل حداکثر ۲۵۴ کاراکتر است."];
+        if (SupplierAddress?.Trim().Length > 500) errors[nameof(SupplierAddress)] = ["نشانی حداکثر ۵۰۰ کاراکتر است."];
+        if (SupplierNotes?.Trim().Length > 1000) errors[nameof(SupplierNotes)] = ["یادداشت تأمین‌کننده حداکثر ۱۰۰۰ کاراکتر است."];
         if (PurchasedAt > DateTimeOffset.UtcNow) errors[nameof(PurchasedAt)] = ["تاریخ خرید نمی‌تواند در آینده باشد."];
         return errors;
     }
@@ -46,7 +59,12 @@ public sealed record InventoryBatch(
     bool IsExpired,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PurchasedAt = null,
-    string? Supplier = null)
+    string? Supplier = null,
+    string? SupplierContactName = null,
+    string? SupplierPhone = null,
+    string? SupplierEmail = null,
+    string? SupplierAddress = null,
+    string? SupplierNotes = null)
 {
     public decimal PurchaseTotal => CostPrice * ReceivedPackages;
 }
@@ -91,6 +109,13 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             create index if not exists ix_inventory_purchase_cursor on inventory_batches(created_at desc,id desc);
             create index if not exists ix_inventory_purchase_sku_cursor on inventory_batches(sku,created_at desc,id desc);
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "006-supplier-details", """
+            alter table inventory_batches add column if not exists supplier_contact_name varchar(200) null;
+            alter table inventory_batches add column if not exists supplier_phone varchar(40) null;
+            alter table inventory_batches add column if not exists supplier_email varchar(254) null;
+            alter table inventory_batches add column if not exists supplier_address varchar(500) null;
+            alter table inventory_batches add column if not exists supplier_notes varchar(1000) null;
+            """, cancellationToken);
         logger.LogInformation("Inventory batch and expiry schema is ready.");
     }
 
@@ -125,11 +150,16 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         var createdAt = DateTimeOffset.UtcNow;
         var purchasedAt = request.PurchasedAt?.ToUniversalTime() ?? createdAt;
         var supplier = request.Supplier?.Trim();
+        var supplierContactName = string.IsNullOrWhiteSpace(request.SupplierContactName) ? null : request.SupplierContactName.Trim();
+        var supplierPhone = string.IsNullOrWhiteSpace(request.SupplierPhone) ? null : request.SupplierPhone.Trim();
+        var supplierEmail = string.IsNullOrWhiteSpace(request.SupplierEmail) ? null : request.SupplierEmail.Trim();
+        var supplierAddress = string.IsNullOrWhiteSpace(request.SupplierAddress) ? null : request.SupplierAddress.Trim();
+        var supplierNotes = string.IsNullOrWhiteSpace(request.SupplierNotes) ? null : request.SupplierNotes.Trim();
         const string insertSql = """
             insert into inventory_batches
-                (id,sku,batch_code,received_packages,remaining_packages,produced_at,expires_at,cost_price,packaging_cost,additional_cost,created_at,purchased_at,supplier)
+                (id,sku,batch_code,received_packages,remaining_packages,produced_at,expires_at,cost_price,packaging_cost,additional_cost,created_at,purchased_at,supplier,supplier_contact_name,supplier_phone,supplier_email,supplier_address,supplier_notes)
             values
-                (@id,@sku,@batch_code,@received,@remaining,@produced,@expires,@cost,@packaging,@additional,@created,@purchased,@supplier);
+                (@id,@sku,@batch_code,@received,@remaining,@produced,@expires,@cost,@packaging,@additional,@created,@purchased,@supplier,@supplier_contact_name,@supplier_phone,@supplier_email,@supplier_address,@supplier_notes);
             """;
         await using (var insert = new NpgsqlCommand(insertSql, connection, transaction))
         {
@@ -146,6 +176,11 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             insert.Parameters.AddWithValue("created", createdAt);
             insert.Parameters.AddWithValue("purchased", purchasedAt);
             insert.Parameters.AddWithValue("supplier", (object?)supplier ?? DBNull.Value);
+            insert.Parameters.AddWithValue("supplier_contact_name", (object?)supplierContactName ?? DBNull.Value);
+            insert.Parameters.AddWithValue("supplier_phone", (object?)supplierPhone ?? DBNull.Value);
+            insert.Parameters.AddWithValue("supplier_email", (object?)supplierEmail ?? DBNull.Value);
+            insert.Parameters.AddWithValue("supplier_address", (object?)supplierAddress ?? DBNull.Value);
+            insert.Parameters.AddWithValue("supplier_notes", (object?)supplierNotes ?? DBNull.Value);
             try { await insert.ExecuteNonQueryAsync(cancellationToken); }
             catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
             {
@@ -175,7 +210,8 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
 
         var batch = new InventoryBatch(id, sku, title, label, request.BatchCode.Trim(), request.ReceivedPackages,
             request.ReceivedPackages, request.ProducedAt, request.ExpiresAt, request.CostPrice,
-            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt, purchasedAt, supplier);
+            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt, purchasedAt, supplier,
+            supplierContactName, supplierPhone, supplierEmail, supplierAddress, supplierNotes);
         await audit.RecordAsync(connection, transaction, actor, "inventory.purchase.received", "InventoryBatch",
             id.ToString(), null, batch, "inventory-purchase-received", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -206,7 +242,8 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         if (!IsConfigured) return Array.Empty<InventoryBatch>();
         const string sql = """
             select b.id,b.sku,p.title,v.display_label,b.batch_code,b.received_packages,b.remaining_packages,
-                   b.produced_at,b.expires_at,b.cost_price,b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier
+                   b.produced_at,b.expires_at,b.cost_price,b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier,
+                   b.supplier_contact_name,b.supplier_phone,b.supplier_email,b.supplier_address,b.supplier_notes
             from inventory_batches b
             join product_variants v on upper(v.sku)=upper(b.sku)
             join products p on p.id=v.product_id
@@ -234,7 +271,10 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
                 reader.GetFieldValue<DateTimeOffset>(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
                 reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12),
                 reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
-                reader.IsDBNull(14) ? null : reader.GetString(14));
+                reader.IsDBNull(14) ? null : reader.GetString(14),
+                reader.IsDBNull(15) ? null : reader.GetString(15), reader.IsDBNull(16) ? null : reader.GetString(16),
+                reader.IsDBNull(17) ? null : reader.GetString(17), reader.IsDBNull(18) ? null : reader.GetString(18),
+                reader.IsDBNull(19) ? null : reader.GetString(19));
 
     public async Task<InventoryPurchasePage> PurchasesAsync(string? sku, InventoryPurchaseCursor? cursor, int limit, CancellationToken ct)
     {
@@ -243,7 +283,8 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         await using var command = new NpgsqlCommand("""
             select b.id,b.sku,coalesce(p.title,'کالای حذف‌شده'),coalesce(v.display_label,b.sku),b.batch_code,
                    b.received_packages,b.remaining_packages,b.produced_at,b.expires_at,b.cost_price,
-                   b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier
+                   b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier,
+                   b.supplier_contact_name,b.supplier_phone,b.supplier_email,b.supplier_address,b.supplier_notes
             from inventory_batches b
             left join product_variants v on upper(v.sku)=upper(b.sku)
             left join products p on p.id=v.product_id
