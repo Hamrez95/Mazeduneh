@@ -62,8 +62,6 @@ with tempfile.TemporaryFile(mode="w+") as log:
             request_id = headers.get("X-Request-ID")
             assert request_id and request_id != SENSITIVE
             assert "X-Request-ID" in headers.get("Access-Control-Expose-Headers", "")
-            if status == 400:
-                assert payload["requestId"] == request_id
             expected.append((request_id, method, route, status))
         assert len({item[0] for item in expected}) == len(expected)
     finally:

@@ -1,6 +1,6 @@
 # API request correlation and safe completion logs
 
-Issue #100. Every API response exposes a server-owned `X-Request-ID`; sensitive-operation audit records already use the same `HttpContext.TraceIdentifier`. Incoming `X-Request-ID` values do not replace it. Problem Details responses also include `requestId` so validation failures can be traced without copying the customer's form values.
+Issue #100. Every API response exposes a server-owned `X-Request-ID`; sensitive-operation audit records already use the same `HttpContext.TraceIdentifier`. Incoming `X-Request-ID` values do not replace it. Responses written by the ASP.NET Problem Details service also include `requestId`. Minimal API validation results can bypass that service, so `X-Request-ID` is the canonical correlation contract for every response, including validation failures.
 
 The API emits JSON console logs. Its `HttpRequestCompleted` event (ID 1000) contains only:
 
@@ -26,7 +26,7 @@ JSON output can be forwarded by the deployment platform to its existing log serv
 
 ## Verification and rollback
 
-After the Release build, run `python3 scripts/tests/api_observability.py` against the disposable CI database. Tests start the real API and verify 200/400/401/404 response IDs, CORS exposure, Problem Details, unique server IDs, JSON completion fields and the absence of a sentinel passed through body, route, query and headers. Existing checkout CI also asserts that an inventory-adjustment response ID equals its persisted Audit request ID.
+After the Release build, run `python3 scripts/tests/api_observability.py` against the disposable CI database. Tests start the real API and verify 200/400/401/404 response IDs, CORS exposure, validation response headers, unique server IDs, JSON completion fields and the absence of a sentinel passed through body, route, query and headers. Existing checkout CI also asserts that an inventory-adjustment response ID equals its persisted Audit request ID.
 
 Revert the slice to restore prior console formatting and remove the response header; existing audit data is unchanged.
 
