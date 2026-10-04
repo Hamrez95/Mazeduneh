@@ -1783,7 +1783,7 @@ class _InventoryPageState extends State<InventoryPage> {
           final applied = await showDialog<bool>(context: context, builder: (_) => InventoryPricingDialog(products: products, orders: orders));
           if (applied == true) {
             await load();
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.')));
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.')));
           }
         }, icon: const Icon(Icons.calculate_outlined), label: const Text('محاسبه قیمت فروش')),
         OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید')),

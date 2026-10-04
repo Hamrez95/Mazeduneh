@@ -136,7 +136,7 @@ public static class InventoryPricingModule
         group.MapPost("/{sku}/apply", async (string sku, InventoryPriceApply request, InventoryPricingDatabase database, HttpContext context, CancellationToken ct) =>
         {
             var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
-            if (!AdminPermissions.Allows(principal, AdminPermissions.ProductsWrite)) return (IResult)Results.StatusCode(403);
+            if (!AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ProductsWrite)) return (IResult)Results.StatusCode(403);
             if (!database.IsConfigured) return Results.Problem("دیتابیس قیمت‌گذاری تنظیم نشده است.", statusCode: 503);
             if (request.Recipe is null || request.ExpectedPrice is null or < 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["فرمول و قیمت فعلی برای تأیید لازم است."] });
             var errors = request.Recipe.Validate(); if (errors.Count > 0) return Results.ValidationProblem(errors);
