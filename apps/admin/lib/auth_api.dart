@@ -39,6 +39,7 @@ class AuthApiClient {
     final ownerEmail = body['email'] as String? ?? email.trim();
     final role = body['role'] as String? ?? 'Owner';
     final permissions = _stringList(body['permissions']);
+    final storeId = body['storeId'] as String? ?? 'default';
     if (token == null || expiresAtRaw == null) {
       throw AuthApiException('پاسخ ورود از سرور کامل نیست.');
     }
@@ -49,7 +50,20 @@ class AuthApiClient {
       email: ownerEmail,
       role: role,
       permissions: permissions,
+      storeId: storeId,
     );
+  }
+
+
+  Future<void> acceptInvitation({required String token, required String password}) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/auth/accept-invite'),
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+      body: jsonEncode({'token': token, 'password': password}),
+    );
+    if (response.statusCode != 204) {
+      throw AuthApiException(_message(response), statusCode: response.statusCode);
+    }
   }
 
   Future<void> validateSession() async {
@@ -68,6 +82,7 @@ class AuthApiClient {
     OwnerSession.instance.updateIdentity(
       role: body['role'] as String? ?? OwnerSession.instance.role ?? 'Owner',
       permissions: body.containsKey('permissions') ? _stringList(body['permissions']) : OwnerSession.instance.permissions,
+      storeId: body['storeId'] as String?,
     );
   }
 
@@ -77,6 +92,13 @@ class AuthApiClient {
 
   String _message(http.Response response) {
     if (response.statusCode == 401) return 'ایمیل یا رمز عبور صحیح نیست.';
+    if (response.statusCode == 400) {
+      try {
+        final body = jsonDecode(utf8.decode(response.bodyBytes));
+        if (body is Map<String, dynamic> && body['message'] is String) return body['message'] as String;
+      } catch (_) {}
+      return 'دعوت معتبر نیست یا منقضی شده است.';
+    }
     if (response.statusCode == 429) return 'تلاش‌های ورود زیاد بود؛ کمی بعد دوباره امتحان کنید.';
     try {
       final body = jsonDecode(utf8.decode(response.bodyBytes));
