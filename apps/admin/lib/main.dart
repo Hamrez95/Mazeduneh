@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
+import 'admin_auth_gate.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -59,7 +60,7 @@ class MazedunehAdminApp extends StatelessWidget {
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.ink, width: 1.5)),
           ),
         ),
-        home: const Directionality(textDirection: TextDirection.rtl, child: AdminShell()),
+        home: const AdminAuthGate(child: AdminShell()),
       );
 }
 
