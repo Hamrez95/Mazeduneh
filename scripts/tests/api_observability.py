@@ -91,7 +91,6 @@ with tempfile.TemporaryFile(mode="w+") as log:
         assert state["StatusCode"] == status and state["ElapsedMilliseconds"] >= 0
         assert set(state) == {"Message", "RequestId", "Method", "Route", "StatusCode",
                               "ElapsedMilliseconds", "{OriginalFormat}"}
-        assert any(scope.get("RequestId") == request_id for scope in record["Scopes"]
-                   if isinstance(scope, dict))
+        assert not record.get("Scopes"), "Raw framework request scopes must not be serialized"
 
 print("API observability: correlation, CORS, validation errors and structured-log redaction passed")

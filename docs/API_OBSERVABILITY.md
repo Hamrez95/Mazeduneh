@@ -12,7 +12,7 @@ The API emits JSON console logs. Its `HttpRequestCompleted` event (ID 1000) cont
 | `StatusCode` | Result status; 499 for client cancellation, 500 for an unhandled exception |
 | `ElapsedMilliseconds` | Total pipeline time |
 
-The completion event never records raw paths, entity/SKU values, query strings, IP addresses, Authorization headers, cookies, request/response bodies or provider errors. Other application logs inherit the request-ID scope. Existing framework log levels are retained. This is correlation infrastructure; delivery to a remote log store, alert thresholds, retention and review of all older domain log messages remain launch work.
+The completion event never records raw paths, entity/SKU values, query strings, IP addresses, Authorization headers, cookies, request/response bodies or provider errors. JSON scope serialization is disabled because framework request scopes contain raw paths. The completion event carries its own safe RequestId field; legacy domain log messages are not automatically correlated. Existing framework log levels are retained. This is correlation infrastructure; delivery to a remote log store, alert thresholds, retention and review of all older domain log messages remain launch work.
 
 CORS exposes `X-Request-ID` to the configured Storefront/Admin origins; allowed origins and authorization policies do not change. Correlation adds no endpoint, migration, persisted data or new permission. The server remains the source of financial and inventory data.
 

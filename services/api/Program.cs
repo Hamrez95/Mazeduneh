@@ -5,7 +5,8 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddJsonConsole(options =>
 {
-    options.IncludeScopes = true;
+    // Framework request scopes contain raw paths; keep them out of console logs.
+    options.IncludeScopes = false;
     options.UseUtcTimestamp = true;
     options.TimestampFormat = "O";
 });

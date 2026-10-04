@@ -13,7 +13,6 @@ public sealed class RequestObservabilityMiddleware(
             context.Response.Headers["X-Request-ID"] = requestId;
             return Task.CompletedTask;
         });
-        using var scope = logger.BeginScope(new Dictionary<string, object> { ["RequestId"] = requestId });
         var started = Stopwatch.GetTimestamp();
         var failed = false;
         try
