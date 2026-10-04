@@ -39,7 +39,7 @@ class AdminUsersApiClient {
     return body.map((item) => AdminRole.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<AdminUser> createUser({required String email, required String displayName, required String role, String? storeId}) async {
+  Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, String? storeId}) async {
     final response = await _client.post(
       _uri('/api/v1/admin/users', storeId: storeId),
       headers: _headers(json: true),
@@ -47,7 +47,7 @@ class AdminUsersApiClient {
     );
     _guard(response);
     if (response.statusCode != 201) throw AdminUsersApiException(_message(response), statusCode: response.statusCode);
-    return AdminUser.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+    return AdminUserInvitation.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<AdminUser> setStatus(String id, bool isActive, {String? storeId}) async {
@@ -94,10 +94,30 @@ class AdminUsersApiClient {
   }
 }
 
+class AdminUserInvitation {
+  const AdminUserInvitation({required this.user, required this.invitationToken, required this.expiresAt});
+
+  final AdminUser user;
+  final String invitationToken;
+  final DateTime expiresAt;
+
+  factory AdminUserInvitation.fromJson(Map<String, dynamic> json) => AdminUserInvitation(
+        user: AdminUser.fromJson(json['user'] as Map<String, dynamic>),
+        invitationToken: json['invitationToken'] as String,
+        expiresAt: DateTime.parse(json['expiresAt'] as String),
+      );
+
+  String get shareUrl {
+    final uri = Uri.base.replace(fragment: 'invite=$invitationToken');
+    return uri.toString();
+  }
+}
+
 class AdminUser {
-  const AdminUser({required this.id, required this.email, required this.displayName, required this.role, required this.isActive, required this.permissions, required this.createdAt, this.deactivatedAt});
+  const AdminUser({required this.id, required this.email, required this.displayName, required this.role, required this.isActive, required this.permissions, required this.createdAt, this.deactivatedAt, this.storeId = 'default', this.hasPassword = false});
 
   final String id;
+  final String storeId;
   final String email;
   final String displayName;
   final String role;
@@ -105,9 +125,11 @@ class AdminUser {
   final List<String> permissions;
   final DateTime createdAt;
   final DateTime? deactivatedAt;
+  final bool hasPassword;
 
   factory AdminUser.fromJson(Map<String, dynamic> json) => AdminUser(
         id: json['id'].toString(),
+        storeId: json['storeId'] as String? ?? 'default',
         email: json['email'] as String? ?? '',
         displayName: json['displayName'] as String? ?? '',
         role: json['role'] as String? ?? 'Owner',
@@ -115,6 +137,7 @@ class AdminUser {
         permissions: (json['permissions'] as List<dynamic>? ?? const []).whereType<String>().toList(),
         createdAt: DateTime.parse(json['createdAt'] as String),
         deactivatedAt: json['deactivatedAt'] is String ? DateTime.parse(json['deactivatedAt'] as String) : null,
+        hasPassword: json['hasPassword'] as bool? ?? false,
       );
 
   String get roleLabel => AdminUsersRoleLabels.of(role);
