@@ -124,21 +124,48 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             AdminPermissionCatalog.Resolve(role), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), true);
     }
 
-    public async Task<bool> AcceptInvitationAsync(string token, string password, CancellationToken cancellationToken)
+    public async Task<bool> AcceptInvitationAsync(string token, string password, string requestId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
     {
         if (!IsConfigured || !IsValidPassword(password) || string.IsNullOrWhiteSpace(token) || token.Length > 128) return false;
         var salt = RandomNumberGenerator.GetBytes(PasswordSaltBytes);
         var passwordHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, PasswordIterations, HashAlgorithmName.SHA256, PasswordHashBytes);
         await using var connection = await OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        Guid userId = Guid.Empty;
+        string email = string.Empty;
+        string storeId = string.Empty;
+        string role = string.Empty;
+        var accepted = false;
+        await using (var command = new NpgsqlCommand("""
             update admin_users
             set password_salt=@salt,password_hash=@password_hash,invitation_token_hash=null,invitation_expires_at=null
-            where invitation_token_hash=@token_hash and invitation_expires_at>now() and is_active=true and password_hash is null;
-            """, connection);
-        command.Parameters.AddWithValue("salt", salt);
-        command.Parameters.AddWithValue("password_hash", passwordHash);
-        command.Parameters.AddWithValue("token_hash", HashToken(token));
-        return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+            where invitation_token_hash=@token_hash and invitation_expires_at>now() and is_active=true and password_hash is null
+            returning id,store_id,email,role;
+            """, connection, transaction))
+        {
+            command.Parameters.AddWithValue("salt", salt);
+            command.Parameters.AddWithValue("password_hash", passwordHash);
+            command.Parameters.AddWithValue("token_hash", HashToken(token));
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                userId = reader.GetGuid(0);
+                storeId = reader.GetString(1);
+                email = reader.GetString(2);
+                role = reader.GetString(3);
+                accepted = true;
+            }
+        }
+        if (!accepted)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
+        }
+        await audit.RecordAsync(connection, transaction, email, "admin-user.invitation-accepted", "AdminUser", userId.ToString(),
+            new { InvitationPending = true }, new { InvitationPending = false, StoreId = storeId, Role = role },
+            "Invitation accepted", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task CreateSessionAsync(Guid userId, string storeId, Guid sessionId, DateTimeOffset expiresAt, CancellationToken cancellationToken)
