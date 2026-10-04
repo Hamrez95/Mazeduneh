@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { categories, demoProducts, toman, type DemoProduct } from "./catalog";
+import { toman, type DemoProduct } from "./catalog";
 import { ProductArtwork } from "./ProductArtwork";
 import styles from "./professional-storefront.module.css";
 import { useCart } from "../cart-context";
 import { StoreFooter, StoreHeader } from "../store-chrome";
 import { CorporateSalesBanner } from "../corporate-sales-banner";
+import { useCatalog, CatalogFeedback } from "../catalog-context";
 
 const categoryMeta: Record<string, { icon: string; image: string; hint: string }> = {
   "آجیل و مغزها": { icon: "🥜", image: "/products/almond-pouch-new.webp", hint: "تازه و دست‌چین" },
@@ -39,6 +40,9 @@ function Icon({ name }: { name: "cart" | "search" | "user" | "home" | "grid" | "
 }
 
 export default function ProfessionalStorefront() {
+  const { products: catalogProducts, categories: categoryNames, status } = useCatalog();
+  const categories = ["همه", ...categoryNames];
+  const offerProduct = catalogProducts.find((product) => product.art === "cookie" && product.stock > 0);
   const [category, setCategory] = useState("همه");
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
@@ -66,11 +70,11 @@ export default function ProfessionalStorefront() {
   }, [toast]);
 
   const products = useMemo(() => {
-    return demoProducts.filter((product) => {
+    return catalogProducts.filter((product) => {
       const matchesCategory = category === "همه" || product.category === category;
       return matchesCategory && (!favoritesOnly || favorites.includes(product.id));
     });
-  }, [category, favorites, favoritesOnly]);
+  }, [catalogProducts, category, favorites, favoritesOnly]);
 
   function announceAdd(product: DemoProduct) {
     add(product);
@@ -98,13 +102,14 @@ export default function ProfessionalStorefront() {
         <div className={styles.heroVisual} aria-label="بسته‌بندی‌های مزه‌دونه"><div className={styles.heroGlow} aria-hidden="true" /><figure className={`${styles.heroPack} ${styles.heroPackBack}`}><img src="/products/dragon-box-new.webp" alt="بستهٔ کوکی شکلاتی مزه‌دونه" /></figure><figure className={`${styles.heroPack} ${styles.heroPackSide}`}><img src="/products/almond-pouch-new.webp" alt="بستهٔ بادام مزه‌دونه" /></figure><figure className={`${styles.heroPack} ${styles.heroPackFront}`}><img src="/products/pistachio-pouch-new.webp" alt="بستهٔ پستهٔ مزه‌دونه" /></figure><span className={`${styles.heroLeaf} ${styles.heroLeafOne}`} aria-hidden="true">✦</span><span className={`${styles.heroLeaf} ${styles.heroLeafTwo}`} aria-hidden="true">✦</span></div>
       </section>
 
-      <section className={styles.categorySection} id="categories" aria-labelledby="category-title"><div className={styles.sectionHeading}><div><span>برای هر هوس، یک انتخاب</span><h2 id="category-title">مزه‌گردی را از کجا شروع کنیم؟</h2></div><a href="#products">همهٔ محصولات ←</a></div><div className={styles.categoryRail}>{["کوکی‌ها", "آجیل و مغزها", "پسته", "گردو", "شکلات"].map((item) => { const meta = categoryMeta[categoryAliases[item]] ?? { icon: "🥜", image: "/products/pistachio-pouch-new.webp", hint: "خوشمزه و تازه" }; const value = categoryAliases[item] ?? item; return <button className={`${styles.categoryCard} ${category === value ? styles.categoryCardActive : ""}`} type="button" key={item} onClick={() => selectCategory(value)}><span className={styles.categoryIcon}><img src={meta.image} alt="" loading="lazy" /><span aria-hidden="true">{meta.icon}</span></span><strong>{item}</strong><small>{meta.hint}</small><span className={styles.categoryArrow}>←</span></button>; })}</div></section>
+      <section className={styles.categorySection} id="categories" aria-labelledby="category-title"><div className={styles.sectionHeading}><div><span>برای هر هوس، یک انتخاب</span><h2 id="category-title">مزه‌گردی را از کجا شروع کنیم؟</h2></div><a href="#products">همهٔ محصولات ←</a></div><div className={styles.categoryRail}>{categoryNames.map((item) => { const meta = categoryMeta[categoryAliases[item]] ?? { icon: "🥜", image: "/products/pistachio-pouch-new.webp", hint: "خوشمزه و تازه" }; const value = status === "preview" ? categoryAliases[item] ?? item : item; return <button className={`${styles.categoryCard} ${category === value ? styles.categoryCardActive : ""}`} type="button" key={item} onClick={() => selectCategory(value)}><span className={styles.categoryIcon}><img src={meta.image} alt="" loading="lazy" /><span aria-hidden="true">{meta.icon}</span></span><strong>{item}</strong><small>{meta.hint}</small><span className={styles.categoryArrow}>←</span></button>; })}</div></section>
 
       <section className={styles.trustStrip} aria-label="مزیت‌های خرید از مزه‌دونه"><div><span>🚚</span><strong>ارسال سریع<small>به سراسر ایران</small></strong></div><div><span>🌿</span><strong>تازه و باکیفیت<small>مستقیم از بهترین‌ها</small></strong></div><div><span>🛡️</span><strong>پرداخت امن<small>با خیال راحت خرید کن</small></strong></div></section>
 
+      <CatalogFeedback />
       <section className={styles.productSection} id="products" aria-labelledby="products-title"><div className={styles.sectionHeading}><div><span>انتخاب‌های محبوب</span><h2 id="products-title">پرفروش‌ترین‌ها</h2></div><a href="/shop">مشاهدهٔ همه ←</a></div><div className={styles.productToolbar}><div className={styles.chips}>{categories.slice(0, 5).map((item) => <button type="button" className={category === item ? styles.chipActive : ""} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div><span>{toman(products.length)} محصول</span></div>{products.length === 0 ? <div className={styles.emptyState}><span>🔎</span><strong>محصولی در این دسته پیدا نشد.</strong><p>دستهٔ دیگری را برای دیدن محصولات امتحان کن.</p><button type="button" onClick={() => setCategory("همه")}>نمایش همهٔ محصولات</button></div> : <div className={styles.productGrid}>{products.map((product) => { const key = cartKey(product); const quantity = cart.find((line) => (line.sku ?? line.id) === key)?.quantity ?? 0; const favorite = favorites.includes(product.id); return <article className={styles.productCard} key={product.id}><div className={`${styles.productVisual} ${styles[product.accent]}`}><button type="button" className={`${styles.favoriteButton} ${favorite ? styles.favoriteActive : ""}`} onClick={() => toggleFavorite(product)} aria-label={favorite ? `حذف ${product.title} از علاقه‌مندی‌ها` : `افزودن ${product.title} به علاقه‌مندی‌ها`}>{favorite ? "♥" : "♡"}</button>{product.badge && <span className={styles.productBadge}>{product.badge}</span>}<a href={`/product/${product.id}`} className={styles.productImageLink}><ProductArtwork product={product} /></a></div><div className={styles.productBody}><div className={styles.productMeta}><span>{product.category}</span><small>★ ۴٫۸</small></div><h3><a href={`/product/${product.id}`}>{product.title}</a></h3><p>{product.packageLabel}</p><div className={styles.priceLine}><strong>{toman(product.price)} <small>تومان</small></strong><span className={product.stock < 8 ? styles.lowStock : ""}>{product.stock > 0 ? "موجود" : "ناموجود"}</span></div>{quantity > 0 ? <div className={styles.quantityBar}><button type="button" onClick={() => change(key, 1)} disabled={quantity >= product.stock}>+</button><b>{toman(quantity)}</b><button type="button" onClick={() => change(key, -1)}>−</button><span>در سبد شما</span></div> : <button type="button" className={styles.addToCart} onClick={() => announceAdd(product)} disabled={product.stock === 0}>افزودن به سبد <span>🛒</span></button>}</div></article>; })}</div>}</section>
 
-      <section className={styles.specialOffer} id="offer"><div className={styles.offerArtwork}><img src="/products/dragon-box-new.webp" alt="جعبهٔ کوکی شکلاتی مزه‌دونه" /></div><div><span>پیشنهاد امروز</span><h2>یک استراحت شکلاتی<br />برای وسط روز</h2><p>کوکی‌های شکلاتی مزه‌دونه با مواد اولیهٔ طبیعی و تکه‌های شکلات واقعی.</p><button type="button" onClick={() => announceAdd(demoProducts.find((product) => product.id === "protein-cookie") ?? demoProducts[0])}>همین حالا سفارش بده <b>←</b></button></div></section>
+      {status === "preview" && offerProduct && <section className={styles.specialOffer} id="offer"><div className={styles.offerArtwork}><img src="/products/dragon-box-new.webp" alt="جعبهٔ کوکی شکلاتی مزه‌دونه" /></div><div><span>پیشنهاد امروز</span><h2>یک استراحت شکلاتی<br />برای وسط روز</h2><p>کوکی‌های شکلاتی مزه‌دونه با مواد اولیهٔ طبیعی و تکه‌های شکلات واقعی.</p><button type="button" onClick={() => announceAdd(offerProduct)}>همین حالا سفارش بده <b>←</b></button></div></section>}
       <section className={styles.storySection} id="story"><div><span>داستان مزه‌دونه</span><h2>ما باور داریم<br />مزه باید حال آدم را خوب کند.</h2></div><p>از انتخاب دانه‌های خوب تا لحظه‌ای که بسته را باز می‌کنی، مزه‌دونه برای همان لبخند کوچک ساخته شده؛ ساده، خوش‌طعم و صمیمی.</p></section>
       <CorporateSalesBanner />
       <StoreFooter />

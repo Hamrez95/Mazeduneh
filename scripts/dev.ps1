@@ -115,7 +115,7 @@ if ($PSVersionTable.PSVersion -lt [version]'7.4') {
   throw 'Run this script with PowerShell 7.4 or later (pwsh).'
 }
 
-$startApi = $Component -in @('all', 'api', 'admin')
+$startApi = $Component -in @('all', 'api', 'admin', 'storefront')
 $startStorefront = $Component -in @('all', 'storefront')
 $startAdmin = $Component -in @('all', 'admin')
 $requiredCommands = @()
@@ -206,8 +206,9 @@ if ($startApi) {
 if ($startStorefront) {
   $storefrontPath = Join-Path $Root 'apps/storefront'
   $storefrontEnvironment = @{
-    NEXT_PUBLIC_MAZEDUNEH_API_URL = ''
-    NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE = 'true'
+    NEXT_PUBLIC_MAZEDUNEH_API_URL = $ApiUrl
+    NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL = $ApiUrl
+    NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE = 'false'
     NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL = $AdminUrl
     NEXT_PUBLIC_SITE_URL = $StorefrontUrl
   }
@@ -224,7 +225,7 @@ if ($startAdmin) {
   $adminEnvironment = @{ DART_SUPPRESS_ANALYTICS = 'true' }
   $services.Add((Start-LocalService 'admin' $dartExecutable @(
     '--disable-dart-dev', $flutterSnapshot, 'run', '-d', 'web-server', '--web-hostname', '127.0.0.1', '--web-port', '8080',
-    '--target', 'lib/secure_main.dart', '--dart-define=MAZEDUNEH_API_BASE_URL=http://127.0.0.1:5080'
+    '--target', 'lib/main.dart', '--dart-define=MAZEDUNEH_API_BASE_URL=http://127.0.0.1:5080'
   ) $adminPath $adminEnvironment $AdminUrl))
 }
 

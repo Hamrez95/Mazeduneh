@@ -96,6 +96,21 @@ with tempfile.TemporaryFile() as log:
         assert len(received) == 1 and received[0]["quantityDelta"] == 5
         assert received[0]["movementType"] == "ManualAdjustment"
         assert received[0]["actor"] == os.environ["Admin__Email"]
+        # The public storefront reads the same catalog that the authenticated Admin edits.
+        assert request('/api/v1/products/' + SLUG + '/publication', 'PATCH', {'isPublished': True}, token)[0] == 200
+        assert request('/api/v1/products/' + SLUG)[1]['title'] == product['title']
+        product['title'] = 'عنوان ویرایش‌شده در پنل'
+        product['description'] = 'توضیح جدید پنل'
+        product['variants'][0]['price'] = 43210
+        assert request('/api/v1/products/' + SLUG, 'PUT', product, token)[0] == 200
+        status, public = request('/api/v1/products/' + SLUG)
+        assert status == 200 and public['title'] == product['title'] and public['description'] == product['description']
+        public_variants = {item['sku']: item for item in public['variants']}
+        assert public_variants[ZERO]['price'] == 43210 and public_variants[ZERO]['availablePackages'] == 5
+        assert public_variants[ADDED]['availablePackages'] == 0  # Sold-out SKU is still an editable catalog entry.
+        assert all(item['costPrice'] == 0 for item in public['variants'])
+        assert request('/api/v1/products/' + SLUG + '/publication', 'PATCH', {'isPublished': False}, token)[0] == 200
+        assert request('/api/v1/products/' + SLUG)[0] == 404
         invalid = dict(product, slug="negative-opening-stock-fixture", variants=[variant("CI-NEGATIVE-STOCK", -1)])
         assert request("/api/v1/products/", "POST", invalid, token)[0] == 400
     finally:

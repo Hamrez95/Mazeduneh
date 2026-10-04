@@ -17,7 +17,7 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 pwsh -File ./scripts/dev.ps1
 ```
 
-The launcher opens the storefront and the secure admin web app in your browser, and starts the API with demo-only credentials. Everything listens on `127.0.0.1`; it does not use Supabase, PostgreSQL, Cloudflare, Vercel, or Liara. Demo products and API data are held in memory, so changes made in the admin panel reset when the API is stopped.
+The launcher opens the storefront and the active admin web app in your browser, and starts the API with demo-only credentials. Everything listens on `127.0.0.1`; it does not use Supabase, PostgreSQL, Cloudflare, Vercel, or Liara. Without a configured PostgreSQL connection, API catalog products are held in memory: the storefront and admin use the same API, and edits appear on storefront reload or when its tab regains focus. Those edits reset when the API is stopped; inventory receipts and other database-backed operations require PostgreSQL. The public no-API preview stays unchanged.
 
 Use these commands from the repository root:
 
@@ -28,13 +28,13 @@ pwsh -File ./scripts/dev.ps1 -Stop
 
 The admin login is printed when the launcher starts. Its random local-demo password is stored in the ignored `.local-dev` folder so it remains the same between runs. Keep this launcher bound to this computer; it is not a public deployment setup.
 
-To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app.
+To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app; `-Component storefront` also starts the API.
 
 Prerequisites: PowerShell 7.4+, Node.js/npm, .NET 10 SDK, and Flutter stable. On first run the launcher installs missing app dependencies.
 
 ### Storefront order submission
 
-Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. The checkout submits orders only for products whose SKU mapping is present in `apps/storefront/app/commerce-pages.tsx`; unsupported demo products stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until a real payment provider is integrated and confirms payment server-side.
+Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. Live products carry their server SKU; preview-only cart lines stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until a real payment provider is integrated and confirms payment server-side.
 
 ### Liara deployment preparation
 

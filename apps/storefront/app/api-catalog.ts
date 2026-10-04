@@ -89,9 +89,9 @@ function tomanFromApiPrice(price: number) {
 
 export function mapApiProduct(product: ApiProduct): DemoProduct | null {
   const variants = product.variants
-    ?.filter((variant) => variant.availablePackages > 0)
+    ?.slice()
     .sort((left, right) => left.quantity - right.quantity);
-  const variant = variants?.[0];
+  const variant = variants?.find((item) => item.availablePackages > 0) ?? variants?.[0];
   if (!variant || !product.isPublished) return null;
 
   const galleryImages = (product.galleryImages ?? [])
@@ -152,4 +152,12 @@ export async function fetchLiveProduct(slug: string, signal?: AbortSignal) {
   const response = await fetch(`${API_BASE}/api/v1/products/${encodeURIComponent(slug)}`, { signal, cache: "no-store" });
   if (!response.ok) throw new Error(`product-${response.status}`);
   return mapApiProduct(await response.json() as ApiProduct);
+}
+
+export async function fetchLiveCategories(signal?: AbortSignal) {
+  if (!API_BASE) return null;
+  const response = await fetch(`${API_BASE}/api/v1/categories`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`categories-${response.status}`);
+  const payload = await response.json() as Array<{ name: string; isActive: boolean }>;
+  return payload.filter((item) => item.isActive).map((item) => toPersianDigits(item.name));
 }

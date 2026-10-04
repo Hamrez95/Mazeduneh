@@ -25,6 +25,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Type check
         run: npm run typecheck
+      - name: Catalog source contract
+        run: npm run test:catalog
+      - name: Install browser for catalog integration
+        run: npx playwright install --with-deps chromium
+      - name: Live catalog browser integration
+        run: npm run test:browser
       - name: Production static preview build
         run: npm run build
         env:

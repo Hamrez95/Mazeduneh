@@ -36,3 +36,6 @@ secrets/
 .pgdata/
 .redis-data/
 .local-dev/
+
+apps/storefront/.test-build/
+apps/storefront/.test-results/

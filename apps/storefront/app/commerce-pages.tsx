@@ -3,41 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { demoProducts, toman, type DemoProduct } from "./demo/catalog";
-import { API_BASE, fetchLiveProduct, fetchLiveProducts } from "./api-catalog";
+import { API_BASE, fetchLiveProduct } from "./api-catalog";
 import { getProductArtworkGallery, ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import { ProductCard, RelatedProducts, ShopShell, StoreFooter, StoreHeader } from "./store-chrome";
 import { formatInventory, toPersianDigits } from "./formatters";
 import styles from "./store-pages.module.css";
-
-function useLiveCatalog() {
-  const [liveProducts, setLiveProducts] = useState<DemoProduct[] | null>(null);
-  const [status, setStatus] = useState<"preview" | "loading" | "live" | "error">(API_BASE ? "loading" : "preview");
-
-  useEffect(() => {
-    if (!API_BASE) return;
-    const controller = new AbortController();
-    fetchLiveProducts(controller.signal)
-      .then((items) => {
-        if (!items) return;
-        setLiveProducts(items);
-        setStatus("live");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setStatus("error");
-      });
-    return () => controller.abort();
-  }, []);
-
-  return {
-    products: liveProducts ?? demoProducts,
-    status,
-  };
-}
+import { useCatalog, CatalogFeedback } from "./catalog-context";
 
 export function CatalogPage() {
-  const { products: catalogProducts, status } = useLiveCatalog();
+  const { products: catalogProducts } = useCatalog();
   const [category, setCategory] = useState("همه");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("popular");
@@ -61,12 +36,7 @@ export function CatalogPage() {
 
   return <ShopShell kicker="از قفسهٔ مزه‌دونه" title="هر روز، یک مزهٔ خوب" description="محصول‌ها را ببین، دسته‌بندی کن و جزئیات هر بسته را پیش از انتخاب بخوان.">
     <section className={styles.content}>
-      <div className={styles.catalogMode} role="status" aria-live="polite">
-        {status === "loading" && "در حال دریافت کاتالوگ منتشرشده…"}
-        {status === "live" && "کاتالوگ زنده؛ قیمت و موجودی از سرویس فروش خوانده می‌شود."}
-        {status === "preview" && "حالت پیش‌نمایش؛ قیمت و موجودی نمونه هستند."}
-        {status === "error" && "API در دسترس نبود؛ دادهٔ نمونه برای بازبینی نمایش داده می‌شود."}
-      </div>
+      <CatalogFeedback />
       <div className={styles.toolbar}>
         <div className={styles.categoryList} aria-label="فیلتر دسته‌بندی">
           {categoryOptions.map((item) => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}
