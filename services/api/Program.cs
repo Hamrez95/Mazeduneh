@@ -3,7 +3,15 @@ using System.Text.Json.Serialization;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddProblemDetails();
+builder.Logging.AddJsonConsole(options =>
+{
+    // Framework request scopes contain raw paths; keep them out of console logs.
+    options.IncludeScopes = false;
+    options.UseUtcTimestamp = true;
+    options.TimestampFormat = "O";
+});
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+    context.ProblemDetails.Extensions["requestId"] = context.HttpContext.TraceIdentifier);
 builder.Services.AddSingleton<ApiHealthProbe>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -11,7 +19,7 @@ builder.Services.AddCors(options => options.AddPolicy("Storefront", policy =>
 {
     var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
         ?? ["http://localhost:3000", "http://localhost:8080"];
-    policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
+    policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("X-Request-ID");
 }));
 builder.Services.AddSingleton<ProductCatalog>();
 builder.Services.AddSingleton<CatalogDatabase>();
@@ -30,6 +38,7 @@ builder.Services.AddCommercePricing();
 builder.Services.AddCorporateSales();
 
 var app = builder.Build();
+app.UseMiddleware<RequestObservabilityMiddleware>();
 app.UseExceptionHandler();
 app.UseHttpsRedirection();
 app.UseCors("Storefront");

@@ -254,3 +254,10 @@ Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. 
 - focus، کنتراست متن کارت‌ها و ارتفاع منعطف KPI برای بزرگ‌نمایی متن بهبود یافت.
 - تست نقش محدود، فعال‌سازی با keyboard، عرض‌های ۳۶۰/۷۶۸/۱۲۸۰ و بزرگ‌نمایی متن اضافه شد.
 - #92 برای drill-down فیلترشده، سود خالص و پیکربندی داشبورد نقش‌ها همچنان باز است.
+
+## چرخهٔ ۴ اکتبر ۲۰۲۶ — همبستگی درخواست و لاگ (#100)
+
+- شناسهٔ سرور `X-Request-ID` در پاسخ و `requestId` در Problem Details، هماهنگ با Audit موجود.
+- لاگ JSON تکمیل درخواست با route template، status و زمان؛ بدون path/query/body/token در event جدید.
+- تست CI برای همبستگی Audit، خطای validation، CORS و عدم ثبت دادهٔ حساس درخواست.
+- راهنمای عملیات: `docs/API_OBSERVABILITY.md`؛ alert، log sink/retention و تأیید deployment واقعی همچنان باز است.
