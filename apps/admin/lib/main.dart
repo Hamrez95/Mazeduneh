@@ -1717,7 +1717,7 @@ class _InventoryPageState extends State<InventoryPage> {
   Object? error;
   bool loading = true;
   String? busySku;
-  String? purchaseCursor, purchaseError;
+  String? purchaseCursor, purchaseError, purchaseSku;
   bool loadingPurchases = false;
   int purchaseGeneration = 0;
 
@@ -1726,22 +1726,24 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> load() async {
     setState(() { loading = true; error = null; purchaseGeneration++; loadingPurchases = false; });
+    final generation = purchaseGeneration;
+    final sku = purchaseSku;
     try {
       final result = await Future.wait([
         catalog.fetchProducts(includeDrafts: true),
         orders.fetchInventoryMovements(limit: 30),
-        orders.fetchInventoryPurchases(),
+        orders.fetchInventoryPurchases(sku: sku),
       ]);
-      if (mounted) setState(() {
+      if (mounted && generation == purchaseGeneration) setState(() {
         products = result[0] as List<Product>;
         movements = result[1] as List<StockMovement>;
         final purchases = result[2] as InventoryPurchasePage;
         batches = purchases.items; purchaseCursor = purchases.nextCursor; purchaseError = null;
       });
     } catch (exception) {
-      if (mounted) setState(() => error = exception);
+      if (mounted && generation == purchaseGeneration) setState(() => error = exception);
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && generation == purchaseGeneration) setState(() => loading = false);
     }
   }
 
@@ -1750,7 +1752,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final generation = purchaseGeneration;
     setState(() { loadingPurchases = true; purchaseError = null; });
     try {
-      final page = await orders.fetchInventoryPurchases(cursor: purchaseCursor);
+      final page = await orders.fetchInventoryPurchases(sku: purchaseSku, cursor: purchaseCursor);
       if (mounted && generation == purchaseGeneration) setState(() { batches = [...batches, ...page.items.where((item) => !batches.any((b) => b.id == item.id))]; purchaseCursor = page.nextCursor; });
     } catch (exception) {
       if (mounted && generation == purchaseGeneration) setState(() {
@@ -1894,7 +1896,26 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('سوابق خرید و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز خریدی ثبت نشده است', detail: 'با ثبت خرید، مقدار، هزینه و تاریخ دریافت کالا را نگه دارید.')) : ListView.separated(
+            DropdownButtonFormField<String>(
+              key: ValueKey('purchase-filter-${purchaseSku ?? 'all'}'),
+              initialValue: purchaseSku ?? '', isExpanded: true,
+              decoration: const InputDecoration(labelText: 'خریدهای کدام کالا؟'),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('همهٔ کالاها')),
+                for (final product in products) for (final variant in product.variants)
+                  DropdownMenuItem(value: variant.sku, child: Text('${product.title} · ${variant.displayLabel} · ${variant.sku}')),
+                if (purchaseSku != null && !products.any((product) => product.variants.any((variant) => variant.sku == purchaseSku)))
+                  DropdownMenuItem(value: purchaseSku, child: Text('کالای حذف‌شده · $purchaseSku')),
+              ],
+              onChanged: (value) {
+                final next = value == '' ? null : value;
+                if (next == purchaseSku) return;
+                setState(() => purchaseSku = next);
+                load();
+              },
+            ),
+            const SizedBox(height: 12),
+            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'خریدی پیدا نشد', detail: 'همهٔ کالاها را انتخاب کنید یا اولین خرید را ثبت کنید.')) : ListView.separated(
               itemCount: batches.length,
               separatorBuilder: (_, __) => const Divider(height: 14),
               itemBuilder: (_, index) {

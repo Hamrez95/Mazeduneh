@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,16 +17,38 @@ Map<String,dynamic> batch(String id) => {'id':id,'sku':'PI-250','productTitle':'
 void main() {
   setUp(() => OwnerSession.instance.establish(accessToken:'history-test',expiresAt:DateTime.now().toUtc().add(const Duration(minutes:10)),email:'owner@example.test'));
   tearDown(OwnerSession.instance.clear);
+  testWidgets('an older refresh failure cannot replace the newest purchase page', (tester) async {
+    tester.view.physicalSize=const Size(1280,1100);tester.view.devicePixelRatio=1;
+    addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
+    final old=Completer<http.Response>();var purchaseCalls=0;
+    final client=MockClient((r) async {
+      if(r.url.path.endsWith('/purchases')) {
+        purchaseCalls++;
+        if(purchaseCalls==1) return old.future;
+        return http.Response(jsonEncode({'items':[batch('صفحه تازه')],'nextCursor':null}),200,headers:{'content-type':'application/json; charset=utf-8'});
+      }
+      return http.Response('[]',200);
+    });
+    await tester.pumpWidget(MaterialApp(home:Scaffold(body:InventoryPage(catalog:CatalogApiClient(client:client,baseUrl:'https://api.test'),orders:OrderApiClient(client:client,baseUrl:'https://api.test')))));
+    await tester.pump();
+    await tester.tap(find.byTooltip('بارگذاری مجدد'));await tester.pumpAndSettle();
+    expect(find.textContaining('پسته · صفحه تازه'),findsOneWidget);
+    old.complete(http.Response('{"message":"پاسخ قدیمی"}',503,headers:{'content-type':'application/json; charset=utf-8'}));await tester.pumpAndSettle();
+    expect(find.textContaining('پسته · صفحه تازه'),findsOneWidget);
+    expect(find.textContaining('پاسخ قدیمی'),findsNothing);expect(tester.takeException(),isNull);
+  });
   for (final width in [360.0,768.0,1280.0]) {
     testWidgets('older purchases keep current page on error and retry at $width', (tester) async {
       tester.view.physicalSize=Size(width,1100);tester.view.devicePixelRatio=1;
       addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
       var olderCalls=0;
+      final requestedSkus=<String?>[];
       final client=MockClient((r) async {
         Object body=[];
         if (r.url.path.endsWith('/products/admin')) body=[{'id':'1','slug':'pistachio','title':'پسته','category':'nuts','origin':'IR','unitType':'Weight','isPublished':true,
           'variants':[{'sku':'PI-250','quantity':250,'displayLabel':'۲۵۰ گرم','price':5000,'availablePackages':12}]}];
         if (r.url.path.endsWith('/purchases')) {
+          requestedSkus.add(r.url.queryParameters['sku']);
           if (r.url.queryParameters.containsKey('cursor')) {
             olderCalls++;
             if (olderCalls==1) return http.Response('{"message":"قطع اتصال"}',503,headers:{'content-type':'application/json; charset=utf-8'});
@@ -51,7 +74,17 @@ void main() {
       await tester.ensureVisible(find.text('تلاش دوباره'));await tester.pumpAndSettle();
       await tester.tap(find.text('تلاش دوباره'));await tester.pumpAndSettle();
       expect(olderCalls,2);expect(find.textContaining('خریدهای قدیمی دریافت نشد'),findsNothing);
-      expect(find.text('مشاهده خریدهای قدیمی‌تر'),findsNothing);expect(tester.takeException(),isNull);
+      expect(find.text('مشاهده خریدهای قدیمی‌تر'),findsNothing);
+      expect(requestedSkus.every((sku)=>sku==null),isTrue);
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<String>));await tester.pumpAndSettle();
+      await tester.tap(find.text('پسته · ۲۵۰ گرم · PI-250').last);await tester.pumpAndSettle();
+      final filteredSections=tester.state<ScrollableState>(gridScroll).position;
+      filteredSections.jumpTo(filteredSections.maxScrollExtent);await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('مشاهده خریدهای قدیمی‌تر'));await tester.pumpAndSettle();
+      await tester.tap(find.text('مشاهده خریدهای قدیمی‌تر'));await tester.pumpAndSettle();
+      expect(requestedSkus.sublist(requestedSkus.length-2),['PI-250','PI-250']);
+      expect(tester.takeException(),isNull);
     });
   }
 }
