@@ -71,9 +71,9 @@ public static class AdminSecurityExtensions
         .WithTags("Admin Auth");
 
         endpoints.MapPost("/api/v1/admin/auth/accept-invite", async Task<IResult> (
-            AdminInviteAcceptRequest request, AdminUsersDatabase users, CancellationToken cancellationToken) =>
+            AdminInviteAcceptRequest request, AdminUsersDatabase users, AdminAuditLogDatabase audit, HttpContext context, CancellationToken cancellationToken) =>
         {
-            var accepted = await users.AcceptInvitationAsync(request.Token, request.Password, cancellationToken);
+            var accepted = await users.AcceptInvitationAsync(request.Token, request.Password, context.TraceIdentifier, audit, cancellationToken);
             return accepted
                 ? Results.NoContent()
                 : Results.BadRequest(new { message = "دعوت معتبر نیست یا منقضی شده است. از مدیر فروشگاه دعوت تازه بگیرید." });
