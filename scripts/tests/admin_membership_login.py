@@ -98,6 +98,10 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/logout", "POST", token=first_token)[0] == 204
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
 
+        # Start a fresh in-memory rate-limit window before checking deactivation separately.
+        stop_api(api)
+        api, owner_token = start_api(log)
+
         second_email = "membership-two@example.test"
         second_password = "Membership-CI-Password-2!"
         second_invitation = invite(owner_token, second_email, "CI member two")
