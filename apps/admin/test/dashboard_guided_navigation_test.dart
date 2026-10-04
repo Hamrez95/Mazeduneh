@@ -95,13 +95,13 @@ void main() {
       int? destination;
       await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
       await tester.pumpAndSettle();
+      expect(find.text('وضعیت فروشگاه'), findsOneWidget);
+      expect(find.text('سلام حمیدرضا 🌿'), findsNothing);
       await tester.scrollUntilVisible(find.text('مشاهده محصولات'), 400, maxScrolls: 15);
       expect(find.text('ثبت محصول'), findsNothing);
       expect(find.text('اصلاح موجودی'), findsNothing);
       expect(find.text('پیگیری فروش سازمانی'), findsNothing);
       expect(find.text('مشاهده موجودی'), findsOneWidget);
-      expect(find.text('وضعیت فروشگاه'), findsOneWidget);
-      expect(find.text('سلام حمیدرضا 🌿'), findsNothing);
 
       await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
       await tester.pumpAndSettle();
