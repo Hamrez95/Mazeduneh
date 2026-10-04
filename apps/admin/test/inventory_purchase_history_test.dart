@@ -65,12 +65,16 @@ void main() {
       // Move the outer section grid; a drag at its center can scroll a nested receipt/product list instead.
       final sections=tester.state<ScrollableState>(gridScroll).position;
       sections.jumpTo(sections.maxScrollExtent); await tester.pumpAndSettle();
+      final purchaseScroll=find.descendant(of:find.byKey(const ValueKey('inventory-purchases')),matching:find.byType(Scrollable)).first;
+      tester.state<ScrollableState>(purchaseScroll).position.jumpTo(tester.state<ScrollableState>(purchaseScroll).position.maxScrollExtent);await tester.pumpAndSettle();
       expect(more,findsOneWidget);
       await tester.ensureVisible(more); await tester.pumpAndSettle();
       Focus.of(tester.element(more)).requestFocus(); await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter); await tester.pumpAndSettle();
       expect(olderCalls,1);expect(find.textContaining('خریدهای قدیمی دریافت نشد'),findsOneWidget);
+      tester.state<ScrollableState>(purchaseScroll).position.jumpTo(0);await tester.pumpAndSettle();
       expect(find.textContaining('پسته · خرید جدید'),findsOneWidget);
+      tester.state<ScrollableState>(purchaseScroll).position.jumpTo(tester.state<ScrollableState>(purchaseScroll).position.maxScrollExtent);await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('تلاش دوباره'));await tester.pumpAndSettle();
       await tester.tap(find.text('تلاش دوباره'));await tester.pumpAndSettle();
       expect(olderCalls,2);expect(find.textContaining('خریدهای قدیمی دریافت نشد'),findsNothing);
@@ -81,6 +85,7 @@ void main() {
       await tester.tap(find.text('پسته · ۲۵۰ گرم · PI-250').last);await tester.pumpAndSettle();
       final filteredSections=tester.state<ScrollableState>(gridScroll).position;
       filteredSections.jumpTo(filteredSections.maxScrollExtent);await tester.pumpAndSettle();
+      tester.state<ScrollableState>(purchaseScroll).position.jumpTo(tester.state<ScrollableState>(purchaseScroll).position.maxScrollExtent);await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('مشاهده خریدهای قدیمی‌تر'));await tester.pumpAndSettle();
       await tester.tap(find.text('مشاهده خریدهای قدیمی‌تر'));await tester.pumpAndSettle();
       expect(requestedSkus.sublist(requestedSkus.length-2),['PI-250','PI-250']);

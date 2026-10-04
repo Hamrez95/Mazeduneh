@@ -1916,9 +1916,15 @@ class _InventoryPageState extends State<InventoryPage> {
             ),
             const SizedBox(height: 12),
             Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'خریدی پیدا نشد', detail: 'همهٔ کالاها را انتخاب کنید یا اولین خرید را ثبت کنید.')) : ListView.separated(
-              itemCount: batches.length,
+              key: const ValueKey('inventory-purchases'),
+              itemCount: batches.length + 1,
               separatorBuilder: (_, __) => const Divider(height: 14),
               itemBuilder: (_, index) {
+                if (index == batches.length) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (purchaseError != null) Text(purchaseError!, style: const TextStyle(color: AdminColors.coral)),
+                  if (purchaseCursor != null) TextButton(onPressed: loadingPurchases ? null : loadMorePurchases,
+                    child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
+                ]);
                 final item = batches[index];
                 final expired = item.isExpired;
                 final expiringSoon = item.isExpiringSoon && !expired;
@@ -1930,9 +1936,6 @@ class _InventoryPageState extends State<InventoryPage> {
                 );
               },
             )),
-            if (purchaseError != null) Text(purchaseError!, style: const TextStyle(color: AdminColors.coral)),
-            if (purchaseCursor != null) TextButton(onPressed: loadingPurchases ? null : loadMorePurchases,
-              child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
           ]))),
           ],
         )),
