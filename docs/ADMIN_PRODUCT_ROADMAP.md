@@ -63,6 +63,10 @@
 
 Component مشترک Dashboard/Notification Center، دکمهٔ مسیر ماژول مجاز، اعداد فارسی و حفظ دادهٔ قبلی در refresh ناموفق اضافه شد. پاسخ ۴۰۱/۴۰۳ دادهٔ قبلی را پنهان می‌کند. قرارداد فعلی اعلان، صف تجمیعی است؛ provider، unread/read، template، role/store filtering سرور و لینک دقیق رکورد همچنان در #96 باز هستند. راهنما: `docs/NOTIFICATION_CENTER.md`.
 
+### Responsive فروش سازمانی — چرخهٔ ۴ اکتبر ۲۰۲۶ (#97)
+
+عنوان و actionها از ردیف ثابت به چیدمان انعطاف‌پذیر تبدیل شدند؛ جست‌وجو/شهر/وضعیت در موبایل زیر هم و در تبلت در دو ردیف قرار می‌گیرند. label و tooltip دائمی اضافه شد. تست ۳۶۰/۷۶۸/۱۲۸۰، متن ۲۰۰٪، keyboard search و overdue query دارد. راهنما: `docs/CORPORATE_RESPONSIVE_FILTERS.md`.
+
 ## ۳. چه چیزهایی دوباره ساخته نمی‌شوند؟
 
 - #61 چرخهٔ category را تکمیل کرده است؛ Issue جدید category ایجاد نمی‌شود.
