@@ -19,7 +19,7 @@ void main() {
           captured = c; throw Exception('network unavailable');
         })))));
       await tester.pumpAndSettle();
-      for (final entry in {'کد خرید / بچ': 'receipt-1', 'تأمین‌کننده (اختیاری)': 'تأمین تهران', 'تعداد بستهٔ خریداری‌شده': '۱۲',
+      for (final entry in {'کد خرید / بچ': 'receipt-1', 'نام تأمین‌کننده': 'تأمین تهران', 'نام شخص تماس (اختیاری)': 'خانم رضایی', 'شماره تماس تأمین‌کننده (اختیاری)': '۰۹۱۲۰۰۰۰۰۰۰', 'ایمیل تأمین‌کننده (اختیاری)': 'sales@example.test', 'نشانی تأمین‌کننده (اختیاری)': 'تهران، بازار بزرگ', 'یادداشت دربارهٔ تأمین‌کننده (اختیاری)': 'تحویل صبح', 'تعداد بستهٔ خریداری‌شده': '۱۲',
         'تاریخ خرید': '۲۰۲۶-۰۱-۰۱', 'تاریخ تولید': '۲۰۲۵-۱۲-۰۱', 'تاریخ انقضا': '۲۰۳۰-۰۱-۰۱',
         'قیمت خرید / مواد هر بسته (تومان)': '۴۰۰', 'بسته‌بندی هر بسته (تومان)': '۵۰', 'هزینهٔ جانبی هر بسته (تومان)': '۱۰'}.entries) {
         await tester.ensureVisible(field(entry.key)); await tester.pumpAndSettle();
@@ -28,6 +28,9 @@ void main() {
       await tester.tap(find.text('ثبت خرید')); await tester.pumpAndSettle();
       expect(captured?.costPrice, 4000); expect(captured?.packagingCost, 500);
       expect(captured?.receivedPackages, 12); expect(captured?.supplier, 'تأمین تهران');
+      expect(captured?.supplierContactName, 'خانم رضایی'); expect(captured?.supplierPhone, '۰۹۱۲۰۰۰۰۰۰۰');
+      expect(captured?.supplierEmail, 'sales@example.test'); expect(captured?.supplierAddress, 'تهران، بازار بزرگ');
+      expect(captured?.supplierNotes, 'تحویل صبح');
       expect(captured?.purchasedAt.year, 2026);
       expect(find.textContaining('اطلاعات فرم حفظ شده'), findsOneWidget);
       expect((tester.widget<TextField>(field('کد خرید / بچ')).controller?.text), 'receipt-1');

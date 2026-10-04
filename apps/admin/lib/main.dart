@@ -1785,7 +1785,9 @@ class _InventoryPageState extends State<InventoryPage> {
       onSave: (receipt) => orders.receiveInventoryBatch(sku: receipt.sku, batchCode: receipt.batchCode,
         receivedPackages: receipt.receivedPackages, producedAt: receipt.producedAt, expiresAt: receipt.expiresAt,
         costPrice: receipt.costPrice, packagingCost: receipt.packagingCost, additionalCost: receipt.additionalCost,
-        purchasedAt: receipt.purchasedAt, supplier: receipt.supplier)));
+        purchasedAt: receipt.purchasedAt, supplier: receipt.supplier,
+        supplierContactName: receipt.supplierContactName, supplierPhone: receipt.supplierPhone,
+        supplierEmail: receipt.supplierEmail, supplierAddress: receipt.supplierAddress, supplierNotes: receipt.supplierNotes)));
     if (result == null) return;
     await load();
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('خرید و موجودی ثبت شد؛ سابقه در فهرست دریافت‌ها قابل مشاهده است.')));
@@ -1926,13 +1928,21 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
                 ]);
                 final item = batches[index];
+                final supplierDetails = <String>[
+                  if (item.supplierContactName?.isNotEmpty == true) 'شخص تماس: ${item.supplierContactName}',
+                  if (item.supplierPhone?.isNotEmpty == true) 'تلفن: ${item.supplierPhone}',
+                  if (item.supplierEmail?.isNotEmpty == true) 'ایمیل: ${item.supplierEmail}',
+                  if (item.supplierAddress?.isNotEmpty == true) 'نشانی: ${item.supplierAddress}',
+                  if (item.supplierNotes?.isNotEmpty == true) 'یادداشت: ${item.supplierNotes}',
+                ].join(' · ');
+                final supplierSummary = [item.supplier ?? 'تأمین‌کننده ثبت نشده', if (supplierDetails.isNotEmpty) supplierDetails].join(' · ');
                 final expired = item.isExpired;
                 final expiringSoon = item.isExpiringSoon && !expired;
                 return ListTile(
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatPersianDateTime(item.purchasedAt!)} · ${item.supplier ?? 'تأمین‌کننده ثبت نشده'}\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
+                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatPersianDateTime(item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
                 );
               },
             )),

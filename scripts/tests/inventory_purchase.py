@@ -71,10 +71,15 @@ with tempfile.TemporaryFile() as log:
         payload = {'sku': 'CI-PURCHASE-250', 'batchCode': 'CI-PURCHASE-ONE', 'receivedPackages': 12,
                    'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
                    'costPrice': 4000, 'packagingCost': 500, 'additionalCost': 100,
-                   'purchasedAt': '2026-01-01T00:00:00Z', 'supplier': 'CI supplier'}
+                   'purchasedAt': '2026-01-01T00:00:00Z', 'supplier': 'CI supplier',
+                   'supplierContactName': 'CI contact', 'supplierPhone': '+982100000000',
+                   'supplierEmail': 'supplier@example.test', 'supplierAddress': 'Tehran wholesale market',
+                   'supplierNotes': 'Deliver before noon'}
         status, first = request('/api/v1/admin/inventory/batches', 'POST', payload, token)
         assert status == 201, status
         assert first['purchaseTotal'] == 48000 and first['supplier'] == 'CI supplier'
+        assert (first['supplierContactName'], first['supplierPhone'], first['supplierEmail'], first['supplierAddress'], first['supplierNotes']) == (
+            'CI contact', '+982100000000', 'supplier@example.test', 'Tehran wholesale market', 'Deliver before noon')
         assert first['purchasedAt'].startswith('2026-01-01')
         assert request('/api/v1/admin/inventory/batches', 'POST', payload, token)[0] == 409
         payload.update(batchCode='CI-PURCHASE-TWO', costPrice=6000, purchasedAt='2026-02-01T00:00:00Z')
@@ -97,8 +102,10 @@ with tempfile.TemporaryFile() as log:
         assert request(history_path+'&cursor=invalid',token=token)[0] == 400
         assert request('/api/v1/admin/inventory/purchases?limit=251',token=token)[0] == 400
         assert request(history_path)[0] == 401
-        for change in [{'purchasedAt': '2099-01-01T00:00:00Z'}, {'supplier': 'x'*201},
-                       {'costPrice': -1}, {'receivedPackages': 0}, {'batchCode': 'x'*81}]:
+        for change in [{'purchasedAt': '2099-01-01T00:00:00Z'}, {'supplier': ''}, {'supplier': 'x'*201},
+                       {'supplierEmail': 'not-an-email'}, {'supplierPhone': 'x'*41},
+                       {'supplierAddress': 'x'*501}, {'supplierNotes': 'x'*1001},
+                       {'supplierContactName': 'x'*201}, {'costPrice': -1}, {'receivedPackages': 0}, {'batchCode': 'x'*81}]: 
             assert request('/api/v1/admin/inventory/batches', 'POST', dict(payload, **change), token)[0] == 400
         assert request('/api/v1/admin/inventory/batches', 'POST', payload)[0] == 401
         status, movements = request('/api/v1/admin/inventory/movements?sku=CI-PURCHASE-250', token=token)
@@ -109,12 +116,15 @@ with tempfile.TemporaryFile() as log:
         assert audit[0]['actor'] == os.environ['Admin__Email'] and audit[0]['beforeJson'] is None
         after = json.loads(audit[0]['afterJson'])
         assert (after.get('PurchaseTotal', after.get('purchaseTotal'))) == 48000
+        assert after.get('SupplierContactName', after.get('supplierContactName')) == 'CI contact'
+        assert after.get('SupplierPhone', after.get('supplierPhone')) == '+982100000000'
     finally:
         stop_api(api)
     api, token = start_api()
     try:
         status, history = request('/api/v1/admin/inventory/batches?sku=CI-PURCHASE-250', token=token)
         assert status == 200 and len(history) == 3
+        assert history[-1]['supplierEmail'] == 'supplier@example.test'
         assert {item['costPrice'] for item in history} == {4000,6000,8000}
         assert sum(item['receivedPackages'] for item in history) == 36
         status, product = request('/api/v1/products/'+SLUG)
