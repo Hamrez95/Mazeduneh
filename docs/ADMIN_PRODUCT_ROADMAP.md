@@ -59,6 +59,10 @@
 | Security | bearer امن، rate-limit ورود، logout قابل revoke، Audit Log قابل مشاهده و ماتریس permission برای نقش‌های عملیاتی | ناقص در user management، MFA و step-up approval |
 | CI | workflow برای Storefront، API/PostgreSQL، Flutter analyze/test/build و artifact | سبز روی main؛ release/deploy evidence ناقص |
 
+### پیگیری اعلان‌ها — چرخهٔ ۴ اکتبر ۲۰۲۶ (#96)
+
+Component مشترک Dashboard/Notification Center، دکمهٔ مسیر ماژول مجاز، اعداد فارسی و حفظ دادهٔ قبلی در refresh ناموفق اضافه شد. پاسخ ۴۰۱/۴۰۳ دادهٔ قبلی را پنهان می‌کند. قرارداد فعلی اعلان، صف تجمیعی است؛ provider، unread/read، template، role/store filtering سرور و لینک دقیق رکورد همچنان در #96 باز هستند. راهنما: `docs/NOTIFICATION_CENTER.md`.
+
 ## ۳. چه چیزهایی دوباره ساخته نمی‌شوند؟
 
 - #61 چرخهٔ category را تکمیل کرده است؛ Issue جدید category ایجاد نمی‌شود.
