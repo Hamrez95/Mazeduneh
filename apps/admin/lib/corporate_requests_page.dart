@@ -28,6 +28,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   Object? error;
   bool loading = true;
   bool overdueOnly = false;
+  bool needsPlanningOnly = false;
 
   @override
   void initState() { super.initState(); load(); }
@@ -37,7 +38,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final values = await Future.wait([api.fetchRequests(status: status, query: search.text, city: city.text.trim(), overdueOnly: overdueOnly), api.fetchSummary()]);
+      final values = await Future.wait([api.fetchRequests(status: status, query: search.text, city: city.text.trim(), overdueOnly: overdueOnly, needsPlanningOnly: needsPlanningOnly), api.fetchSummary()]);
       if (mounted) setState(() { items = values[0] as List<CorporateRequestSummary>; summary = values[1] as CorporateSummary; });
     } catch (exception) { if (mounted) setState(() => error = exception); }
     finally { if (mounted) setState(() => loading = false); }
@@ -107,7 +108,12 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
         FilterChip(
           label: const Text('پیگیری‌های عقب‌افتاده'),
           selected: overdueOnly,
-          onSelected: (value) { setState(() => overdueOnly = value); load(); },
+          onSelected: (value) { setState(() { overdueOnly = value; if (value) needsPlanningOnly = false; }); load(); },
+        ),
+        FilterChip(
+          label: const Text('نیازمند برنامه‌ریزی'),
+          selected: needsPlanningOnly,
+          onSelected: (value) { setState(() { needsPlanningOnly = value; if (value) overdueOnly = false; }); load(); },
         ),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد درخواست‌ها'),
       ]);
@@ -123,9 +129,9 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
       child: Column(children: [
         const Icon(Icons.business_center_outlined, size: 48, color: AdminColors.muted),
         const SizedBox(height: 12),
-        Text(overdueOnly ? 'پیگیری عقب‌افتاده‌ای پیدا نشد' : 'درخواستی ثبت نشده است'),
+        Text(needsPlanningOnly ? 'همه درخواست‌های فعال برنامه‌ریزی شده‌اند' : overdueOnly ? 'پیگیری عقب‌افتاده‌ای پیدا نشد' : 'درخواستی ثبت نشده است'),
         Text(
-          overdueOnly ? 'درخواست‌های فعال با زمان پیگیری گذشته در این فهرست دیده می‌شوند.' : 'درخواست‌های جدید اینجا نمایش داده می‌شوند.',
+          needsPlanningOnly ? 'درخواست فعال بدون مسئول یا زمان پیگیری در این صف دیده می‌شود. برای مرور همه درخواست‌ها، فیلتر را بردارید.' : overdueOnly ? 'درخواست‌های فعال با زمان پیگیری گذشته در این فهرست دیده می‌شوند.' : 'درخواست‌های جدید اینجا نمایش داده می‌شوند.',
           style: const TextStyle(color: AdminColors.muted),
           textAlign: TextAlign.center,
         ),

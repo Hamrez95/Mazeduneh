@@ -50,4 +50,20 @@ void main() {
     expect(captured.url.queryParameters['overdue'], 'true');
     expect(items.single.companyName, 'شرکت تست');
   });
+
+  test('fetchRequests sends planning with existing search and status filters', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response('[]', 200);
+    });
+    await CorporateApiClient(client: client, baseUrl: 'https://api.test').fetchRequests(
+      needsPlanningOnly: true, status: 'New', query: 'شرکت', city: 'تهران',
+    );
+    expect(captured.url.queryParameters['needsPlanning'], 'true');
+    expect(captured.url.queryParameters['status'], 'New');
+    expect(captured.url.queryParameters['query'], 'شرکت');
+    expect(captured.url.queryParameters.containsKey('overdue'), isFalse);
+  });
+
 }
