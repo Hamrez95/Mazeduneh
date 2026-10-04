@@ -66,6 +66,23 @@ class AuthApiClient {
     }
   }
 
+  Future<void> logout() async {
+    final token = OwnerSession.instance.bearerToken;
+    try {
+      if (token != null) {
+        final response = await _client.post(
+          Uri.parse('$baseUrl/api/v1/admin/auth/logout'),
+          headers: {'authorization': 'Bearer $token'},
+        );
+        if (response.statusCode != 204) {
+          throw AuthApiException(_message(response), statusCode: response.statusCode);
+        }
+      }
+    } finally {
+      OwnerSession.instance.clear();
+    }
+  }
+
   Future<void> validateSession() async {
     final token = OwnerSession.instance.bearerToken;
     if (token == null) throw AuthApiException('نشست شما منقضی شده است.', statusCode: 401);
