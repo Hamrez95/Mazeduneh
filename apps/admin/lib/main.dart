@@ -1717,28 +1717,48 @@ class _InventoryPageState extends State<InventoryPage> {
   Object? error;
   bool loading = true;
   String? busySku;
+  String? purchaseCursor, purchaseError;
+  bool loadingPurchases = false;
+  int purchaseGeneration = 0;
 
   @override
   void initState() { super.initState(); load(); }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() { loading = true; error = null; purchaseGeneration++; loadingPurchases = false; });
     try {
       final result = await Future.wait([
         catalog.fetchProducts(includeDrafts: true),
         orders.fetchInventoryMovements(limit: 30),
-        orders.fetchInventoryBatches(includeExpired: true, limit: 50),
+        orders.fetchInventoryPurchases(),
       ]);
       if (mounted) setState(() {
         products = result[0] as List<Product>;
         movements = result[1] as List<StockMovement>;
-        batches = result[2] as List<InventoryBatch>;
+        final purchases = result[2] as InventoryPurchasePage;
+        batches = purchases.items; purchaseCursor = purchases.nextCursor; purchaseError = null;
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  Future<void> loadMorePurchases() async {
+    if (purchaseCursor == null || loadingPurchases) return;
+    final generation = purchaseGeneration;
+    setState(() { loadingPurchases = true; purchaseError = null; });
+    try {
+      final page = await orders.fetchInventoryPurchases(cursor: purchaseCursor);
+      if (mounted && generation == purchaseGeneration) setState(() { batches = [...batches, ...page.items.where((item) => !batches.any((b) => b.id == item.id))]; purchaseCursor = page.nextCursor; });
+    } catch (exception) {
+      if (mounted && generation == purchaseGeneration) setState(() {
+        if (exception is OrderApiException && (exception.statusCode == 401 || exception.statusCode == 403)) {
+          batches = []; purchaseCursor = null; error = exception;
+        } else { purchaseError = 'خریدهای قدیمی دریافت نشد: $exception. دوباره تلاش کنید.'; }
+      });
+    } finally { if (mounted && generation == purchaseGeneration) setState(() => loadingPurchases = false); }
   }
 
   Future<void> adjust(ProductVariant variant) async {
@@ -1888,6 +1908,9 @@ class _InventoryPageState extends State<InventoryPage> {
                 );
               },
             )),
+            if (purchaseError != null) Text(purchaseError!, style: const TextStyle(color: AdminColors.coral)),
+            if (purchaseCursor != null) TextButton(onPressed: loadingPurchases ? null : loadMorePurchases,
+              child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
           ]))),
           ],
         )),

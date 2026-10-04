@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Npgsql;
 
 public sealed record InventoryBatchRequest(
@@ -86,6 +87,10 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
                 on inventory_batches(sku, purchased_at desc);
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "003-purchase-history", purchaseSql, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "005-purchase-pagination", """
+            create index if not exists ix_inventory_purchase_cursor on inventory_batches(created_at desc,id desc);
+            create index if not exists ix_inventory_purchase_sku_cursor on inventory_batches(sku,created_at desc,id desc);
+            """, cancellationToken);
         logger.LogInformation("Inventory batch and expiry schema is ready.");
     }
 
@@ -221,14 +226,40 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         var result = new List<InventoryBatch>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
-            result.Add(new InventoryBatch(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+            result.Add(ReadBatch(reader));
+        return result;
+    }
+    private static InventoryBatch ReadBatch(NpgsqlDataReader reader) => new InventoryBatch(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
                 reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetFieldValue<DateTimeOffset>(7),
                 reader.GetFieldValue<DateTimeOffset>(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
                 reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12),
                 reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
-                reader.IsDBNull(14) ? null : reader.GetString(14)));
-        return result;
+                reader.IsDBNull(14) ? null : reader.GetString(14));
+
+    public async Task<InventoryPurchasePage> PurchasesAsync(string? sku, InventoryPurchaseCursor? cursor, int limit, CancellationToken ct)
+    {
+        if (!IsConfigured) return new([], null);
+        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand("""
+            select b.id,b.sku,coalesce(p.title,'کالای حذف‌شده'),coalesce(v.display_label,b.sku),b.batch_code,
+                   b.received_packages,b.remaining_packages,b.produced_at,b.expires_at,b.cost_price,
+                   b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier
+            from inventory_batches b
+            left join product_variants v on upper(v.sku)=upper(b.sku)
+            left join products p on p.id=v.product_id
+            where (@sku='' or upper(b.sku)=upper(@sku))
+              and (@first or (b.created_at,b.id)<(@before_at,@before_id))
+            order by b.created_at desc,b.id desc limit @limit;
+            """, connection);
+        command.Parameters.AddWithValue("sku", sku?.Trim() ?? ""); command.Parameters.AddWithValue("first", cursor is null);
+        command.Parameters.AddWithValue("before_at", cursor?.CreatedAt.ToUniversalTime() ?? DateTimeOffset.UtcNow);
+        command.Parameters.AddWithValue("before_id", cursor?.Id ?? Guid.Empty); command.Parameters.AddWithValue("limit", limit + 1);
+        var items = new List<InventoryBatch>(); await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct)) items.Add(ReadBatch(reader));
+        var more = items.Count > limit; if (more) items.RemoveAt(items.Count - 1);
+        return new(items, more ? InventoryPurchaseCursor.Encode(new(items[^1].CreatedAt,items[^1].Id)) : null);
     }
+
 }
 
 public static class InventoryBatchModule
@@ -242,6 +273,14 @@ public static class InventoryBatchModule
 
     public static IEndpointRouteBuilder MapInventoryBatches(this IEndpointRouteBuilder endpoints)
     {
+        endpoints.MapGet("/api/v1/admin/inventory/purchases", async (string? sku, string? cursor, int? limit,
+            InventoryBatchDatabase database, CancellationToken ct) =>
+        {
+            InventoryPurchaseCursor? decoded = null;
+            if (limit is < 1 or > 250 || (cursor is not null && !InventoryPurchaseCursor.TryDecode(cursor, out decoded)))
+                return (IResult)Results.ValidationProblem(new Dictionary<string, string[]> { ["pagination"] = ["صفحه یا تعداد دریافت معتبر نیست؛ فهرست را تازه کنید."] });
+            return Results.Ok(await database.PurchasesAsync(sku, decoded, limit ?? 50, ct));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
         endpoints.MapPost("/api/v1/admin/inventory/batches", async (
             InventoryBatchRequest request,
             InventoryBatchDatabase database,
@@ -270,4 +309,18 @@ public sealed class InventoryBatchSchemaInitializer(InventoryBatchDatabase datab
 {
     public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+public sealed record InventoryPurchasePage(IReadOnlyCollection<InventoryBatch> Items, string? NextCursor);
+public sealed record InventoryPurchaseCursor(DateTimeOffset CreatedAt, Guid Id)
+{
+    public static string Encode(InventoryPurchaseCursor cursor) => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(cursor));
+    public static bool TryDecode(string input, out InventoryPurchaseCursor? cursor)
+    {
+        cursor = null;
+        if (input.Length > 512) return false;
+        try { cursor = JsonSerializer.Deserialize<InventoryPurchaseCursor>(Convert.FromBase64String(input)); }
+        catch (Exception exception) when (exception is FormatException or JsonException) { return false; }
+        return cursor is not null && cursor.Id != Guid.Empty && cursor.CreatedAt != default;
+    }
 }
