@@ -138,7 +138,7 @@ products.MapGet("/admin", async (
     ProductCatalog productCatalog,
     InventoryBatchDatabase batches,
     CancellationToken cancellationToken) =>
-    Results.Ok(await CatalogWithExpiryAsync(productCatalog.AllIncludingDrafts(), batches, cancellationToken)))
+    Results.Ok(await CatalogWithExpiryAsync(productCatalog.AllIncludingDrafts(), batches, cancellationToken, includeCosts: true)))
     .AddEndpointFilter<OwnerAuthorizationFilter>();
 products.MapGet("/{slug}", async (
     string slug,
@@ -253,7 +253,8 @@ app.Run();
 static async Task<IReadOnlyCollection<Product>> CatalogWithExpiryAsync(
     IReadOnlyCollection<Product> products,
     InventoryBatchDatabase batches,
-    CancellationToken cancellationToken)
+    CancellationToken cancellationToken,
+    bool includeCosts = false)
 {
     var expiryBySku = await batches.EarliestExpiryBySkuAsync(cancellationToken);
     return products.Select(product =>
@@ -262,7 +263,11 @@ static async Task<IReadOnlyCollection<Product>> CatalogWithExpiryAsync(
             .Select(variant => expiryBySku.TryGetValue(variant.Sku, out var value) ? value : (DateTimeOffset?)null)
             .Where(value => value is not null)
             .Min();
-        return product with { EarliestAvailableExpiryAt = expiry };
+        return product with {
+            EarliestAvailableExpiryAt = expiry,
+            Variants = includeCosts ? product.Variants : product.Variants.Select(variant =>
+                variant with { CostPrice = 0, PackagingCost = 0, AdditionalCost = 0 }).ToArray()
+        };
     }).ToArray();
 }
 

@@ -121,6 +121,8 @@ class OrderApiClient {
     required num costPrice,
     required num packagingCost,
     required num additionalCost,
+    DateTime? purchasedAt,
+    String? supplier,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/inventory/batches'),
@@ -129,6 +131,8 @@ class OrderApiClient {
         'sku': sku, 'batchCode': batchCode, 'receivedPackages': receivedPackages,
         'producedAt': producedAt.toUtc().toIso8601String(), 'expiresAt': expiresAt.toUtc().toIso8601String(),
         'costPrice': costPrice, 'packagingCost': packagingCost, 'additionalCost': additionalCost,
+        if (purchasedAt != null) 'purchasedAt': purchasedAt.toUtc().toIso8601String(),
+        if (supplier != null) 'supplier': supplier,
       }),
     );
     _guard(response);
@@ -449,12 +453,15 @@ class InventoryBatch {
     required this.batchCode, required this.receivedPackages, required this.remainingPackages,
     required this.producedAt, required this.expiresAt, required this.costPrice,
     required this.packagingCost, required this.additionalCost, required this.isExpired, required this.isExpiringSoon,
+    this.purchasedAt, this.supplier,
   });
   final String id;
   final String sku;
   final String productTitle;
   final String variantLabel;
   final String batchCode;
+  final DateTime? purchasedAt;
+  final String? supplier;
   final int receivedPackages;
   final int remainingPackages;
   final DateTime producedAt;
@@ -473,6 +480,7 @@ class InventoryBatch {
     costPrice: json['costPrice'] as num, packagingCost: json['packagingCost'] as num,
     additionalCost: json['additionalCost'] as num, isExpired: json['isExpired'] as bool,
     isExpiringSoon: json['isExpiringSoon'] as bool? ?? false,
+    purchasedAt: DateTime.tryParse(json['purchasedAt']?.toString() ?? ''), supplier: json['supplier'] as String?,
   );
 }
 
