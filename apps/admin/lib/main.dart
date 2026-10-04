@@ -15,6 +15,7 @@ import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
 import 'audit_log_page.dart';
 import 'admin_users_page.dart';
+import 'notification_tile.dart';
 import 'package:file_picker/file_picker.dart';
 
 class AdminColors {
@@ -98,7 +99,7 @@ class _AdminShellState extends State<AdminShell> {
       AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
       const AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage()),
       const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
-      const AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage()),
+      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: (destination) => setState(() => index = destination))),
       const AdminPermissionGate(permission: AdminPermissions.customersRead, child: CustomerManagementPage()),
       const AdminPermissionGate(permission: AdminPermissions.pricingRead, child: CommerceSettingsPage()),
       const AdminPermissionGate(permission: AdminPermissions.corporateRead, child: CorporateRequestsPage()),
@@ -309,15 +310,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
                     : Column(children: [
                         for (final item in alertItems.take(4))
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: const CircleAvatar(
-                              backgroundColor: AdminColors.mintSoft,
-                              child: Icon(Icons.info_outline_rounded, color: AdminColors.ink, size: 18),
-                            ),
-                            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                            subtitle: Text(item.detail, style: const TextStyle(fontSize: 11)),
-                          ),
+                          AdminNotificationTile(item: item, onNavigate: widget.onNavigate),
                       ]),
               ),
               _DashboardPanel(
@@ -2548,8 +2541,9 @@ class _CategoryDialogState extends State<CategoryDialog> {
 }
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key, this.api});
+  const NotificationsPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
+  final ValueChanged<int>? onNavigate;
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
@@ -2588,36 +2582,27 @@ class _NotificationsPageState extends State<NotificationsPage> {
           const SizedBox(height: 6),
           const Text('هشدارهای سفارش، موجودی و کارهای مهم را در یک صف واضح دنبال کنید.', style: TextStyle(color: AdminColors.muted)),
         ])),
-        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
+        IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
       ]),
       const SizedBox(height: 20),
+      if (loading && data != null) const LinearProgressIndicator(),
+      if (error != null && data != null && requestStatusCode(error!) != 401 && requestStatusCode(error!) != 403)
+        AdminStaleBanner(detail: 'اعلان‌های قبلی نمایش داده می‌شوند. ${requestErrorMessage(error!)}', onRetry: load),
       Expanded(child: _body()),
     ]),
   );
 
   Widget _body() {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (error != null) return AdminErrorState(error: error!, onRetry: load);
+    if (loading && data == null) return const Center(child: CircularProgressIndicator());
+    if (error != null && (data == null || requestStatusCode(error!) == 401 || requestStatusCode(error!) == 403)) {
+      return AdminErrorState(error: error!, onRetry: load);
+    }
     final items = data?.items ?? const <AdminNotification>[];
     if (items.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.notifications_none_rounded, title: 'فعلاً اعلان مهمی ندارید', detail: 'اعلان سفارش، موجودی یا پیگیری بعدی اینجا نمایش داده می‌شود.'));
     return ListView.separated(
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, index) {
-        final item = items[index];
-        return Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            leading: CircleAvatar(
-              backgroundColor: item.type.toLowerCase() == 'critical' ? const Color(0xFFFCE6E0) : AdminColors.mintSoft,
-              child: Icon(item.type.toLowerCase() == 'critical' ? Icons.priority_high_rounded : Icons.info_outline_rounded, color: AdminColors.ink),
-            ),
-            title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)),
-            subtitle: Padding(padding: const EdgeInsets.only(top: 5), child: Text(item.detail)),
-            trailing: Text(item.type == 'critical' ? 'فوری' : 'پیگیری', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-          ),
-        );
-      },
+      itemBuilder: (_, index) => Card(child: AdminNotificationTile(item: items[index], onNavigate: widget.onNavigate)),
     );
   }
 }
