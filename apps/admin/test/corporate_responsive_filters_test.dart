@@ -43,12 +43,23 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(captured.any((uri) => uri.queryParameters['query'] == 'شرکت'), isTrue);
-      await tester.ensureVisible(find.text('پیگیری‌های عقب‌افتاده'));
-      await tester.tap(find.text('پیگیری‌های عقب‌افتاده'));
+      final overdueChip = find.widgetWithText(FilterChip, 'پیگیری‌های عقب‌افتاده');
+      await tester.ensureVisible(overdueChip);
+      await tester.pumpAndSettle();
+      await tester.tap(overdueChip);
       await tester.pumpAndSettle();
       expect(captured.any((uri) => uri.queryParameters['overdue'] == 'true'), isTrue);
       await tester.ensureVisible(find.text('پیگیری عقب‌افتاده‌ای پیدا نشد'));
       expect(find.text('پیگیری عقب‌افتاده‌ای پیدا نشد'), findsOneWidget);
+      final planningChip = find.widgetWithText(FilterChip, 'نیازمند برنامه‌ریزی');
+      await tester.ensureVisible(planningChip);
+      await tester.pumpAndSettle();
+      await tester.tap(planningChip);
+      await tester.pumpAndSettle();
+      final planning = captured.where((uri) => uri.queryParameters['needsPlanning'] == 'true').last;
+      expect(planning.queryParameters.containsKey('overdue'), isFalse);
+      await tester.ensureVisible(find.text('همه درخواست‌های فعال برنامه‌ریزی شده‌اند'));
+      expect(find.text('همه درخواست‌های فعال برنامه‌ریزی شده‌اند'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

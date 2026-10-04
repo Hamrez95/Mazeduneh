@@ -438,6 +438,9 @@ jobs:
       - name: Zero initial stock catalog regression
         run: python3 scripts/tests/catalog_initial_stock.py
 
+      - name: Corporate planning queue contract
+        run: python3 scripts/tests/corporate_planning.py
+
   admin:
     name: Admin Flutter
     runs-on: ubuntu-latest
