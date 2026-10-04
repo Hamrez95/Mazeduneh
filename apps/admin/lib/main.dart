@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
+import 'auth_api.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -140,10 +141,27 @@ class _AdminShellState extends State<AdminShell> {
                   ),
                 ),
               const Spacer(),
-              const ListTile(
-                leading: CircleAvatar(backgroundColor: Color(0xFFF7C58B), child: Text('ح')),
-                title: Text('حمیدرضا', style: TextStyle(color: Colors.white)),
-                subtitle: Text('مدیر اصلی', style: TextStyle(color: Color(0xFF9EACA1))),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: const Color(0xFFF7C58B),
+                  child: Text((OwnerSession.instance.email ?? 'م').substring(0, 1).toUpperCase()),
+                ),
+                title: Text(OwnerSession.instance.email ?? 'کاربر فروشگاه', style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  OwnerSession.instance.role == 'Owner' ? 'مدیر اصلی' : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
+                  style: const TextStyle(color: Color(0xFF9EACA1)),
+                ),
+                trailing: IconButton(
+                  tooltip: 'خروج از حساب',
+                  onPressed: () async {
+                    try {
+                      await AuthApiClient().logout();
+                    } catch (_) {
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.')));
+                    }
+                  },
+                  icon: const Icon(Icons.logout_rounded, color: Color(0xFFD5DFD6)),
+                ),
               ),
             ]),
           ),

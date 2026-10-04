@@ -202,10 +202,12 @@ jobs:
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
-          USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['id'])")
+          USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['user']['id'])")
           python3 - <<'PY'
           import json
-          created = json.load(open('/tmp/admin-user-created.json', encoding='utf-8'))
+          response = json.load(open('/tmp/admin-user-created.json', encoding='utf-8'))
+          created = response['user']
+          assert response['invitationToken'] and response['expiresAt']
           assert created['role'] == 'WarehouseOperator'
           assert created['isActive'] is True
           assert 'inventory.write' in created['permissions']
@@ -224,7 +226,7 @@ jobs:
           python3 - <<'PY'
           import json
           events = json.load(open('/tmp/admin-user-audit.json', encoding='utf-8'))
-          assert {item['action'] for item in events} >= {'admin-user.created', 'admin-user.status-changed'}
+          assert {item['action'] for item in events} >= {'admin-user.invited', 'admin-user.status-changed'}
           assert all(item['actor'] == 'ci-owner@mazeduneh.test' for item in events)
           PY
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/customers/?q=0912" \
@@ -446,6 +448,9 @@ jobs:
 
       - name: Dated inventory purchase contract
         run: python3 scripts/tests/inventory_purchase.py
+
+      - name: Membership invitation and persisted authorization contract
+        run: python3 scripts/tests/admin_membership_login.py
 
       - name: Batch selling price contract and snapshot regression
         run: python3 scripts/tests/inventory_pricing.py
