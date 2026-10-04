@@ -142,10 +142,16 @@ public static class OrderManagementModule
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/notifications", async (
-            OrderManagementDatabase database,
+            OrderManagementDatabase database, HttpContext context,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.NotificationsAsync(cancellationToken)))
-            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        {
+            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal)
+                return Results.Unauthorized();
+            return Results.Ok(await database.NotificationsAsync(
+                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead),
+                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead),
+                cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/shipping/overdue", async (
             int? days,
@@ -599,9 +605,10 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return rows;
     }
 
-    public async Task<AdminNotifications> NotificationsAsync(CancellationToken cancellationToken)
+    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, CancellationToken cancellationToken)
     {
-        if (!IsConfigured) return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
+        if (!IsConfigured || (!includeOrders && !includeInventory))
+            return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
@@ -609,22 +616,28 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                    count(*) filter (where created_at >= now() - interval '24 hours' and state not in ('Cancelled','Expired'))::int
             from checkout_orders;
             """;
-        int awaitingPayment;
-        int recentOrders;
-        await using (var command = new NpgsqlCommand(orderSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        var awaitingPayment = 0;
+        var recentOrders = 0;
+        if (includeOrders)
         {
-            await reader.ReadAsync(cancellationToken);
-            awaitingPayment = reader.GetInt32(0);
-            recentOrders = reader.GetInt32(1);
+            await using (var command = new NpgsqlCommand(orderSql, connection))
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                await reader.ReadAsync(cancellationToken);
+                awaitingPayment = reader.GetInt32(0);
+                recentOrders = reader.GetInt32(1);
+            }
         }
 
         const string stockSql = "select p.title,v.sku,v.available_packages from product_variants v join products p on p.id=v.product_id where v.available_packages <= 5 order by v.available_packages,p.title limit 20;";
         var items = new List<AdminNotification>();
-        await using (var command = new NpgsqlCommand(stockSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-                items.Add(new AdminNotification("low-stock", $"موجودی {reader.GetString(0)} کم است.", $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته"));
+        if (includeInventory)
+        {
+            await using (var command = new NpgsqlCommand(stockSql, connection))
+            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+                while (await reader.ReadAsync(cancellationToken))
+                    items.Add(new AdminNotification("low-stock", $"موجودی {reader.GetString(0)} کم است.", $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته"));
+        }
 
         if (awaitingPayment > 0)
             items.Insert(0, new AdminNotification("awaiting-payment", $"{awaitingPayment} سفارش در انتظار پرداخت است.", "نیازمند بررسی پنل سفارش‌ها"));

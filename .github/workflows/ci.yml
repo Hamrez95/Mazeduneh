@@ -432,6 +432,9 @@ jobs:
       - name: API request correlation and log redaction contract
         run: python3 scripts/tests/api_observability.py
 
+      - name: Notification role projection contract
+        run: python3 scripts/tests/notification_permissions.py
+
       - name: Zero initial stock catalog regression
         run: python3 scripts/tests/catalog_initial_stock.py
 
