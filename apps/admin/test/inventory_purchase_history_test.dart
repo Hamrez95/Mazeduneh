@@ -39,7 +39,11 @@ void main() {
       await tester.pumpAndSettle();
       final more=find.text('مشاهده خریدهای قدیمی‌تر');
       final gridScroll=find.descendant(of:find.byKey(const ValueKey('inventory-sections')),matching:find.byType(Scrollable)).first;
-      await tester.scrollUntilVisible(more,250,scrollable:gridScroll); await tester.pumpAndSettle();
+      // Move the outer section grid; a drag at its center can scroll a nested receipt/product list instead.
+      final sections=tester.state<ScrollableState>(gridScroll).position;
+      sections.jumpTo(sections.maxScrollExtent); await tester.pumpAndSettle();
+      expect(more,findsOneWidget);
+      await tester.ensureVisible(more); await tester.pumpAndSettle();
       Focus.of(tester.element(more)).requestFocus(); await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter); await tester.pumpAndSettle();
       expect(olderCalls,1);expect(find.textContaining('خریدهای قدیمی دریافت نشد'),findsOneWidget);
