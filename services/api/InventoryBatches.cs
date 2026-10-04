@@ -196,7 +196,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         return result;
     }
 
-    public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<InventoryBatch>> ListAsync(string? sku, bool includeExpired, int limit, CancellationToken cancellationToken, bool purchaseOrder = false)
     {
         if (!IsConfigured) return Array.Empty<InventoryBatch>();
         const string sql = """
@@ -207,7 +207,8 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             join products p on p.id=v.product_id
             where (@sku='' or upper(b.sku)=upper(@sku))
               and (@include_expired or b.expires_at > now())
-            order by b.expires_at asc,b.created_at asc
+            order by case when @purchase_order then b.purchased_at end desc nulls last,
+                     case when @purchase_order then b.created_at end desc, b.expires_at asc,b.created_at asc
             limit @limit;
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -216,6 +217,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         command.Parameters.AddWithValue("sku", sku?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("include_expired", includeExpired);
         command.Parameters.AddWithValue("limit", limit);
+        command.Parameters.AddWithValue("purchase_order", purchaseOrder);
         var result = new List<InventoryBatch>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

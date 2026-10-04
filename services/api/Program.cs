@@ -34,6 +34,7 @@ builder.Services.AddPayments();
 builder.Services.AddOrderManagement();
 builder.Services.AddMediaStorage(builder.Configuration);
 builder.Services.AddInventoryBatches();
+builder.Services.AddInventoryPricing();
 builder.Services.AddCommercePricing();
 builder.Services.AddCorporateSales();
 
@@ -50,6 +51,7 @@ app.MapOrderManagement();
 app.MapInventoryLedger();
 app.MapMediaStorage();
 app.MapInventoryBatches();
+app.MapInventoryPricing();
 app.MapCommercePricing();
 app.MapCorporateSales();
 
@@ -131,22 +133,25 @@ app.MapGet("/api/v1/catalog/unit-types", () => Results.Ok(new[]
 var products = app.MapGroup("/api/v1/products").WithTags("Products");
 products.MapGet("/", async (
     ProductCatalog productCatalog,
+    CatalogDatabase liveDatabase,
     InventoryBatchDatabase batches,
     CancellationToken cancellationToken) =>
-    Results.Ok(await CatalogWithExpiryAsync(productCatalog.All(), batches, cancellationToken)));
+    Results.Ok(await CatalogWithExpiryAsync(await CurrentCatalogAsync(productCatalog, liveDatabase, false, cancellationToken), batches, cancellationToken)));
 products.MapGet("/admin", async (
     ProductCatalog productCatalog,
+    CatalogDatabase liveDatabase,
     InventoryBatchDatabase batches,
     CancellationToken cancellationToken) =>
-    Results.Ok(await CatalogWithExpiryAsync(productCatalog.AllIncludingDrafts(), batches, cancellationToken, includeCosts: true)))
+    Results.Ok(await CatalogWithExpiryAsync(await CurrentCatalogAsync(productCatalog, liveDatabase, true, cancellationToken), batches, cancellationToken, includeCosts: true)))
     .AddEndpointFilter<OwnerAuthorizationFilter>();
 products.MapGet("/{slug}", async (
     string slug,
     ProductCatalog productCatalog,
+    CatalogDatabase liveDatabase,
     InventoryBatchDatabase batches,
     CancellationToken cancellationToken) =>
 {
-    var product = productCatalog.FindPublishedBySlug(slug);
+    var product = (await CurrentCatalogAsync(productCatalog, liveDatabase, false, cancellationToken)).FirstOrDefault(p => p.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
     if (product is null) return Results.NotFound(new { message = "محصول پیدا نشد یا هنوز منتشر نشده است." });
     var enriched = (await CatalogWithExpiryAsync([product], batches, cancellationToken)).Single();
     return Results.Ok(enriched);
@@ -249,6 +254,12 @@ products.MapPatch("/{slug}/publication", async (
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
 app.Run();
+
+static async Task<IReadOnlyCollection<Product>> CurrentCatalogAsync(ProductCatalog catalog, CatalogDatabase database, bool includeDrafts, CancellationToken ct)
+{
+    var products = database.IsConfigured ? await database.LoadAsync(ct) : catalog.AllIncludingDrafts();
+    return products.Where(p => includeDrafts || p.IsPublished).ToArray();
+}
 
 static async Task<IReadOnlyCollection<Product>> CatalogWithExpiryAsync(
     IReadOnlyCollection<Product> products,
