@@ -328,7 +328,7 @@ jobs:
 
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/inventory/adjust" \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' > /tmp/inventory-adjusted.json
+            --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' -D /tmp/inventory-adjusted.headers > /tmp/inventory-adjusted.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-audit-log.json
           python3 - <<'PY'
@@ -338,6 +338,9 @@ jobs:
           assert adjustment['actor'] == 'ci-owner@mazeduneh.test'
           assert adjustment['beforeJson'] and adjustment['afterJson']
           assert adjustment['reason'] == 'ci-audit'
+          headers = open('/tmp/inventory-adjusted.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert adjustment['requestId'] == request_id
           PY
 
           curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/products/pistachio-akbari-premium/publication" \
@@ -425,6 +428,9 @@ jobs:
         env:
           READINESS_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: python3 scripts/tests/api_readiness.py
+
+      - name: API request correlation and log redaction contract
+        run: python3 scripts/tests/api_observability.py
 
   admin:
     name: Admin Flutter
