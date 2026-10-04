@@ -1717,28 +1717,48 @@ class _InventoryPageState extends State<InventoryPage> {
   Object? error;
   bool loading = true;
   String? busySku;
+  String? purchaseCursor, purchaseError;
+  bool loadingPurchases = false;
+  int purchaseGeneration = 0;
 
   @override
   void initState() { super.initState(); load(); }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() { loading = true; error = null; purchaseGeneration++; loadingPurchases = false; });
     try {
       final result = await Future.wait([
         catalog.fetchProducts(includeDrafts: true),
         orders.fetchInventoryMovements(limit: 30),
-        orders.fetchInventoryBatches(includeExpired: true, limit: 50),
+        orders.fetchInventoryPurchases(),
       ]);
       if (mounted) setState(() {
         products = result[0] as List<Product>;
         movements = result[1] as List<StockMovement>;
-        batches = result[2] as List<InventoryBatch>;
+        final purchases = result[2] as InventoryPurchasePage;
+        batches = purchases.items; purchaseCursor = purchases.nextCursor; purchaseError = null;
       });
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  Future<void> loadMorePurchases() async {
+    if (purchaseCursor == null || loadingPurchases) return;
+    final generation = purchaseGeneration;
+    setState(() { loadingPurchases = true; purchaseError = null; });
+    try {
+      final page = await orders.fetchInventoryPurchases(cursor: purchaseCursor);
+      if (mounted && generation == purchaseGeneration) setState(() { batches = [...batches, ...page.items.where((item) => !batches.any((b) => b.id == item.id))]; purchaseCursor = page.nextCursor; });
+    } catch (exception) {
+      if (mounted && generation == purchaseGeneration) setState(() {
+        if (exception is OrderApiException && (exception.statusCode == 401 || exception.statusCode == 403)) {
+          batches = []; purchaseCursor = null; error = exception;
+        } else { purchaseError = 'خریدهای قدیمی دریافت نشد: $exception. دوباره تلاش کنید.'; }
+      });
+    } finally { if (mounted && generation == purchaseGeneration) setState(() => loadingPurchases = false); }
   }
 
   Future<void> adjust(ProductVariant variant) async {
@@ -1812,8 +1832,9 @@ class _InventoryPageState extends State<InventoryPage> {
           const SizedBox(height: 14),
         ],
         Expanded(child: GridView.count(
+          key: const ValueKey('inventory-sections'),
           crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-          mainAxisExtent: constraints.maxWidth < 720 ? 340 : 380,
+          mainAxisExtent: (constraints.maxWidth < 720 ? 340.0 : 380.0) * MediaQuery.textScalerOf(context).scale(14) / 14,
           children: [
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
@@ -1851,7 +1872,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: movements.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
+            Expanded(child: movements.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
               itemCount: movements.length,
               separatorBuilder: (_, __) => const Divider(height: 16),
               itemBuilder: (_, index) {
@@ -1873,7 +1894,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('سوابق خرید و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز بچی ثبت نشده است', detail: 'برای کنترل FEFO، اولین دریافت کالا را ثبت کنید.')) : ListView.separated(
+            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز خریدی ثبت نشده است', detail: 'با ثبت خرید، مقدار، هزینه و تاریخ دریافت کالا را نگه دارید.')) : ListView.separated(
               itemCount: batches.length,
               separatorBuilder: (_, __) => const Divider(height: 14),
               itemBuilder: (_, index) {
@@ -1888,6 +1909,9 @@ class _InventoryPageState extends State<InventoryPage> {
                 );
               },
             )),
+            if (purchaseError != null) Text(purchaseError!, style: const TextStyle(color: AdminColors.coral)),
+            if (purchaseCursor != null) TextButton(onPressed: loadingPurchases ? null : loadMorePurchases,
+              child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
           ]))),
           ],
         )),

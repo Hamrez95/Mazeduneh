@@ -20,3 +20,10 @@ Check((recipe with { PackagingMultiplier = -1 }).Validate().Count > 0, "Invalid 
 Check((recipe with { RoundingStep = 0 }).Validate().Count > 0, "Zero rounding step accepted");
 Check((recipe with { MarkupPercent = 1001 }).Validate().Count > 0, "Unbounded markup accepted");
 Console.WriteLine("Server cost pricing arithmetic and validation unit checks passed");
+
+var cursor = new InventoryPurchaseCursor(now, Guid.NewGuid());
+Check(InventoryPurchaseCursor.TryDecode(InventoryPurchaseCursor.Encode(cursor), out var decoded) && decoded == cursor, "Cursor roundtrip failed");
+Check(!InventoryPurchaseCursor.TryDecode("invalid", out _), "Malformed cursor accepted");
+Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray()), out _), "Null cursor accepted");
+Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
+Console.WriteLine("Purchase pagination cursor unit checks passed");

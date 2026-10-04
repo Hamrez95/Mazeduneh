@@ -79,12 +79,28 @@ with tempfile.TemporaryFile() as log:
         assert request('/api/v1/admin/inventory/batches', 'POST', payload, token)[0] == 409
         payload.update(batchCode='CI-PURCHASE-TWO', costPrice=6000, purchasedAt='2026-02-01T00:00:00Z')
         assert request('/api/v1/admin/inventory/batches', 'POST', payload, token)[0] == 201
+        from urllib.parse import quote
+        history_path = '/api/v1/admin/inventory/purchases?sku=CI-PURCHASE-250&limit=1'
+        status, page1 = request(history_path, token=token)
+        assert status == 200 and len(page1['items']) == 1 and page1['items'][0]['costPrice'] == 6000
+        assert page1['nextCursor']
+        # New/backdated receipt inserted between pages must not move the cursor boundary.
+        newer = dict(payload, batchCode='CI-PURCHASE-THREE', costPrice=8000, purchasedAt='2020-01-01T00:00:00Z')
+        assert request('/api/v1/admin/inventory/batches','POST',newer,token)[0] == 201
+        status, page2 = request(history_path+'&cursor='+quote(page1['nextCursor'],safe=''),token=token)
+        assert status == 200 and len(page2['items']) == 1 and page2['items'][0]['id'] == first['id']
+        assert page2['nextCursor'] is None
+        status, refresh = request(history_path,token=token)
+        assert refresh['items'][0]['costPrice'] == 8000
+        assert request(history_path+'&cursor=invalid',token=token)[0] == 400
+        assert request('/api/v1/admin/inventory/purchases?limit=251',token=token)[0] == 400
+        assert request(history_path)[0] == 401
         for change in [{'purchasedAt': '2099-01-01T00:00:00Z'}, {'supplier': 'x'*201},
                        {'costPrice': -1}, {'receivedPackages': 0}, {'batchCode': 'x'*81}]:
             assert request('/api/v1/admin/inventory/batches', 'POST', dict(payload, **change), token)[0] == 400
         assert request('/api/v1/admin/inventory/batches', 'POST', payload)[0] == 401
         status, movements = request('/api/v1/admin/inventory/movements?sku=CI-PURCHASE-250', token=token)
-        assert status == 200 and len(movements) == 2
+        assert status == 200 and len(movements) == 3
         assert all(m['actor'] == os.environ['Admin__Email'] for m in movements)
         status, audit = request('/api/v1/admin/audit-log?entityType=InventoryBatch&entityId='+first['id'], token=token)
         assert status == 200 and len(audit) == 1
@@ -96,12 +112,12 @@ with tempfile.TemporaryFile() as log:
     api, token = start_api()
     try:
         status, history = request('/api/v1/admin/inventory/batches?sku=CI-PURCHASE-250', token=token)
-        assert status == 200 and len(history) == 2
-        assert {item['costPrice'] for item in history} == {4000,6000}
-        assert sum(item['receivedPackages'] for item in history) == 24
+        assert status == 200 and len(history) == 3
+        assert {item['costPrice'] for item in history} == {4000,6000,8000}
+        assert sum(item['receivedPackages'] for item in history) == 36
         status, product = request('/api/v1/products/'+SLUG)
         assert status == 200 and product['variants'][0]['price'] == 5000
-        assert product['variants'][0]['availablePackages'] == 24
+        assert product['variants'][0]['availablePackages'] == 36
         assert all(product['variants'][0][key] == 0 for key in ['costPrice','packagingCost','additionalCost'])
         _, private = request('/api/v1/products/admin', token=token)
         variant = next(p for p in private if p['slug'] == SLUG)['variants'][0]

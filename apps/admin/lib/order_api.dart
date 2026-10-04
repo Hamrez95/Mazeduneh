@@ -112,6 +112,17 @@ class OrderApiClient {
     return decoded.map((item) => InventoryBatch.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<InventoryPurchasePage> fetchInventoryPurchases({String? sku, String? cursor, int limit = 50}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/admin/inventory/purchases').replace(queryParameters: {
+      'limit': '$limit', if (sku != null) 'sku': sku, if (cursor != null) 'cursor': cursor,
+    });
+    final response = await _client.get(uri, headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    return InventoryPurchasePage((json['items'] as List).map((item) => InventoryBatch.fromJson(item as Map<String, dynamic>)).toList(), json['nextCursor'] as String?);
+  }
+
   Future<Map<String, dynamic>> inventoryPricing(String sku, {String? action, Map<String, dynamic>? input}) async {
     final uri = Uri.parse('$baseUrl/api/v1/admin/inventory/pricing/${Uri.encodeComponent(sku)}${action == null ? '' : '/$action'}');
     final response = action == null
@@ -666,4 +677,10 @@ class ExpiringStockItem {
         expiresAt: DateTime.parse(json['expiresAt'] as String),
         remainingPackages: (json['remainingPackages'] as num?)?.toInt() ?? 0,
       );
+}
+
+class InventoryPurchasePage {
+  const InventoryPurchasePage(this.items, this.nextCursor);
+  final List<InventoryBatch> items;
+  final String? nextCursor;
 }
