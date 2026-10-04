@@ -112,19 +112,3 @@ class _BatchDialogState extends State<BatchDialog> {
   @override
   void dispose() { for (final c in fields.values) { c.dispose(); } super.dispose(); }
 }
-).hasMatch(email) ? null : 'ایمیل معتبر وارد کنید.'; }),
-        TextFormField(controller: fields['supplierAddress'], maxLength: 500, maxLines: 2, decoration: const InputDecoration(labelText: 'نشانی تأمین‌کننده (اختیاری)')),
-        TextFormField(controller: fields['supplierNotes'], maxLength: 1000, maxLines: 2, decoration: const InputDecoration(labelText: 'یادداشت دربارهٔ تأمین‌کننده (اختیاری)')),
-        TextFormField(controller: fields['quantity'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تعداد بستهٔ خریداری‌شده'),
-          validator: (v) { final n = parsePersianNumber(v); return n == null || !n.isFinite || n <= 0 || n > 1000000 || n != n.round() ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.' : null; }),
-        dateField('purchased', 'تاریخ خرید'), dateField('produced', 'تاریخ تولید'), dateField('expires', 'تاریخ انقضا'),
-        money('cost', 'قیمت خرید / مواد'), money('packaging', 'بسته‌بندی'), money('additional', 'هزینهٔ جانبی'),
-        if (saving) const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator()),
-        if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
-      ]))))),
-    actions: [TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('انصراف')),
-      FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'در حال ثبت…' : 'ثبت خرید'))],
-  ));
-  @override
-  void dispose() { for (final c in fields.values) { c.dispose(); } super.dispose(); }
-}
