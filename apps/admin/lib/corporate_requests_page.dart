@@ -63,22 +63,60 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
     ]));
   }
 
+  Widget _filterFields() => LayoutBuilder(builder: (context, constraints) {
+    final searchField = TextField(
+      controller: search, onSubmitted: (_) => load(),
+      decoration: const InputDecoration(labelText: 'جست‌وجو', prefixIcon: Icon(Icons.search_rounded), hintText: 'نام، شرکت یا شماره'),
+    );
+    final cityField = TextField(
+      controller: city, onSubmitted: (_) => load(),
+      decoration: const InputDecoration(labelText: 'شهر'),
+    );
+    final statusField = InputDecorator(
+      decoration: const InputDecoration(labelText: 'وضعیت درخواست'),
+      child: DropdownButtonHideUnderline(child: DropdownButton<String>(
+        value: status, isExpanded: true, isDense: true,
+        items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key,
+          child: Text(entry.value, maxLines: 1, overflow: TextOverflow.ellipsis))).toList(),
+        onChanged: (value) { setState(() => status = value ?? ''); load(); },
+      )),
+    );
+    if (constraints.maxWidth < 500) {
+      return Column(children: [searchField, const SizedBox(height: 12), cityField, const SizedBox(height: 12), statusField]);
+    }
+    if (constraints.maxWidth < 900) {
+      return Column(children: [searchField, const SizedBox(height: 12),
+        Row(children: [Expanded(child: cityField), const SizedBox(width: 12), Expanded(child: statusField)]),
+      ]);
+    }
+    return Row(children: [Expanded(child: searchField), const SizedBox(width: 12),
+      SizedBox(width: 160, child: cityField), const SizedBox(width: 12), SizedBox(width: 220, child: statusField),
+    ]);
+  });
+
   Widget _listView() => ListView(padding: const EdgeInsets.all(28), children: [
-    Row(children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('فروش سازمانی', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)), const SizedBox(height: 6), Text('${formatPersianInteger(items.length)} درخواست قابل پیگیری', style: const TextStyle(color: AdminColors.muted))])),
-      if ((summary?.newCount ?? 0) > 0) Chip(avatar: const Icon(Icons.notifications_active_rounded, size: 17), label: Text('${formatPersianInteger(summary!.newCount)} جدید')),
-      FilterChip(
-        label: const Text('پیگیری‌های عقب‌افتاده'),
-        selected: overdueOnly,
-        onSelected: (value) {
-          setState(() => overdueOnly = value);
-          load();
-        },
-      ),
-      IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
-    ]),
+    LayoutBuilder(builder: (context, constraints) {
+      final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('فروش سازمانی', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+        const SizedBox(height: 6),
+        Text('${formatPersianInteger(items.length)} درخواست قابل پیگیری', style: const TextStyle(color: AdminColors.muted)),
+      ]);
+      final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if ((summary?.newCount ?? 0) > 0)
+          Chip(avatar: const Icon(Icons.notifications_active_rounded, size: 17), label: Text('${formatPersianInteger(summary!.newCount)} جدید')),
+        FilterChip(
+          label: const Text('پیگیری‌های عقب‌افتاده'),
+          selected: overdueOnly,
+          onSelected: (value) { setState(() => overdueOnly = value); load(); },
+        ),
+        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد درخواست‌ها'),
+      ]);
+      return constraints.maxWidth < 720
+          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, const SizedBox(height: 12), controls])
+          : Row(children: [Expanded(child: heading), const SizedBox(width: 16), controls]);
+    }),
     const SizedBox(height: 18),
-    Row(children: [Expanded(child: TextField(controller: search, onSubmitted: (_) => load(), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'جست‌وجو با نام، شرکت یا شماره'))), const SizedBox(width: 8), SizedBox(width: 125, child: TextField(controller: city, onSubmitted: (_) => load(), decoration: const InputDecoration(hintText: 'شهر'))), const SizedBox(width: 8), DropdownButton<String>(value: status, items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) { setState(() => status = value ?? ''); load(); })]),
+    _filterFields(),
     const SizedBox(height: 18),
     if (items.isEmpty) Padding(
       padding: const EdgeInsets.all(40),

@@ -63,6 +63,10 @@
 
 Component مشترک Dashboard/Notification Center، دکمهٔ مسیر ماژول مجاز، اعداد فارسی و حفظ دادهٔ قبلی در refresh ناموفق اضافه شد. پاسخ ۴۰۱/۴۰۳ دادهٔ قبلی را پنهان می‌کند. قرارداد فعلی اعلان، صف تجمیعی است؛ provider، unread/read، template، role/store filtering سرور و لینک دقیق رکورد همچنان در #96 باز هستند. راهنما: `docs/NOTIFICATION_CENTER.md`.
 
+### Responsive فروش سازمانی — چرخهٔ ۴ اکتبر ۲۰۲۶ (#97)
+
+عنوان و actionها از ردیف ثابت به چیدمان انعطاف‌پذیر تبدیل شدند؛ جست‌وجو/شهر/وضعیت در موبایل زیر هم و در تبلت در دو ردیف قرار می‌گیرند. label و tooltip دائمی اضافه شد. تست ۳۶۰/۷۶۸/۱۲۸۰، متن ۲۰۰٪، keyboard search و overdue query دارد. راهنما: `docs/CORPORATE_RESPONSIVE_FILTERS.md`.
+
 ### اصلاح موجودی اولیهٔ صفر — چرخهٔ ۴ اکتبر ۲۰۲۶ (#2)
 
 ساخت محصول یا افزودن Variant با موجودی صفر قبلاً به constraint حرکت انبار برخورد می‌کرد. helper مشترک اکنون برای صفر حرکت جعلی ثبت نمی‌کند و برای مقدار مثبت همان ledger اتمیک را حفظ می‌کند. تست CI شامل ایجاد، افزودن Variant، دریافت بعدی، validation منفی و restart است. راهنما: `docs/ZERO_INITIAL_STOCK.md`.
