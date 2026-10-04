@@ -263,7 +263,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         foreach (var variant in product.Variants)
         {
             await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
-            await ledger.RecordAsync(connection, transaction, variant.Sku, variant.AvailablePackages, "InitialStock", variant.AvailablePackages, null, "system", "catalog-initial-stock", cancellationToken);
+            await RecordInitialStockAsync(connection, transaction, variant, "catalog-initial-stock", cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
     }
@@ -307,7 +307,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
-                await ledger.RecordAsync(connection, transaction, variant.Sku, variant.AvailablePackages, "InitialStock", variant.AvailablePackages, null, "system", "catalog-variant-added", cancellationToken);
+                await RecordInitialStockAsync(connection, transaction, variant, "catalog-variant-added", cancellationToken);
             }
         }
         await transaction.CommitAsync(cancellationToken);
@@ -339,6 +339,14 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             return false;
         }
     }
+
+    private Task RecordInitialStockAsync(
+        NpgsqlConnection connection, NpgsqlTransaction transaction, ProductVariant variant,
+        string reason, CancellationToken cancellationToken) =>
+        // A zero opening balance is valid catalog data, not a stock movement.
+        variant.AvailablePackages == 0 ? Task.CompletedTask :
+            ledger.RecordAsync(connection, transaction, variant.Sku, variant.AvailablePackages,
+                "InitialStock", variant.AvailablePackages, null, "system", reason, cancellationToken);
 
     private static async Task InsertProductRowAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Product product, CancellationToken cancellationToken)
     {
