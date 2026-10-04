@@ -72,7 +72,7 @@ with tempfile.TemporaryFile() as log:
             "title": "کالای تست مجوز اعلان", "slug": "notification-permission-fixture", "category": "آزمایشی",
             "origin": "ایران", "currency": "IRR", "unitType": "Weight", "isPublished": False,
             "variants": [{"sku": INVENTORY_MARKER, "quantity": 250, "displayLabel": "۲۵۰ گرم",
-                          "price": 1000, "availablePackages": 0}],
+                          "price": 1000, "availablePackages": 3}],
         }, token)
         assert status == 201, status
         status, _ = request("/api/v1/checkout/orders", "POST", {
