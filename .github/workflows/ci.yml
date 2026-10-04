@@ -421,6 +421,11 @@ jobs:
           assert [item['state'] for item in order['transitions']] == ['AwaitingPayment','Paid','Preparing','Shipped','Delivered']
           PY
 
+      - name: API readiness failure and recovery contract
+        env:
+          READINESS_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: python3 scripts/tests/api_readiness.py
+
   admin:
     name: Admin Flutter
     runs-on: ubuntu-latest

@@ -237,3 +237,11 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 ## ۱۲. وضعیت Milestoneهای GitHub
 
 Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. اتصال واقعی به GitHub Milestone object در این اجرای connector در دسترس نبود: ابزار متصل create issue و update issue دارد اما endpoint ساخت Milestone ارائه نمی‌کند. بنابراین تا فعال شدن آن capability، جدول بالا و prefixهای M0 تا M6 منبع ترتیب اجرا هستند و هیچ Issueای به‌دروغ به Milestone غیرموجود نسبت داده نشده است.
+
+## چرخهٔ ۴ اکتبر ۲۰۲۶ — Readiness API (#100)
+
+- تفکیک `/health/live` از `/health/ready`؛ readiness با PostgreSQL یا تنظیمات هویت ناقص، ۵۰۳ می‌دهد.
+- diagnostic قدیمی `/health` حفظ شده و قطع دیتابیس دیگر خواندن دوم migration و خطای ۵۰۰ ایجاد نمی‌کند.
+- تست CI برای نبود تنظیمات، قطع و بازیابی PostgreSQL بدون restart API اضافه شده است.
+- قرارداد و راهنمای عملیات: `docs/API_READINESS.md`.
+- #100 تا تأیید staging، storage/payment، backup/restore و launch gate واقعی باز می‌ماند.
