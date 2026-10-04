@@ -92,6 +92,8 @@ with tempfile.TemporaryFile() as log:
         assert page2['nextCursor'] is None
         status, refresh = request(history_path,token=token)
         assert refresh['items'][0]['costPrice'] == 8000
+        status, missing_sku = request('/api/v1/admin/inventory/purchases?sku=OTHER-SKU&limit=1&cursor='+quote(page1['nextCursor'],safe=''),token=token)
+        assert status == 200 and missing_sku == {'items': [], 'nextCursor': None}, missing_sku
         assert request(history_path+'&cursor=invalid',token=token)[0] == 400
         assert request('/api/v1/admin/inventory/purchases?limit=251',token=token)[0] == 400
         assert request(history_path)[0] == 401

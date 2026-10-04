@@ -52,3 +52,5 @@
 - Abandoned-cart communication with consent.
 - Loyalty/referral and subscriptions after repeat-demand evidence.
 - Native customer app only when usage data justifies it.
+
+- Inventory purchase history: SKU filter across cursor pages and protection against stale concurrent refresh, with mobile/text-scale and API isolation regression (refs #5 #82). No inventory valuation or bulk-packing claim.
