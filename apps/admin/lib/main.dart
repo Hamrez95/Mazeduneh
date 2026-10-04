@@ -257,7 +257,7 @@ class _DashboardPageState extends State<DashboardPage> {
           if (error != null) AdminStaleBanner(detail: 'داده‌های فعلی ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
           LayoutBuilder(builder: (context, constraints) {
             final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('سلام حمیدرضا 🌿', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
+              Text('وضعیت فروشگاه', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
               const SizedBox(height: 6),
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
               if (lastLoadedAt != null) ...[
@@ -419,12 +419,29 @@ class _DashboardQuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const actions = [
-      (title: 'ثبت محصول', detail: 'محصول جدید را به‌صورت پیش‌نویس بسازید.', icon: Icons.add_box_rounded, destination: 2),
-      (title: 'پیگیری سفارش‌ها', detail: 'سفارش‌های جدید و منتظر پرداخت را ببینید.', icon: Icons.receipt_long_rounded, destination: 1),
-      (title: 'اصلاح موجودی', detail: 'دریافت کالا یا اصلاح یک SKU را ثبت کنید.', icon: Icons.inventory_2_rounded, destination: 3),
-      (title: 'پیگیری فروش سازمانی', detail: 'درخواست‌های جدید را از دست ندهید.', icon: Icons.business_center_rounded, destination: 8),
+    final session = OwnerSession.instance;
+    bool can(String permission) => !session.isAuthenticated || session.can(permission);
+    final actions = [
+      if (can(AdminPermissions.productsRead))
+        can(AdminPermissions.productsWrite)
+            ? (title: 'ثبت محصول', detail: 'محصول جدید را به‌صورت پیش‌نویس بسازید.', icon: Icons.add_box_rounded, destination: 2)
+            : (title: 'مشاهده محصولات', detail: 'مشخصات، قیمت و وضعیت انتشار را بررسی کنید.', icon: Icons.inventory_2_outlined, destination: 2),
+      if (can(AdminPermissions.ordersRead))
+        (title: 'پیگیری سفارش‌ها', detail: 'سفارش‌های جدید و منتظر پرداخت را ببینید.', icon: Icons.receipt_long_rounded, destination: 1),
+      if (can(AdminPermissions.inventoryRead))
+        can(AdminPermissions.inventoryWrite)
+            ? (title: 'اصلاح موجودی', detail: 'دریافت کالا یا اصلاح یک SKU را ثبت کنید.', icon: Icons.inventory_2_rounded, destination: 3)
+            : (title: 'مشاهده موجودی', detail: 'موجودی کالا و بچ‌های نزدیک انقضا را بررسی کنید.', icon: Icons.warehouse_outlined, destination: 3),
+      if (can(AdminPermissions.corporateRead))
+        (title: 'پیگیری فروش سازمانی', detail: 'درخواست‌های جدید را از دست ندهید.', icon: Icons.business_center_rounded, destination: 8),
     ];
+    if (actions.isEmpty) {
+      return const AdminEmptyState(
+        icon: Icons.lock_outline_rounded,
+        title: 'مسیر عملیاتی برای نقش شما فعال نیست',
+        detail: 'برای دسترسی به محصولات، سفارش‌ها یا انبار با مدیر فروشگاه هماهنگ کنید. گزارش داشبورد همچنان قابل مشاهده است.',
+      );
+    }
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 1050 ? 4 : constraints.maxWidth >= 650 ? 2 : 1;
       final width = (constraints.maxWidth - ((columns - 1) * 12)) / columns;
@@ -444,10 +461,13 @@ class _DashboardQuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
         button: true,
+        enabled: onPressed != null,
         label: '${action.title}: ${action.detail}',
         child: Card(
           child: InkWell(
+            key: ValueKey('dashboard-action-${action.destination}'),
             onTap: onPressed,
+            focusColor: AdminColors.mintSoft,
             borderRadius: BorderRadius.circular(18),
             child: LayoutBuilder(builder: (context, constraints) {
               final compact = constraints.maxWidth < 320;
@@ -458,7 +478,7 @@ class _DashboardQuickAction extends StatelessWidget {
                 child: Icon(action.icon, color: AdminColors.ink),
               );
               final title = Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep));
-              final detail = Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, height: 1.5, color: AdminColors.muted));
+              final detail = Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.5, color: AdminColors.ink));
               return Padding(
                 padding: const EdgeInsets.all(16),
                 child: compact
@@ -504,14 +524,16 @@ class MetricCard extends StatelessWidget {
   final Color tint;
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 250, height: 150,
-    child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    width: 250,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 150),
+      child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
-      const Spacer(),
+      const SizedBox(height: 12),
       Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
       const SizedBox(height: 3),
       Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
-    ]))),
+    ])))),
   );
 }
 
