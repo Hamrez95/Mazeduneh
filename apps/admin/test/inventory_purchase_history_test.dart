@@ -38,7 +38,7 @@ void main() {
         home:Directionality(textDirection:TextDirection.rtl,child:Scaffold(body:InventoryPage(catalog:CatalogApiClient(client:client,baseUrl:'https://api.test'),orders:OrderApiClient(client:client,baseUrl:'https://api.test'))))));
       await tester.pumpAndSettle();
       final more=find.text('مشاهده خریدهای قدیمی‌تر');
-      final gridScroll=find.descendant(of:find.byType(GridView),matching:find.byType(Scrollable)).first;
+      final gridScroll=find.descendant(of:find.byKey(const ValueKey('inventory-sections')),matching:find.byType(Scrollable)).first;
       await tester.scrollUntilVisible(more,250,scrollable:gridScroll); await tester.pumpAndSettle();
       Focus.of(tester.element(more)).requestFocus(); await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter); await tester.pumpAndSettle();

@@ -1832,8 +1832,9 @@ class _InventoryPageState extends State<InventoryPage> {
           const SizedBox(height: 14),
         ],
         Expanded(child: GridView.count(
+          key: const ValueKey('inventory-sections'),
           crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-          mainAxisExtent: constraints.maxWidth < 720 ? 340 : 380,
+          mainAxisExtent: (constraints.maxWidth < 720 ? 340.0 : 380.0) * MediaQuery.textScalerOf(context).scale(14) / 14,
           children: [
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
@@ -1871,7 +1872,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: movements.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
+            Expanded(child: movements.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
               itemCount: movements.length,
               separatorBuilder: (_, __) => const Divider(height: 16),
               itemBuilder: (_, index) {
@@ -1893,7 +1894,7 @@ class _InventoryPageState extends State<InventoryPage> {
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('سوابق خرید و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز بچی ثبت نشده است', detail: 'برای کنترل FEFO، اولین دریافت کالا را ثبت کنید.')) : ListView.separated(
+            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز خریدی ثبت نشده است', detail: 'با ثبت خرید، مقدار، هزینه و تاریخ دریافت کالا را نگه دارید.')) : ListView.separated(
               itemCount: batches.length,
               separatorBuilder: (_, __) => const Divider(height: 14),
               itemBuilder: (_, index) {
