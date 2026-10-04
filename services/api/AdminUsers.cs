@@ -118,7 +118,10 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         var expected = reader.GetFieldValue<byte[]>(9);
         var supplied = Rfc2898DeriveBytes.Pbkdf2(password, salt, PasswordIterations, HashAlgorithmName.SHA256, PasswordHashBytes);
         if (!CryptographicOperations.FixedTimeEquals(expected, supplied)) return null;
-        return Read(reader);
+        var role = reader.GetString(4);
+        return new AdminUserSummary(
+            reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), role, reader.GetBoolean(5),
+            AdminPermissionCatalog.Resolve(role), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), true);
     }
 
     public async Task<bool> AcceptInvitationAsync(string token, string password, CancellationToken cancellationToken)
@@ -215,7 +218,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             revoke.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
             await revoke.ExecuteNonQueryAsync(cancellationToken);
         }
-        var updated = await GetAsync(connection, id, cancellationToken);
+        var updated = await GetAsync(connection, id, cancellationToken, transaction);
         if (updated is not null)
             await audit.RecordAsync(connection, transaction, actor, "admin-user.status-changed", "AdminUser", id.ToString(), before, updated, isActive ? "فعال‌سازی عضویت مدیر" : "غیرفعال‌سازی عضویت مدیر", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -240,12 +243,12 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         return connection;
     }
 
-    private static async Task<AdminUserSummary?> GetAsync(NpgsqlConnection connection, Guid id, CancellationToken cancellationToken)
+    private static async Task<AdminUserSummary?> GetAsync(NpgsqlConnection connection, Guid id, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
     {
         await using var command = new NpgsqlCommand("""
             select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null
         from admin_users where id=@id;
-            """, connection);
+            """, connection, transaction);
         command.Parameters.AddWithValue("id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
