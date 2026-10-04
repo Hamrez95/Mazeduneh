@@ -441,6 +441,12 @@ jobs:
       - name: Corporate planning queue contract
         run: python3 scripts/tests/corporate_planning.py
 
+      - name: Inventory receipt validation units
+        run: dotnet run --project services/api.tests/Mazeduneh.Api.Tests.csproj --configuration Release
+
+      - name: Dated inventory purchase contract
+        run: python3 scripts/tests/inventory_purchase.py
+
   admin:
     name: Admin Flutter
     runs-on: ubuntu-latest

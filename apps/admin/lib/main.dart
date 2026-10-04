@@ -1,3 +1,4 @@
+import 'inventory_receipt_dialog.dart';
 import 'dart:convert';
 
 import 'admin_state.dart';
@@ -1757,42 +1758,34 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   Future<void> receiveBatch() async {
-    final result = await showDialog<_BatchCommand>(context: context, builder: (_) => BatchDialog(products: products));
+    final result = await showDialog<InventoryBatch>(context: context, builder: (_) => BatchDialog(products: products,
+      onSave: (receipt) => orders.receiveInventoryBatch(sku: receipt.sku, batchCode: receipt.batchCode,
+        receivedPackages: receipt.receivedPackages, producedAt: receipt.producedAt, expiresAt: receipt.expiresAt,
+        costPrice: receipt.costPrice, packagingCost: receipt.packagingCost, additionalCost: receipt.additionalCost,
+        purchasedAt: receipt.purchasedAt, supplier: receipt.supplier)));
     if (result == null) return;
-    setState(() => busySku = result.sku);
-    try {
-      await orders.receiveInventoryBatch(
-        sku: result.sku,
-        batchCode: result.batchCode,
-        receivedPackages: result.receivedPackages,
-        producedAt: result.producedAt,
-        expiresAt: result.expiresAt,
-        costPrice: result.costPrice,
-        packagingCost: result.packagingCost,
-        additionalCost: result.additionalCost,
-      );
-      await load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('بچ و تاریخ انقضا ثبت شد.')));
-    } catch (exception) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
-    } finally {
-      if (mounted) setState(() => busySku = null);
-    }
+    await load();
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('خرید و موجودی ثبت شد؛ سابقه در فهرست دریافت‌ها قابل مشاهده است.')));
   }
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(24),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      LayoutBuilder(builder: (context, constraints) {
+        final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
           const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
-        ])),
-        OutlinedButton.icon(onPressed: products.isEmpty ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('دریافت بچ')),
+        ]);
+        final controls = Wrap(spacing: 8, children: [
+        OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید')),
         const SizedBox(width: 8),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-      ]),
+        ]);
+        return constraints.maxWidth < 720
+          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, controls])
+          : Row(children: [Expanded(child: heading), controls]);
+      }),
       const SizedBox(height: 18),
       Expanded(child: _body()),
     ]),
@@ -1812,7 +1805,7 @@ class _InventoryPageState extends State<InventoryPage> {
         ],
         Expanded(child: GridView.count(
           crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 2.7 : 1.9,
+          mainAxisExtent: constraints.maxWidth < 720 ? 340 : 380,
           children: [
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
@@ -1870,7 +1863,7 @@ class _InventoryPageState extends State<InventoryPage> {
             )),
           ]))),
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('بچ‌ها و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const Text('سوابق خرید و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
             Expanded(child: batches.isEmpty ? const Center(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'هنوز بچی ثبت نشده است', detail: 'برای کنترل FEFO، اولین دریافت کالا را ثبت کنید.')) : ListView.separated(
               itemCount: batches.length,
@@ -1883,7 +1876,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
+                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatPersianDateTime(item.purchasedAt!)} · ${item.supplier ?? 'تأمین‌کننده ثبت نشده'}\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
                 );
               },
             )),
@@ -1928,181 +1921,6 @@ class _InventoryAttentionBanner extends StatelessWidget {
         ]),
       ),
     );
-  }
-}
-
-class _BatchCommand {
-  const _BatchCommand({
-    required this.sku,
-    required this.batchCode,
-    required this.receivedPackages,
-    required this.producedAt,
-    required this.expiresAt,
-    required this.costPrice,
-    required this.packagingCost,
-    required this.additionalCost,
-  });
-
-  final String sku;
-  final String batchCode;
-  final int receivedPackages;
-  final DateTime producedAt;
-  final DateTime expiresAt;
-  final num costPrice;
-  final num packagingCost;
-  final num additionalCost;
-}
-
-class BatchDialog extends StatefulWidget {
-  const BatchDialog({super.key, required this.products});
-
-  final List<Product> products;
-
-  @override
-  State<BatchDialog> createState() => _BatchDialogState();
-}
-
-class _BatchDialogState extends State<BatchDialog> {
-  final formKey = GlobalKey<FormState>();
-  late String sku;
-  final batchCode = TextEditingController();
-  final received = TextEditingController();
-  final produced = TextEditingController();
-  final expires = TextEditingController();
-  final cost = TextEditingController(text: '۰');
-  final packaging = TextEditingController(text: '۰');
-  final additional = TextEditingController(text: '۰');
-
-  @override
-  void initState() {
-    super.initState();
-    sku = widget.products.first.variants.first.sku;
-  }
-
-  DateTime? parseDate(String value) => DateTime.tryParse(value.trim());
-
-  num parseNumber(String value) => parsePersianNumber(value) ?? 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('دریافت بچ جدید'),
-      content: SizedBox(
-        width: 520,
-        child: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButtonFormField<String>(
-                  value: sku,
-                  decoration: const InputDecoration(labelText: 'SKU'),
-                  items: widget.products
-                      .expand(
-                        (product) => product.variants.map(
-                          (variant) => DropdownMenuItem<String>(
-                            value: variant.sku,
-                            child: Text('\${product.title} · \${variant.sku}'),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => sku = value ?? sku),
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: batchCode,
-                  decoration: const InputDecoration(labelText: 'کد بچ', hintText: 'LOT-1405-01'),
-                  validator: (value) => value == null || value.trim().isEmpty ? 'کد بچ الزامی است.' : null,
-                ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: received,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'تعداد بسته دریافتی'),
-                  validator: (value) {
-                    final number = parsePersianInteger(value);
-                    return number == null || number <= 0 ? 'تعداد مثبت وارد کنید.' : null;
-                  },
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: produced,
-                        decoration: const InputDecoration(labelText: 'تولید (YYYY-MM-DD)'),
-                        validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextFormField(
-                        controller: expires,
-                        decoration: const InputDecoration(labelText: 'انقضا (YYYY-MM-DD)'),
-                        validator: (value) => parseDate(value ?? '') == null ? 'تاریخ معتبر وارد کنید.' : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(child: TextFormField(controller: cost, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'خرید/مواد (ریال)'))),
-                    const SizedBox(width: 10),
-                    Expanded(child: TextFormField(controller: packaging, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'بسته‌بندی (ریال)'))),
-                    const SizedBox(width: 10),
-                    Expanded(child: TextFormField(controller: additional, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'جانبی (ریال)'))),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
-        FilledButton(
-          onPressed: () {
-            if (!formKey.currentState!.validate()) return;
-            final productionDate = parseDate(produced.text)!;
-            final expiryDate = parseDate(expires.text)!;
-            if (!expiryDate.isAfter(productionDate)) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('انقضا باید بعد از تولید باشد.')));
-              return;
-            }
-            final receivedPackages = parsePersianInteger(received.text) ?? 0;
-            Navigator.pop(
-              context,
-              _BatchCommand(
-                sku: sku,
-                batchCode: batchCode.text.trim(),
-                receivedPackages: receivedPackages,
-                producedAt: productionDate,
-                expiresAt: expiryDate,
-                costPrice: parseNumber(cost.text),
-                packagingCost: parseNumber(packaging.text),
-                additionalCost: parseNumber(additional.text),
-              ),
-            );
-          },
-          child: const Text('ثبت بچ'),
-        ),
-      ],
-    );
-  }
-
-  @override
-  void dispose() {
-    batchCode.dispose();
-    received.dispose();
-    produced.dispose();
-    expires.dispose();
-    cost.dispose();
-    packaging.dispose();
-    additional.dispose();
-    super.dispose();
   }
 }
 

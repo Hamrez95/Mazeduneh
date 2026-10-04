@@ -8,18 +8,23 @@ public sealed record InventoryBatchRequest(
     DateTimeOffset ExpiresAt,
     decimal CostPrice,
     decimal PackagingCost = 0,
-    decimal AdditionalCost = 0)
+    decimal AdditionalCost = 0,
+    DateTimeOffset? PurchasedAt = null,
+    string? Supplier = null)
 {
     public Dictionary<string, string[]> Validate()
     {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(Sku)) errors[nameof(Sku)] = ["SKU الزامی است."];
         if (string.IsNullOrWhiteSpace(BatchCode)) errors[nameof(BatchCode)] = ["کد بچ الزامی است."];
-        if (ReceivedPackages <= 0) errors[nameof(ReceivedPackages)] = ["تعداد دریافتی باید بیشتر از صفر باشد."];
+        if (ReceivedPackages is <= 0 or > 1_000_000) errors[nameof(ReceivedPackages)] = ["تعداد دریافتی باید بین ۱ و ۱ میلیون باشد."];
         if (ExpiresAt <= ProducedAt) errors[nameof(ExpiresAt)] = ["تاریخ انقضا باید بعد از تاریخ تولید باشد."];
-        if (CostPrice < 0) errors[nameof(CostPrice)] = ["قیمت خرید نمی‌تواند منفی باشد."];
-        if (PackagingCost < 0) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی نمی‌تواند منفی باشد."];
-        if (AdditionalCost < 0) errors[nameof(AdditionalCost)] = ["هزینه جانبی نمی‌تواند منفی باشد."];
+        if (CostPrice is < 0 or > 1_000_000_000_000m) errors[nameof(CostPrice)] = ["قیمت خرید باید بین صفر و ۱ تریلیون ریال باشد."];
+        if (PackagingCost is < 0 or > 1_000_000_000_000m) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی باید بین صفر و ۱ تریلیون ریال باشد."];
+        if (AdditionalCost is < 0 or > 1_000_000_000_000m) errors[nameof(AdditionalCost)] = ["هزینه جانبی باید بین صفر و ۱ تریلیون ریال باشد."];
+        if (BatchCode?.Trim().Length > 80) errors[nameof(BatchCode)] = ["کد بچ حداکثر ۸۰ کاراکتر است."];
+        if (Supplier?.Trim().Length > 200) errors[nameof(Supplier)] = ["نام تأمین‌کننده حداکثر ۲۰۰ کاراکتر است."];
+        if (PurchasedAt > DateTimeOffset.UtcNow) errors[nameof(PurchasedAt)] = ["تاریخ خرید نمی‌تواند در آینده باشد."];
         return errors;
     }
 }
@@ -38,9 +43,14 @@ public sealed record InventoryBatch(
     decimal PackagingCost,
     decimal AdditionalCost,
     bool IsExpired,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? PurchasedAt = null,
+    string? Supplier = null)
+{
+    public decimal PurchaseTotal => CostPrice * ReceivedPackages;
+}
 
-public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger<InventoryBatchDatabase> logger, InventoryLedgerDatabase ledger)
+public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger<InventoryBatchDatabase> logger, InventoryLedgerDatabase ledger, AdminAuditLogDatabase audit)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -69,10 +79,17 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "002-batches-expiry", sql, cancellationToken);
+        const string purchaseSql = """
+            alter table inventory_batches add column if not exists purchased_at timestamptz null;
+            alter table inventory_batches add column if not exists supplier varchar(200) null;
+            create index if not exists ix_inventory_batches_purchased
+                on inventory_batches(sku, purchased_at desc);
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "003-purchase-history", purchaseSql, cancellationToken);
         logger.LogInformation("Inventory batch and expiry schema is ready.");
     }
 
-    public async Task<(InventoryBatch? Batch, string? Error)> CreateAsync(InventoryBatchRequest request, CancellationToken cancellationToken)
+    public async Task<(InventoryBatch? Batch, string? Error)> CreateAsync(InventoryBatchRequest request, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return (null, "دیتابیس موجودی تنظیم نشده است.");
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -100,11 +117,13 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
 
         var id = Guid.NewGuid();
         var createdAt = DateTimeOffset.UtcNow;
+        var purchasedAt = request.PurchasedAt?.ToUniversalTime() ?? createdAt;
+        var supplier = request.Supplier?.Trim();
         const string insertSql = """
             insert into inventory_batches
-                (id,sku,batch_code,received_packages,remaining_packages,produced_at,expires_at,cost_price,packaging_cost,additional_cost,created_at)
+                (id,sku,batch_code,received_packages,remaining_packages,produced_at,expires_at,cost_price,packaging_cost,additional_cost,created_at,purchased_at,supplier)
             values
-                (@id,@sku,@batch_code,@received,@remaining,@produced,@expires,@cost,@packaging,@additional,@created);
+                (@id,@sku,@batch_code,@received,@remaining,@produced,@expires,@cost,@packaging,@additional,@created,@purchased,@supplier);
             """;
         await using (var insert = new NpgsqlCommand(insertSql, connection, transaction))
         {
@@ -119,6 +138,8 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             insert.Parameters.AddWithValue("packaging", request.PackagingCost);
             insert.Parameters.AddWithValue("additional", request.AdditionalCost);
             insert.Parameters.AddWithValue("created", createdAt);
+            insert.Parameters.AddWithValue("purchased", purchasedAt);
+            insert.Parameters.AddWithValue("supplier", (object?)supplier ?? DBNull.Value);
             try { await insert.ExecuteNonQueryAsync(cancellationToken); }
             catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
             {
@@ -143,13 +164,16 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
                 return (null, "موجودی SKU به‌روزرسانی نشد.");
             }
             await ledger.RecordAsync(connection, transaction, sku, request.ReceivedPackages, "BatchReceived",
-                Convert.ToInt32(balance), null, "owner", "inventory-batch-received", cancellationToken);
+                Convert.ToInt32(balance), null, actor, "inventory-batch-received", cancellationToken);
         }
 
-        await transaction.CommitAsync(cancellationToken);
-        return (new InventoryBatch(id, sku, title, label, request.BatchCode.Trim(), request.ReceivedPackages,
+        var batch = new InventoryBatch(id, sku, title, label, request.BatchCode.Trim(), request.ReceivedPackages,
             request.ReceivedPackages, request.ProducedAt, request.ExpiresAt, request.CostPrice,
-            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt), null);
+            request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt, purchasedAt, supplier);
+        await audit.RecordAsync(connection, transaction, actor, "inventory.purchase.received", "InventoryBatch",
+            id.ToString(), null, batch, "inventory-purchase-received", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (batch, null);
     }
 
     public async Task<IReadOnlyDictionary<string, DateTimeOffset>> EarliestExpiryBySkuAsync(CancellationToken cancellationToken)
@@ -176,7 +200,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         if (!IsConfigured) return Array.Empty<InventoryBatch>();
         const string sql = """
             select b.id,b.sku,p.title,v.display_label,b.batch_code,b.received_packages,b.remaining_packages,
-                   b.produced_at,b.expires_at,b.cost_price,b.packaging_cost,b.additional_cost,b.created_at
+                   b.produced_at,b.expires_at,b.cost_price,b.packaging_cost,b.additional_cost,b.created_at,b.purchased_at,b.supplier
             from inventory_batches b
             join product_variants v on upper(v.sku)=upper(b.sku)
             join products p on p.id=v.product_id
@@ -197,7 +221,9 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             result.Add(new InventoryBatch(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
                 reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetFieldValue<DateTimeOffset>(7),
                 reader.GetFieldValue<DateTimeOffset>(8), reader.GetDecimal(9), reader.GetDecimal(10), reader.GetDecimal(11),
-                reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12)));
+                reader.GetFieldValue<DateTimeOffset>(8) <= DateTimeOffset.UtcNow, reader.GetFieldValue<DateTimeOffset>(12),
+                reader.IsDBNull(13) ? null : reader.GetFieldValue<DateTimeOffset>(13),
+                reader.IsDBNull(14) ? null : reader.GetString(14)));
         return result;
     }
 }
@@ -216,11 +242,12 @@ public static class InventoryBatchModule
         endpoints.MapPost("/api/v1/admin/inventory/batches", async (
             InventoryBatchRequest request,
             InventoryBatchDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             var errors = request.Validate();
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var result = await database.CreateAsync(request, cancellationToken);
+            var result = await database.CreateAsync(request, ((AdminPrincipal)context.Items["AdminPrincipal"]!).Email, context.TraceIdentifier, cancellationToken);
             return result.Batch is null ? Results.Conflict(new { message = result.Error }) : Results.Created($"/api/v1/admin/inventory/batches/{result.Batch.Id}", result.Batch);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
