@@ -10,7 +10,7 @@ import 'product_management_page.dart';
 import 'customer_management_page.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
-import 'main.dart' show NotificationsPage, ReportsPage;
+import 'main.dart' show AdminShell, NotificationsPage, ReportsPage;
 
 void main() => runApp(const MazedunehSecureAdminApp());
 
@@ -24,6 +24,7 @@ class MazedunehSecureAdminApp extends StatelessWidget {
         locale: const Locale('fa'),
         theme: ThemeData(
           useMaterial3: true,
+          fontFamily: 'Vazirmatn',
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3F6B45)),
           scaffoldBackgroundColor: const Color(0xFFF6F8F4),
           cardTheme: const CardThemeData(
@@ -71,7 +72,7 @@ class _OwnerAuthGateState extends State<OwnerAuthGate> {
 
   @override
   Widget build(BuildContext context) => OwnerSession.instance.isAuthenticated
-      ? const AdminOperationsShell()
+      ? const AdminShell()
       : OwnerLoginPage(api: widget.authApi);
 }
 
