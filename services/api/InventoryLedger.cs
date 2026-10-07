@@ -104,6 +104,116 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         return StockAdjustmentResult.Success(sku, balance);
     }
 
+    public async Task<StockAdjustmentResult> WriteOffBatchAsync(
+        string sku,
+        string batchCode,
+        int quantity,
+        string actor,
+        string reason,
+        string requestId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string variantLockSql = """
+            select sku,available_packages from product_variants
+            where upper(sku)=upper(@sku)
+            for update;
+            """;
+        string canonicalSku;
+        int availableBefore;
+        await using (var command = new NpgsqlCommand(variantLockSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("sku", sku.Trim());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StockAdjustmentResult.Failed("SKU پیدا نشد.");
+            }
+            canonicalSku = reader.GetString(0);
+            availableBefore = reader.GetInt32(1);
+        }
+        if (quantity > availableBefore)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return StockAdjustmentResult.Failed("موجودی قابل‌فروش برای ثبت این ضایعات کافی نیست.");
+        }
+
+        const string batchSql = """
+            select remaining_packages from inventory_batches
+            where upper(sku)=upper(@sku) and upper(batch_code)=upper(@batch_code)
+            for update;
+            """;
+        int batchRemaining;
+        await using (var command = new NpgsqlCommand(batchSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("sku", sku.Trim());
+            command.Parameters.AddWithValue("batch_code", batchCode.Trim());
+            var result = await command.ExecuteScalarAsync(cancellationToken);
+            if (result is null || result is DBNull)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StockAdjustmentResult.Failed("بچ پیدا نشد.");
+            }
+            batchRemaining = Convert.ToInt32(result);
+        }
+        if (quantity > batchRemaining)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return StockAdjustmentResult.Failed("تعداد ضایعات از ماندهٔ این بچ بیشتر است.");
+        }
+
+        const string updateBatchSql = """
+            update inventory_batches set remaining_packages=remaining_packages-@quantity
+            where upper(sku)=upper(@sku) and upper(batch_code)=upper(@batch_code)
+              and remaining_packages>=@quantity;
+            """;
+        await using (var command = new NpgsqlCommand(updateBatchSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("sku", sku.Trim());
+            command.Parameters.AddWithValue("batch_code", batchCode.Trim());
+            command.Parameters.AddWithValue("quantity", quantity);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StockAdjustmentResult.Failed("ماندهٔ بچ تغییر کرده است؛ انبار را تازه‌سازی و دوباره تلاش کنید.");
+            }
+        }
+
+        const string updateStockSql = """
+            update product_variants set available_packages=available_packages-@quantity
+            where upper(sku)=upper(@sku) and available_packages>=@quantity
+            returning sku,available_packages;
+            """;
+        int balance;
+        await using (var command = new NpgsqlCommand(updateStockSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("sku", sku.Trim());
+            command.Parameters.AddWithValue("quantity", quantity);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StockAdjustmentResult.Failed("موجودی قابل‌فروش برای ثبت این ضایعات کافی نیست.");
+            }
+            canonicalSku = reader.GetString(0);
+            balance = reader.GetInt32(1);
+        }
+
+        await RecordAsync(connection, transaction, canonicalSku, -quantity, "Waste", balance, null, actor, reason, cancellationToken);
+        await audit.RecordAsync(
+            connection, transaction, actor, "inventory.waste", "ProductVariant", canonicalSku,
+            new { sku = canonicalSku, batchCode = batchCode.Trim(), availablePackages = balance + quantity, batchRemaining = batchRemaining },
+            new { sku = canonicalSku, batchCode = batchCode.Trim(), availablePackages = balance, batchRemaining = batchRemaining - quantity },
+            reason, requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return StockAdjustmentResult.Success(canonicalSku, balance);
+    }
+
     public async Task<IReadOnlyCollection<StockMovement>> ListAsync(
         string? sku,
         int limit,
@@ -154,6 +264,29 @@ public static class InventoryLedgerModule
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        endpoints.MapPost("/api/v1/admin/inventory/waste", async (
+            StockWasteRequest request,
+            InventoryLedgerDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+            if (string.IsNullOrWhiteSpace(request.Sku) || request.Sku.Trim().Length > 120)
+                errors[nameof(request.Sku)] = ["SKU معتبر الزامی است."];
+            if (string.IsNullOrWhiteSpace(request.BatchCode) || request.BatchCode.Trim().Length > 80)
+                errors[nameof(request.BatchCode)] = ["کد بچ معتبر الزامی است."];
+            if (request.Quantity is < 1 or > 1_000_000)
+                errors[nameof(request.Quantity)] = ["تعداد ضایعات باید بین ۱ تا یک میلیون بسته باشد."];
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 500)
+                errors[nameof(request.Reason)] = ["دلیل ضایعات باید بین ۱ تا ۵۰۰ نویسه باشد."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var result = await database.WriteOffBatchAsync(
+                request.Sku, request.BatchCode, request.Quantity, actor, request.Reason.Trim(), context.TraceIdentifier, cancellationToken);
+            return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         endpoints.MapGet("/api/v1/admin/inventory/movements", async (
             string? sku,
             int? limit,
@@ -166,6 +299,7 @@ public static class InventoryLedgerModule
 }
 
 public sealed record StockAdjustmentRequest(string Sku, int QuantityDelta, string Reason);
+public sealed record StockWasteRequest(string Sku, string BatchCode, int Quantity, string Reason);
 public sealed record StockAdjustmentResult(bool IsSuccess, string? Sku = null, int? BalanceAfter = null, string? Message = null)
 {
     public static StockAdjustmentResult Success(string sku, int balance) => new(true, sku, balance);

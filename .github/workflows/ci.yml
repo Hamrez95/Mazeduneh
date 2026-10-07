@@ -351,6 +351,46 @@ jobs:
           assert adjustment['requestId'] == request_id
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/inventory/batches \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
+          WASTE_INVALID_STATUS=$(curl -s -o /tmp/inventory-waste-invalid.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
+          test "${WASTE_INVALID_STATUS}" = "400"
+          WASTE_OVERFLOW_STATUS=$(curl -s -o /tmp/inventory-waste-overflow.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
+          test "${WASTE_OVERFLOW_STATUS}" = "409"
+          curl -fsS -D /tmp/inventory-waste.headers -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=PI-AKB-250" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-movements.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/batches?sku=PI-AKB-250" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-batches.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-audit.json
+          python3 - <<'PY'
+          import json
+          movements = json.load(open('/tmp/inventory-waste-movements.json', encoding='utf-8'))
+          waste = next(item for item in movements if item['movementType'] == 'Waste')
+          assert waste['quantityDelta'] == -1
+          assert waste['balanceAfter'] >= 0
+          batches = json.load(open('/tmp/inventory-waste-batches.json', encoding='utf-8'))
+          batch = next(item for item in batches if item['batchCode'] == 'CI-WASTE-LOT-1')
+          assert batch['remainingPackages'] == 0
+          assert waste['actor'] == 'ci-owner@mazeduneh.test'
+          assert waste['reason'] == 'ci-damaged-package'
+          audit = json.load(open('/tmp/inventory-waste-audit.json', encoding='utf-8'))
+          event = next(item for item in audit if item['action'] == 'inventory.waste')
+          assert event['beforeJson'] and event['afterJson']
+          assert event['reason'] == 'ci-damaged-package'
+          headers = open('/tmp/inventory-waste.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
+
           curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/products/pistachio-akbari-premium/publication" \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
             --data '{"isPublished":false}' > /tmp/product-unpublished.json

@@ -212,6 +212,19 @@ void main() {
     expect(detail.trackingCode, 'TR-2');
   });
 
+  test('writeOffStock uses the explicit inventory waste endpoint', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({'isSuccess': true, 'sku': 'PI-AKB-250', 'balanceAfter': 2}), 200);
+    });
+    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test').writeOffStock('PI-AKB-250', 'LOT-1', 1, 'بسته آسیب‌دیده');
+    expect(captured.method, 'POST');
+    expect(captured.url.path, '/api/v1/admin/inventory/waste');
+    expect(jsonDecode(captured.body), {'sku': 'PI-AKB-250', 'batchCode': 'LOT-1', 'quantity': 1, 'reason': 'بسته آسیب‌دیده'});
+    expect(result.balanceAfter, 2);
+  });
+
   test('fetchOverdueShipments sends the delay window and parses tracking context', () async {
     late http.Request captured;
     final client = MockClient((request) async {
