@@ -381,7 +381,7 @@ jobs:
           for STATE in Shipped Delivered; do
             curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/state" \
               -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-              --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" > "/tmp/order-${STATE}.json"
+              --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" -D "/tmp/order-${STATE}.headers" > "/tmp/order-${STATE}.json"
           done
           
           SHIPPING_INVALID_STATUS=$(curl -s -o /tmp/order-shipping-invalid.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
@@ -407,6 +407,19 @@ jobs:
           PY
 
           curl -fsS http://127.0.0.1:5099/api/v1/admin/dashboard -H "Authorization: Bearer ${TOKEN}" > /tmp/dashboard.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/order-state-audit.json
+          python3 - <<'PY'
+          import json
+          events = json.load(open('/tmp/order-state-audit.json', encoding='utf-8'))
+          event = next(item for item in events if item['action'] == 'order.state-changed' and json.loads(item['afterJson'])['state'] == 'Delivered')
+          assert event['actor'] == 'ci-owner@mazeduneh.test'
+          assert json.loads(event['beforeJson'])['state'] == 'Shipped'
+          assert event['reason'] == 'ci-Delivered'
+          headers = open('/tmp/order-Delivered.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
           python3 - <<'PY'
           import json
           delivered = json.load(open('/tmp/order-Delivered.json', encoding='utf-8'))

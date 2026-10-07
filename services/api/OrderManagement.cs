@@ -175,6 +175,7 @@ public static class OrderManagementModule
             Guid orderId,
             SetOrderStateRequest request,
             OrderManagementDatabase database,
+            AdminAuditLogDatabase audit,
             ProductCatalog catalog,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -183,7 +184,7 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.State)] = ["وضعیت سفارش معتبر نیست."] });
 
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, cancellationToken);
+            var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, context.TraceIdentifier, audit, cancellationToken);
             if (result.StockLevels is not null)
                 foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
 
@@ -198,6 +199,7 @@ public static class OrderManagementModule
         admin.MapPost("/orders/bulk-state", async (
             BulkOrderStateRequest request,
             OrderManagementDatabase database,
+            AdminAuditLogDatabase audit,
             ProductCatalog catalog,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -216,7 +218,7 @@ public static class OrderManagementModule
             var failed = new List<object>();
             foreach (var orderId in request.OrderIds)
             {
-                var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, cancellationToken);
+                var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, context.TraceIdentifier, audit, cancellationToken);
                 if (result.Status == OrderOperationStatus.Updated && result.Order is not null)
                 {
                     updated.Add(result.Order);
@@ -740,6 +742,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         OrderState requestedState,
         string? reason,
         string actor,
+        string requestId,
+        AdminAuditLogDatabase audit,
         CancellationToken cancellationToken)
     {
         if (!IsConfigured) return OrderOperationResult.Conflict("دیتابیس سفارش تنظیم نشده است.");
@@ -826,6 +830,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 }
             }        }
 
+        var transitionReason = string.IsNullOrWhiteSpace(reason)
+            ? $"owner-{requestedState.ToString().ToLowerInvariant()}"
+            : reason.Trim();
         var now = DateTimeOffset.UtcNow;
         await using (var command = new NpgsqlCommand("update checkout_orders set state=@state where id=@id;", connection, transaction))
         {
@@ -842,9 +849,15 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             command.Parameters.AddWithValue("state", requestedState.ToString());
             command.Parameters.AddWithValue("actor", actor);
             command.Parameters.AddWithValue("at", now);
-            command.Parameters.AddWithValue("reason", string.IsNullOrWhiteSpace(reason) ? $"owner-{requestedState.ToString().ToLowerInvariant()}" : reason.Trim());
+            command.Parameters.AddWithValue("reason", transitionReason);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
+
+        await audit.RecordAsync(
+            connection, transaction, actor, "order.state-changed", "Order", orderId.ToString(),
+            new { state = currentState.ToString() },
+            new { state = requestedState.ToString() },
+            transitionReason, requestId, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         var updated = await FindAsync(orderId, cancellationToken)
