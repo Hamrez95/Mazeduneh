@@ -22,6 +22,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
   Object? error;
   bool loading = true;
   bool exporting = false;
+  bool? marketingConsentFilter;
 
   @override
   void initState() {
@@ -42,7 +43,7 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
       error = null;
     });
     try {
-      final result = await api.fetchCustomers();
+      final result = await api.fetchCustomers(marketingConsent: marketingConsentFilter);
       if (mounted) {
         setState(() {
           customers = result;
@@ -61,7 +62,10 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
   Future<void> exportCsv() async {
     setState(() => exporting = true);
     try {
-      final bytes = await api.exportCustomersCsv(query: searchController.text.trim());
+      final bytes = await api.exportCustomersCsv(
+        query: searchController.text.trim(),
+        marketingConsent: marketingConsentFilter,
+      );
       final opened = await launchUrl(
         Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: const {'charset': 'utf-8'}),
         webOnlyWindowName: '_blank',
@@ -157,6 +161,30 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
                   hintText: 'جست‌وجو با نام یا شماره موبایل',
                 ),
               ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('رضایت پیامکی/بازاریابی:', style: TextStyle(color: _CustomerColors.muted)),
+                  ChoiceChip(
+                    label: const Text('همه'),
+                    selected: marketingConsentFilter == null,
+                    onSelected: (_) => _setConsentFilter(null),
+                  ),
+                  ChoiceChip(
+                    label: const Text('رضایت ثبت‌شده'),
+                    selected: marketingConsentFilter == true,
+                    onSelected: (_) => _setConsentFilter(true),
+                  ),
+                  ChoiceChip(
+                    label: const Text('بدون رضایت'),
+                    selected: marketingConsentFilter == false,
+                    onSelected: (_) => _setConsentFilter(false),
+                  ),
+                ],
+              ),
               const SizedBox(height: 18),
               if (items.isEmpty)
                 _EmptyCustomers(hasQuery: searchController.text.trim().isNotEmpty)
@@ -181,6 +209,12 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
         },
       ),
     );
+  }
+
+  void _setConsentFilter(bool? value) {
+    if (marketingConsentFilter == value) return;
+    setState(() => marketingConsentFilter = value);
+    load();
   }
 
   void _select(CustomerSummary customer) {
