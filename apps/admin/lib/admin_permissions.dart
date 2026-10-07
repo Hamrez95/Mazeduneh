@@ -7,6 +7,7 @@ abstract final class AdminPermissions {
   static const inventoryWrite = 'inventory.write';
   static const reportsRead = 'reports.read';
   static const customersRead = 'customers.read';
+  static const customersExport = 'customers.export';
   static const pricingRead = 'pricing.read';
   static const pricingWrite = 'pricing.write';
   static const corporateRead = 'corporate.read';
