@@ -1273,7 +1273,7 @@ class _OrdersPageState extends State<OrdersPage> {
                       .map((entry) => PopupMenuItem(value: entry.key, child: Text('انتقال به ${entry.value}')))
                       .toList(),
                   child: FilledButton.tonalIcon(
-                    onPressed: bulkBusy ? null : () {},
+                    onPressed: null,
                     icon: bulkBusy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.playlist_add_check_rounded),
                     label: Text('عملیات گروهی (${formatPersianInteger(selectedOrders.length)})'),
                   ),
