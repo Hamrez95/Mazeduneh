@@ -278,17 +278,17 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 14),
           Wrap(spacing: 14, runSpacing: 14, children: [
-            if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
             if (can(AdminPermissions.ordersRead)) ...[
-              MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8)),
-              if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9)),
-              MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
-              MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
-              MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
-              MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0)),
+              MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+              if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
+              MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+              MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+              MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+              MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
             ],
-            if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8)),
-            if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8)),
+            if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(6)),
+            if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(8)),
           ]),
           const SizedBox(height: 24),
           const _DashboardSectionTitle(
@@ -326,6 +326,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
                             subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                             trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                            onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
                           ),
                       ]),
               ),
@@ -343,6 +344,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
                             subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                             trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
+                            onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
                           ),
                       ]),
               ),
@@ -513,23 +515,31 @@ class _DashboardPanel extends StatelessWidget {
 }
 
 class MetricCard extends StatelessWidget {
-  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft});
+  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft, this.onTap});
   final String title;
   final String value;
   final IconData icon;
   final Color tint;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => SizedBox(
     width: 250,
     child: ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 150),
-      child: Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
-      const SizedBox(height: 12),
-      Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 3),
-      Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
-    ])))),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(padding: const EdgeInsets.all(18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
+            const SizedBox(height: 12),
+            Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
+          ])),
+        ),
+      ),
+    ),
   );
 }
 
