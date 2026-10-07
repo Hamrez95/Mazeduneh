@@ -225,7 +225,7 @@ if ($startAdmin) {
   $adminEnvironment = @{ DART_SUPPRESS_ANALYTICS = 'true' }
   $services.Add((Start-LocalService 'admin' $dartExecutable @(
     '--disable-dart-dev', $flutterSnapshot, 'run', '-d', 'web-server', '--web-hostname', '127.0.0.1', '--web-port', '8080',
-    '--target', 'lib/main.dart', '--dart-define=MAZEDUNEH_API_BASE_URL=http://127.0.0.1:5080'
+    '--target', 'lib/secure_main.dart', '--dart-define=MAZEDUNEH_API_BASE_URL=http://127.0.0.1:5080'
   ) $adminPath $adminEnvironment $AdminUrl))
 }
 

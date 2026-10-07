@@ -15,7 +15,7 @@
 | پنل → API | MAZEDUNEH_API_BASE_URL | هنگام build پنل با dart-define؛ عمومی |
 | آدرس‌های برند/پنل | NEXT_PUBLIC_SITE_URL و NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL | هنگام build فروشگاه؛ عمومی |
 
-نمونهٔ بدون اطلاعات واقعی در services/api/.env.example و apps/storefront/.env.example است. API دات‌نت فایل .env را خودکار نمی‌خواند؛ مقادیر باید در Environment یا secret manager میزبان تنظیم شوند. Dockerfile هر سرویس از پوشهٔ خود ساخته می‌شود. پنل اکنون lib/main.dart را می‌سازد؛ همان entry point فعال و تست‌شده در CI. lib/secure_main.dart یک پنل قدیمی‌تر است و مسیر انتشار فعلی نیست.
+نمونهٔ بدون اطلاعات واقعی در services/api/.env.example و apps/storefront/.env.example است. API دات‌نت فایل .env را خودکار نمی‌خواند؛ مقادیر باید در Environment یا secret manager میزبان تنظیم شوند. Dockerfile هر سرویس از پوشهٔ خود ساخته می‌شود. پنل اکنون lib/secure_main.dart را می‌سازد؛ همان entry point امن فعال و تست‌شده در CI.
 
 ## اطلاعاتی که پس از خرید سرویس وارد می‌شوند
 

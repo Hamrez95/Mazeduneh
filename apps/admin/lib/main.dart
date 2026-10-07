@@ -1,3 +1,4 @@
+import 'secure_main.dart' show MazedunehSecureAdminApp;
 import 'inventory_pricing_dialog.dart';
 import 'inventory_receipt_dialog.dart';
 import 'dart:convert';
@@ -26,17 +27,9 @@ export 'admin_theme.dart' show AdminColors;
 
 void main() => runApp(const MazedunehAdminApp());
 
-class MazedunehAdminApp extends StatelessWidget {
+// Compatibility name for existing launchers. Demo entry points are separate.
+class MazedunehAdminApp extends MazedunehSecureAdminApp {
   const MazedunehAdminApp({super.key});
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'مدیریت مزه‌دونه',
-        locale: const Locale('fa'),
-        theme: buildAdminTheme(),
-        home: const Directionality(textDirection: TextDirection.rtl, child: AdminShell()),
-      );
 }
 
 class AdminShell extends StatefulWidget {

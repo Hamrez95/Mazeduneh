@@ -1,6 +1,6 @@
 # Local Admin and Storefront share one catalog
 
-Run `pwsh -File ./scripts/dev.ps1` from the root. Storefront 3000 and active Admin (`lib/main.dart`) 8080 read/write the API on 5080. The launcher previously forced an independent storefront preview and started legacy secure_main; both mismatches are removed. No cloud deployment or data deletion occurs.
+Run `pwsh -File ./scripts/dev.ps1` from the root. Storefront 3000 and active Admin (`lib/secure_main.dart`) 8080 read/write the API on 5080. The launcher and CI both use the secure entry point with session validation and the shared theme. No cloud deployment or data deletion occurs.
 
 Admin → Products → edit title, price, images/specifications, description or publication → Save → reload the storefront or return focus to its tab. Home, Shop, header/footer category links and related products read the shared CatalogProvider. Published products with zero stock remain visible and cannot be added. Draft products are excluded by the public API. The public no-API preview preserves its sample presentation.
 

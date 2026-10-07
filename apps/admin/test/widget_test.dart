@@ -9,7 +9,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const MazedunehAdminApp());
+    await tester.pumpWidget(const MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminShell())));
     await tester.pump();
 
     expect(find.text('مدیریت مزه‌دونه'), findsOneWidget);
