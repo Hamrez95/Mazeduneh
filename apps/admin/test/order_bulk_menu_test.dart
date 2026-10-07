@@ -19,6 +19,10 @@ void main() {
   tearDown(OwnerSession.instance.clear);
 
   testWidgets('bulk order menu opens and submits the selected transition', (tester) async {
+    tester.view.physicalSize = const Size(1280, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     var bulkBody = <String, dynamic>{};
     var listRequests = 0;
     final client = MockClient((request) async {
