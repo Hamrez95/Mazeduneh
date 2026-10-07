@@ -20,8 +20,10 @@ void main() {
 
   testWidgets('consent chips filter the customer list through the admin API', (tester) async {
     final consentFilters = <String?>[];
+    final searchQueries = <String?>[];
     final client = MockClient((request) async {
       consentFilters.add(request.url.queryParameters['marketingConsent']);
+      searchQueries.add(request.url.queryParameters['q']);
       return http.Response(jsonEncode([]), 200,
           headers: {'content-type': 'application/json; charset=utf-8'});
     });
@@ -47,6 +49,12 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'همه'));
     await tester.pumpAndSettle();
     expect(consentFilters, [null, 'true', 'false', null]);
+
+    await tester.enterText(find.byType(TextField), 'مینا');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(searchQueries.last, 'مینا');
+    expect(consentFilters.last, isNull);
     expect(tester.takeException(), isNull);
   });
 }
