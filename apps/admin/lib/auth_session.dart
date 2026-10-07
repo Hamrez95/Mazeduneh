@@ -7,7 +7,6 @@ class OwnerSession {
 
   final StreamController<bool> _changes = StreamController<bool>.broadcast();
   String? _accessToken;
-  Timer? _expiryTimer;
   int revision = 0;
   DateTime? _expiresAt;
   String? _email;
@@ -17,6 +16,7 @@ class OwnerSession {
 
   Stream<bool> get changes => _changes.stream;
   String? get email => _email;
+  DateTime? get expiresAt => _expiresAt;
   String? get role => _role;
   String get storeId => _storeId;
   List<String> get permissions => List.unmodifiable(_permissions);
@@ -47,7 +47,6 @@ class OwnerSession {
     List<String> permissions = const [],
     String storeId = 'default',
   }) {
-    _expiryTimer?.cancel();
     revision++;
     _accessToken = accessToken;
     _expiresAt = expiresAt.toUtc();
@@ -57,8 +56,6 @@ class OwnerSession {
     _permissions = List.unmodifiable(
       permissions.where((item) => item.trim().isNotEmpty),
     );
-    final duration = _expiresAt!.difference(DateTime.now().toUtc());
-    _expiryTimer = Timer(duration.isNegative ? Duration.zero : duration, clear);
     _changes.add(true);
   }
 
@@ -77,8 +74,6 @@ class OwnerSession {
 
   void clear() {
     revision++;
-    _expiryTimer?.cancel();
-    _expiryTimer = null;
     final hadSession =
         _accessToken != null ||
         _expiresAt != null ||

@@ -24,6 +24,7 @@ class AdminAuthGate extends StatefulWidget {
 class _AdminAuthGateState extends State<AdminAuthGate> {
   late final AuthApiClient api = widget.api ?? AuthApiClient();
   StreamSubscription<bool>? subscription;
+  Timer? expiryTimer;
   String? invitationToken;
   String? validatedToken;
   String? validatingToken;
@@ -41,12 +42,22 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
         validatingToken = null;
       }
       setState(() {});
+      _scheduleExpiry();
       _validateSession();
     });
     invitationToken = _readInvitationToken(
       (widget.initialUri ?? Uri.base).fragment,
     );
+    _scheduleExpiry();
     _validateSession();
+  }
+
+  void _scheduleExpiry() {
+    expiryTimer?.cancel();
+    final expiry = OwnerSession.instance.expiresAt;
+    if (expiry == null) return;
+    final duration = expiry.difference(DateTime.now().toUtc());
+    expiryTimer = Timer(duration.isNegative ? Duration.zero : duration, OwnerSession.instance.clear);
   }
 
   Future<void> _validateSession() async {
@@ -81,6 +92,7 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
   void dispose() {
     validationGeneration++;
     subscription?.cancel();
+    expiryTimer?.cancel();
     super.dispose();
   }
 
@@ -101,7 +113,7 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
       );
     }
     final token = invitationToken;
-    return Directionality(
+    return Overlay.wrap(child: Directionality(
       textDirection: TextDirection.rtl,
       child: token == null
           ? _AdminLoginPage(api: api, initialError: sessionError)
@@ -110,7 +122,7 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
               token: token,
               onAccepted: () => setState(() => invitationToken = null),
             ),
-    );
+    ));
   }
 
   String? _readInvitationToken(String fragment) {
