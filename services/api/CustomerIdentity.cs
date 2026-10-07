@@ -33,6 +33,7 @@ public static class CustomerIdentityModule
                 bool? marketingConsent,
                 int? limit,
                 CustomerIdentityDatabase database,
+                HttpContext context,
                 CancellationToken cancellationToken) =>
         {
             if (q?.Length > 120)
@@ -45,8 +46,9 @@ public static class CustomerIdentityModule
             }
 
             var builder = new StringBuilder("\uFEFFشناسه مشتری,نام,موبایل,تعداد سفارش,رضایت ارتباطی,اولین ثبت,آخرین فعالیت\n");
-            foreach (var customer in rows)
+            foreach (var row in rows)
             {
+                var customer = CanReadPii(context) ? row : MaskPii(row);
                 builder.Append(string.Join(',', new[]
                 {
                     Csv(customer.Id),
