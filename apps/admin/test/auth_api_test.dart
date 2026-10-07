@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,17 @@ void main() {
 
   test('login establishes an in-memory owner session', () async {
     final client = MockClient((request) async {
+      if (request.url.path.endsWith('/session')) {
+        expect(OwnerSession.instance.isAuthenticated, isFalse);
+        return http.Response(
+          jsonEncode({
+            'authenticated': true,
+            'role': 'Owner',
+            'permissions': ['orders.read', 'products.write'],
+          }),
+          200,
+        );
+      }
       expect(request.url.path, '/api/v1/admin/auth/login');
       expect(request.method, 'POST');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -20,7 +32,10 @@ void main() {
       return http.Response(
         jsonEncode({
           'accessToken': 'signed-token',
-          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),
+          'expiresAt': DateTime.now()
+              .toUtc()
+              .add(const Duration(minutes: 10))
+              .toIso8601String(),
           'email': 'owner@example.com',
           'role': 'Owner',
           'permissions': ['orders.read', 'products.write'],
@@ -30,10 +45,10 @@ void main() {
       );
     });
 
-    await AuthApiClient(client: client, baseUrl: 'https://api.example.com').login(
-      email: 'owner@example.com',
-      password: 'secret',
-    );
+    await AuthApiClient(
+      client: client,
+      baseUrl: 'https://api.example.com',
+    ).login(email: 'owner@example.com', password: 'secret');
 
     expect(OwnerSession.instance.isAuthenticated, isTrue);
     expect(OwnerSession.instance.bearerToken, 'signed-token');
@@ -43,28 +58,43 @@ void main() {
     expect(OwnerSession.instance.permissions, contains('products.write'));
   });
 
-  test('session validation refreshes role and permissions from the server', () async {
-    OwnerSession.instance.establish(
-      accessToken: 'signed-token',
-      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
-      email: 'owner@example.com',
-      role: 'StoreManager',
-    );
-    final client = MockClient((request) async {
-      expect(request.url.path, '/api/v1/admin/auth/session');
-      return http.Response(
-        jsonEncode({'authenticated': true, 'email': 'owner@example.com', 'role': 'StoreManager', 'permissions': ['orders.read'], 'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String()}),
-        200,
-        headers: {'content-type': 'application/json'},
+  test(
+    'session validation refreshes role and permissions from the server',
+    () async {
+      OwnerSession.instance.establish(
+        accessToken: 'signed-token',
+        expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+        email: 'owner@example.com',
+        role: 'StoreManager',
       );
-    });
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/v1/admin/auth/session');
+        return http.Response(
+          jsonEncode({
+            'authenticated': true,
+            'email': 'owner@example.com',
+            'role': 'StoreManager',
+            'permissions': ['orders.read'],
+            'expiresAt': DateTime.now()
+                .toUtc()
+                .add(const Duration(minutes: 10))
+                .toIso8601String(),
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
 
-    await AuthApiClient(client: client, baseUrl: 'https://api.example.com').validateSession();
+      await AuthApiClient(
+        client: client,
+        baseUrl: 'https://api.example.com',
+      ).validateSession();
 
-    expect(OwnerSession.instance.role, 'StoreManager');
-    expect(OwnerSession.instance.can('orders.read'), isTrue);
-    expect(OwnerSession.instance.can('products.write'), isFalse);
-  });
+      expect(OwnerSession.instance.role, 'StoreManager');
+      expect(OwnerSession.instance.can('orders.read'), isTrue);
+      expect(OwnerSession.instance.can('products.write'), isFalse);
+    },
+  );
 
   test('admin catalog request sends bearer token', () async {
     OwnerSession.instance.establish(
@@ -74,10 +104,17 @@ void main() {
     );
     final client = MockClient((request) async {
       expect(request.headers['authorization'], 'Bearer admin-token');
-      return http.Response('[]', 200, headers: {'content-type': 'application/json'});
+      return http.Response(
+        '[]',
+        200,
+        headers: {'content-type': 'application/json'},
+      );
     });
 
-    final products = await CatalogApiClient(client: client, baseUrl: 'https://api.example.com').fetchProducts();
+    final products = await CatalogApiClient(
+      client: client,
+      baseUrl: 'https://api.example.com',
+    ).fetchProducts();
     expect(products, isEmpty);
   });
 
@@ -90,8 +127,17 @@ void main() {
     final client = MockClient((request) async => http.Response('{}', 401));
 
     await expectLater(
-      CatalogApiClient(client: client, baseUrl: 'https://api.example.com').fetchProducts(),
-      throwsA(isA<CatalogApiException>().having((error) => error.statusCode, 'statusCode', 401)),
+      CatalogApiClient(
+        client: client,
+        baseUrl: 'https://api.example.com',
+      ).fetchProducts(),
+      throwsA(
+        isA<CatalogApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
     );
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
@@ -99,8 +145,39 @@ void main() {
   test('rate limited login has a safe Persian message', () async {
     final client = MockClient((request) async => http.Response('{}', 429));
     await expectLater(
-      AuthApiClient(client: client, baseUrl: 'https://api.example.com').login(email: 'owner@example.com', password: 'secret'),
-      throwsA(isA<AuthApiException>().having((error) => error.message, 'message', contains('کمی بعد'))),
+      AuthApiClient(
+        client: client,
+        baseUrl: 'https://api.example.com',
+      ).login(email: 'owner@example.com', password: 'secret'),
+      throwsA(
+        isA<AuthApiException>().having(
+          (error) => error.message,
+          'message',
+          contains('کمی بعد'),
+        ),
+      ),
     );
   });
+  test('logout clears immediately and a delayed response cannot erase a new session', () async {
+    OwnerSession.instance.establish(accessToken: 'old-token', expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)), email: 'old@example.test');
+    final response = Completer<http.Response>();
+    final future = AuthApiClient(client: MockClient((request) async {
+      expect(request.headers['authorization'], 'Bearer old-token');
+      return response.future;
+    })).logout();
+    expect(OwnerSession.instance.isAuthenticated, isFalse);
+    OwnerSession.instance.establish(accessToken: 'new-token', expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)), email: 'new@example.test');
+    response.complete(http.Response('', 204));
+    await future;
+    expect(OwnerSession.instance.bearerToken, 'new-token');
+  });
+
+  test('an authenticated false session response cannot establish credentials', () async {
+    final api = AuthApiClient(client: MockClient((request) async => request.url.path.endsWith('/login')
+      ? http.Response(jsonEncode({'accessToken': 'provisional', 'expiresAt': DateTime.now().toUtc().add(const Duration(hours: 1)).toIso8601String()}), 200)
+      : http.Response('{"authenticated":false}', 200)));
+    await expectLater(api.login(email: 'owner@example.test', password: 'test-password'), throwsA(isA<AuthApiException>()));
+    expect(OwnerSession.instance.bearerToken, isNull);
+  });
+
 }

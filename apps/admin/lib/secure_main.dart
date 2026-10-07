@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'admin_auth_gate.dart';
+import 'admin_theme.dart';
 import 'auth_api.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
@@ -14,200 +16,53 @@ import 'main.dart' show AdminShell, NotificationsPage, ReportsPage;
 
 void main() => runApp(const MazedunehSecureAdminApp());
 
-class MazedunehSecureAdminApp extends StatelessWidget {
-  const MazedunehSecureAdminApp({super.key});
+class MazedunehSecureAdminApp extends StatefulWidget {
+  const MazedunehSecureAdminApp({super.key, this.authApi, this.initialUri, this.child});
 
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'مدیریت مزه‌دونه',
-        locale: const Locale('fa'),
-        theme: ThemeData(
-          useMaterial3: true,
-          fontFamily: 'Vazirmatn',
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3F6B45)),
-          scaffoldBackgroundColor: const Color(0xFFF6F8F4),
-          cardTheme: const CardThemeData(
-            elevation: 0,
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(20)),
-              side: BorderSide(color: Color(0xFFE0E8DE)),
-            ),
-          ),
-          inputDecorationTheme: const InputDecorationTheme(
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-          ),
-        ),
-        home: const Directionality(textDirection: TextDirection.rtl, child: OwnerAuthGate()),
-      );
-}
-
-class OwnerAuthGate extends StatefulWidget {
-  const OwnerAuthGate({super.key, this.authApi});
   final AuthApiClient? authApi;
+  final Uri? initialUri;
+  final Widget? child;
 
   @override
-  State<OwnerAuthGate> createState() => _OwnerAuthGateState();
+  State<MazedunehSecureAdminApp> createState() => _MazedunehSecureAdminAppState();
 }
 
-class _OwnerAuthGateState extends State<OwnerAuthGate> {
-  late final StreamSubscription<bool> subscription;
+class _MazedunehSecureAdminAppState extends State<MazedunehSecureAdminApp> {
+  GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  int revision = OwnerSession.instance.revision;
+  StreamSubscription<bool>? subscription;
 
   @override
   void initState() {
     super.initState();
     subscription = OwnerSession.instance.changes.listen((_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {
+        if (revision != OwnerSession.instance.revision) {
+          revision = OwnerSession.instance.revision;
+          navigatorKey = GlobalKey<NavigatorState>();
+        }
+      });
     });
   }
 
   @override
   void dispose() {
-    subscription.cancel();
+    subscription?.cancel();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => OwnerSession.instance.isAuthenticated
-      ? const AdminShell()
-      : OwnerLoginPage(api: widget.authApi);
-}
-
-class OwnerLoginPage extends StatefulWidget {
-  const OwnerLoginPage({super.key, this.api});
-  final AuthApiClient? api;
-
-  @override
-  State<OwnerLoginPage> createState() => _OwnerLoginPageState();
-}
-
-class _OwnerLoginPageState extends State<OwnerLoginPage> {
-  late final AuthApiClient api = widget.api ?? AuthApiClient();
-  final formKey = GlobalKey<FormState>();
-  final email = TextEditingController(text: 'Hamidrezapakpour95@gmail.com');
-  final password = TextEditingController();
-  bool submitting = false;
-  bool obscure = true;
-  String? error;
-
-  @override
-  void dispose() {
-    email.dispose();
-    password.dispose();
-    super.dispose();
-  }
-
-  Future<void> submit() async {
-    if (!formKey.currentState!.validate()) return;
-    setState(() {
-      submitting = true;
-      error = null;
-    });
-    try {
-      await api.login(email: email.text.trim(), password: password.text);
-    } catch (exception) {
-      if (mounted) setState(() => error = exception.toString());
-    } finally {
-      if (mounted) setState(() => submitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(28),
-                  child: Form(
-                    key: formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Align(alignment: Alignment.center, child: BrandMark()),
-                        const SizedBox(height: 20),
-                        Text(
-                          'ورود مدیر مزه‌دونه',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'مدیریت محصولات، سفارش‌ها و موجودی',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                        const SizedBox(height: 24),
-                        TextFormField(
-                          controller: email,
-                          keyboardType: TextInputType.emailAddress,
-                          autofillHints: const [AutofillHints.username],
-                          decoration: const InputDecoration(
-                            labelText: 'ایمیل مدیر',
-                            prefixIcon: Icon(Icons.alternate_email_rounded),
-                          ),
-                          validator: (value) => value == null || !value.contains('@') ? 'ایمیل معتبر وارد کنید.' : null,
-                        ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          controller: password,
-                          obscureText: obscure,
-                          autofillHints: const [AutofillHints.password],
-                          onFieldSubmitted: (_) => submitting ? null : submit(),
-                          decoration: InputDecoration(
-                            labelText: 'رمز عبور',
-                            prefixIcon: const Icon(Icons.lock_outline_rounded),
-                            suffixIcon: IconButton(
-                              onPressed: () => setState(() => obscure = !obscure),
-                              icon: Icon(obscure ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                            ),
-                          ),
-                          validator: (value) => value == null || value.isEmpty ? 'رمز عبور را وارد کنید.' : null,
-                        ),
-                        if (error != null) ...[
-                          const SizedBox(height: 14),
-                          Semantics(
-                            liveRegion: true,
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFECE8),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(error!, style: const TextStyle(color: Color(0xFF9A3E36))),
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        FilledButton.icon(
-                          onPressed: submitting ? null : submit,
-                          icon: submitting
-                              ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.login_rounded),
-                          label: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 13),
-                            child: Text('ورود امن'),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'رمز و توکن داخل کد یا آدرس صفحه ذخیره نمی‌شوند.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 10, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'مدیریت مزه‌دونه',
+        navigatorKey: navigatorKey,
+        locale: const Locale('fa'),
+        theme: buildAdminTheme(),
+        home: widget.child ?? const AdminShell(),
+        builder: (_, navigator) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: AdminAuthGate(api: widget.authApi, initialUri: widget.initialUri, child: navigator!),
         ),
       );
 }
