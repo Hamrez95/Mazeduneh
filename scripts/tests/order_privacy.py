@@ -90,10 +90,22 @@ with tempfile.TemporaryFile() as log:
             headers={'Idempotency-Key': 'ci-order-privacy-0001'})
         assert status == 201, (status, created)
         order_id = created['id']
+        _, second = request('/api/v1/checkout/orders', 'POST', {
+            'customerName': NAME, 'mobile': MOBILE, 'province': 'تهران', 'city': 'تهران',
+            'address': ADDRESS, 'postalCode': '1234567890', 'lines': [{'sku': SKU, 'quantity': 1}]},
+            headers={'Idempotency-Key': 'ci-order-privacy-0002'})
+        _, intent = request('/api/v1/payments/orders/' + order_id + '/intent', 'POST', {'receiptToken': created['receiptToken']})
+        assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
         path = '/api/v1/admin/orders/' + order_id
         assert request(path + '/notes', 'POST', {'note': MOBILE + ' ' + ADDRESS}, token)[0] == 201
         assert request(path + '/shipping', 'PATCH', {'carrier': 'PrivacyFixtureCarrier',
             'trackingCode': 'PrivacyFixtureTracking', 'actualShippingCost': 100, 'reason': MOBILE}, token)[0] == 200
+        for state in ['Preparing', 'Shipped']:
+            assert request(path + '/state', 'PATCH', {'state': state, 'reason': MOBILE}, token)[0] == 200
+        subprocess.run(['dotnet', 'run', '--project', 'services/api.tests/Mazeduneh.Api.Tests.csproj',
+                        '--configuration', 'Release', '--', '--backdate-privacy-shipment', order_id],
+                       cwd=ROOT, env=dict(os.environ, MAZEDUNEH_TEST_FIXTURES='true'), check=True)
+        assert any(row['id'] == order_id for row in request('/api/v1/admin/shipping/overdue', token=token)[1])
         for endpoint in [path + '/invoice', path + '/packing-slip']:
             status, html = request(endpoint, token=token)
             assert status == 200 and NAME in html and ADDRESS in html and MOBILE in html
@@ -106,7 +118,8 @@ with tempfile.TemporaryFile() as log:
 
     for permissions in ['orders.read', 'orders.read,orders.export',
                         'orders.read,orders.export,orders.documents.read', 'orders.export',
-                        'orders.read,customers.pii.read', 'dashboard.read']:
+                        'orders.read,customers.pii.read', 'orders.documents.read,customers.pii.read',
+                        'dashboard.read', 'orders.read,orders.write']:
         api, token = start_api(permissions)
         try:
             can_read = 'orders.read' in permissions.split(',')
@@ -125,6 +138,7 @@ with tempfile.TemporaryFile() as log:
                 assert request('/api/v1/admin/orders/' + '00000000-0000-0000-0000-000000000001', token=token)[0] == 404
             for suffix in ['/invoice', '/packing-slip', '/invoice/', '/packing-slip/']:
                 assert request(path + suffix, token=token)[0] == 403
+            assert request('/api/v1/admin/orders/export.csv/?q=' + order_id, token=token)[0] == (200 if can_read and 'orders.export' in permissions.split(',') else 403)
             status, csv = request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token)
             assert status == (200 if can_read and 'orders.export' in permissions.split(',') else 403)
             if status == 200 and not can_pii:
@@ -134,6 +148,21 @@ with tempfile.TemporaryFile() as log:
             assert status == (200 if can_read else 403)
             if not can_pii:
                 assert_private(overdue)
+            if can_read:
+                assert any(row['id'] == order_id for row in overdue), 'Nonempty overdue fixture missing'
+            if 'orders.write' in permissions.split(','):
+                status, note = request(path + '/notes', 'POST', {'note': ADDRESS}, token)
+                assert status == 201
+                assert_private(note)
+                status, shipping = request(path + '/shipping', 'PATCH', {'carrier': NAME, 'trackingCode': MOBILE, 'reason': ADDRESS}, token)
+                assert status == 200
+                assert_private(shipping)
+                status, changed = request(path + '/state', 'PATCH', {'state': 'Delivered', 'reason': MOBILE}, token)
+                assert status == 200
+                assert_private(changed)
+                status, bulk = request('/api/v1/admin/orders/bulk-state', 'POST', {'orderIds': [second['id']], 'state': 'Cancelled', 'reason': ADDRESS}, token)
+                assert status == 200 and len(bulk['updated']) == 1
+                assert_private(bulk)
         finally:
             stop_api(api)
 

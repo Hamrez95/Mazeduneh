@@ -222,7 +222,7 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
             ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead, CorporateRead],
             ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersPiiRead],
             ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, PricingRead],

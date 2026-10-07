@@ -1,3 +1,4 @@
+using Npgsql;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -49,3 +50,15 @@ Check(!AdminPermissionCatalog.AllowsOrderOutput(privacyContext, (AdminPrincipal)
 privacyContext.Items["AdminPrincipal"] = new AdminPrincipal("owner@example.test", now.AddHours(1), "Owner", [], Guid.NewGuid(), null, "default");
 Check(OrderPrivacy.Project(orderDetail, privacyContext) == orderDetail, "Authorized projection changed customer details");
 Console.WriteLine("Order contact privacy and output permission unit checks passed");
+
+// Test-only fixture: backdate only the explicitly created privacy-test shipment.
+if (args.Length == 2 && args[0] == "--backdate-privacy-shipment")
+{
+    Check(Environment.GetEnvironmentVariable("MAZEDUNEH_TEST_FIXTURES") == "true", "Fixture mutation disabled");
+    Check(Guid.TryParse(args[1], out var fixtureOrderId), "Invalid fixture order id");
+    await using var fixtureConnection = new NpgsqlConnection(Environment.GetEnvironmentVariable("ConnectionStrings__Catalog"));
+    await fixtureConnection.OpenAsync();
+    await using var fixtureCommand = new NpgsqlCommand("update checkout_orders set shipped_at=now()-interval '5 days' where id=@id and state='Shipped' and customer_name='PrivacyFixtureCustomer'", fixtureConnection);
+    fixtureCommand.Parameters.AddWithValue("id", fixtureOrderId);
+    Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly the privacy fixture shipment");
+}
