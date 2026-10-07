@@ -505,6 +505,14 @@ jobs:
           assert customer['normalizedMobile'] == ''
           assert customer['addresses'] == []
           PY
+          curl -fsS "http://127.0.0.1:5100/api/v1/admin/customers/export.csv?q=09120000000" \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-customers.csv
+          python3 - <<'PY'
+          content = open('/tmp/read-only-customers.csv', encoding='utf-8-sig').read()
+          assert 'مخفی بر اساس نقش' in content
+          assert '09120000000' not in content
+          assert 'تست CI' not in content
+          PY
           curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
             -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
           ROLE_FORBIDDEN_STATUS=$(curl -s -o /tmp/read-only-forbidden.json -w '%{http_code}' -X POST http://127.0.0.1:5100/api/v1/admin/inventory/adjust \
