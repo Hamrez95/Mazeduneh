@@ -43,7 +43,10 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
       error = null;
     });
     try {
-      final result = await api.fetchCustomers(marketingConsent: marketingConsentFilter);
+      final result = await api.fetchCustomers(
+        query: searchController.text.trim(),
+        marketingConsent: marketingConsentFilter,
+      );
       if (mounted) {
         setState(() {
           customers = result;
@@ -156,9 +159,15 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
               TextField(
                 controller: searchController,
                 textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search_rounded),
+                onSubmitted: (_) => load(),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search_rounded),
                   hintText: 'جست‌وجو با نام یا شماره موبایل',
+                  suffixIcon: IconButton(
+                    onPressed: load,
+                    tooltip: 'جست‌وجو',
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
