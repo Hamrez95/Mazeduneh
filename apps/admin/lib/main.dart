@@ -1260,6 +1260,7 @@ class _OrdersPageState extends State<OrdersPage> {
                   load();
                 },
               ),
+              if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(AdminPermissions.ordersExport))
               FilledButton.tonalIcon(
                 onPressed: exporting ? null : exportCsv,
                 icon: exporting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.file_download_outlined),
@@ -1601,6 +1602,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('سفارش ${detail.order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
             Chip(label: Text(_stateLabel(detail.order.state)), backgroundColor: AdminColors.mintSoft),
+            if (!OwnerSession.instance.isAuthenticated || (OwnerSession.instance.can(AdminPermissions.ordersDocumentsRead) && OwnerSession.instance.can(AdminPermissions.customersPiiRead)))
             FilledButton.tonalIcon(
               onPressed: openingPackingSlip ? null : openPackingSlip,
               icon: openingPackingSlip ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.inventory_2_outlined),

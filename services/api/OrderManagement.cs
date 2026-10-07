@@ -20,13 +20,15 @@ public static class OrderManagementModule
             string? q,
             int? limit,
             OrderManagementDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            return Results.Ok(await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken));
+            var rows = await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken, CustomerPrivacy.CanReadPii(context));
+            return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/orders/export.csv", async (
@@ -34,33 +36,38 @@ public static class OrderManagementModule
             string? q,
             int? limit,
             OrderManagementDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var orders = await database.ListAsync(state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken);
+            var orders = await database.ListAsync(state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken, CustomerPrivacy.CanReadPii(context));
             static string Csv(object? value)
             {
                 var text = value?.ToString() ?? string.Empty;
                 return $"\"{text.Replace("\"", "\"\"")}\"";
             }
             var builder = new StringBuilder("\uFEFFشناسه سفارش,مشتری,موبایل,شهر,وضعیت,مبلغ,ارز,تعداد اقلام,زمان ثبت,وضعیت پرداخت,شناسه پرداخت\n");
-            foreach (var order in orders)
+            foreach (var rawOrder in orders)
+            {
+                var order = OrderPrivacy.Project(rawOrder, context);
                 builder.AppendJoin(',', new[] { Csv(order.Id), Csv(order.CustomerName), Csv(order.Mobile), Csv($"{order.Province}، {order.City}"),
                     Csv(order.State), Csv(order.Payable.ToString("0.##")), Csv(order.Currency), Csv(order.LineCount),
                     Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
+            }
             return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-orders.csv");
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
             OrderManagementDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             var detail = await database.GetDetailAsync(orderId, cancellationToken);
-            return detail is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(detail);
+            return detail is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(OrderPrivacy.Project(detail, context));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/orders/{orderId:guid}/invoice", async (
@@ -98,7 +105,7 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(input.Note)] = ["یادداشت باید بین ۱ تا ۲۰۰۰ نویسه باشد."] });
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
             var note = await database.AddNoteAsync(orderId, input.Note, actor, cancellationToken);
-            return note is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", note);
+            return note is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", OrderPrivacy.Project(note, context));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapPatch("/orders/{orderId:guid}/shipping", async (
@@ -120,7 +127,7 @@ public static class OrderManagementModule
             if (principal is null) return Results.Unauthorized();
             var updated = await database.UpdateShippingAsync(
                 orderId, input, principal.Email, context.TraceIdentifier, audit, cancellationToken);
-            return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(updated);
+            return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(OrderPrivacy.Project(updated, context));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/dashboard", async (
@@ -190,12 +197,14 @@ public static class OrderManagementModule
         admin.MapGet("/shipping/overdue", async (
             int? days,
             OrderManagementDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             var windowDays = days ?? 3;
             if (windowDays is < 1 or > 60)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["بازه تأخیر باید بین ۱ تا ۶۰ روز باشد."] });
-            return Results.Ok(await database.ListOverdueShipmentsAsync(windowDays, cancellationToken));
+            var rows = await database.ListOverdueShipmentsAsync(windowDays, cancellationToken);
+            return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapPatch("/orders/{orderId:guid}/state", async (
@@ -217,7 +226,7 @@ public static class OrderManagementModule
 
             return result.Status switch
             {
-                OrderOperationStatus.Updated => Results.Ok(result.Order),
+                OrderOperationStatus.Updated => Results.Ok(result.Order is null ? null : OrderPrivacy.Project(result.Order, context)),
                 OrderOperationStatus.NotFound => Results.NotFound(new { message = result.Message }),
                 _ => Results.Conflict(new { message = result.Message })
             };
@@ -248,7 +257,7 @@ public static class OrderManagementModule
                 var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, context.TraceIdentifier, audit, cancellationToken);
                 if (result.Status == OrderOperationStatus.Updated && result.Order is not null)
                 {
-                    updated.Add(result.Order);
+                    updated.Add(OrderPrivacy.Project(result.Order, context));
                     if (result.StockLevels is not null)
                         foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
                 }
@@ -307,7 +316,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         string? state,
         string? query,
         int limit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool allowContactSearch = true)
     {
         if (!IsConfigured) return Array.Empty<AdminOrderSummary>();
         const string sql = """
@@ -319,9 +329,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             left join payments p on p.order_id=o.id
             where (@state = '' or lower(o.state)=lower(@state))
               and (@query = '' or o.id::text ilike '%' || @query || '%'
-                   or o.customer_name ilike '%' || @query || '%'
+                   or (@contact_search and (o.customer_name ilike '%' || @query || '%'
                    or o.mobile ilike '%' || @query || '%'
-                   or o.city ilike '%' || @query || '%')
+                   or o.city ilike '%' || @query || '%')))
             group by o.id,p.reference,p.state
             order by o.created_at desc
             limit @limit;
@@ -332,6 +342,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         command.Parameters.AddWithValue("state", state?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("limit", limit);
+        command.Parameters.AddWithValue("contact_search", allowContactSearch);
         var result = new List<AdminOrderSummary>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

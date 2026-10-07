@@ -76,14 +76,12 @@ public static class CustomerIdentityModule
         return endpoints;
     }
 
-    private static bool CanReadPii(HttpContext context) =>
-        context.Items["AdminPrincipal"] is AdminPrincipal principal &&
-        AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CustomersPiiRead);
+    private static bool CanReadPii(HttpContext context) => CustomerPrivacy.CanReadPii(context);
 
     private static CustomerSummary MaskPii(CustomerSummary customer) => customer with
     {
-        FullName = $"مشتری {customer.Id.ToString("N")[..6]}",
-        Mobile = "مخفی بر اساس نقش",
+        FullName = CustomerPrivacy.AnonymousName(customer.Id),
+        Mobile = CustomerPrivacy.Hidden,
         NormalizedMobile = string.Empty,
         Addresses = Array.Empty<CustomerAddressSummary>()
     };

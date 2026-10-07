@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var now = DateTimeOffset.UtcNow;
 var valid = new InventoryBatchRequest("SKU", "receipt", 2, now.AddDays(-2), now.AddDays(100), 100, 20, 5, now.AddDays(-1), "supplier");
@@ -27,3 +29,23 @@ Check(!InventoryPurchaseCursor.TryDecode("invalid", out _), "Malformed cursor ac
 Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray()), out _), "Null cursor accepted");
 Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
 Console.WriteLine("Purchase pagination cursor unit checks passed");
+
+var privacyContext = new DefaultHttpContext();
+privacyContext.Items["AdminPrincipal"] = new AdminPrincipal("analyst@example.test", now.AddHours(1), "ReadOnlyAnalyst", [AdminPermissionCatalog.OrdersRead], Guid.NewGuid(), null, "default");
+var summary = new AdminOrderSummary(Guid.NewGuid(), "PII name", "09120000199", "PII province", "PII city", 100, "IRR", OrderState.Shipped, now, now.AddHours(1), 1, "PII reference", "Paid");
+var orderDetail = new AdminOrderDetail(summary, "PII address", "1234567890", 100, 0, 0, 0, 0, 0, "standard", "PII carrier", "PII tracking", now,
+    [new AdminOrderLine("product", "SKU", "package", 1, 100, 100)],
+    [new AdminOrderTransition(OrderState.Shipped, "PII actor", now, "PII reason")],
+    [new AdminOrderNote(Guid.NewGuid(), "PII note", "PII actor", now)],
+    new AdminPayment("sandbox", 100, "IRR", PaymentState.Succeeded, "PII reference", now, now));
+var masked = OrderPrivacy.Project(orderDetail, privacyContext);
+Check(!JsonSerializer.Serialize(masked).Contains("PII") && masked.Lines.Count == 1 && masked.State == OrderState.Shipped, "Order projection leaked PII or lost operational data");
+var overdue = new AdminOverdueShipment(summary.Id, summary.CustomerName, summary.Mobile, summary.Province, summary.City, summary.Payable, summary.Currency, summary.State, now, now, 1, "PII carrier", "PII tracking", now, 3);
+Check(!JsonSerializer.Serialize(OrderPrivacy.Project(overdue, privacyContext)).Contains("PII"), "Overdue projection leaked PII");
+privacyContext.Request.Method = "GET";
+privacyContext.Request.Path = "/api/v1/admin/orders/" + summary.Id + "/invoice";
+Check(AdminPermissionCatalog.RequiredPermission(privacyContext) == AdminPermissionCatalog.OrdersDocumentsRead, "Invoice needs independent permission");
+Check(!AdminPermissionCatalog.AllowsOrderOutput(privacyContext, (AdminPrincipal)privacyContext.Items["AdminPrincipal"]!), "PII-free role received document permission");
+privacyContext.Items["AdminPrincipal"] = new AdminPrincipal("owner@example.test", now.AddHours(1), "Owner", [], Guid.NewGuid(), null, "default");
+Check(OrderPrivacy.Project(orderDetail, privacyContext) == orderDetail, "Authorized projection changed customer details");
+Console.WriteLine("Order contact privacy and output permission unit checks passed");
