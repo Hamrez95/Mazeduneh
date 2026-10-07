@@ -1472,6 +1472,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   final carrierController = TextEditingController();
   final trackingController = TextEditingController();
   final shippingExpenseController = TextEditingController();
+  final shippingReasonController = TextEditingController();
 
   @override
   void initState() {
@@ -1505,6 +1506,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
     carrierController.dispose();
     trackingController.dispose();
     shippingExpenseController.dispose();
+    shippingReasonController.dispose();
     super.dispose();
   }
 
@@ -1530,12 +1532,18 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هزینه واقعی ارسال را به‌صورت عدد معتبر وارد کنید.')));
       return;
     }
+    final reason = shippingReasonController.text.trim();
+    if (reason.isEmpty || reason.length > 500) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دلیل ثبت یا اصلاح اطلاعات ارسال را وارد کنید.')));
+      return;
+    }
     setState(() => savingShipping = true);
     try {
-      final result = await widget.api.updateShipping(widget.order.id, carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(), trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(), actualShippingCost: expense);
+      final result = await widget.api.updateShipping(widget.order.id, carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(), trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(), actualShippingCost: expense, reason: reason);
       if (mounted) {
         setState(() => detail = result);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اطلاعات ارسال ذخیره شد.')));
+        shippingReasonController.clear();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اطلاعات ارسال ذخیره و در سابقه سفارش ثبت شد.')));
       }
     } catch (exception) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
@@ -1613,6 +1621,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
               SizedBox(width: 220, child: TextField(controller: carrierController, decoration: const InputDecoration(labelText: 'شرکت حمل'))),
               SizedBox(width: 220, child: TextField(controller: trackingController, decoration: const InputDecoration(labelText: 'کد رهگیری'))),
               SizedBox(width: 220, child: TextField(controller: shippingExpenseController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال', suffixText: 'ریال'))),
+              SizedBox(width: 320, child: TextField(controller: shippingReasonController, maxLength: 500, decoration: const InputDecoration(labelText: 'دلیل ثبت یا اصلاح ارسال'))),
             ]),
             const SizedBox(height: 10),
             Row(children: [
