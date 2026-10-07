@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'admin_state.dart';
 import 'audit_log_api.dart';
 import 'formatters.dart';
-import 'main.dart' show AdminColors;
+import 'admin_theme.dart';
 
 class AuditLogPage extends StatefulWidget {
   const AuditLogPage({super.key, this.api});

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'admin_state.dart';
 import 'commerce_api.dart';
 import 'formatters.dart';
-import 'main.dart';
+import 'admin_theme.dart';
 
 class CommerceSettingsPage extends StatefulWidget {
   const CommerceSettingsPage({super.key, this.api});
