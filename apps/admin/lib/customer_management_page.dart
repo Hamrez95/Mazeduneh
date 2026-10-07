@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'admin_permissions.dart';
 import 'admin_state.dart';
+import 'auth_session.dart';
 import 'customer_api.dart';
 import 'formatters.dart';
 
@@ -139,7 +141,8 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      FilledButton.tonalIcon(
+                      if (OwnerSession.instance.can(AdminPermissions.customersExport))
+                        FilledButton.tonalIcon(
                         onPressed: exporting ? null : exportCsv,
                         icon: exporting
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
