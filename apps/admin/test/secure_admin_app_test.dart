@@ -271,6 +271,7 @@ void main() {
                       'message': 'دعوت معتبر نیست یا منقضی شده است.',
                     }),
               status,
+              headers: {'content-type': 'application/json; charset=utf-8'},
             );
           }),
           fragment: 'invite=fragment-test-token',
