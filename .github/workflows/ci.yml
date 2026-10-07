@@ -93,7 +93,7 @@ jobs:
             wait "$API_PID" || true
           }
           start_role_api() {
-            Admin__Role=ReadOnlyAnalyst dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5100 > /tmp/mazeduneh-role-api.log 2>&1 &
+            Admin__Role=${ADMIN_ROLE:-ReadOnlyAnalyst} dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5100 > /tmp/mazeduneh-role-api.log 2>&1 &
             ROLE_API_PID=$!
             export ROLE_API_PID
             for attempt in $(seq 1 40); do
@@ -457,6 +457,37 @@ jobs:
             -H "Authorization: Bearer ${ROLE_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"must-be-forbidden"}')
           test "${ROLE_FORBIDDEN_STATUS}" = "403"
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
+          python3 - <<'PY'
+          import json
+          dashboard = json.load(open('/tmp/read-only-dashboard.json', encoding='utf-8'))
+          assert dashboard['financialsVisible'] is True
+          PY
+          stop_role_api
+
+          ADMIN_ROLE=SalesOperator start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/sales-login.json
+          SALES_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/sales-login.json'))['accessToken'])")
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
+            -H "Authorization: Bearer ${SALES_TOKEN}" > /tmp/sales-dashboard.json
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/sales-login.json', encoding='utf-8'))
+          dashboard = json.load(open('/tmp/sales-dashboard.json', encoding='utf-8'))
+          assert login['role'] == 'SalesOperator'
+          assert 'dashboard.read' in login['permissions']
+          assert 'reports.read' not in login['permissions']
+          assert dashboard['financialsVisible'] is False
+          assert dashboard['paidRevenue'] == 0
+          assert dashboard['todayRevenue'] == 0
+          assert dashboard['periodRevenue'] == 0
+          assert dashboard['averageOrderValue'] == 0
+          PY
+          ANALYTICS_STATUS=$(curl -s -o /tmp/sales-analytics.json -w '%{http_code}' http://127.0.0.1:5100/api/v1/admin/analytics \
+            -H "Authorization: Bearer ${SALES_TOKEN}")
+          test "${ANALYTICS_STATUS}" = "403"
           stop_role_api
           start_api
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
