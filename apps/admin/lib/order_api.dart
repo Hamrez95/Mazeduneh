@@ -225,11 +225,11 @@ class OrderApiClient {
     return AdminOrderNote.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost}) async {
+  Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost, required String reason}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/shipping'),
       headers: _headers(json: true),
-      body: jsonEncode({'carrier': carrier, 'trackingCode': trackingCode, 'actualShippingCost': actualShippingCost}),
+      body: jsonEncode({'carrier': carrier, 'trackingCode': trackingCode, 'actualShippingCost': actualShippingCost, 'reason': reason}),
     );
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);

@@ -205,10 +205,10 @@ void main() {
         'trackingCode': 'TR-2', 'shippedAt': '2026-07-31T08:03:00Z', 'lines': [], 'transitions': [], 'notes': [], 'payment': null,
       }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
-    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').updateShipping('11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2', actualShippingCost: 45000);
+    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').updateShipping('11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2', actualShippingCost: 45000, reason: 'اصلاح کد رهگیری');
     expect(captured.method, 'PATCH');
     expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
-    expect(jsonDecode(captured.body), {'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000});
+    expect(jsonDecode(captured.body), {'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000, 'reason': 'اصلاح کد رهگیری'});
     expect(detail.trackingCode, 'TR-2');
   });
 

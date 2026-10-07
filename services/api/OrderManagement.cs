@@ -105,14 +105,21 @@ public static class OrderManagementModule
             Guid orderId,
             AdminShipmentUpdateInput input,
             OrderManagementDatabase database,
+            AdminAuditLogDatabase audit,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             var errors = new Dictionary<string, string[]>();
             if (input.Carrier is { Length: > 120 }) errors[nameof(input.Carrier)] = ["نام شرکت حمل نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
             if (input.TrackingCode is { Length: > 120 }) errors[nameof(input.TrackingCode)] = ["کد رهگیری نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
             if (input.ActualShippingCost is < 0 or > 1_000_000_000) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
+            if (string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Trim().Length > 500)
+                errors[nameof(input.Reason)] = ["دلیل ثبت یا اصلاح اطلاعات ارسال باید بین ۱ تا ۵۰۰ نویسه باشد."];
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var updated = await database.UpdateShippingAsync(orderId, input, cancellationToken);
+            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
+            if (principal is null) return Results.Unauthorized();
+            var updated = await database.UpdateShippingAsync(
+                orderId, input, principal.Email, context.TraceIdentifier, audit, cancellationToken);
             return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(updated);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -411,23 +418,69 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             : null;
     }
 
-    public async Task<AdminOrderDetail?> UpdateShippingAsync(Guid orderId, AdminShipmentUpdateInput input, CancellationToken cancellationToken)
+    public async Task<AdminOrderDetail?> UpdateShippingAsync(
+        Guid orderId,
+        AdminShipmentUpdateInput input,
+        string actor,
+        string requestId,
+        AdminAuditLogDatabase audit,
+        CancellationToken cancellationToken)
     {
         if (!IsConfigured) return null;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string beforeSql = """
+            select shipping_carrier,tracking_code,shipping_expense,shipped_at
+            from checkout_orders where id=@id for update;
+            """;
+        AdminShippingAuditSnapshot before;
+        await using (var command = new NpgsqlCommand(beforeSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+            before = new AdminShippingAuditSnapshot(
+                reader.IsDBNull(0) ? null : reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.GetDecimal(2),
+                reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3));
+        }
+
         const string sql = """
             update checkout_orders
             set shipping_carrier=@carrier, tracking_code=@tracking_code, shipping_expense=@expense,
                 shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
-            where id=@id;
+            where id=@id
+            returning shipped_at;
             """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("carrier", (object?)input.Carrier?.Trim() ?? DBNull.Value);
-        command.Parameters.AddWithValue("tracking_code", (object?)input.TrackingCode?.Trim() ?? DBNull.Value);
-        command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
-        command.Parameters.AddWithValue("id", orderId);
-        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0) return null;
+        DateTimeOffset? shippedAt;
+        await using (var command = new NpgsqlCommand(sql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("carrier", (object?)input.Carrier?.Trim() ?? DBNull.Value);
+            command.Parameters.AddWithValue("tracking_code", (object?)input.TrackingCode?.Trim() ?? DBNull.Value);
+            command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
+            command.Parameters.AddWithValue("id", orderId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
+                ? reader.GetFieldValue<DateTimeOffset>(0)
+                : null;
+        }
+
+        var after = new AdminShippingAuditSnapshot(
+            input.Carrier?.Trim(),
+            input.TrackingCode?.Trim(),
+            input.ActualShippingCost ?? 0m,
+            shippedAt);
+        await audit.RecordAsync(
+            connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
+            before, after, input.Reason!.Trim(), requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return await GetDetailAsync(orderId, cancellationToken);
     }
 
@@ -853,7 +906,8 @@ public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase dat
 public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
-public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost);
+public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost, string? Reason);
+public sealed record AdminShippingAuditSnapshot(string? carrier, string? trackingCode, decimal actualShippingCost, DateTimeOffset? shippedAt);
 public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
     int LineCount, string? ShippingCarrier, string? TrackingCode, DateTimeOffset ShippedAt, int DaysOverdue);

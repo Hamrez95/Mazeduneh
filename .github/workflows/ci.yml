@@ -383,6 +383,28 @@ jobs:
               -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
               --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" > "/tmp/order-${STATE}.json"
           done
+          
+          SHIPPING_INVALID_STATUS=$(curl -s -o /tmp/order-shipping-invalid.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000}')
+          test "${SHIPPING_INVALID_STATUS}" = "400"
+          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}' > /tmp/order-shipping.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/order-shipping-audit.json
+          python3 - <<'PY'
+          import json
+          audit = json.load(open('/tmp/order-shipping-audit.json', encoding='utf-8'))
+          event = next(item for item in audit if item['action'] == 'order.shipping-updated')
+          assert event['actor'] == 'ci-owner@mazeduneh.test'
+          assert event['beforeJson'] and event['afterJson']
+          assert event['reason'] == 'ci-shipment-audit'
+          assert json.loads(event['afterJson'])['trackingCode'] == 'CI-TRACK-1'
+          headers = open('/tmp/order-shipping.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
 
           curl -fsS http://127.0.0.1:5099/api/v1/admin/dashboard -H "Authorization: Bearer ${TOKEN}" > /tmp/dashboard.json
           python3 - <<'PY'
