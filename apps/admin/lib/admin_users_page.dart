@@ -5,7 +5,7 @@ import 'admin_state.dart';
 import 'admin_users_api.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
-import 'main.dart' show AdminColors;
+import 'admin_theme.dart';
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key, this.api});

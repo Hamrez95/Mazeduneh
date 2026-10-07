@@ -8,6 +8,7 @@ import 'auth_session.dart';
 import 'auth_api.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
+import 'admin_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog_api.dart';
@@ -21,16 +22,7 @@ import 'admin_users_page.dart';
 import 'notification_tile.dart';
 import 'package:file_picker/file_picker.dart';
 
-class AdminColors {
-  static const ink = Color(0xFF24463A);
-  static const inkDeep = Color(0xFF19352C);
-  static const mintSoft = Color(0xFFDDEFE5);
-  static const canvas = Color(0xFFF7F8F4);
-  static const border = Color(0xFFE3E8E1);
-  static const amber = Color(0xFFF2B866);
-  static const coral = Color(0xFFE8846B);
-  static const muted = Color(0xFF718078);
-}
+export 'admin_theme.dart' show AdminColors;
 
 void main() => runApp(const MazedunehAdminApp());
 

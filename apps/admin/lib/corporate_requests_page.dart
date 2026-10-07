@@ -7,7 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'admin_state.dart';
 import 'corporate_api.dart';
 import 'formatters.dart';
-import 'main.dart' show AdminColors;
+import 'admin_theme.dart';
 
 class CorporateRequestsPage extends StatefulWidget {
   const CorporateRequestsPage({super.key, this.api});
