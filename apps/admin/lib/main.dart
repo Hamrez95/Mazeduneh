@@ -245,6 +245,8 @@ class _DashboardPageState extends State<DashboardPage> {
     if (loading && dashboard == null) return const Center(child: CircularProgressIndicator());
     if (error != null && dashboard == null) return AdminErrorState(error: error!, onRetry: load);
     final data = dashboard!;
+    final session = OwnerSession.instance;
+    bool can(String permission) => !session.isAuthenticated || session.can(permission);
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -276,15 +278,17 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 14),
           Wrap(spacing: 14, runSpacing: 14, children: [
-            MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
-            MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8)),
-            MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9)),
-            MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
-            MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
-            MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
-            MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0)),
-            MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8)),
-            MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8)),
+            if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft),
+            if (can(AdminPermissions.ordersRead)) ...[
+              MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8)),
+              if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9)),
+              MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9)),
+              MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8)),
+              MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0)),
+              MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0)),
+            ],
+            if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8)),
+            if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8)),
           ]),
           const SizedBox(height: 24),
           const _DashboardSectionTitle(
@@ -311,7 +315,9 @@ class _DashboardPageState extends State<DashboardPage> {
               _DashboardPanel(
                 title: 'موجودی کم',
                 icon: Icons.warning_amber_rounded,
-                child: data.lowStock.isEmpty
+                child: !can(AdminPermissions.inventoryRead)
+                    ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده هشدارهای موجودی، دسترسی انبار را از مدیر سیستم بگیرید.')
+                    : data.lowStock.isEmpty
                     ? const AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
                     : Column(children: [
                         for (final item in data.lowStock.take(4))
@@ -326,7 +332,9 @@ class _DashboardPageState extends State<DashboardPage> {
               _DashboardPanel(
                 title: 'نزدیک به انقضا',
                 icon: Icons.event_busy_rounded,
-                child: data.expiringSoon.isEmpty
+                child: !can(AdminPermissions.inventoryRead)
+                    ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده بچ‌های نزدیک انقضا، دسترسی انبار را از مدیر سیستم بگیرید.')
+                    : data.expiringSoon.isEmpty
                     ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
                     : Column(children: [
                         for (final item in data.expiringSoon.take(5))

@@ -126,9 +126,36 @@ public static class OrderManagementModule
         admin.MapGet("/dashboard", async (
             int? days,
             OrderManagementDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken)))
-            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        {
+            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
+            var dashboard = await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken);
+            var canReadOrders = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead);
+            var canReadInventory = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead);
+            var canReadCustomers = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CustomersRead);
+            var canReadCorporate = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CorporateRead);
+            var canReadReports = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ReportsRead);
+            dashboard = dashboard with
+            {
+                AwaitingPayment = canReadOrders ? dashboard.AwaitingPayment : 0,
+                Processing = canReadOrders ? dashboard.Processing : 0,
+                Shipped = canReadOrders ? dashboard.Shipped : 0,
+                Delivered = canReadOrders ? dashboard.Delivered : 0,
+                PeriodOrderCount = canReadOrders ? dashboard.PeriodOrderCount : 0,
+                ProblemOrders = canReadOrders ? dashboard.ProblemOrders : 0,
+                LowStock = canReadInventory ? dashboard.LowStock : Array.Empty<LowStockItem>(),
+                ExpiringSoon = canReadInventory ? dashboard.ExpiringSoon : Array.Empty<ExpiringStockItem>(),
+                NewCustomers = canReadCustomers ? dashboard.NewCustomers : 0,
+                CorporateNewRequests = canReadCorporate ? dashboard.CorporateNewRequests : 0,
+                PaidRevenue = canReadReports ? dashboard.PaidRevenue : 0,
+                TodayRevenue = canReadReports ? dashboard.TodayRevenue : 0,
+                PeriodRevenue = canReadReports ? dashboard.PeriodRevenue : 0,
+                AverageOrderValue = canReadReports ? dashboard.AverageOrderValue : 0,
+                FinancialsVisible = canReadReports
+            };
+            return Results.Ok(dashboard);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/analytics", async (
             int? days,
@@ -963,7 +990,7 @@ public sealed record ExpiringStockItem(string ProductTitle, string Sku, string V
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
-    IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0);
+    IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
 public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(string Type, string Title, string Detail);

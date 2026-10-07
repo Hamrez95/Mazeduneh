@@ -639,7 +639,7 @@ class StockAdjustmentResult {
 }
 
 class AdminDashboard {
-  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock, required this.periodDays, required this.periodOrderCount, required this.periodRevenue, required this.averageOrderValue, required this.expiringSoon, required this.newCustomers, required this.corporateNewRequests, required this.problemOrders});
+  const AdminDashboard({required this.awaitingPayment, required this.processing, required this.shipped, required this.delivered, required this.paidRevenue, required this.todayRevenue, required this.lowStock, required this.periodDays, required this.periodOrderCount, required this.periodRevenue, required this.averageOrderValue, required this.expiringSoon, required this.newCustomers, required this.corporateNewRequests, required this.problemOrders, this.financialsVisible = true});
   final int awaitingPayment;
   final int processing;
   final int shipped;
@@ -655,6 +655,7 @@ class AdminDashboard {
   final int newCustomers;
   final int corporateNewRequests;
   final int problemOrders;
+  final bool financialsVisible;
   factory AdminDashboard.fromJson(Map<String, dynamic> json) => AdminDashboard(
     awaitingPayment: json['awaitingPayment'] as int, processing: json['processing'] as int, shipped: json['shipped'] as int,
     delivered: json['delivered'] as int, paidRevenue: json['paidRevenue'] as num, todayRevenue: json['todayRevenue'] as num,
@@ -666,7 +667,7 @@ class AdminDashboard {
     expiringSoon: (json['expiringSoon'] as List<dynamic>? ?? const []).map((item) => ExpiringStockItem.fromJson(item as Map<String, dynamic>)).toList(),
     newCustomers: (json['newCustomers'] as num?)?.toInt() ?? 0,
     corporateNewRequests: (json['corporateNewRequests'] as num?)?.toInt() ?? 0,
-    problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0);
+    problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0, financialsVisible: json['financialsVisible'] as bool? ?? true);
 }
 
 class LowStockItem {
