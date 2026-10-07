@@ -57,4 +57,23 @@ void main() {
     expect(consentFilters.last, isNull);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('read-only role does not see customer CSV export', (tester) async {
+    OwnerSession.instance.updateIdentity(role: 'ReadOnlyAnalyst', permissions: ['customers.read']);
+    final client = MockClient((request) async => http.Response(
+          jsonEncode([]),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CustomerManagementPage(
+          api: CustomerApiClient(client: client, baseUrl: 'https://api.test'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('خروجی CSV'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
 }
