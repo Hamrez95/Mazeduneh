@@ -193,6 +193,7 @@ public static class AdminPermissionCatalog
     public const string InventoryWrite = "inventory.write";
     public const string CustomersRead = "customers.read";
     public const string CustomersExport = "customers.export";
+    public const string CustomersPiiRead = "customers.pii.read";
     public const string ReportsRead = "reports.read";
     public const string CategoriesRead = "categories.read";
     public const string CategoriesWrite = "categories.write";
@@ -210,7 +211,7 @@ public static class AdminPermissionCatalog
     public static IReadOnlyList<string> Owner { get; } =
     [
         DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite,
-        InventoryRead, InventoryWrite, CustomersRead, CustomersExport, ReportsRead,
+        InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
         CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
     ];
@@ -219,14 +220,14 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
-            ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CorporateRead],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CustomersPiiRead, CorporateRead],
             ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite],
             ["Accountant"] = [DashboardRead, OrdersRead, ReportsRead, PricingRead],
-            ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead],
-            ["CorporateSales"] = [DashboardRead, CorporateRead, CorporateWrite, CustomersRead],
+            ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CustomersPiiRead],
+            ["CorporateSales"] = [DashboardRead, CorporateRead, CorporateWrite, CustomersRead, CustomersPiiRead],
             ["ContentManager"] = [DashboardRead, ProductsRead, ProductsWrite, CategoriesRead, CategoriesWrite, ContentRead, ContentWrite],
-            ["MarketingManager"] = [DashboardRead, ProductsRead, CustomersRead, ReportsRead, PricingRead, PricingWrite, ContentRead, ContentWrite, CorporateRead],
+            ["MarketingManager"] = [DashboardRead, ProductsRead, CustomersRead, CustomersPiiRead, ReportsRead, PricingRead, PricingWrite, ContentRead, ContentWrite, CorporateRead],
             ["ReadOnlyAnalyst"] = [DashboardRead, OrdersRead, ProductsRead, InventoryRead, CustomersRead, ReportsRead, PricingRead, CorporateRead],
         };
 

@@ -244,6 +244,7 @@ jobs:
           assert customers[0]['totalSpend'] > 0
           assert customers[0]['averageOrderValue'] > 0
           assert customers[0]['lastPurchaseAt']
+          open('/tmp/customer-id', 'w').write(customers[0]['id'])
           PY
 
           PUBLISH_GUARD_STATUS=$(curl -s -o /tmp/publish-guard.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/products/ \
@@ -490,6 +491,19 @@ jobs:
           assert login['role'] == 'ReadOnlyAnalyst'
           assert 'orders.read' in login['permissions']
           assert 'orders.write' not in login['permissions']
+          assert 'customers.read' in login['permissions']
+          assert 'customers.pii.read' not in login['permissions']
+          PY
+          CUSTOMER_ID=$(cat /tmp/customer-id)
+          curl -fsS "http://127.0.0.1:5100/api/v1/admin/customers/${CUSTOMER_ID}" \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/analyst-customer.json
+          python3 - <<'PY'
+          import json
+          customer = json.load(open('/tmp/analyst-customer.json', encoding='utf-8'))
+          assert customer['fullName'].startswith('مشتری ')
+          assert customer['mobile'] == 'مخفی بر اساس نقش'
+          assert customer['normalizedMobile'] == ''
+          assert customer['addresses'] == []
           PY
           curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
             -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
