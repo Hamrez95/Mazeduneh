@@ -239,6 +239,22 @@ void main() {
     expect(find.text('open dialog'), findsOneWidget);
   });
 
+  testWidgets('expiry removes private root dialogs without waiting for another request', (tester) async {
+    final client = MockClient((_) async => identity());
+    OwnerSession.instance.establish(accessToken: 'short-session', expiresAt: DateTime.now().toUtc().add(const Duration(seconds: 10)), email: 'owner@example.test');
+    await pumpApp(tester, client, child: Builder(builder: (context) => Scaffold(body: FilledButton(
+      onPressed: () => showDialog<void>(context: context, builder: (_) => const AlertDialog(content: Text('expired private data'))),
+      child: const Text('open dialog'),
+    ))));
+    await tester.tap(find.text('open dialog'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpAndSettle();
+    expect(find.text('expired private data'), findsNothing);
+    expect(find.text('ورود به پنل'), findsOneWidget);
+    expect(OwnerSession.instance.isAuthenticated, isFalse);
+  });
+
   for (final status in [204, 400]) {
     testWidgets(
       'release fragment invitation handles status $status and preserves invalid draft',
