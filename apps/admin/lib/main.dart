@@ -1775,14 +1775,18 @@ class _InventoryPageState extends State<InventoryPage> {
 
   Future<void> adjust(ProductVariant variant) async {
     final result = await showDialog<_AdjustmentCommand>(
-      context: context, builder: (_) => AdjustmentDialog(variant: variant),
+      context: context, builder: (_) => AdjustmentDialog(variant: variant, batches: batches.where((item) => item.sku.toUpperCase() == variant.sku.toUpperCase() && item.remainingPackages > 0).toList()),
     );
     if (result == null) return;
     setState(() => busySku = variant.sku);
     try {
-      await orders.adjustStock(variant.sku, result.delta, result.reason);
+      if (result.isWaste) {
+        await orders.writeOffStock(variant.sku, result.batchCode!, result.delta, result.reason);
+      } else {
+        await orders.adjustStock(variant.sku, result.delta, result.reason);
+      }
       await load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('موجودی با موفقیت ثبت شد.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.isWaste ? 'ضایعات ثبت و از موجودی قابل‌فروش خارج شد.' : 'موجودی با موفقیت ثبت شد.')));
     } catch (exception) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
     } finally {
@@ -1900,7 +1904,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
                   ),
                   title: Text('${item.sku} · $sign${formatPersianInteger(item.quantityDelta.abs())}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${item.reason} · مانده ${formatPersianInteger(item.balanceAfter)}', style: const TextStyle(fontSize: 11)),
+                  subtitle: Text('${item.movementType == 'Waste' ? 'ضایعات' : item.movementType == 'ManualAdjustment' ? 'اصلاح دستی' : item.movementType} · ${item.reason} · مانده ${formatPersianInteger(item.balanceAfter)}', style: const TextStyle(fontSize: 11)),
                 );
               },
             )),
@@ -2001,14 +2005,17 @@ class _InventoryAttentionBanner extends StatelessWidget {
 }
 
 class _AdjustmentCommand {
-  const _AdjustmentCommand(this.delta, this.reason);
+  const _AdjustmentCommand(this.delta, this.reason, {this.isWaste = false, this.batchCode});
   final int delta;
   final String reason;
+  final bool isWaste;
+  final String? batchCode;
 }
 
 class AdjustmentDialog extends StatefulWidget {
-  const AdjustmentDialog({super.key, required this.variant});
+  const AdjustmentDialog({super.key, required this.variant, this.batches = const []});
   final ProductVariant variant;
+  final List<InventoryBatch> batches;
   @override
   State<AdjustmentDialog> createState() => _AdjustmentDialogState();
 }
@@ -2017,11 +2024,20 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
   final formKey = GlobalKey<FormState>();
   final delta = TextEditingController();
   final reason = TextEditingController();
+  bool isWaste = false;
+  String? batchCode;
+
+  InventoryBatch? get selectedBatch {
+    for (final batch in widget.batches) {
+      if (batch.batchCode == batchCode) return batch;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('اصلاح موجودی ${widget.variant.sku}'),
+      title: Text(isWaste ? 'ثبت ضایعات ${widget.variant.sku}' : 'اصلاح موجودی ${widget.variant.sku}'),
       content: SizedBox(
         width: 430,
         child: Form(
@@ -2029,20 +2045,59 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Text('موجودی فعلی: ${formatPersianInteger(widget.variant.availablePackages)} بسته'),
             const SizedBox(height: 12),
+            DropdownButtonFormField<bool>(
+              initialValue: isWaste,
+              decoration: const InputDecoration(labelText: 'نوع عملیات'),
+              items: const [
+                DropdownMenuItem(value: false, child: Text('اصلاح دستی موجودی')),
+                DropdownMenuItem(value: true, child: Text('ثبت ضایعات')),
+              ],
+              onChanged: (value) {
+                if (value == true && widget.batches.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('برای ثبت ضایعات، ابتدا یک بچ با ماندهٔ موجود انتخاب یا ثبت کنید.')));
+                  return;
+                }
+                setState(() => isWaste = value ?? false);
+              },
+            ),
+            if (isWaste) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: batchCode,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'بچ ضایعاتی'),
+                items: [
+                  for (final batch in widget.batches)
+                    DropdownMenuItem(value: batch.batchCode, child: Text('${batch.batchCode} · مانده ${formatPersianInteger(batch.remainingPackages)} بسته')),
+                ],
+                onChanged: (value) => setState(() => batchCode = value),
+                validator: (value) => value == null ? 'بچ ضایعاتی را انتخاب کنید.' : null,
+              ),
+            ],
+            const SizedBox(height: 12),
             TextFormField(
               controller: delta,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'تغییر موجودی',
-                hintText: 'مثبت برای ورود، منفی برای خروج',
+              decoration: InputDecoration(
+                labelText: isWaste ? 'تعداد بستهٔ ضایعاتی' : 'تغییر موجودی',
+                hintText: isWaste ? 'تعداد بسته‌های غیرقابل‌فروش' : 'مثبت برای ورود، منفی برای خروج',
               ),
-              validator: (value) => parsePersianInteger(value) == null ? 'عدد معتبر وارد کنید.' : null,
+              validator: (value) {
+                final amount = parsePersianInteger(value);
+                if (amount == null) return 'عدد معتبر وارد کنید.';
+                if (isWaste && amount <= 0) return 'تعداد ضایعات باید بیشتر از صفر باشد.';
+                if (isWaste && selectedBatch == null) return 'بچ ضایعاتی را انتخاب کنید.';
+                if (isWaste && selectedBatch != null && amount > selectedBatch!.remainingPackages) return 'تعداد از ماندهٔ بچ بیشتر است.';
+                if (!isWaste && amount == 0) return 'مقدار تغییر نمی‌تواند صفر باشد.';
+                return null;
+              },
             ),
             const SizedBox(height: 10),
             TextFormField(
               controller: reason,
-              decoration: const InputDecoration(labelText: 'علت اصلاح'),
-              validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : null,
+              decoration: const InputDecoration(labelText: 'علت اصلاح یا ضایعات'),
+              maxLength: 500,
+              validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : value.trim().length > 500 ? 'علت حداکثر ۵۰۰ نویسه است.' : null,
             ),
           ]),
         ),
@@ -2052,9 +2107,9 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
         FilledButton(
           onPressed: () {
             if (!formKey.currentState!.validate()) return;
-            Navigator.pop(context, _AdjustmentCommand(parsePersianInteger(delta.text)!, reason.text.trim()));
+            Navigator.pop(context, _AdjustmentCommand(parsePersianInteger(delta.text)!, reason.text.trim(), isWaste: isWaste, batchCode: batchCode));
           },
-          child: const Text('ثبت اصلاح'),
+          child: Text(isWaste ? 'ثبت ضایعات' : 'ثبت اصلاح'),
         ),
       ],
     );

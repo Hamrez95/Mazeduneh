@@ -91,6 +91,17 @@ class OrderApiClient {
     return StockAdjustmentResult.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<StockAdjustmentResult> writeOffStock(String sku, String batchCode, int quantity, String reason) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/inventory/waste'),
+      headers: _headers(json: true),
+      body: jsonEncode({'sku': sku, 'batchCode': batchCode, 'quantity': quantity, 'reason': reason}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return StockAdjustmentResult.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<List<StockMovement>> fetchInventoryMovements({String? sku, int limit = 100}) async {
     final query = <String, String>{'limit': '$limit', if (sku != null && sku.isNotEmpty) 'sku': sku};
     final response = await _client.get(
