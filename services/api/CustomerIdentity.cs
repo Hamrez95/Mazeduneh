@@ -19,11 +19,13 @@ public static class CustomerIdentityModule
                 bool? marketingConsent,
                 int? limit,
                 CustomerIdentityDatabase database,
+                HttpContext context,
                 CancellationToken cancellationToken) =>
         {
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            return Results.Ok(await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 200, 1, 500), cancellationToken));
+            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 200, 1, 500), cancellationToken);
+            return Results.Ok(CanReadPii(context) ? rows : rows.Select(MaskPii).ToArray());
         })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         customers.MapGet("/export.csv", async (
@@ -63,13 +65,26 @@ public static class CustomerIdentityModule
         customers.MapGet("/{customerId:guid}", async (
                 Guid customerId,
                 CustomerIdentityDatabase database,
+                HttpContext context,
                 CancellationToken cancellationToken) =>
             await database.FindProfileAsync(customerId, cancellationToken) is { } customer
-                ? Results.Ok(customer)
+                ? Results.Ok(CanReadPii(context) ? customer : MaskPii(customer))
                 : Results.NotFound(new { message = "مشتری پیدا نشد." }))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         return endpoints;
     }
+
+    private static bool CanReadPii(HttpContext context) =>
+        context.Items["AdminPrincipal"] is AdminPrincipal principal &&
+        AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CustomersPiiRead);
+
+    private static CustomerSummary MaskPii(CustomerSummary customer) => customer with
+    {
+        FullName = $"مشتری {customer.Id.ToString("N")[..6]}",
+        Mobile = "مخفی بر اساس نقش",
+        NormalizedMobile = string.Empty,
+        Addresses = Array.Empty<CustomerAddressSummary>()
+    };
 }
 
 public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogger<CustomerIdentityDatabase> logger)
