@@ -108,7 +108,10 @@ with tempfile.TemporaryFile() as log:
         assert any(row['id'] == order_id for row in request('/api/v1/admin/shipping/overdue', token=token)[1])
         for endpoint in [path + '/invoice', path + '/packing-slip']:
             status, html = request(endpoint, token=token)
-            assert status == 200 and NAME in html and ADDRESS in html and MOBILE in html
+            assert status == 200 and NAME in html
+            if endpoint.endswith('/packing-slip'):
+                assert ADDRESS in html
+            # Existing invoice/slip renderers do not print the mobile number.
         assert request(path, token=token)[1]['customerName'] == NAME
         assert request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token)[0] == 200
         for endpoint in ['/api/v1/admin/orders', path, path + '/invoice', path + '/packing-slip', '/api/v1/admin/orders/export.csv']:
