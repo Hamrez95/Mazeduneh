@@ -93,12 +93,14 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('در انتظار پرداخت'));
+    await tester.scrollUntilVisible(find.text('در انتظار پرداخت'), 350, maxScrolls: 20);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('در انتظار پرداخت'));
     expect(destination, 1);
 
     destination = null;
-    await tester.ensureVisible(find.text('میانگین ارزش سفارش'));
+    await tester.scrollUntilVisible(find.text('میانگین ارزش سفارش'), 350, maxScrolls: 20);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
     expect(destination, 4);
 
