@@ -27,8 +27,10 @@ void main() {
     });
 
     await tester.pumpWidget(MaterialApp(
-      home: CustomerManagementPage(
+      home: Scaffold(
+        body: CustomerManagementPage(
         api: CustomerApiClient(client: client, baseUrl: 'https://api.test'),
+        ),
       ),
     ));
     await tester.pumpAndSettle();
