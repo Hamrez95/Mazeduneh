@@ -1,5 +1,6 @@
 import 'secure_main.dart' show MazedunehSecureAdminApp;
 
+import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
 import 'auth_api.dart';
