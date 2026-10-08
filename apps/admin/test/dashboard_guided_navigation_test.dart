@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/admin_navigation.dart';
 import 'package:mazeduneh_admin/dashboard_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
@@ -53,7 +54,7 @@ void main() {
       );
     });
 
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(
       MaterialApp(
         home: Directionality(
@@ -80,11 +81,11 @@ void main() {
     await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('پیگیری سفارش‌ها'));
-    expect(destination, 1);
+    expect(destination?.module, AdminModule.orders);
   });
 
   testWidgets('dashboard order KPI and low-stock alert navigate to the relevant modules', (tester) async {
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(_dashboardHarness(
       onNavigate: (value) => destination = value,
       lowStock: const [
@@ -96,18 +97,18 @@ void main() {
     await tester.scrollUntilVisible(find.text('در انتظار پرداخت'), 350, maxScrolls: 20);
     await tester.pumpAndSettle();
     await tester.tap(find.text('در انتظار پرداخت'));
-    expect(destination, 1);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
 
     destination = null;
     await tester.scrollUntilVisible(find.text('میانگین ارزش سفارش'), 350, maxScrolls: 20);
     await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
-    expect(destination, 4);
+    expect(destination?.module, AdminModule.reports);
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
     await tester.tap(find.text('پسته اکبری'));
-    expect(destination, 3);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'PI-AKB-250'));
     expect(tester.takeException(), isNull);
   });
 
@@ -120,7 +121,7 @@ void main() {
       OwnerSession.instance.updateIdentity(role: 'ReadOnlyAnalyst', permissions: [
         'dashboard.read', 'products.read', 'orders.read', 'inventory.read',
       ]);
-      int? destination;
+      AdminNavigationIntent? destination;
       await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
       await tester.pumpAndSettle();
       expect(find.text('وضعیت فروشگاه'), findsOneWidget);
@@ -140,7 +141,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
-      expect(destination, 1);
+      expect(destination?.module, AdminModule.orders);
       expect(tester.takeException(), isNull);
     });
   }
@@ -171,7 +172,7 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
   final client = MockClient((request) async => http.Response(
         jsonEncode(request.url.path.endsWith('/dashboard')
             ? {'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0,

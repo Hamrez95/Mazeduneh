@@ -1,5 +1,6 @@
 """Real API regression for zero-stock creation, variant addition and receiving."""
 import json
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import subprocess
@@ -69,7 +70,7 @@ with tempfile.TemporaryFile() as log:
                 {'sku': 'CI-PURCHASE-250', 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0, 'costPrice': 2222, 'packagingCost': 333, 'additionalCost': 44}]}, token)
         assert status == 201
         payload = {'sku': 'CI-PURCHASE-250', 'batchCode': 'CI-PURCHASE-ONE', 'receivedPackages': 12,
-                   'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
+                   'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
                    'costPrice': 4000, 'packagingCost': 500, 'additionalCost': 100,
                    'purchasedAt': '2026-01-01T00:00:00Z', 'supplier': 'CI supplier',
                    'supplierContactName': 'CI contact', 'supplierPhone': '+982100000000',
@@ -88,10 +89,31 @@ with tempfile.TemporaryFile() as log:
         history_path = '/api/v1/admin/inventory/purchases?sku=CI-PURCHASE-250&limit=1'
         status, page1 = request(history_path, token=token)
         assert status == 200 and len(page1['items']) == 1 and page1['items'][0]['costPrice'] == 6000
+        status, exact_batch = request(
+            '/api/v1/admin/inventory/purchases?sku=CI-PURCHASE-250&batchCode=CI-PURCHASE-TWO',
+            token=token)
+        assert status == 200 and [item['batchCode'] for item in exact_batch['items']] == ['CI-PURCHASE-TWO']
+        status, batch_without_sku = request(
+            '/api/v1/admin/inventory/purchases?batchCode=CI-PURCHASE-TWO',
+            token=token)
+        assert status == 200 and [item['batchCode'] for item in batch_without_sku['items']] == ['CI-PURCHASE-TWO']
+        status, conflicting_filters = request(
+            '/api/v1/admin/inventory/purchases?sku=OTHER-SKU&batchCode=CI-PURCHASE-TWO',
+            token=token)
+        assert status == 200 and conflicting_filters == {'items': [], 'nextCursor': None}
         assert page1['nextCursor']
         # New/backdated receipt inserted between pages must not move the cursor boundary.
         newer = dict(payload, batchCode='CI-PURCHASE-THREE', costPrice=8000, purchasedAt='2020-01-01T00:00:00Z')
         assert request('/api/v1/admin/inventory/batches','POST',newer,token)[0] == 201
+        status, dashboard = request('/api/v1/admin/dashboard?days=1', token=token)
+        assert status == 200
+        fixture_batches = {
+        item['batchCode'] for item in dashboard['expiringSoon']
+        if item['sku'] == 'CI-PURCHASE-250'
+        }
+        assert fixture_batches == {
+        'CI-PURCHASE-ONE', 'CI-PURCHASE-TWO', 'CI-PURCHASE-THREE'
+        }, fixture_batches
         status, page2 = request(history_path+'&cursor='+quote(page1['nextCursor'],safe=''),token=token)
         assert status == 200 and len(page2['items']) == 1 and page2['items'][0]['id'] == first['id']
         assert page2['nextCursor'] is None

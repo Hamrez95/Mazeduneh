@@ -299,7 +299,12 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
                 reader.IsDBNull(17) ? null : reader.GetString(17), reader.IsDBNull(18) ? null : reader.GetString(18),
                 reader.IsDBNull(19) ? null : reader.GetString(19));
 
-    public async Task<InventoryPurchasePage> PurchasesAsync(string? sku, InventoryPurchaseCursor? cursor, int limit, CancellationToken ct)
+    public async Task<InventoryPurchasePage> PurchasesAsync(
+        string? sku,
+        string? batchCode,
+        InventoryPurchaseCursor? cursor,
+        int limit,
+        CancellationToken ct)
     {
         if (!IsConfigured) return new([], null);
         await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync(ct);
@@ -312,10 +317,13 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             left join product_variants v on upper(v.sku)=upper(b.sku)
             left join products p on p.id=v.product_id
             where (@sku='' or upper(b.sku)=upper(@sku))
+              and (@batch_code='' or upper(b.batch_code)=upper(@batch_code))
               and (@first or (b.created_at,b.id)<(@before_at,@before_id))
             order by b.created_at desc,b.id desc limit @limit;
             """, connection);
-        command.Parameters.AddWithValue("sku", sku?.Trim() ?? ""); command.Parameters.AddWithValue("first", cursor is null);
+        command.Parameters.AddWithValue("sku", sku?.Trim() ?? "");
+        command.Parameters.AddWithValue("batch_code", batchCode?.Trim() ?? "");
+        command.Parameters.AddWithValue("first", cursor is null);
         command.Parameters.AddWithValue("before_at", cursor?.CreatedAt.ToUniversalTime() ?? DateTimeOffset.UtcNow);
         command.Parameters.AddWithValue("before_id", cursor?.Id ?? Guid.Empty); command.Parameters.AddWithValue("limit", limit + 1);
         var items = new List<InventoryBatch>(); await using var reader = await command.ExecuteReaderAsync(ct);
@@ -337,13 +345,18 @@ public static class InventoryBatchModule
 
     public static IEndpointRouteBuilder MapInventoryBatches(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/v1/admin/inventory/purchases", async (string? sku, string? cursor, int? limit,
-            InventoryBatchDatabase database, CancellationToken ct) =>
+        endpoints.MapGet("/api/v1/admin/inventory/purchases", async (
+            string? sku,
+            string? batchCode,
+            string? cursor,
+            int? limit,
+            InventoryBatchDatabase database,
+            CancellationToken ct) =>
         {
             InventoryPurchaseCursor? decoded = null;
             if (limit is < 1 or > 250 || (cursor is not null && !InventoryPurchaseCursor.TryDecode(cursor, out decoded)))
                 return (IResult)Results.ValidationProblem(new Dictionary<string, string[]> { ["pagination"] = ["صفحه یا تعداد دریافت معتبر نیست؛ فهرست را تازه کنید."] });
-            return Results.Ok(await database.PurchasesAsync(sku, decoded, limit ?? 50, ct));
+            return Results.Ok(await database.PurchasesAsync(sku, batchCode, decoded, limit ?? 50, ct));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
         endpoints.MapPost("/api/v1/admin/inventory/batches", async (
             InventoryBatchRequest request,

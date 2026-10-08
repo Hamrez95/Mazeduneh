@@ -7,11 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/admin_navigation.dart';
 import 'package:mazeduneh_admin/notifications_page.dart';
 import 'package:mazeduneh_admin/notification_tile.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
-const notice = AdminNotification(type: 'awaiting-payment', title: '12 سفارش در انتظار پرداخت', detail: 'بررسی 2 سفارش');
+const notice = AdminNotification(type: 'awaiting-payment', title: '12 سفارش در انتظار پرداخت', detail: 'بررسی 2 سفارش', target: AdminNavigationTarget(module: 'orders', filter: 'AwaitingPayment'));
 
 Widget harness(Widget child, {double textScale = 1}) => MaterialApp(
       builder: (context, child) => MediaQuery(
@@ -22,7 +23,7 @@ Widget harness(Widget child, {double textScale = 1}) => MaterialApp(
 
 http.Response notices({int status = 200, bool empty = false}) => http.Response(
       jsonEncode({'awaitingPayment': 12, 'lowStockItems': 0, 'items': empty ? [] : [
-        {'type': notice.type, 'title': notice.title, 'detail': notice.detail},
+        {'type': notice.type, 'title': notice.title, 'detail': notice.detail, 'target': {'module': 'orders', 'filter': 'AwaitingPayment'}},
       ]}), status, headers: {'content-type': 'application/json; charset=utf-8'},
     );
 
@@ -36,7 +37,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(harness(AdminNotificationTile(item: notice, onNavigate: (value) => destination = value), textScale: 2));
     expect(find.text('۱۲ سفارش در انتظار پرداخت'), findsOneWidget);
     expect(find.text('بررسی ۲ سفارش'), findsOneWidget);
@@ -46,7 +47,7 @@ void main() {
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pump();
-    expect(destination, 1);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
     expect(tester.takeException(), isNull);
   });
 
@@ -65,19 +66,19 @@ void main() {
   });
 
   testWidgets('stock notice goes to inventory', (tester) async {
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(harness(AdminNotificationTile(
-      item: const AdminNotification(type: 'low-stock', title: 'موجودی کم', detail: '1 بسته'),
+      item: const AdminNotification(type: 'low-stock', title: 'موجودی کم', detail: '1 بسته', target: AdminNavigationTarget(module: 'inventory', sku: 'SKU-1', batchCode: 'B-1')),
       onNavigate: (value) => destination = value,
     )));
     await tester.tap(find.text('مشاهده موجودی'));
-    expect(destination, 3);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'SKU-1', batchCode: 'B-1'));
   });
 
   testWidgets('notification center retains stale notices after a failed refresh and recovers', (tester) async {
     var calls = 0;
     final client = MockClient((_) async => ++calls == 2 ? notices(status: 503) : notices());
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(harness(NotificationsPage(
       api: OrderApiClient(client: client, baseUrl: 'https://api.test'), onNavigate: (value) => destination = value,
     )));
@@ -90,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('اعلان‌های قبلی نمایش داده می‌شوند'), findsNothing);
     await tester.tap(find.text('مشاهده سفارش‌ها'));
-    expect(destination, 1);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
   });
 
   testWidgets('forbidden refresh hides previously loaded notices', (tester) async {

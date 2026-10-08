@@ -576,20 +576,25 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
 
         const string expirySql = """
-            select p.title,v.sku,v.display_label,min(b.expires_at),sum(b.remaining_packages)::int
+            select p.title,v.sku,v.display_label,b.batch_code,b.expires_at,b.remaining_packages
             from inventory_batches b
             join product_variants v on upper(v.sku)=upper(b.sku)
             join products p on p.id=v.product_id
             where b.remaining_packages > 0 and b.expires_at > now() and b.expires_at <= now() + interval '30 days'
-            group by p.title,v.sku,v.display_label
-            order by min(b.expires_at),p.title
+            order by b.expires_at,p.title,b.batch_code
             limit 20;
             """;
         var expiringSoon = new List<ExpiringStockItem>();
         await using (var command = new NpgsqlCommand(expirySql, connection))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
-                expiringSoon.Add(new ExpiringStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetInt32(4)));
+                expiringSoon.Add(new ExpiringStockItem(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetFieldValue<DateTimeOffset>(4),
+                    reader.GetInt32(5)));
 
         const string summarySql = """
             select
@@ -729,13 +734,25 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using (var command = new NpgsqlCommand(stockSql, connection))
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
                 while (await reader.ReadAsync(cancellationToken))
-                    items.Add(new AdminNotification("low-stock", $"موجودی {reader.GetString(0)} کم است.", $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته"));
+                    items.Add(new AdminNotification(
+                        "low-stock",
+                        $"موجودی {reader.GetString(0)} کم است.",
+                        $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته",
+                        new AdminNavigationTarget("inventory", Sku: reader.GetString(1))));
         }
 
         if (awaitingPayment > 0)
-            items.Insert(0, new AdminNotification("awaiting-payment", $"{awaitingPayment} سفارش در انتظار پرداخت است.", "نیازمند بررسی پنل سفارش‌ها"));
+            items.Insert(0, new AdminNotification(
+                "awaiting-payment",
+                $"{awaitingPayment} سفارش در انتظار پرداخت است.",
+                "نیازمند بررسی پنل سفارش‌ها",
+                new AdminNavigationTarget("orders", Filter: "AwaitingPayment")));
         if (recentOrders > 0)
-            items.Insert(0, new AdminNotification("new-orders", $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.", "مرور سفارش‌ها و وضعیت ارسال"));
+            items.Insert(0, new AdminNotification(
+                "new-orders",
+                $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.",
+                "مرور سفارش‌ها و وضعیت ارسال",
+                new AdminNavigationTarget("orders")));
         return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items);
     }
 
@@ -1008,14 +1025,29 @@ public sealed record AdminOrderTransition(OrderState State, string Actor, DateTi
 public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTimeOffset CreatedAt);
 public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
-public sealed record ExpiringStockItem(string ProductTitle, string Sku, string VariantLabel, DateTimeOffset ExpiresAt, int RemainingPackages);
+public sealed record ExpiringStockItem(
+    string ProductTitle,
+    string Sku,
+    string VariantLabel,
+    string BatchCode,
+    DateTimeOffset ExpiresAt,
+    int RemainingPackages);
+public sealed record AdminNavigationTarget(
+    string Module,
+    string? Filter = null,
+    string? Sku = null,
+    string? BatchCode = null);
 public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
     IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
 public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
-public sealed record AdminNotification(string Type, string Title, string Detail);
+public sealed record AdminNotification(
+    string Type,
+    string Title,
+    string Detail,
+    AdminNavigationTarget? Target = null);
 public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }
 public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrderSummary? Order = null,
