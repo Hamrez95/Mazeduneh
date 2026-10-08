@@ -18,8 +18,9 @@ import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key, this.dashboardApi});
+  const AdminShell({super.key, this.dashboardApi, this.ordersApi});
   final OrderApiClient? dashboardApi;
+  final OrderApiClient? ordersApi;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -62,7 +63,7 @@ class _AdminShellState extends State<AdminShell> {
     final selectedPrimary = primaryIndexes.indexOf(index);
     final pages = [
       AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination))),
-      const AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage()),
+      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(api: widget.ordersApi)),
       AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
       const AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage()),
       const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
