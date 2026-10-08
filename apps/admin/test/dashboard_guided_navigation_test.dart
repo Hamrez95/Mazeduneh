@@ -106,6 +106,8 @@ void main() {
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
+    await tester.ensureVisible(find.text('پسته اکبری'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('پسته اکبری'));
     expect(destination, 3);
     expect(tester.takeException(), isNull);
@@ -154,6 +156,47 @@ void main() {
     expect(find.text('پیگیری سفارش‌ها'), findsNothing);
     expect(find.text('مشاهده موجودی'), findsNothing);
     expect(find.textContaining('با مدیر فروشگاه هماهنگ کنید'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('role dashboard editor keeps visibility and ordering in the saved preference', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    DashboardPreferences? saved;
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) => Scaffold(body: Center(child: FilledButton(
+        onPressed: () => showDialog<DashboardPreferences>(
+          context: context,
+          builder: (_) => DashboardPreferencesDialog(
+            initial: DashboardPreferences.defaults,
+            onSave: (value) async {
+              attempts++;
+              if (attempts == 1) throw OrderApiException('خطای موقت', statusCode: 503);
+              return value;
+            },
+          ),
+        ).then((value) => saved = value),
+        child: const Text('تنظیم'),
+      )))),
+    ));
+    await tester.tap(find.text('تنظیم'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('انتقال به پایین').first);
+    await tester.pump();
+    await tester.tap(find.text('ذخیره چیدمان'));
+    await tester.pumpAndSettle();
+    expect(find.text('سرویس موقتاً در دسترس نیست؛ بعداً دوباره تلاش کنید.'), findsOneWidget);
+    expect(saved, isNull);
+    await tester.tap(find.text('ذخیره چیدمان'));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    expect(saved!.widgets[1].id, 'metrics');
+    expect(saved!.widgets[1].visible, isFalse);
     expect(tester.takeException(), isNull);
   });
 

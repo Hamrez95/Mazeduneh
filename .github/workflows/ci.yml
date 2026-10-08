@@ -585,6 +585,9 @@ jobs:
       - name: Dated inventory purchase contract
         run: python3 scripts/tests/inventory_purchase.py
 
+      - name: Role dashboard preference contract
+        run: python3 scripts/tests/dashboard_preferences.py
+
       - name: Inventory adjustment reservation invariant contract
         run: python3 scripts/tests/inventory_adjustment.py
 
