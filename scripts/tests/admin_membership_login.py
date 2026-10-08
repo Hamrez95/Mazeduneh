@@ -113,7 +113,7 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
         status, limited_login = request("/api/v1/admin/auth/login", "POST", {
             "email": first_email, "password": first_password})
-        assert status == 200 and limited_login["permissions"] == ["inventory.read"]
+        assert status == 200 and limited_login["permissions"] == ["inventory.read"], (status, limited_login)
         limited_token = limited_login["accessToken"]
         assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=limited_token)[0] == 200
         assert request("/api/v1/admin/orders", token=limited_token)[0] == 403
