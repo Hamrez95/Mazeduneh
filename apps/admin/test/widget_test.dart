@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mazeduneh_admin/main.dart';
+import 'package:mazeduneh_admin/admin_shell.dart';
 
 void main() {
   testWidgets('admin shell renders branded navigation while dashboard loads', (tester) async {
