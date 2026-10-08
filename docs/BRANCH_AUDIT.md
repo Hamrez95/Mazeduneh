@@ -19,7 +19,7 @@ There are 115 proven-redundant remote refs (108 merged PR heads + 6 ancestors + 
 
 | PR | Branch | Head SHA | Status |
 | --- | --- | --- | --- |
-| #185 | `feat/169-f-typed-navigation-ui` | `f775778f9af4c0ac1f72499f048f617b5b330446` | CI #479 passed on this head (API, Admin Flutter, Storefront); Vercel success. Required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
+| #185 | `feat/169-f-typed-navigation-ui` | `5c096c9345e5c2cf20b1317b86fc5a03e826e1be` | CI #481 passed on this head (API, Admin Flutter, Storefront); Vercel success. Local navigation-flow test passed with device/system-back coverage. Required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
 | #186 | `codex/admin-permission-form-review` | `e3ce2abb3ea9962cc4e95edc8a8e31b0466b3eff` | CI #477 passed after isolating the authorization test from the intentional five-request login rate limit. Requires independent Sol security review. |
 | #187 | `codex/dashboard-role-widgets` | `b20622ad10721ea7ebd20852e3c4471fa8339de1` | CI #475 passed all jobs after using distinct canonical operator roles in the isolation test. |
 
@@ -57,7 +57,7 @@ The local checkout has no uncommitted changes. The following refs are deliberate
 
 | Local branch/worktree | Current evidence | Decision |
 | --- | --- | --- |
-| `codex/169-f-navigation-ui` | Active PR #185 worktree; local docs commit is not the remote PR commit. | Keep until #185 is reviewed/merged. |
+| `codex/169-f-navigation-ui` | Active PR #185 worktree; local test commit `3f9e3b0` mirrors remote `5c096c9`, while audit/handoff commits remain separate. | Keep until #185 is reviewed/merged. |
 | `codex/admin-edit-permissions-form-layout` | Unique permission editor/API branch; preserved above. | Keep. |
 | `codex/admin-permission-form-review` | Active PR #186 worktree with a newer local rate-limit test fix; CI #477 passed on the pushed commit. | Keep. |
 | `codex/dashboard-role-widgets` | Active PR #187 worktree; CI #475 passed on the pushed commit. | Keep. |
