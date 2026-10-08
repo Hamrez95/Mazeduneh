@@ -63,7 +63,14 @@ void main() {
           find.byType(BottomAppBar),
           width < 900 ? findsOneWidget : findsNothing,
         );
-        expect(tester.takeException(), isNull);
+        final layoutException = tester.takeException();
+        expect(
+          layoutException,
+          isNull,
+          reason: layoutException is FlutterError
+              ? layoutException.toStringDeep()
+              : '$layoutException',
+        );
       },
     );
   }
