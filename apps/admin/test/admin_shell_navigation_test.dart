@@ -68,12 +68,17 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('سفارش‌ها'), findsWidgets);
+        expect(find.text('هنوز سفارشی ثبت نشده است'), findsOneWidget);
         expect(find.text('دسترسی به این بخش محدود است.'), findsNothing);
         expect(find.byType(NavigationBar), findsNothing);
         expect(
           find.byType(BottomAppBar),
           width < 900 ? findsOneWidget : findsNothing,
         );
+        await tester.ensureVisible(
+          find.text('سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.'),
+        );
+        await tester.pumpAndSettle();
         final layoutException = tester.takeException();
         expect(
           layoutException,

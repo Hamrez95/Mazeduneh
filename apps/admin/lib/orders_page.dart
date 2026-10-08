@@ -179,6 +179,12 @@ class _OrdersPageState extends State<OrdersPage> {
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           LayoutBuilder(builder: (context, constraints) {
+            final compactControls = constraints.maxWidth < 560;
+            Widget filterWidth(Widget child, {double desktopWidth = 240}) =>
+                SizedBox(
+                  width: compactControls ? constraints.maxWidth : desktopWidth,
+                  child: child,
+                );
             final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
               const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
@@ -196,24 +202,36 @@ class _OrdersPageState extends State<OrdersPage> {
                 },
               ),
               if (overdueOnly)
-                DropdownButton<int>(
+                filterWidth(DropdownButton<int>(
+                  isExpanded: true,
                   value: overdueDays,
-                  items: const [1, 3, 5, 7, 14].map((days) => DropdownMenuItem(value: days, child: Text('بیش از $days روز'))).toList(),
+                  items: const [1, 3, 5, 7, 14]
+                      .map((days) => DropdownMenuItem(
+                            value: days,
+                            child: Text('بیش از $days روز', maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ))
+                      .toList(),
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => overdueDays = value);
                     load();
                   },
-                ),
-              DropdownButton<String>(
+                ), desktopWidth: 180),
+              filterWidth(DropdownButton<String>(
+                isExpanded: true,
                 value: selectedState,
-                items: states.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(),
+                items: states.entries
+                    .map((entry) => DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ))
+                    .toList(),
                 onChanged: (value) {
                   if (value == null) return;
                   setState(() => selectedState = value);
                   load();
                 },
-              ),
+              )),
               if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(AdminPermissions.ordersExport))
               FilledButton.tonalIcon(
                 onPressed: exporting ? null : exportCsv,
@@ -332,20 +350,23 @@ class _OrdersPageState extends State<OrdersPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     if (overdueOnly) return _overdueBody();
     if (orders.isEmpty) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.receipt_long_rounded, size: 56, color: Color(0xFF9EACA1)),
-          const SizedBox(height: 12),
-          AdminEmptyState(
-            icon: Icons.receipt_long_rounded,
-            title: selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'سفارشی با این وضعیت وجود ندارد',
-            detail: searchQuery.isNotEmpty
-                ? 'عبارت جست‌وجو یا فیلتر وضعیت را تغییر دهید.'
-                : selectedState.isEmpty
-                    ? 'سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.'
-                    : 'فیلتر وضعیت را تغییر دهید یا همه سفارش‌ها را ببینید.',
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: AdminEmptyState(
+                icon: Icons.receipt_long_rounded,
+                title: selectedState.isEmpty ? 'هنوز سفارشی ثبت نشده است' : 'سفارشی با این وضعیت وجود ندارد',
+                detail: searchQuery.isNotEmpty
+                    ? 'عبارت جست‌وجو یا فیلتر وضعیت را تغییر دهید.'
+                    : selectedState.isEmpty
+                        ? 'سفارش‌های جدید بعد از ثبت در این فهرست دیده می‌شوند.'
+                        : 'فیلتر وضعیت را تغییر دهید یا همه سفارش‌ها را ببینید.',
+              ),
+            ),
           ),
-        ]),
+        ),
       );
     }
     return ListView.separated(
