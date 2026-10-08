@@ -3,17 +3,48 @@ param(
   [string]$Component = 'all',
   [switch]$Stop,
   [switch]$Status,
-  [switch]$NoBrowser
+  [switch]$NoBrowser,
+  [switch]$CurrentBranch
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent $PSScriptRoot
-$StateDirectory = Join-Path $Root '.local-dev'
+$SourceRoot = Split-Path -Parent $PSScriptRoot
+$StateDirectory = Join-Path $SourceRoot '.local-dev'
 $StateFile = Join-Path $StateDirectory 'processes.json'
 $AdminPasswordFile = Join-Path $StateDirectory 'admin-password.txt'
 $ApiUrl = 'http://127.0.0.1:5080'
 $StorefrontUrl = 'http://127.0.0.1:3000'
 $AdminUrl = 'http://127.0.0.1:8080'
+
+function Get-GitText([string[]]$Arguments, [string]$WorkingDirectory = $SourceRoot) {
+  $result = & git @Arguments 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "git $($Arguments -join ' ') failed: $result" }
+  return ($result | Out-String).Trim()
+}
+
+function Get-RunRoot {
+  if ($CurrentBranch) {
+    return (Get-GitText @('rev-parse', '--show-toplevel'))
+  }
+
+  Get-GitText @('fetch', 'origin', 'main') | Out-Null
+  $runDirectory = Join-Path $StateDirectory 'main-worktree'
+  if (Test-Path (Join-Path $runDirectory '.git')) {
+    $existingStatus = Get-GitText @('-C', $runDirectory, 'status', '--porcelain')
+    if ($existingStatus) {
+      throw "The managed main worktree has local changes. Review $runDirectory before running again; it was not changed."
+    }
+    $existingHead = Get-GitText @('-C', $runDirectory, 'rev-parse', 'HEAD')
+    $latestMain = Get-GitText @('rev-parse', 'origin/main')
+    if ($existingHead -ne $latestMain) {
+      Get-GitText @('-C', $runDirectory, 'checkout', '--detach', $latestMain) | Out-Null
+    }
+  } else {
+    New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
+    Get-GitText @('worktree', 'add', '--detach', $runDirectory, 'origin/main') | Out-Null
+  }
+  return $runDirectory
+}
 
 function Read-ProcessState {
   if (-not (Test-Path $StateFile)) { return @() }
@@ -21,12 +52,21 @@ function Read-ProcessState {
   catch { return @() }
 }
 
+function Test-OwnedProcess($service) {
+  $process = Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$service.processId)" -ErrorAction SilentlyContinue
+  if ($null -eq $process) { return $false }
+  if ([string]::IsNullOrWhiteSpace($service.commandFragment)) { return $false }
+  return $process.CommandLine -like "*$($service.commandFragment)*"
+}
+
 function Stop-LocalServices {
   foreach ($service in (Read-ProcessState)) {
     $processId = [int]$service.processId
-    if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+    if (Test-OwnedProcess $service) {
       Write-Host "Stopping $($service.name) (PID $processId)..." -ForegroundColor Yellow
       & taskkill.exe /PID $processId /T /F 2>$null | Out-Null
+    } elseif (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+      Write-Warning "Skipped $($service.name): PID $processId is no longer the launcher-owned command."
     }
   }
   Remove-Item $StateFile -Force -ErrorAction SilentlyContinue
@@ -39,7 +79,7 @@ function Show-Status {
     Write-Host 'No MAZEDUNEH local services are recorded as running.' -ForegroundColor Yellow
   } else {
     foreach ($service in $services) {
-      $running = [bool](Get-Process -Id ([int]$service.processId) -ErrorAction SilentlyContinue)
+      $running = Test-OwnedProcess $service
       $state = if ($running) { 'running' } else { 'stopped' }
       Write-Host ("{0}: {1} (PID {2}) — {3}" -f $service.name, $service.url, $service.processId, $state)
       if (Test-Path $service.stderr) {
@@ -50,7 +90,7 @@ function Show-Status {
   }
   Write-Host "Storefront: $StorefrontUrl"
   Write-Host "Admin:      $AdminUrl"
-  Write-Host "API health: $ApiUrl/health"
+  Write-Host "API readiness: $ApiUrl/health/ready"
 }
 
 if ($Stop) { Stop-LocalServices; exit 0 }
@@ -74,7 +114,8 @@ function Start-LocalService(
   [string[]]$Arguments,
   [string]$WorkingDirectory,
   [hashtable]$Environment,
-  [string]$Url
+  [string]$Url,
+  [string]$CommandFragment
 ) {
   $stdout = Join-Path $StateDirectory "$Name.stdout.log"
   $stderr = Join-Path $StateDirectory "$Name.stderr.log"
@@ -89,7 +130,7 @@ function Start-LocalService(
     -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
     -WindowStyle Hidden -PassThru
   return [pscustomobject]@{
-    name = $Name; processId = $process.Id; url = $Url; stdout = $stdout; stderr = $stderr
+    name = $Name; processId = $process.Id; url = $Url; stdout = $stdout; stderr = $stderr; commandFragment = $CommandFragment
   }
 }
 
@@ -115,6 +156,11 @@ if ($PSVersionTable.PSVersion -lt [version]'7.4') {
   throw 'Run this script with PowerShell 7.4 or later (pwsh).'
 }
 
+$RunRoot = Get-RunRoot
+$RunSha = Get-GitText @('-C', $RunRoot, 'rev-parse', 'HEAD')
+Write-Host "Running source: $RunRoot" -ForegroundColor DarkCyan
+Write-Host "Running SHA:    $RunSha" -ForegroundColor DarkCyan
+
 $startApi = $Component -in @('all', 'api', 'admin', 'storefront')
 $startStorefront = $Component -in @('all', 'storefront')
 $startAdmin = $Component -in @('all', 'admin')
@@ -122,6 +168,7 @@ $requiredCommands = @()
 if ($startApi) { $requiredCommands += 'dotnet' }
 if ($startStorefront) { $requiredCommands += @('node', 'npm') }
 if ($startAdmin) { $requiredCommands += @('flutter', 'dart') }
+if ($startApi) { $requiredCommands += 'docker' }
 foreach ($commandName in $requiredCommands | Select-Object -Unique) { Assert-Command $commandName }
 
 $dotnetExecutable = $null
@@ -141,7 +188,7 @@ if ($startApi) {
   }
 }
 
-if (Read-ProcessState | Where-Object { Get-Process -Id ([int]$_.processId) -ErrorAction SilentlyContinue }) {
+if (Read-ProcessState | Where-Object { Test-OwnedProcess $_ }) {
   Write-Host 'A local demo session is already running. Use ./scripts/dev.ps1 -Status or -Stop first.' -ForegroundColor Yellow
   Show-Status
   exit 1
@@ -149,30 +196,41 @@ if (Read-ProcessState | Where-Object { Get-Process -Id ([int]$_.processId) -Erro
 
 New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
 
+if ($startApi) {
+  $composeFile = Join-Path $RunRoot 'compose.yaml'
+  if (-not (Test-Path $composeFile)) { throw "compose.yaml is missing from $RunRoot." }
+  Write-Host 'Starting the persistent local PostgreSQL service...' -ForegroundColor Cyan
+  & docker compose -f $composeFile up -d postgres
+  if ($LASTEXITCODE -ne 0) { throw 'Docker Compose could not start PostgreSQL. Start Docker Desktop, then rerun this command.' }
+  $deadline = [DateTime]::UtcNow.AddSeconds(90)
+  do {
+    $databaseState = (& docker compose -f $composeFile ps --format json postgres 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue).Health
+    if ($databaseState -eq 'healthy') { break }
+    Start-Sleep -Seconds 2
+  } while ([DateTime]::UtcNow -lt $deadline)
+  if ($databaseState -ne 'healthy') { throw 'PostgreSQL did not become healthy within 90 seconds. Run docker compose ps from the run worktree for details.' }
+}
+
 if ($startStorefront) {
-  $storefrontPath = Join-Path $Root 'apps/storefront'
-  if (-not (Test-Path (Join-Path $storefrontPath 'node_modules/next/dist/bin/next'))) {
-    Write-Host 'Installing storefront dependencies (first run only)...' -ForegroundColor Cyan
-    Push-Location $storefrontPath
-    try { & npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' } }
-    finally { Pop-Location }
-  }
+  $storefrontPath = Join-Path $RunRoot 'apps/storefront'
+  Write-Host 'Synchronizing storefront dependencies with package-lock.json...' -ForegroundColor Cyan
+  Push-Location $storefrontPath
+  try { & npm ci --prefer-offline --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' } }
+  finally { Pop-Location }
 }
 
 if ($startAdmin) {
-  $adminPath = Join-Path $Root 'apps/admin'
-  if (-not (Test-Path (Join-Path $adminPath '.dart_tool/package_config.json'))) {
-    Write-Host 'Installing admin dependencies (first run only)...' -ForegroundColor Cyan
-    Push-Location $adminPath
-    try { & flutter pub get; if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' } }
-    finally { Pop-Location }
-  }
+  $adminPath = Join-Path $RunRoot 'apps/admin'
+  Write-Host 'Synchronizing admin dependencies with pubspec.lock...' -ForegroundColor Cyan
+  Push-Location $adminPath
+  try { & flutter pub get; if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed.' } }
+  finally { Pop-Location }
 }
 
 if ($startApi -and (Test-Path $StateFile)) { Stop-LocalServices }
 
 $services = [System.Collections.Generic.List[object]]::new()
-$adminEmail = 'Hamidrezapakpour95@gmail.com'
+$adminEmail = if ($env:MAZEDUNEH_LOCAL_ADMIN_EMAIL) { $env:MAZEDUNEH_LOCAL_ADMIN_EMAIL } else { 'admin@mazeduneh.local' }
 $adminPassword = $null
 if ($startApi) {
   if (-not (Test-Path $AdminPasswordFile)) {
@@ -197,14 +255,15 @@ if ($startApi) {
     'Cors__AllowedOrigins__2' = 'http://127.0.0.1:8080'
     'Cors__AllowedOrigins__3' = 'http://localhost:8080'
     Payments__SandboxEnabled = 'true'
+    ConnectionStrings__Catalog = 'Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_local_only'
   }
   $services.Add((Start-LocalService 'api' $dotnetExecutable @(
-    'run', '--project', (Join-Path $Root 'services/api/Mazeduneh.Api.csproj'), '--no-launch-profile', '--urls', $ApiUrl
-  ) (Join-Path $Root 'services/api') $apiEnvironment "$ApiUrl/health"))
+    'run', '--project', (Join-Path $RunRoot 'services/api/Mazeduneh.Api.csproj'), '--no-launch-profile', '--urls', $ApiUrl
+  ) (Join-Path $RunRoot 'services/api') $apiEnvironment "$ApiUrl/health/ready" 'Mazeduneh.Api.csproj'))
 }
 
 if ($startStorefront) {
-  $storefrontPath = Join-Path $Root 'apps/storefront'
+  $storefrontPath = Join-Path $RunRoot 'apps/storefront'
   $storefrontEnvironment = @{
     NEXT_PUBLIC_MAZEDUNEH_API_URL = $ApiUrl
     NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL = $ApiUrl
@@ -214,11 +273,11 @@ if ($startStorefront) {
   }
   $services.Add((Start-LocalService 'storefront' (Get-Command node).Source @(
     (Join-Path $storefrontPath 'node_modules/next/dist/bin/next'), 'dev', '--hostname', '127.0.0.1', '--port', '3000'
-  ) $storefrontPath $storefrontEnvironment $StorefrontUrl))
+  ) $storefrontPath $storefrontEnvironment $StorefrontUrl 'next/dist/bin/next'))
 }
 
 if ($startAdmin) {
-  $adminPath = Join-Path $Root 'apps/admin'
+  $adminPath = Join-Path $RunRoot 'apps/admin'
   $flutterBin = Split-Path -Parent (Get-Command flutter).Source
   $dartExecutable = Join-Path $flutterBin 'cache/dart-sdk/bin/dart.exe'
   $flutterSnapshot = Join-Path $flutterBin 'cache/flutter_tools.snapshot'
@@ -226,14 +285,14 @@ if ($startAdmin) {
   $services.Add((Start-LocalService 'admin' $dartExecutable @(
     '--disable-dart-dev', $flutterSnapshot, 'run', '-d', 'web-server', '--web-hostname', '127.0.0.1', '--web-port', '8080',
     '--target', 'lib/secure_main.dart', '--dart-define=MAZEDUNEH_API_BASE_URL=http://127.0.0.1:5080'
-  ) $adminPath $adminEnvironment $AdminUrl))
+  ) $adminPath $adminEnvironment $AdminUrl 'flutter_tools.snapshot'))
 }
 
 $services | ConvertTo-Json | Set-Content -Path $StateFile -Encoding utf8NoBOM
 Write-Host 'Starting the local demo. Services are bound to this computer only.' -ForegroundColor Cyan
 
 $ready = $true
-if ($startApi) { $ready = (Wait-ForUrl 'api' "$ApiUrl/health") -and $ready }
+if ($startApi) { $ready = (Wait-ForUrl 'api' "$ApiUrl/health/ready") -and $ready }
 if ($startStorefront) { $ready = (Wait-ForUrl 'storefront' $StorefrontUrl) -and $ready }
 if ($startAdmin) { $ready = (Wait-ForUrl 'admin' $AdminUrl) -and $ready }
 
@@ -241,7 +300,7 @@ Write-Host ''
 if ($startStorefront) { Write-Host "Storefront: $StorefrontUrl" -ForegroundColor Cyan }
 if ($startAdmin) { Write-Host "Admin:      $AdminUrl" -ForegroundColor Cyan }
 if ($startApi) {
-  Write-Host "API health: $ApiUrl/health" -ForegroundColor Cyan
+  Write-Host "API readiness: $ApiUrl/health/ready" -ForegroundColor Cyan
   Write-Host "Admin login: $adminEmail" -ForegroundColor Yellow
   Write-Host "Admin password: $adminPassword" -ForegroundColor Yellow
   Write-Host 'This password is local-demo-only and is saved in the ignored .local-dev folder.' -ForegroundColor DarkGray
@@ -252,3 +311,4 @@ Write-Host 'Show status with:      ./scripts/dev.ps1 -Status' -ForegroundColor G
 if ($startStorefront -and -not $NoBrowser) { Start-Process $StorefrontUrl }
 if ($startAdmin -and -not $NoBrowser) { Start-Process $AdminUrl }
 if (-not $ready) { exit 1 }
+
