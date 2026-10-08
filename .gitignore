@@ -41,3 +41,5 @@ secrets/
 
 apps/storefront/.test-build/
 apps/storefront/.test-results/
+__pycache__/
+

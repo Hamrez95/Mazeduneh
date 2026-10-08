@@ -36,6 +36,18 @@ Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>())
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
 
+var dashboardPreferences = DashboardPreferences.Default;
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets)).Count == 0, "Default dashboard preferences rejected");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets.Take(4).ToArray())).Count > 0, "Incomplete dashboard order accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(null)).Count > 0, "Missing dashboard preferences accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput([
+    .. dashboardPreferences.Widgets.Take(4), new DashboardWidgetPreference("unknown", true)
+])).Count > 0, "Unknown dashboard widget accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput([
+    .. dashboardPreferences.Widgets.Take(4), dashboardPreferences.Widgets[0]
+])).Count > 0, "Duplicate dashboard widget accepted");
+Console.WriteLine("Dashboard role preference validation checks passed");
+
 if (args.Length == 0 || InventoryExpiryFixture.IsCommand(args))
     await InventoryExpiryFixture.RunAsync(args);
 
@@ -70,3 +82,4 @@ if (args.Length == 2 && args[0] == "--backdate-privacy-shipment")
     fixtureCommand.Parameters.AddWithValue("id", fixtureOrderId);
     Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly the privacy fixture shipment");
 }
+

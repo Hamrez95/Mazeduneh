@@ -20,6 +20,7 @@ class _DashboardPageState extends State<DashboardPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminDashboard? dashboard;
   AdminNotifications? notifications;
+  DashboardPreferences preferences = DashboardPreferences.defaults;
   Object? error;
   bool loading = true;
   DateTime? lastLoadedAt;
@@ -31,10 +32,11 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final result = await Future.wait([api.fetchDashboard(days: dashboardDays), api.fetchNotifications()]);
+      final result = await Future.wait([api.fetchDashboard(days: dashboardDays), api.fetchNotifications(), api.fetchDashboardPreferences()]);
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
+        preferences = result[2] as DashboardPreferences;
         lastLoadedAt = DateTime.now();
       });
     } catch (exception) {
@@ -44,6 +46,14 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> customizeDashboard() async {
+    final updated = await showDialog<DashboardPreferences>(
+      context: context,
+      builder: (_) => DashboardPreferencesDialog(initial: preferences, onSave: api.saveDashboardPreferences),
+    );
+    if (updated != null && mounted) setState(() => preferences = updated);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading && dashboard == null) return const Center(child: CircularProgressIndicator());
@@ -51,6 +61,13 @@ class _DashboardPageState extends State<DashboardPage> {
     final data = dashboard!;
     final session = OwnerSession.instance;
     bool can(String permission) => !session.isAuthenticated || session.can(permission);
+    final sections = <String, Widget>{
+      'metrics': _metricsSection(data, can),
+      'quickActions': _quickActionsSection(),
+      'alerts': _alertsPanel(),
+      'lowStock': _lowStockPanel(data, can),
+      'expiring': _expiringPanel(data, can),
+    };
     return RefreshIndicator(
       onRefresh: load,
       child: ListView(
@@ -68,97 +85,28 @@ class _DashboardPageState extends State<DashboardPage> {
               ],
             ]);
             final refresh = IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
+            final customize = IconButton(onPressed: customizeDashboard, icon: const Icon(Icons.tune_rounded), tooltip: 'تنظیم بخش‌های داشبورد');
             return constraints.maxWidth < 500
-                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: refresh), heading])
-                : Row(children: [Expanded(child: heading), refresh]);
+                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: Wrap(children: [customize, refresh])), heading])
+                : Row(children: [Expanded(child: heading), customize, refresh]);
           }),
-          const SizedBox(height: 24),
-          _DashboardPeriodSelector(
-            selectedDays: dashboardDays,
-            onChanged: (days) {
-              setState(() => dashboardDays = days);
-              load();
-            },
-          ),
-          const SizedBox(height: 14),
-          Wrap(spacing: 14, runSpacing: 14, children: [
-            if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
-            if (can(AdminPermissions.ordersRead)) ...[
-              MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-              if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
-              MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-              MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-              MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-              MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-            ],
-            if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(6)),
-            if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(8)),
-          ]),
-          const SizedBox(height: 24),
-          const _DashboardSectionTitle(
-            eyebrow: 'مسیرهای سریع',
-            title: 'امروز چه کاری انجام دهید؟',
-            detail: 'از همین‌جا به کاری بروید که بیشترین اثر را روی عملیات امروز دارد.',
-          ),
-          const SizedBox(height: 12),
-          _DashboardQuickActions(onNavigate: widget.onNavigate),
-          const SizedBox(height: 28),
-          Builder(builder: (context) {
-            final alertItems = notifications?.items ?? const <AdminNotification>[];
-            final panels = [
-              _DashboardPanel(
-                title: 'هشدارهای عملیاتی',
-                icon: Icons.notifications_active_rounded,
-                child: alertItems.isEmpty
-                    ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
-                    : Column(children: [
-                        for (final item in alertItems.take(4))
-                          AdminNotificationTile(item: item, onNavigate: widget.onNavigate),
-                      ]),
-              ),
-              _DashboardPanel(
-                title: 'موجودی کم',
-                icon: Icons.warning_amber_rounded,
-                child: !can(AdminPermissions.inventoryRead)
-                    ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده هشدارهای موجودی، دسترسی انبار را از مدیر سیستم بگیرید.')
-                    : data.lowStock.isEmpty
-                    ? const AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
-                    : Column(children: [
-                        for (final item in data.lowStock.take(4))
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                            subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                            trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
-                            onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
-                          ),
-                      ]),
-              ),
-              _DashboardPanel(
-                title: 'نزدیک به انقضا',
-                icon: Icons.event_busy_rounded,
-                child: !can(AdminPermissions.inventoryRead)
-                    ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده بچ‌های نزدیک انقضا، دسترسی انبار را از مدیر سیستم بگیرید.')
-                    : data.expiringSoon.isEmpty
-                    ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
-                    : Column(children: [
-                        for (final item in data.expiringSoon.take(5))
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                            subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                            trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
-                            onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
-                          ),
-                      ]),
-              ),
-            ];
-            return LayoutBuilder(builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 720;
-              return stacked
-                  ? Column(children: [panels[0], const SizedBox(height: 14), panels[1], const SizedBox(height: 14), panels[2]])
-                  : Column(children: [Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: panels[0]), const SizedBox(width: 14), Expanded(child: panels[1])]), const SizedBox(height: 14), panels[2]]);
-            });
+          if (preferences.widgets.every((item) => !item.visible))
+            const Padding(
+              padding: EdgeInsets.only(top: 28),
+              child: AdminEmptyState(icon: Icons.dashboard_customize_outlined, title: 'داشبورد خلوت است', detail: 'از تنظیمات بالای صفحه، بخش‌های موردنیاز را دوباره فعال کنید.'),
+            ),
+          LayoutBuilder(builder: (context, constraints) {
+            final visible = preferences.widgets.where((item) => item.visible).toList();
+            final compact = constraints.maxWidth < 720;
+            return Wrap(spacing: 14, runSpacing: 14, children: [
+              for (final item in visible)
+                SizedBox(
+                  width: item.id == 'metrics' || item.id == 'quickActions' || compact
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 14) / 2,
+                  child: sections[item.id],
+                ),
+            ]);
           }),
         ],
       ),
@@ -171,6 +119,83 @@ class _DashboardPageState extends State<DashboardPage> {
         30 => 'فروش ۳۰ روز اخیر',
         _ => 'فروش بازهٔ انتخابی',
       };
+
+  Widget _metricsSection(AdminDashboard data, bool Function(String) can) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _DashboardPeriodSelector(
+        selectedDays: dashboardDays,
+        onChanged: (days) { setState(() => dashboardDays = days); load(); },
+      ),
+      const SizedBox(height: 14),
+      Wrap(spacing: 14, runSpacing: 14, children: [
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
+        if (can(AdminPermissions.ordersRead)) ...[
+          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
+          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+          MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+        ],
+        if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(6)),
+        if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(8)),
+      ]),
+    ],
+  );
+
+  Widget _quickActionsSection() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    const _DashboardSectionTitle(
+      eyebrow: 'مسیرهای سریع',
+      title: 'امروز چه کاری انجام دهید؟',
+      detail: 'از همین‌جا به کاری بروید که بیشترین اثر را روی عملیات امروز دارد.',
+    ),
+    const SizedBox(height: 12),
+    _DashboardQuickActions(onNavigate: widget.onNavigate),
+  ]);
+
+  Widget _alertsPanel() {
+    final items = notifications?.items ?? const <AdminNotification>[];
+    return _DashboardPanel(
+      title: 'هشدارهای عملیاتی',
+      icon: Icons.notifications_active_rounded,
+      child: items.isEmpty
+          ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
+          : Column(children: [for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate)]),
+    );
+  }
+
+  Widget _lowStockPanel(AdminDashboard data, bool Function(String) can) => _DashboardPanel(
+    title: 'موجودی کم',
+    icon: Icons.warning_amber_rounded,
+    child: !can(AdminPermissions.inventoryRead)
+        ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده هشدارهای موجودی، دسترسی انبار را از مدیر سیستم بگیرید.')
+        : data.lowStock.isEmpty
+            ? const AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'موجودی مناسب است', detail: 'کالایی پایین‌تر از نقطه سفارش نیست.')
+            : Column(children: [for (final item in data.lowStock.take(4)) ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
+                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
+              )]),
+  );
+
+  Widget _expiringPanel(AdminDashboard data, bool Function(String) can) => _DashboardPanel(
+    title: 'نزدیک به انقضا',
+    icon: Icons.event_busy_rounded,
+    child: !can(AdminPermissions.inventoryRead)
+        ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده بچ‌های نزدیک انقضا، دسترسی انبار را از مدیر سیستم بگیرید.')
+        : data.expiringSoon.isEmpty
+            ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
+            : Column(children: [for (final item in data.expiringSoon.take(5)) ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
+                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
+              )]),
+  );
 
 }
 
@@ -197,6 +222,99 @@ class _DashboardPeriodSelector extends StatelessWidget {
           ],
         ),
       );
+}
+
+class DashboardPreferencesDialog extends StatefulWidget {
+  const DashboardPreferencesDialog({super.key, required this.initial, required this.onSave});
+  final DashboardPreferences initial;
+  final Future<DashboardPreferences> Function(DashboardPreferences) onSave;
+  @override
+  State<DashboardPreferencesDialog> createState() => _DashboardPreferencesDialogState();
+}
+
+class _DashboardPreferencesDialogState extends State<DashboardPreferencesDialog> {
+  late DashboardPreferences draft = widget.initial;
+  bool saving = false;
+  String? error;
+  static const labels = {
+    'metrics': 'شاخص‌های فروش و سفارش',
+    'quickActions': 'مسیرهای سریع',
+    'alerts': 'هشدارهای عملیاتی',
+    'lowStock': 'موجودی کم',
+    'expiring': 'کالاهای نزدیک به انقضا',
+  };
+
+  Future<void> save() async {
+    setState(() { saving = true; error = null; });
+    try {
+      final saved = await widget.onSave(draft);
+      if (mounted) Navigator.of(context).pop(saved);
+    } catch (exception) {
+      if (mounted) setState(() => error = requestErrorMessage(exception));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('تنظیم داشبورد این نقش', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          const Text('بخش‌ها را روشن یا خاموش کنید و ترتیب نمایش را تغییر دهید.', style: TextStyle(color: AdminColors.muted)),
+          const SizedBox(height: 12),
+          Flexible(child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: draft.widgets.length,
+            itemBuilder: (context, index) {
+              final item = draft.widgets[index];
+              return Semantics(
+                container: true,
+                label: labels[item.id],
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(labels[item.id] ?? item.id, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  leading: Checkbox(
+                    value: item.visible,
+                    onChanged: saving ? null : (value) => setState(() => draft = draft.setVisible(index, value ?? false)),
+                  ),
+                  trailing: Wrap(spacing: 0, children: [
+                    IconButton(
+                      tooltip: 'انتقال به بالا',
+                      onPressed: saving || index == 0 ? null : () => setState(() => draft = draft.move(index, index - 1)),
+                      icon: const Icon(Icons.keyboard_arrow_up_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'انتقال به پایین',
+                      onPressed: saving || index == draft.widgets.length - 1 ? null : () => setState(() => draft = draft.move(index, index + 1)),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                    ),
+                  ]),
+                ),
+              );
+            },
+          )),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Semantics(liveRegion: true, child: Text(error!, style: const TextStyle(color: AdminColors.coral))),
+          ],
+          const SizedBox(height: 12),
+          Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: [
+            TextButton(onPressed: saving ? null : () => Navigator.of(context).pop(), child: const Text('انصراف')),
+            FilledButton.icon(
+              onPressed: saving ? null : save,
+              icon: saving ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined),
+              label: Text(saving ? 'در حال ذخیره' : 'ذخیره چیدمان'),
+            ),
+          ]),
+        ]),
+      ),
+    ),
+  );
 }
 
 class _DashboardSectionTitle extends StatelessWidget {

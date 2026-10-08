@@ -321,4 +321,35 @@ void main() {
     expect(dashboard.periodOrderCount, 3);
     expect(dashboard.averageOrderValue, 300000);
   });
+
+  test('dashboard preferences load and save the role widget order', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'widgets': [
+          {'id': 'alerts', 'visible': true},
+          {'id': 'metrics', 'visible': false},
+          {'id': 'quickActions', 'visible': true},
+          {'id': 'lowStock', 'visible': true},
+          {'id': 'expiring', 'visible': true},
+        ],
+      }), 200);
+    });
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    final loaded = await api.fetchDashboardPreferences();
+    expect(captured.url.path, '/api/v1/admin/dashboard/preferences');
+    expect(loaded.widgets.first.id, 'alerts');
+    expect(loaded.widgets[1].visible, isFalse);
+    final saved = await api.saveDashboardPreferences(loaded);
+    expect(captured.method, 'PUT');
+    expect(captured.headers['content-type'], contains('application/json'));
+    expect(jsonDecode(captured.body)['widgets'][1]['id'], 'metrics');
+    expect(saved.widgets.first.id, 'alerts');
+  });
+
+  test('dashboard preferences fall back safely when the saved widget list is invalid', () {
+    final parsed = DashboardPreferences.fromJson({'widgets': [{'id': 'unknown', 'visible': true}]});
+    expect(parsed.widgets.map((item) => item.id).toList(), DashboardPreferences.defaults.widgets.map((item) => item.id).toList());
+  });
 }
