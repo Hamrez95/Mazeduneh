@@ -6,6 +6,8 @@ public static class InventoryExpiryFixture
 {
     private const string Command = "--expire-inventory-fixture-reservation";
 
+    public static bool IsCommand(string[] args) => args.Length > 0 && args[0] == Command;
+
     public static async Task RunAsync(string[] args)
     {
         if (args.Length == 0) return;

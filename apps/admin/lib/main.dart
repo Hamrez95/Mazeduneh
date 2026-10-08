@@ -2080,6 +2080,15 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final actions = <Widget>[
+      TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('انصراف')),
+      FilledButton(
+        onPressed: busy ? null : submit,
+        child: Text(busy ? 'در حال ثبت…' : isWaste ? 'ثبت ضایعات' : 'ثبت اصلاح'),
+      ),
+    ];
+    final textScale = MediaQuery.textScalerOf(context).scale(14);
+    final useStackedActions = MediaQuery.sizeOf(context).width < 480 || textScale > 16;
     return PopScope(canPop: !busy, child: AlertDialog(
       title: Text(isWaste ? 'ثبت ضایعات ${widget.variant.sku}' : 'اصلاح موجودی ${widget.variant.sku}'),
       content: SizedBox(
@@ -2148,13 +2157,21 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
           ])),
         ),
       ),
-      actions: [
-        TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('انصراف')),
-        FilledButton(
-          onPressed: busy ? null : submit,
-          child: Text(busy ? 'در حال ثبت…' : isWaste ? 'ثبت ضایعات' : 'ثبت اصلاح'),
-        ),
-      ],
+      actions: useStackedActions
+          ? [
+              SizedBox(
+                width: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: actions,
+                ),
+              ),
+            ]
+          : actions,
+      actionsOverflowAlignment: OverflowBarAlignment.end,
+      actionsOverflowDirection: VerticalDirection.down,
+      actionsOverflowButtonSpacing: 8,
     ));
   }
 
