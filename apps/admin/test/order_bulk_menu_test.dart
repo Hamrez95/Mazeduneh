@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
-import 'package:mazeduneh_admin/main.dart';
+import 'package:mazeduneh_admin/orders_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
 void main() {
