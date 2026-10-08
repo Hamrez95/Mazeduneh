@@ -11,7 +11,6 @@ import 'auth_api.dart';
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'admin_theme.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'catalog_api.dart';
 import 'order_api.dart';
