@@ -43,6 +43,17 @@ class _AdminShellState extends State<AdminShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (OwnerSession.instance.isAuthenticated) {
+      final firstAllowed = items.indexWhere(
+        (item) => OwnerSession.instance.can(item.$3),
+      );
+      if (firstAllowed >= 0) index = firstAllowed;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final visibleIndexes = [for (var i = 0; i < items.length; i++) if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(items[i].$3)) i];
@@ -64,8 +75,32 @@ class _AdminShellState extends State<AdminShell> {
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
-      bottomNavigationBar: desktop
+      bottomNavigationBar: desktop || visibleIndexes.isEmpty
           ? null
+          : visibleIndexes.length == 1
+          ? BottomAppBar(
+              child: SafeArea(
+                child: SizedBox(
+                  height: 56,
+                  child: Center(
+                    child: Semantics(
+                      label: 'بخش فعال: ${items[visibleIndexes.single].$1}',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            items[visibleIndexes.single].$2,
+                            color: AdminColors.ink,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(items[visibleIndexes.single].$1),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
           : NavigationBar(
               selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
               onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : setState(() => index = primaryIndexes[value]),
