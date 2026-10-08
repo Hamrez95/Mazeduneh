@@ -109,6 +109,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
         {
+            await reader.CloseAsync();
             await transaction.RollbackAsync(cancellationToken);
             return StockAdjustmentResult.Failed("SKU پیدا نشد یا موجودی نمی‌تواند منفی شود.");
         }
@@ -163,6 +164,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
+                await reader.CloseAsync();
                 await transaction.RollbackAsync(cancellationToken);
                 return StockAdjustmentResult.Failed("SKU پیدا نشد.");
             }
@@ -229,6 +231,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
+                await reader.CloseAsync();
                 await transaction.RollbackAsync(cancellationToken);
                 return StockAdjustmentResult.Failed("موجودی قابل‌فروش برای ثبت این ضایعات کافی نیست.");
             }
