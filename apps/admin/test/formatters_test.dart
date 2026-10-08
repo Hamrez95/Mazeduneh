@@ -32,6 +32,7 @@ void main() {
       '   ',
       '1.5',
       '۱٫۵',
+      '۱،۵',
       'NaN',
       'Infinity',
       '-Infinity',

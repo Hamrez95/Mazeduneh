@@ -26,6 +26,10 @@ void main() {
     ));
 
     await tester.pumpAndSettle();
+    await tester.enterText(field('کد خرید / بچ'), 'LOT-FRACTION');
+    await tester.enterText(field('نام تأمین‌کننده'), 'تأمین تست');
+    await tester.enterText(field('تاریخ تولید'), '۲۰۲۵-۱۲-۰۱');
+    await tester.enterText(field('تاریخ انقضا'), '۲۰۳۰-۰۱-۰۱');
     await tester.enterText(field('تعداد بستهٔ خریداری‌شده'), '۱٫۵');
     await tester.tap(find.text('ثبت خرید'));
     await tester.pumpAndSettle();
