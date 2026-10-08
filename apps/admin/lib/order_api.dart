@@ -59,6 +59,24 @@ class OrderApiClient {
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<DashboardPreferences> fetchDashboardPreferences() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard/preferences'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<DashboardPreferences> saveDashboardPreferences(DashboardPreferences preferences) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/admin/dashboard/preferences'),
+      headers: _headers(json: true),
+      body: jsonEncode(preferences.toJson()),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<AdminAnalytics> fetchAnalytics({int days = 30}) async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: {'days': '$days'}), headers: _headers());
     _guard(response);
@@ -679,6 +697,52 @@ class AdminDashboard {
     newCustomers: (json['newCustomers'] as num?)?.toInt() ?? 0,
     corporateNewRequests: (json['corporateNewRequests'] as num?)?.toInt() ?? 0,
     problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0, financialsVisible: json['financialsVisible'] as bool? ?? true);
+}
+
+class DashboardWidgetPreference {
+  const DashboardWidgetPreference({required this.id, required this.visible});
+  final String id;
+  final bool visible;
+  factory DashboardWidgetPreference.fromJson(Map<String, dynamic> json) => DashboardWidgetPreference(
+        id: json['id'] as String,
+        visible: json['visible'] as bool? ?? true,
+      );
+  Map<String, dynamic> toJson() => {'id': id, 'visible': visible};
+}
+
+class DashboardPreferences {
+  const DashboardPreferences(this.widgets);
+  static const ids = ['metrics', 'quickActions', 'alerts', 'lowStock', 'expiring'];
+  static const defaults = DashboardPreferences([
+    DashboardWidgetPreference(id: 'metrics', visible: true),
+    DashboardWidgetPreference(id: 'quickActions', visible: true),
+    DashboardWidgetPreference(id: 'alerts', visible: true),
+    DashboardWidgetPreference(id: 'lowStock', visible: true),
+    DashboardWidgetPreference(id: 'expiring', visible: true),
+  ]);
+  final List<DashboardWidgetPreference> widgets;
+  bool isVisible(String id) => widgets.any((item) => item.id == id && item.visible);
+  factory DashboardPreferences.fromJson(Map<String, dynamic> json) {
+    final parsed = (json['widgets'] as List<dynamic>? ?? const [])
+        .map((item) => DashboardWidgetPreference.fromJson(item as Map<String, dynamic>))
+        .toList();
+    if (parsed.length != ids.length || parsed.map((item) => item.id).toSet().length != ids.length ||
+        parsed.any((item) => !ids.contains(item.id))) return defaults;
+    return DashboardPreferences(parsed);
+  }
+  Map<String, dynamic> toJson() => {'widgets': widgets.map((item) => item.toJson()).toList()};
+  DashboardPreferences move(int from, int to) {
+    final updated = [...widgets];
+    final item = updated.removeAt(from);
+    updated.insert(to, item);
+    return DashboardPreferences(updated);
+  }
+  DashboardPreferences setVisible(int index, bool visible) {
+    final updated = [...widgets];
+    final item = updated[index];
+    updated[index] = DashboardWidgetPreference(id: item.id, visible: visible);
+    return DashboardPreferences(updated);
+  }
 }
 
 class LowStockItem {

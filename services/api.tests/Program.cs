@@ -31,6 +31,18 @@ Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray
 Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
 Console.WriteLine("Purchase pagination cursor unit checks passed");
 
+var dashboardPreferences = DashboardPreferences.Default;
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets)).Count == 0, "Default dashboard preferences rejected");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets.Take(4).ToArray())).Count > 0, "Incomplete dashboard order accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput(null)).Count > 0, "Missing dashboard preferences accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput([
+    .. dashboardPreferences.Widgets.Take(4), new DashboardWidgetPreference("unknown", true)
+])).Count > 0, "Unknown dashboard widget accepted");
+Check(DashboardPreferences.Validate(new DashboardPreferencesInput([
+    .. dashboardPreferences.Widgets.Take(4), dashboardPreferences.Widgets[0]
+])).Count > 0, "Duplicate dashboard widget accepted");
+Console.WriteLine("Dashboard role preference validation checks passed");
+
 if (args.Length == 0 || InventoryExpiryFixture.IsCommand(args))
     await InventoryExpiryFixture.RunAsync(args);
 
