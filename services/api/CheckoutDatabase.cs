@@ -106,7 +106,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             var lines = new List<CheckoutLine>();
             var unavailable = new List<string>();
 
-            foreach (var requested in request.Lines.OrderBy(item => item.Sku, StringComparer.OrdinalIgnoreCase))
+            foreach (var requested in request.Lines
+                .OrderBy(item => item.Sku.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(item => item.Sku.Trim(), StringComparer.Ordinal))
             {
                 const string selectSql = """
                     select p.title, v.sku, v.display_label, v.price, v.available_packages, v.cost_price, v.packaging_cost, v.additional_cost
@@ -332,20 +334,25 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             while (await reader.ReadAsync(cancellationToken)) orderIds.Add(reader.GetGuid(0));
         }
 
-        var changes = new List<StockLevelChange>();
+        var expiredLines = new List<(Guid OrderId, string Sku, int Quantity, string BatchAllocationsJson)>();
         foreach (var orderId in orderIds)
         {
             const string linesSql = "select sku, quantity, batch_allocations from checkout_order_lines where order_id=@order_id;";
-            var lines = new List<(string Sku, int Quantity, string BatchAllocationsJson)>();
             await using (var command = new NpgsqlCommand(linesSql, connection, transaction))
             {
                 command.Parameters.AddWithValue("order_id", orderId);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
-                    lines.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
+                    expiredLines.Add((orderId, reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
             }
+        }
 
-            foreach (var line in lines)
+        await LockVariantRowsAsync(connection, transaction, expiredLines.Select(line => line.Sku), cancellationToken);
+
+        var changes = new List<StockLevelChange>();
+        foreach (var orderId in orderIds)
+        {
+            foreach (var line in expiredLines.Where(line => line.OrderId == orderId))
             {
                 var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)
                     ?? Array.Empty<CheckoutBatchAllocation>();
@@ -404,6 +411,24 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         await transaction.CommitAsync(cancellationToken);
         if (orderIds.Count > 0) logger.LogInformation("Released {Count} expired checkout reservations.", orderIds.Count);
         return changes;
+    }
+
+    private static async Task LockVariantRowsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<string> skus,
+        CancellationToken cancellationToken)
+    {
+        foreach (var sku in skus
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value, StringComparer.Ordinal))
+        {
+            await using var command = new NpgsqlCommand(
+                "select sku from product_variants where upper(sku)=upper(@sku) for update;", connection, transaction);
+            command.Parameters.AddWithValue("sku", sku);
+            await command.ExecuteScalarAsync(cancellationToken);
+        }
     }
 
     private static async Task InsertOrderAsync(

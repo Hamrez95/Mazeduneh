@@ -837,6 +837,17 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 while (await reader.ReadAsync(cancellationToken))
                     lines.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
             }
+            foreach (var sku in lines.Select(line => line.Sku)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(value => value, StringComparer.Ordinal))
+            {
+                await using var variantLock = new NpgsqlCommand(
+                    "select sku from product_variants where upper(sku)=upper(@sku) for update;", connection, transaction);
+                variantLock.Parameters.AddWithValue("sku", sku);
+                await variantLock.ExecuteScalarAsync(cancellationToken);
+            }
+
             foreach (var line in lines)
             {
                 var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)

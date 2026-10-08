@@ -336,7 +336,7 @@ jobs:
           PY
 
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/inventory/adjust" \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
             --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' -D /tmp/inventory-adjusted.headers > /tmp/inventory-adjusted.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-audit-log.json
@@ -352,25 +352,28 @@ jobs:
           assert adjustment['requestId'] == request_id
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/products/ \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"title":"CI waste fixture","slug":"ci-waste-fixture","category":"CI","origin":"IR","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"CI-WASTE-ONLY","quantity":250,"displayLabel":"CI waste fixture","price":5000,"availablePackages":0}]}' > /tmp/ci-waste-product.json
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/inventory/batches \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
           WASTE_INVALID_STATUS=$(curl -s -o /tmp/inventory-waste-invalid.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
           test "${WASTE_INVALID_STATUS}" = "400"
           WASTE_OVERFLOW_STATUS=$(curl -s -o /tmp/inventory-waste-overflow.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
           test "${WASTE_OVERFLOW_STATUS}" = "409"
           curl -fsS -D /tmp/inventory-waste.headers -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"sku":"PI-AKB-250","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
-          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=PI-AKB-250" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=CI-WASTE-ONLY" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-movements.json
-          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/batches?sku=PI-AKB-250" \
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/batches?sku=CI-WASTE-ONLY" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-batches.json
-          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=CI-WASTE-ONLY&limit=20" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-audit.json
           python3 - <<'PY'
           import json
@@ -581,6 +584,9 @@ jobs:
 
       - name: Dated inventory purchase contract
         run: python3 scripts/tests/inventory_purchase.py
+
+      - name: Inventory adjustment reservation invariant contract
+        run: python3 scripts/tests/inventory_adjustment.py
 
       - name: Membership invitation and persisted authorization contract
         run: python3 scripts/tests/admin_membership_login.py

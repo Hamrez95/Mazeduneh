@@ -16,6 +16,23 @@ void main() {
   });
   tearDown(OwnerSession.instance.clear);
 
+  test('stock adjustment and waste send their stable idempotency key', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      return http.Response(jsonEncode({'isSuccess': true, 'sku': 'PI-250', 'balanceAfter': 3}), 200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    await api.adjustStock('PI-250', -1, 'شکسته', operationKey: 'stable-adjustment-01');
+    await api.writeOffStock('PI-250', 'LOT-1', 1, 'شکسته', operationKey: 'stable-waste-0001');
+    expect(captured[0].headers['idempotency-key'], 'stable-adjustment-01');
+    expect(captured[1].headers['idempotency-key'], 'stable-waste-0001');
+    expect(captured.map((request) => request.url.path), [
+      '/api/v1/admin/inventory/adjust', '/api/v1/admin/inventory/waste',
+    ]);
+  });
+
   test('fetchOrders sends Bearer token and parses payment data', () async {
     late http.Request captured;
     final client = MockClient((request) async {
@@ -218,7 +235,7 @@ void main() {
       captured = request;
       return http.Response(jsonEncode({'isSuccess': true, 'sku': 'PI-AKB-250', 'balanceAfter': 2}), 200);
     });
-    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test').writeOffStock('PI-AKB-250', 'LOT-1', 1, 'بسته آسیب‌دیده');
+    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test').writeOffStock('PI-AKB-250', 'LOT-1', 1, 'بسته آسیب‌دیده', operationKey: 'test-writeoff-0001');
     expect(captured.method, 'POST');
     expect(captured.url.path, '/api/v1/admin/inventory/waste');
     expect(jsonDecode(captured.body), {'sku': 'PI-AKB-250', 'batchCode': 'LOT-1', 'quantity': 1, 'reason': 'بسته آسیب‌دیده'});
