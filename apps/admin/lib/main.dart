@@ -2149,10 +2149,14 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
                 hintText: isWaste ? 'تعداد بسته‌های غیرقابل‌فروش' : 'مثبت برای ورود، منفی برای خروج',
               ),
               validator: (value) {
+                final batchRemaining = selectedBatch?.remainingPackages ?? 0;
+                final maximum = isWaste && batchRemaining < maxInventoryAdjustment
+                    ? batchRemaining
+                    : maxInventoryAdjustment;
                 final amount = parsePersianInteger(
                   value,
                   min: isWaste ? 1 : -maxInventoryAdjustment,
-                  max: isWaste ? selectedBatch?.remainingPackages ?? 0 : maxInventoryAdjustment,
+                  max: maximum,
                 );
                 if (amount == null) return 'عدد معتبر وارد کنید.';
                 if (isWaste && amount <= 0) return 'تعداد ضایعات باید بیشتر از صفر باشد.';
