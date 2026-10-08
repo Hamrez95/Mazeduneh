@@ -14,7 +14,7 @@ import 'product_management_page.dart';
 import 'customer_management_page.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
-import 'main.dart' show AdminShell;
+import 'admin_shell.dart';
 import 'notifications_page.dart' show NotificationsPage;
 import 'reports_page.dart' show ReportsPage;
 
