@@ -15,3 +15,4 @@ Updated: 2026-10-09
 - #169 remains open; its typed deep-link/back-navigation UI slice is implemented, but independent review and full epic acceptance remain. #91 remains P0 with MFA/step-up and expanded IDOR/security review; #92 remains P0 with service health and deeper profit/cost/drill-down work. Do not close epics from individual open PR slices.
 - Graphify is unavailable (`graphify --version` was not found); targeted searches per Issue #151 were used, not graph queries.
 - Next: obtain the required independent permission/security reviews for #185 and #186; after all required gates pass, merge only the fully accepted slices, verify their main commits, then finish the remaining #169 F acceptance checks before starting the open P0/P1 backlog. Complete the 114 proven-redundant remote ref deletions after action-time confirmation; preserve the four unique refs and worktree-linked launcher branch.
+

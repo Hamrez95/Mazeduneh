@@ -88,3 +88,4 @@ class AdminNavigationIntent {
   @override
   int get hashCode => Object.hash(module, orderFilter, sku, batchCode);
 }
+

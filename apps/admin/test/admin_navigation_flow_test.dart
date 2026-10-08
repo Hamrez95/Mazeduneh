@@ -88,6 +88,9 @@ void main() {
               'expiringSoon': [],
             });
           }
+          if (request.url.path.endsWith('/dashboard/preferences')) {
+            return _json(DashboardPreferences.defaults.toJson());
+          }
           if (request.url.path.endsWith('/notifications')) {
             return _json({
               'awaitingPayment': 1,
@@ -170,3 +173,4 @@ http.Response _json(Object body) => http.Response(
   200,
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
+

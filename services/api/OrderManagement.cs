@@ -164,6 +164,29 @@ public static class OrderManagementModule
             return Results.Ok(dashboard);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/dashboard/preferences", async (
+            OrderManagementDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
+            return Results.Ok(await database.GetDashboardPreferencesAsync(principal.StoreId, principal.Role, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapPut("/dashboard/preferences", async (
+            DashboardPreferencesInput input,
+            OrderManagementDatabase database,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
+            var errors = DashboardPreferences.Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var saved = await database.SaveDashboardPreferencesAsync(
+                principal.StoreId, principal.Role, principal.Email, input.Widgets!, cancellationToken);
+            return Results.Ok(saved);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/analytics", async (
             int? days,
             OrderManagementDatabase database,
@@ -309,6 +332,17 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             create index if not exists ix_checkout_orders_tracking_code on checkout_orders(tracking_code);
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "003-shipping-details", shippingDetailsSql, cancellationToken);
+        const string dashboardPreferencesSql = """
+            create table if not exists admin_dashboard_role_preferences (
+                store_id varchar(120) not null,
+                role varchar(80) not null,
+                widgets jsonb not null,
+                updated_by varchar(180) not null,
+                updated_at timestamptz not null,
+                primary key (store_id, role)
+            );
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "004-dashboard-role-preferences", dashboardPreferencesSql, cancellationToken);
         logger.LogInformation("Order-management schema constraints are ready.");
     }
 
@@ -614,6 +648,49 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         }
 
         return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, days, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
+    }
+
+    public async Task<DashboardPreferences> GetDashboardPreferencesAsync(string storeId, string role, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return DashboardPreferences.Default;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "select widgets from admin_dashboard_role_preferences where store_id=@store and role=@role;", connection);
+        command.Parameters.AddWithValue("store", storeId);
+        command.Parameters.AddWithValue("role", role);
+        var json = await command.ExecuteScalarAsync(cancellationToken) as string;
+        if (json is null) return DashboardPreferences.Default;
+        try
+        {
+            var widgets = JsonSerializer.Deserialize<DashboardWidgetPreference[]>(json);
+            return DashboardPreferences.IsValid(widgets) ? new DashboardPreferences(widgets!) : DashboardPreferences.Default;
+        }
+        catch (JsonException)
+        {
+            return DashboardPreferences.Default;
+        }
+    }
+
+    public async Task<DashboardPreferences> SaveDashboardPreferencesAsync(
+        string storeId, string role, string actor, IReadOnlyList<DashboardWidgetPreference> widgets, CancellationToken cancellationToken)
+    {
+        var preferences = new DashboardPreferences(widgets.ToArray());
+        if (!IsConfigured) return preferences;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_dashboard_role_preferences (store_id,role,widgets,updated_by,updated_at)
+            values (@store,@role,@widgets::jsonb,@actor,now())
+            on conflict (store_id,role) do update
+              set widgets=excluded.widgets,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
+            """, connection);
+        command.Parameters.AddWithValue("store", storeId);
+        command.Parameters.AddWithValue("role", role);
+        command.Parameters.AddWithValue("widgets", JsonSerializer.Serialize(widgets));
+        command.Parameters.AddWithValue("actor", actor);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return preferences;
     }
 
     public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
@@ -1041,6 +1118,21 @@ public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shi
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
     IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
+public sealed record DashboardWidgetPreference(string Id, bool Visible);
+public sealed record DashboardPreferencesInput(IReadOnlyList<DashboardWidgetPreference>? Widgets);
+public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreference> Widgets)
+{
+    public static readonly string[] AvailableWidgets = ["metrics", "quickActions", "alerts", "lowStock", "expiring"];
+    public static readonly DashboardPreferences Default = new(AvailableWidgets.Select(id => new DashboardWidgetPreference(id, true)).ToArray());
+
+    public static bool IsValid(IReadOnlyList<DashboardWidgetPreference>? widgets) =>
+        widgets is { Count: 5 } && widgets.All(widget => widget is not null && AvailableWidgets.Contains(widget.Id, StringComparer.Ordinal)) &&
+        widgets.Select(widget => widget.Id).Distinct(StringComparer.Ordinal).Count() == AvailableWidgets.Length;
+
+    public static Dictionary<string, string[]> Validate(DashboardPreferencesInput input) => IsValid(input.Widgets)
+        ? new Dictionary<string, string[]>()
+        : new Dictionary<string, string[]> { [nameof(input.Widgets)] = ["ترتیب باید هر پنج بخش داشبورد را دقیقاً یک بار داشته باشد."] };
+}
 public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
 public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
 public sealed record AdminNotification(
