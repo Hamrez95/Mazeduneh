@@ -56,7 +56,13 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('سفارش‌ها'), findsOneWidget);
+        expect(find.text('سفارش‌ها'), findsWidgets);
+        expect(find.text('دسترسی به این بخش محدود است.'), findsNothing);
+        expect(find.byType(NavigationBar), findsNothing);
+        expect(
+          find.byType(BottomAppBar),
+          width < 900 ? findsOneWidget : findsNothing,
+        );
         expect(tester.takeException(), isNull);
       },
     );
