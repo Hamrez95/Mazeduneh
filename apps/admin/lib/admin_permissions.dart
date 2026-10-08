@@ -1,6 +1,9 @@
 abstract final class AdminPermissions {
   static const dashboardRead = 'dashboard.read';
   static const ordersRead = 'orders.read';
+  static const ordersExport = 'orders.export';
+  static const ordersDocumentsRead = 'orders.documents.read';
+  static const customersPiiRead = 'customers.pii.read';
   static const productsRead = 'products.read';
   static const productsWrite = 'products.write';
   static const inventoryRead = 'inventory.read';

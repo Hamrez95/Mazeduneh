@@ -564,6 +564,9 @@ jobs:
       - name: API request correlation and log redaction contract
         run: python3 scripts/tests/api_observability.py
 
+      - name: Order contact privacy and documents HTTP contract
+        run: python3 scripts/tests/order_privacy.py
+
       - name: Notification role projection contract
         run: python3 scripts/tests/notification_permissions.py
 

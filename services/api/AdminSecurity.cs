@@ -186,6 +186,8 @@ public static class AdminPermissionCatalog
 {
     public const string DashboardRead = "dashboard.read";
     public const string OrdersRead = "orders.read";
+    public const string OrdersExport = "orders.export";
+    public const string OrdersDocumentsRead = "orders.documents.read";
     public const string OrdersWrite = "orders.write";
     public const string ProductsRead = "products.read";
     public const string ProductsWrite = "products.write";
@@ -210,7 +212,7 @@ public static class AdminPermissionCatalog
 
     public static IReadOnlyList<string> Owner { get; } =
     [
-        DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite,
+        DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite,
         InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
         CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
@@ -220,11 +222,11 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
-            ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CustomersPiiRead, CorporateRead],
-            ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite],
-            ["Accountant"] = [DashboardRead, OrdersRead, ReportsRead, PricingRead],
-            ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, CustomersRead, CustomersPiiRead],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead, CorporateRead],
+            ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersPiiRead],
+            ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, PricingRead],
+            ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead],
             ["CorporateSales"] = [DashboardRead, CorporateRead, CorporateWrite, CustomersRead, CustomersPiiRead],
             ["ContentManager"] = [DashboardRead, ProductsRead, ProductsWrite, CategoriesRead, CategoriesWrite, ContentRead, ContentWrite],
             ["MarketingManager"] = [DashboardRead, ProductsRead, CustomersRead, CustomersPiiRead, ReportsRead, PricingRead, PricingWrite, ContentRead, ContentWrite, CorporateRead],
@@ -262,10 +264,13 @@ public static class AdminPermissionCatalog
 
     public static string? RequiredPermission(HttpContext context)
     {
-        var path = context.Request.Path.Value ?? string.Empty;
+        var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
         var method = context.Request.Method;
         if (path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
         if (path.StartsWith("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase)) return AuditRead;
+        if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase)) return OrdersExport;
+        if (IsOrderDocument(context)) return OrdersDocumentsRead;
+        if (path.StartsWith("/api/v1/admin/shipping/overdue", StringComparison.OrdinalIgnoreCase)) return OrdersRead;
         if (path.StartsWith("/api/v1/admin/orders", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
         if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||
             path.StartsWith("/api/v1/admin/notifications", StringComparison.OrdinalIgnoreCase)) return DashboardRead;
@@ -285,6 +290,23 @@ public static class AdminPermissionCatalog
         if (path.StartsWith("/api/v1/products", StringComparison.OrdinalIgnoreCase)) return ProductsWrite;
         return null;
     }
+    public static bool IsOrderDocument(HttpContext context)
+    {
+        var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
+        return HttpMethods.IsGet(context.Request.Method) && path.StartsWith("/api/v1/admin/orders/", StringComparison.OrdinalIgnoreCase) &&
+            (path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/packing-slip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool AllowsOrderOutput(HttpContext context, AdminPrincipal principal)
+    {
+        var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
+        if (IsOrderDocument(context))
+            return Allows(principal, OrdersRead) && Allows(principal, CustomersPiiRead);
+        if (path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase))
+            return Allows(principal, OrdersRead);
+        return true;
+    }
+
 }
 
 public sealed class AdminTokenService
@@ -438,6 +460,8 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         var requiredPermission = AdminPermissionCatalog.RequiredPermission(context.HttpContext);
         if (requiredPermission is not null && !AdminPermissionCatalog.Allows(principal, requiredPermission))
             return Results.Json(new { message = "این عملیات برای نقش فعلی مجاز نیست." }, statusCode: StatusCodes.Status403Forbidden);
+        if (!AdminPermissionCatalog.AllowsOrderOutput(context.HttpContext, principal))
+            return Results.Json(new { message = "برای این سند، دسترسی مجاز به اطلاعات مشتری لازم است." }, statusCode: StatusCodes.Status403Forbidden);
         return await next(context);
     }
 }
