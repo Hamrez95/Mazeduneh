@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Npgsql;
 
 public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<AdminUsersDatabase> logger, AdminTokenService tokens, AdminAuditLogDatabase audit)
@@ -47,6 +48,9 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             create index if not exists ix_admin_user_sessions_user_active
                 on admin_user_sessions(user_id, store_id, expires_at desc) where revoked_at is null;
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "003-member-permissions", """
+            alter table admin_users add column if not exists permissions_json jsonb null;
+            """, cancellationToken);
         await using var seed = new NpgsqlCommand("""
             insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
             values(@id,@store_id,@email,@display_name,'Owner',true,'system',now())
@@ -65,7 +69,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         if (!IsConfigured) return Array.Empty<AdminUserSummary>();
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null,permissions_json::text
             from admin_users where store_id=@store_id order by created_at desc;
             """, connection);
         command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
@@ -83,8 +87,8 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         var tokenHash = HashToken(invitationToken);
         var expiresAt = DateTimeOffset.UtcNow.AddHours(24);
         await using var command = new NpgsqlCommand("""
-            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at,invitation_token_hash,invitation_expires_at)
-            values(@id,@store_id,@email,@display_name,@role,true,@created_by,now(),@token_hash,@expires_at);
+            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at,invitation_token_hash,invitation_expires_at,permissions_json)
+            values(@id,@store_id,@email,@display_name,@role,true,@created_by,now(),@token_hash,@expires_at,@permissions::jsonb);
             """, connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("store_id", normalizedStoreId);
@@ -94,6 +98,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         command.Parameters.AddWithValue("created_by", actor.Trim());
         command.Parameters.AddWithValue("token_hash", tokenHash);
         command.Parameters.AddWithValue("expires_at", expiresAt);
+        command.Parameters.AddWithValue("permissions", request.Permissions is null ? DBNull.Value : JsonSerializer.Serialize(request.Permissions));
         await command.ExecuteNonQueryAsync(cancellationToken);
         var created = await GetAsync(connection, id, cancellationToken);
         if (created is null) throw new InvalidOperationException("کاربر ایجادشده پیدا نشد.");
@@ -106,7 +111,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         if (!IsConfigured || !IsValidPassword(password)) return null;
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_salt,password_hash
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_salt,password_hash,permissions_json::text
             from admin_users
             where store_id=@store_id and email=@email and is_active=true;
             """, connection);
@@ -121,7 +126,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         var role = reader.GetString(4);
         return new AdminUserSummary(
             reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), role, reader.GetBoolean(5),
-            AdminPermissionCatalog.Resolve(role), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), true);
+            ReadPermissions(role, reader.IsDBNull(10) ? null : reader.GetString(10)), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), true);
     }
 
     public async Task<bool> AcceptInvitationAsync(string token, string password, string requestId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
@@ -252,6 +257,39 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         return updated;
     }
 
+    public async Task<AdminUserSummary?> SetPermissionsAsync(Guid id, IReadOnlyList<string> permissions, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = await OpenAsync(cancellationToken);
+        var before = await GetAsync(connection, id, cancellationToken);
+        if (before is null || before.Role.Equals("Owner", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(before.StoreId, NormalizeStoreId(storeId), StringComparison.Ordinal)) return null;
+        var normalized = permissions.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = new NpgsqlCommand("update admin_users set permissions_json=@permissions::jsonb where id=@id and store_id=@store_id;", connection, transaction))
+        {
+            command.Parameters.AddWithValue("permissions", JsonSerializer.Serialize(normalized));
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+        }
+        await using (var revoke = new NpgsqlCommand("update admin_user_sessions set revoked_at=coalesce(revoked_at,now()) where user_id=@id and store_id=@store_id and revoked_at is null;", connection, transaction))
+        {
+            revoke.Parameters.AddWithValue("id", id);
+            revoke.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+            await revoke.ExecuteNonQueryAsync(cancellationToken);
+        }
+        var updated = await GetAsync(connection, id, cancellationToken, transaction);
+        if (updated is not null)
+            await audit.RecordAsync(connection, transaction, actor, "admin-user.permissions-changed", "AdminUser", id.ToString(), before, updated, "به‌روزرسانی دسترسی‌های عضویت مدیر", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
+    }
+
     private const int PasswordIterations = 210_000;
     private const int PasswordSaltBytes = 16;
     private const int PasswordHashBytes = 32;
@@ -273,7 +311,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
     private static async Task<AdminUserSummary?> GetAsync(NpgsqlConnection connection, Guid id, CancellationToken cancellationToken, NpgsqlTransaction? transaction = null)
     {
         await using var command = new NpgsqlCommand("""
-            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,password_hash is not null,permissions_json::text
             from admin_users where id=@id;
             """, connection, transaction);
         command.Parameters.AddWithValue("id", id);
@@ -294,8 +332,11 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         var role = reader.GetString(4);
         return new AdminUserSummary(
             reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), role, reader.GetBoolean(5),
-            AdminPermissionCatalog.Resolve(role), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), reader.GetBoolean(8));
+            ReadPermissions(role, reader.IsDBNull(9) ? null : reader.GetString(9)), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), reader.GetBoolean(8));
     }
+
+    private static IReadOnlyList<string> ReadPermissions(string role, string? json) =>
+        json is null ? AdminPermissionCatalog.Resolve(role) : JsonSerializer.Deserialize<string[]>(json) ?? [];
 
     private static string NormalizeStoreId(string? storeId) => string.IsNullOrWhiteSpace(storeId) ? DefaultStoreId : storeId.Trim();
 }
@@ -309,17 +350,19 @@ public sealed class AdminUserSchemaInitializer(AdminUsersDatabase database) : IH
 public sealed record AdminUserSummary(Guid Id, string StoreId, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt, bool HasPassword);
 public sealed record AdminUserInvitation(AdminUserSummary User, string InvitationToken, DateTimeOffset ExpiresAt);
 public sealed record AdminRoleSummary(string Role, IReadOnlyList<string> Permissions, string TitleFa);
-public sealed record AdminUserCreateRequest(string Email, string DisplayName, string Role)
+public sealed record AdminUserCreateRequest(string Email, string DisplayName, string Role, IReadOnlyList<string>? Permissions = null)
 {
     public Dictionary<string, string[]> Validate()
     {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(Email) || Email.Trim().Length > 320 || !MailAddress.TryCreate(Email.Trim(), out _)) errors[nameof(Email)] = ["ایمیل معتبر و غیرخالی وارد کنید."];
         if (string.IsNullOrWhiteSpace(DisplayName) || DisplayName.Trim().Length > 200) errors[nameof(DisplayName)] = ["نام نمایشی الزامی و حداکثر ۲۰۰ نویسه است."];
-        if (!AdminPermissionCatalog.DefaultRoles.ContainsKey(Role?.Trim() ?? string.Empty)) errors[nameof(Role)] = ["نقش انتخاب‌شده معتبر نیست."];
+        if (!AdminPermissionCatalog.DefaultRoles.ContainsKey(Role?.Trim() ?? string.Empty) || string.Equals(Role?.Trim(), "Owner", StringComparison.OrdinalIgnoreCase)) errors[nameof(Role)] = ["نقش انتخاب‌شده معتبر نیست."];
+        if (Permissions is not null && !AdminPermissionCatalog.AreValidPermissions(Permissions)) errors[nameof(Permissions)] = ["فهرست دسترسی‌ها معتبر نیست."];
         return errors;
     }
 }
+public sealed record AdminUserPermissionsRequest(IReadOnlyList<string> Permissions);
 public sealed record AdminUserStatusRequest(bool IsActive);
 public sealed class AdminUserValidationException(Dictionary<string, string[]> errors) : Exception("اطلاعات کاربر معتبر نیست.")
 {

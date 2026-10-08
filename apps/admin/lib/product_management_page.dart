@@ -188,7 +188,6 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
                                       ),
                                     ),
-                                    IconButton(onPressed: () => _openEditDialog(product), tooltip: 'ویرایش محصول', icon: const Icon(Icons.edit_outlined)),
                                     Chip(
                                       label: Text(product.isPublished ? 'منتشرشده' : 'پیش‌نویس'),
                                       backgroundColor: product.isPublished
@@ -239,32 +238,25 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                   ),
                                 ),
                                 const Divider(),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        product.isPublished
-                                            ? 'قابل نمایش و سفارش در سایت'
-                                            : 'فقط در پنل مدیریت دیده می‌شود',
-                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                      ),
-                                    ),
-                                    if (changing)
-                                      const SizedBox.square(
-                                        dimension: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    else
-                                      Tooltip(
-                                        message: product.isPublished
-                                            ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.'
-                                            : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
-                                        child: OutlinedButton(
-                                          onPressed: () => _togglePublication(product),
-                                          child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار'),
-                                        ),
-                                      ),
-                                  ],
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final actions = changing
+                                        ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                                        : Wrap(spacing: 8, children: [
+                                            OutlinedButton.icon(onPressed: () => _openEditDialog(product), icon: const Icon(Icons.edit_outlined, size: 17), label: const Text('ویرایش')),
+                                            Tooltip(
+                                              message: product.isPublished ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.' : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
+                                              child: OutlinedButton(onPressed: () => _togglePublication(product), child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار')),
+                                            ),
+                                          ]);
+                                    final status = Text(
+                                      product.isPublished ? 'قابل نمایش و سفارش در سایت' : 'فقط در پنل مدیریت دیده می‌شود',
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    );
+                                    return constraints.maxWidth < 410
+                                        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [status, const SizedBox(height: 8), Align(alignment: AlignmentDirectional.centerEnd, child: actions)])
+                                        : Row(children: [Expanded(child: status), actions]);
+                                  },
                                 ),
                               ],
                             ),
@@ -554,7 +546,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                             _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required)
                           else
                             SizedBox(
-                              width: 430,
+                              width: MediaQuery.sizeOf(context).width < 520 ? MediaQuery.sizeOf(context).width - 56 : 430,
                               child: DropdownButtonFormField<String>(
                                 value: selectedCategory,
                                 decoration: const InputDecoration(labelText: 'دسته‌بندی'),
@@ -803,7 +795,7 @@ class _Input extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
+      width: width.clamp(0, MediaQuery.sizeOf(context).width - 56).toDouble(),
       child: TextFormField(
         controller: controller,
         validator: validator,

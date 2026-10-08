@@ -31,6 +31,11 @@ Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray
 Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
 Console.WriteLine("Purchase pagination cursor unit checks passed");
 
+Check(AdminPermissionCatalog.DefaultRoles.Values.All(AdminPermissionCatalog.AreValidPermissions), "A standard role contains a permission rejected by the membership editor");
+Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>()).Count == 0, "An explicit empty permission set fell back to role defaults");
+Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
+Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
+
 if (args.Length == 0 || InventoryExpiryFixture.IsCommand(args))
     await InventoryExpiryFixture.RunAsync(args);
 

@@ -39,15 +39,28 @@ class AdminUsersApiClient {
     return body.map((item) => AdminRole.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, String? storeId}) async {
+  Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, required List<String> permissions, String? storeId}) async {
     final response = await _client.post(
       _uri('/api/v1/admin/users', storeId: storeId),
       headers: _headers(json: true),
-      body: jsonEncode({'email': email.trim(), 'displayName': displayName.trim(), 'role': role}),
+      body: jsonEncode({'email': email.trim(), 'displayName': displayName.trim(), 'role': role, 'permissions': permissions}),
     );
     _guard(response);
     if (response.statusCode != 201) throw AdminUsersApiException(_message(response), statusCode: response.statusCode);
     return AdminUserInvitation.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<AdminUser> setPermissions(String id, List<String> permissions, {String? storeId}) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/api/v1/admin/users/$id/permissions').replace(queryParameters: {
+        if (storeId != null && storeId.trim().isNotEmpty) 'storeId': storeId.trim(),
+      }),
+      headers: _headers(json: true),
+      body: jsonEncode({'permissions': permissions}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw AdminUsersApiException(_message(response), statusCode: response.statusCode);
+    return AdminUser.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<AdminUser> setStatus(String id, bool isActive, {String? storeId}) async {

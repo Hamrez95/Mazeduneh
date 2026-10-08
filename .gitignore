@@ -10,6 +10,8 @@ out/
 coverage/
 *.log
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # .NET
 bin/
