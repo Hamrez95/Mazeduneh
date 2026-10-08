@@ -1,42 +1,35 @@
-# Branch audit — 2026-10-08
+# Branch audit — 2026-10-09
 
-Scope: all 123 `origin/*` refs were compared with `origin/main` after `git fetch --all --prune`. Each PR association was read from GitHub; merged PRs were checked with their merge commit rather than branch age alone.
+After `git fetch --all --prune`, the repository has 9 remote branches (excluding `origin/HEAD`). The reviewed cleanup removed branches whose merged PRs or commit ancestry showed no work missing from `main`. The previously merged PWA branch for PR #27 was deleted after confirming its tip had no remaining delta. PR #187 was merged and its branch removed; its squash commit is now in `main`.
 
-## Result
+## Remote branches retained
 
-| Classification | Count | Decision |
-| --- | ---: | --- |
-| Protected | 2 | Preserve `main` and `dev`. |
-| Merged PR verified in main | 109 | Safe to delete after a final remote-ref check. |
-| Direct ancestor of main | 4 | Safe to delete after a final remote-ref check. |
-| Open PR | 1 | Keep and finish #183. |
-| Needs individual review | 7 | Preserve. |
-
-The four direct ancestors are `feat/admin-media-picker-v2`, `fix/169-f-admin-shell-responsive-ink` (#182), `refactor/169-e-admin-shell` (#180), and `refactor/169-e-remove-legacy-operations-shell` (#181). PR #182 merged as `e5ee4a2aaa5e3ae057a2ab38cdde1b6cd9683014`; #181 merged as `f815d3de9706d42df532058b73543009e8ddfed0`.
-
-The 109 verified merged refs span the delivered catalog, inventory, orders, identity, RBAC, customer, reporting, media, storefront, audit, and admin-shell work. They are retained temporarily until #183 is complete so that no useful recovery point is removed during the dependent release work.
-
-## Branches retained for work or review
-
-| Ref | Evidence | Decision |
+| Branch | Evidence | Decision |
 | --- | --- | --- |
-| `feat/169-f-batch-aware-navigation-contract` | Open PR #183. CI #453 was green at `9b89be7`, but its base predates #181 and GitHub reports a merge conflict. | Rebase/merge against current main, rerun validation, then merge. |
-| `codex/admin-edit-permissions-form-layout` | No PR; changes both admin permission UI and `AdminSecurity`/`AdminUsers`. | Preserve for security review and recovery. |
-| `feat/169-f-typed-navigation-ui` | No PR; provides the UI half of #169 F typed targets. | Preserve; evaluate after #183 API contract lands. |
-| `feat/admin-media-picker` | Closed #56, not in main; includes storage API and UI. | Preserve pending product decision. |
-| `feat/inventory-ledger` | No PR; isolated predecessor implementation. | Preserve because inventory is data-critical. |
-| `feat/mazedoone-brand-storefront-pwa` | #27 is merged but this ref diverged after its merged head. | Preserve pending diff review. |
-| `feat/storefront-mockup-followup` | Closed #63, not in main. | Preserve pending design review. |
+| `main` | Protected default delivery branch. | Preserve. |
+| `dev` | Protected integration branch; currently behind `main`. | Preserve. |
+| `feat/169-f-typed-navigation-ui` | Open PR #185; CI #483 passes. | Keep pending required independent permission/route review. |
+| `codex/admin-permission-form-review` | Open PR #186; CI #477 passes. | Keep pending required independent permission/security review. |
+| `codex/local-launcher` | PR #184 is merged; active launcher worktree is still attached. | Preserve while the worktree/process needs it. |
+| `codex/admin-edit-permissions-form-layout` | No PR; unique permission UI/API changes. | Preserve for review and recovery. |
+| `feat/admin-media-picker` | Closed PR #56 is unmerged; unique storage API/UI work. | Preserve for a follow-up decision. |
+| `feat/inventory-ledger` | No PR; unique inventory implementation. | Preserve because it is data-critical. |
+| `feat/storefront-mockup-followup` | Closed PR #63 is unmerged; unique storefront UX changes. | Preserve for design review. |
 
-`origin/HEAD -> origin` is a remote symbolic ref, not a branch, and must not be deleted.
+`feat/admin-media-picker-v2` was deleted after `git merge-base --is-ancestor origin/feat/admin-media-picker-v2 origin/main` succeeded and the three-way diff was empty. `feat/mazedoone-brand-storefront-pwa` was deleted after verifying PR #27 is merged and the branch has no current delta. `feat/169-f-batch-aware-navigation-contract` and the merged PR #182 and #181 branches were deleted after their merges were confirmed. The original PR #183 is in `main`.
 
-## Validation notes
+The local-only branch `refactor/169-e-remove-legacy-operations-shell` is retained: it diverges from its deleted remote ref and may contain recoverable commits. No local branches attached to active worktrees were deleted.
 
-- #182 was merged only after a clean local merge onto current main, `flutter analyze`, and the secure-shell responsive tests passed.
-- #181 was revalidated on top of #182. A duplicate text assertion was corrected to target the sidebar menu; the related Flutter test suite passed locally and CI #463 passed at `7f85846` before merge.
-- Graphify is unavailable in this workspace (`command not found`). The targeted `rg` fallback is recorded in Issue #151 and used for the changes above.
+## Open delivery work
 
-## Next cleanup
+- #169 remains open. A–E and the responsive shell slice are in `main`; PR #185 completes the typed-navigation UI slice of F, but has no independent review yet. CI #483 passed at `b569d63`. The required Sol permission/route review is still outstanding, so do not mark the epic Done.
+- #91 remains open for MFA/step-up and expanded IDOR review. PR #186 completes only the per-user permission editor slice; CI #477 passed at `e3ce2ab`, but the required independent Sol permission/security review is still outstanding.
+- #92 remains open for deeper profit/cost analytics, service-health alerts and additional drill-downs. PR #187 completed role dashboard preferences and merged as `77ed2ee92cb4f5cae5c7476ebf6c6b4376395be4`; CI #475 passed. The issue remains open for its remaining acceptance criteria.
 
-After #183 merges and its main SHA is verified, delete the 113 refs in the two safe categories locally and remotely in small, auditable batches. Do not remove the seven retained refs, `main`, `dev`, or branches attached to active worktrees.
+## Validation and cleanup
+
+- `git fetch --all --prune` succeeded and confirmed the removed refs are absent locally.
+- All remote deletions were made only for the exact branches in the verified merged/no-delta audit set. `main`, `dev`, open PR branches, unique branches, and the active launcher branch were preserved.
+- Graphify is unavailable in this workspace (`command not found`); focused `rg` searches were used as recorded in Issue #151.
+- Local PostgreSQL/Docker-backed launcher startup is still unverified because Docker is unavailable. See `docs/LOCAL_CODEX_HANDOFF.md`.
 
