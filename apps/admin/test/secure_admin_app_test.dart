@@ -69,7 +69,17 @@ void main() {
     await tester.pumpWidget(
       MazedunehSecureAdminApp(
         authApi: AuthApiClient(
-          client: MockClient((_) async => identity()),
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'authenticated': true,
+                'role': 'ReadOnlyAnalyst',
+                'permissions': ['orders.read'],
+              }),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            ),
+          ),
           baseUrl: 'https://api.example.test',
         ),
         initialUri: Uri.parse('https://admin.example.test/'),
