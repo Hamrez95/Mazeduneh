@@ -6,6 +6,7 @@ import 'admin_theme.dart';
 import 'catalog_api.dart';
 import 'formatters.dart';
 import 'media_api.dart';
+
 class CatalogPage extends StatefulWidget {
   const CatalogPage({super.key, this.api});
   final CatalogApiClient? api;
