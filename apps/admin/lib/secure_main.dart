@@ -14,7 +14,8 @@ import 'product_management_page.dart';
 import 'customer_management_page.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
-import 'main.dart' show AdminShell, NotificationsPage, ReportsPage;
+import 'main.dart' show AdminShell, NotificationsPage;
+import 'reports_page.dart' show ReportsPage;
 
 void main() => runApp(const MazedunehSecureAdminApp());
 
