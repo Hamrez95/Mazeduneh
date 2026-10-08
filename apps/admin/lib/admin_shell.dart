@@ -164,6 +164,7 @@ class _AdminShellState extends State<AdminShell> {
                     ),
                   ),
                 ),
+              ),
             ]),
           ),
         Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
