@@ -118,6 +118,13 @@ void main() {
       await tester.tap(find.byTooltip('بازگشت به داشبورد'));
       await tester.pumpAndSettle();
       expect(find.text('وضعیت فروشگاه'), findsOneWidget);
+
+      await tester.tap(find.text('در انتظار پرداخت'));
+      await tester.pumpAndSettle();
+      expect(orderRequest?.queryParameters['state'], 'AwaitingPayment');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('وضعیت فروشگاه'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
