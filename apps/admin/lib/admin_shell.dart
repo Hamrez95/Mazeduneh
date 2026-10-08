@@ -18,8 +18,9 @@ import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key, this.dashboardApi});
+  const AdminShell({super.key, this.dashboardApi, this.ordersApi});
   final OrderApiClient? dashboardApi;
+  final OrderApiClient? ordersApi;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -43,6 +44,17 @@ class _AdminShellState extends State<AdminShell> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    if (OwnerSession.instance.isAuthenticated) {
+      final firstAllowed = items.indexWhere(
+        (item) => OwnerSession.instance.can(item.$3),
+      );
+      if (firstAllowed >= 0) index = firstAllowed;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     final visibleIndexes = [for (var i = 0; i < items.length; i++) if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(items[i].$3)) i];
@@ -51,7 +63,7 @@ class _AdminShellState extends State<AdminShell> {
     final selectedPrimary = primaryIndexes.indexOf(index);
     final pages = [
       AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination))),
-      const AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage()),
+      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(api: widget.ordersApi)),
       AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
       const AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage()),
       const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
@@ -64,8 +76,32 @@ class _AdminShellState extends State<AdminShell> {
     ];
     return Scaffold(
       appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
-      bottomNavigationBar: desktop
+      bottomNavigationBar: desktop || visibleIndexes.isEmpty
           ? null
+          : visibleIndexes.length == 1
+          ? BottomAppBar(
+              child: SafeArea(
+                child: SizedBox(
+                  height: 56,
+                  child: Center(
+                    child: Semantics(
+                      label: 'بخش فعال: ${items[visibleIndexes.single].$1}',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            items[visibleIndexes.single].$2,
+                            color: AdminColors.ink,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(items[visibleIndexes.single].$1),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
           : NavigationBar(
               selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
               onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : setState(() => index = primaryIndexes[value]),
@@ -80,40 +116,95 @@ class _AdminShellState extends State<AdminShell> {
             decoration: BoxDecoration(color: AdminColors.inkDeep, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Color(0x1424463A), blurRadius: 24, offset: Offset(0, 10))]),
             child: Column(children: [
               const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
-              const SizedBox(height: 20),
-              for (final i in visibleIndexes)
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final i in visibleIndexes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: ListTile(
-                    selected: index == i,
-                    selectedTileColor: AdminColors.ink,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFBFD0C5)),
-                    title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFD5DFD6))),
-                    onTap: () => setState(() => index = i),
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      selected: index == i,
+                      selectedTileColor: AdminColors.ink,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      leading: Icon(
+                        items[i].$2,
+                        color: index == i
+                            ? Colors.white
+                            : const Color(0xFFBFD0C5),
+                      ),
+                      title: Text(
+                        items[i].$1,
+                        style: TextStyle(
+                          color: index == i
+                              ? Colors.white
+                              : const Color(0xFFD5DFD6),
+                        ),
+                      ),
+                      onTap: () => setState(() => index = i),
+                    ),
                   ),
                 ),
-              const Spacer(),
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFF7C58B),
-                  child: Text((OwnerSession.instance.email ?? 'م').substring(0, 1).toUpperCase()),
+                  ],
                 ),
-                title: Text(OwnerSession.instance.email ?? 'کاربر فروشگاه', style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  OwnerSession.instance.role == 'Owner' ? 'مدیر اصلی' : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
-                  style: const TextStyle(color: Color(0xFF9EACA1)),
+              ),
+              Material(
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                trailing: IconButton(
-                  tooltip: 'خروج از حساب',
-                  onPressed: () async {
-                    try {
-                      await AuthApiClient().logout();
-                    } catch (_) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.')));
-                    }
-                  },
-                  icon: const Icon(Icons.logout_rounded, color: Color(0xFFD5DFD6)),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFF7C58B),
+                    child: Text(
+                      (OwnerSession.instance.email ?? 'م')
+                          .substring(0, 1)
+                          .toUpperCase(),
+                    ),
+                  ),
+                  title: Text(
+                    OwnerSession.instance.email ?? 'کاربر فروشگاه',
+                    style: const TextStyle(color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    OwnerSession.instance.role == 'Owner'
+                        ? 'مدیر اصلی'
+                        : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
+                    style: const TextStyle(color: Color(0xFF9EACA1)),
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'خروج از حساب',
+                    onPressed: () async {
+                      try {
+                        await AuthApiClient().logout();
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFD5DFD6),
+                    ),
+                  ),
                 ),
               ),
             ]),
@@ -166,19 +257,56 @@ class Brand extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(compact ? 11 : 15),
-          child: Image.asset('assets/mazedooneh-mark.png', width: compact ? 34 : 45, height: compact ? 34 : 45, fit: BoxFit.cover),
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(compact ? 11 : 15),
+        child: Image.asset(
+          'assets/mazedooneh-mark.png',
+          width: compact ? 34 : 45,
+          height: compact ? 34 : 45,
+          fit: BoxFit.cover,
         ),
-        const SizedBox(width: 10),
-        if (compact)
-          Text('مدیریت مزه‌دونه', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: dark ? Colors.white : null))
-        else
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
-            Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
-          ]),
-      ]);
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: compact
+            ? Text(
+                'مدیریت مزه‌دونه',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: dark ? Colors.white : null,
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'مدیریت مزه‌دونه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: dark ? Colors.white : null,
+                    ),
+                  ),
+                  Text(
+                    'کاتالوگ زنده فروشگاه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: dark ? const Color(0xFFB9C8BC) : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    ],
+  );
 }
-
