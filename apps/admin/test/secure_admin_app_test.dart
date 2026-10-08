@@ -53,6 +53,35 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('default release root mounts the permission-filtered shared shell', (tester) async {
+    OwnerSession.instance.establish(
+      accessToken: 'test-token',
+      expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+      email: 'analyst@example.test',
+      role: 'ReadOnlyAnalyst',
+      permissions: ['orders.read'],
+    );
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MazedunehSecureAdminApp(
+        authApi: AuthApiClient(
+          client: MockClient((_) async => identity()),
+          baseUrl: 'https://api.example.test',
+        ),
+        initialUri: Uri.parse('https://admin.example.test/'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.text('سفارش‌ها'), findsOneWidget);
+    expect(find.text('محصولات'), findsNothing);
+  });
+
   testWidgets(
     'release app uses the central theme and login preserves failed drafts',
     (tester) async {
