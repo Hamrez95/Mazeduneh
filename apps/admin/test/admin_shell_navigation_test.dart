@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/admin_shell.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/order_api.dart';
 
 void main() {
   testWidgets('mobile shell keeps primary navigation focused and moves secondary pages to more', (tester) async {
@@ -40,6 +43,14 @@ void main() {
           role: 'ReadOnlyAnalyst',
           permissions: ['orders.read'],
         );
+        final ordersApi = OrderApiClient(
+          client: MockClient((_) async => http.Response(
+            '[]',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          )),
+          baseUrl: 'https://api.test',
+        );
         await tester.pumpWidget(
           MaterialApp(
             builder: (context, child) => MediaQuery(
@@ -48,9 +59,9 @@ void main() {
               ),
               child: child!,
             ),
-            home: const Directionality(
+            home: Directionality(
               textDirection: TextDirection.rtl,
-              child: AdminShell(),
+              child: AdminShell(ordersApi: ordersApi),
             ),
           ),
         );
