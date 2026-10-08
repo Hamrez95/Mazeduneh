@@ -1,12 +1,15 @@
 # Local Codex handoff
 
-Updated: 2026-10-08
+Updated: 2026-10-09
 
-- Current active worktree: `codex/169-f-navigation-ui`, based on the #169 F typed-navigation UI branch and merged with current `origin/main` (`3ce28e5c87941d0105f774f4e0bebd8f8ff15798`).
-- Merged since the prior handoff: #182 at `e5ee4a2`; #181 at `f815d3d`; #183 at `3ce28e5`; #184 at `b6f116d`.
-- Current task: finish Issue #169 F by routing typed API targets from dashboards and notifications into exact order-state or inventory SKU/batch filters, preserving permissions and back navigation. UI wiring and targeted tests are committed locally at `10b7028`; PR #185 is open for CI/review.
-- Local checks: `flutter test test/admin_navigation_flow_test.dart test/dashboard_guided_navigation_test.dart test/notification_navigation_test.dart test/admin_shell_navigation_test.dart` passed (24 tests); `flutter analyze` passed with no issues.
-- Branch audit: 123 remote branches excluding symbolic `origin/HEAD`; 116 verified redundant refs can be removed after final ref checks. Five unique branches are preserved for security, product, inventory, design, or active #169 work. See `docs/BRANCH_AUDIT.md`.
-- Local launcher: `scripts/dev.ps1` runs a fresh fetched `origin/main` in an ignored worktree by default and offers `-CurrentBranch`. Script parsing and status paths were validated, but full live startup has not been verified because Docker Desktop/PostgreSQL are absent. Do not describe static checks as a successful full launch.
-- Available tools: PowerShell 7.6.5, Node 22.14.0/npm 11.19.1, Flutter 3.47.2/Dart 3.13.2, and user .NET SDK 10.0.401. Graphify is unavailable; follow Issue #151's targeted-search fallback.
-- Next: complete #169 F acceptance checks, create and validate its PR on current main, merge after CI/review, update the issue/Project status only for completed criteria, then remove proven redundant local/remote branches. After #169, inspect open issues and prioritize P0/security/operational work; the launcher still needs a live Docker-backed run.
+- Repository: `Hamrez95/Mazeduneh`; local `main` and `origin/main`: `3ce28e5c87941d0105f774f4e0bebd8f8ff15798`; the main checkout is clean.
+- Branch audit: [BRANCH_AUDIT.md](BRANCH_AUDIT.md). GitHub lists 124 remote branches: 108 exact merged-PR heads and six verified ancestors are redundant; `main`/`dev`, three open PR branches, and five unproven/unique branches are retained. `codex/local-launcher` remains attached to its active worktree. Remote deletion is pending a required action-time confirmation for the GitHub UI operation.
+- Delivered previously: #182 `e5ee4a2`, #181 `f815d3d`, #183 `3ce28e5`, #184 `b6f116d`, all present in `main`.
+- #185 `feat/169-f-typed-navigation-ui`, head `192551686bfa7c9bb7a91f0c8bce091fa90d79e3`: CI #471 passed. Independent permission/route review is outstanding. This is only a UI slice of #169 F.
+- #186 `codex/admin-permission-form-review`, head `b007e54aed3fb3268a8e96961c215cfc6bbc8bee`: original CI #472 failed at membership login permissions; the assertion now reports the actual response, and CI #474 is running. Independent Sol security review is outstanding.
+- #187 `codex/dashboard-role-widgets`, head `b20622ad10721ea7ebd20852e3c4471fa8339de1`: original CI #473 failed because test roles were invalid and normalized to Owner; the test now uses canonical WarehouseOperator/SalesOperator, and CI #475 is running.
+- Local checks for CI fixes: `git diff --check` and Python `py_compile` passed for both updated integration scripts. Flutter analyze/widget/API tests and .NET unit/API validation tests previously passed for #186/#187. PostgreSQL integration did not run locally; Docker/PostgreSQL are unavailable.
+- `scripts/dev.ps1` selects fresh `origin/main` in an ignored detached worktree by default; `-CurrentBranch` is explicit. PowerShell parser and failure behavior passed. Full database-backed startup remains unverified because Docker Desktop/PostgreSQL are unavailable.
+- #169 remains open: complete remaining F responsive/deep-link acceptance, then review all remaining epic criteria. #91 remains P0 with MFA/step-up and expanded IDOR/security review; #92 remains P0 with service health and deeper profit/cost/drill-down work. Do not close either epic based on the open PR slices.
+- Graphify is unavailable (`graphify --version` was not found); use the recorded Issue #151 fallback and do not claim a graph query.
+- Next: inspect CI #474/#475 logs, fix the concrete remaining failures, obtain the mandatory independent review for #185/#186, revalidate all candidate branch refs before cleanup, then continue #169 F and the P0 backlog in dependency order.
