@@ -140,7 +140,8 @@ with tempfile.TemporaryFile() as log:
         assert all(body['balanceAfter'] == 8 for _, body in results)
         assert balances(LEGACY) == (8, 0, 2, 2)
         assert adjust(LEGACY, -3, 'ci-adjust-replay')[0] == 409
-        assert adjust(LEGACY, -9, 'ci-adjust-oversell')[0] == 409
+        oversell_status, oversell_body = adjust(LEGACY, -9, 'ci-adjust-oversell')
+        assert oversell_status == 409, (oversell_status, oversell_body)
         assert balances(LEGACY) == (8, 0, 2, 2)
         for invalid in [0, 1.5, 'NaN', 'Infinity', 1_000_001, -1_000_001, 2_147_483_648]:
             assert adjust(LEGACY, invalid, 'ci-adjust-invalid')[0] in [400, 409], invalid

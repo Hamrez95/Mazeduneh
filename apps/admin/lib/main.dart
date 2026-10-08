@@ -2102,10 +2102,18 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<bool>(
               initialValue: isWaste,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'نوع عملیات'),
               items: [
-                DropdownMenuItem(value: false, enabled: widget.batches.isEmpty, child: const Text('اصلاح دستی موجودی')),
-                const DropdownMenuItem(value: true, child: Text('ثبت ضایعات')),
+                DropdownMenuItem(
+                  value: false,
+                  enabled: widget.batches.isEmpty,
+                  child: const Text('اصلاح دستی موجودی', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                const DropdownMenuItem(
+                  value: true,
+                  child: Text('ثبت ضایعات', maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
               ],
               onChanged: (value) {
                 if (value == true && widget.batches.isEmpty) {
