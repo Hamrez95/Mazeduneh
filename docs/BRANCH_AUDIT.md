@@ -17,9 +17,9 @@ There are 115 proven-redundant remote refs (108 merged PR heads + 6 ancestors + 
 
 ## Open pull requests
 
-| PR | Branch | Head SHA | Status |
+| PR | Branch | Latest code SHA | Status |
 | --- | --- | --- | --- |
-| #185 | `feat/169-f-typed-navigation-ui` | `5c096c9345e5c2cf20b1317b86fc5a03e826e1be` | CI #481 passed on this head (API, Admin Flutter, Storefront); Vercel success. Local navigation-flow test passed with device/system-back coverage. Required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
+| #185 | `feat/169-f-typed-navigation-ui` | `5c096c9345e5c2cf20b1317b86fc5a03e826e1be` | CI #481 passed on code SHA `5c096c9` (API, Admin Flutter, Storefront); the current commit after that is docs-only. Vercel success. Local navigation-flow test passed with device/system-back coverage. Required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
 | #186 | `codex/admin-permission-form-review` | `e3ce2abb3ea9962cc4e95edc8a8e31b0466b3eff` | CI #477 passed after isolating the authorization test from the intentional five-request login rate limit. Requires independent Sol security review. |
 | #187 | `codex/dashboard-role-widgets` | `b20622ad10721ea7ebd20852e3c4471fa8339de1` | CI #475 passed all jobs after using distinct canonical operator roles in the isolation test. |
 
