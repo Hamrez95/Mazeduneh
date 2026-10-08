@@ -110,6 +110,10 @@ with tempfile.TemporaryFile() as log:
         status, revised = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
                                  {"permissions": ["inventory.read"]}, owner_token)
         assert status == 200 and revised["permissions"] == ["inventory.read"]
+        # Keep the production rate limit intact while proving both the override
+        # and session revocation survive an API restart against the same database.
+        stop_api(api)
+        api, owner_token = start_api(log)
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
         status, limited_login = request("/api/v1/admin/auth/login", "POST", {
             "email": first_email, "password": first_password})
