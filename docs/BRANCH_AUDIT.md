@@ -9,10 +9,11 @@ Repository: `Hamrez95/Mazeduneh`; base: `main` at `3ce28e5c87941d0105f774f4e0beb
 | Protected | 2 | Keep `main` and `dev`. |
 | Merged PR heads | 108 | Exact branch head matched its merged PR head, and the merge commit is reachable from `main`; full branch, PR, and head-SHA inventory below. Safe to delete after the pending action-time confirmation. |
 | Direct ancestors | 6 | Branch tip is reachable from `main`; the PRs are merged where applicable. Safe to delete after the pending action-time confirmation. |
+| Merged PR with no current branch delta | 1 | PR #27's merge commit is in `main`; current branch tip's tree equals its merge-base tree after the later revert/align commit. Safe to delete after confirmation. |
 | Open PRs | 3 | Keep and finish #185, #186, #187. |
-| Preserve for review/work | 5 | Unique changes, closed-PR follow-up, or branch-specific work not proven redundant; details below. |
+| Preserve for review/work | 4 | Unique changes or closed-PR follow-up not proven redundant; details below. |
 
-There are 114 proven-redundant remote refs (108 merged PR heads + 6 ancestors). `codex/local-launcher` is attached to an active worktree, so it remains for now; 113 refs are otherwise eligible for cleanup. No merged PR evidence is inferred from branch age or `git branch --merged` alone. No force-push was used.
+There are 115 proven-redundant remote refs (108 merged PR heads + 6 ancestors + 1 merged PR with no current branch delta). `codex/local-launcher` is attached to an active worktree, so it remains for now; 114 refs are otherwise eligible for cleanup. No merged PR evidence is inferred from branch age or `git branch --merged` alone. No force-push was used.
 
 ## Open pull requests
 
@@ -31,8 +32,13 @@ The branch updates above retain their GitHub PRs open. Merge only after the curr
 | `codex/admin-edit-permissions-form-layout` | No PR. Contains permission editor/API work overlapping #186 but is not proven entirely contained in that open PR. | Keep until #186 is merged and its ancestry/content is rechecked. |
 | `feat/admin-media-picker` | Closed PR #56; its remaining diff has not been proven redundant with merged PR #57. | Keep and compare before deciding. |
 | `feat/inventory-ledger` | No PR; data-critical inventory changes remain outside `main`. | Keep for review. |
-| `feat/mazedoone-brand-storefront-pwa` | PR #27 is merged, but this branch tip diverged after the merged head. | Keep until branch-only diff is reviewed. |
 | `feat/storefront-mockup-followup` | Closed PR #63; unique design follow-up remains outside `main`. | Keep for product/design review. |
+
+## Merged PR with no current branch delta
+
+| Branch | PR | Evidence | Decision |
+| --- | --- | --- | --- |
+| `feat/mazedoone-brand-storefront-pwa` | #27 | PR #27 merged at `d9cba6ab99083c8305d77a6d90e2d0a198789573`, reachable from `main`. Current branch tip `313bdb63b4f53dee8096b0439345ec356a744c26` has the same tree as merge-base `96d16a3e5ed86526e7d15b499ec59b7460339be5`; the post-merge align commit leaves no effective branch delta. | Safe to delete after confirmation. |
 
 ## Direct ancestors of main
 
