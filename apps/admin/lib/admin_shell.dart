@@ -84,17 +84,44 @@ class _AdminShellState extends State<AdminShell> {
               for (final i in visibleIndexes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: ListTile(
-                    selected: index == i,
-                    selectedTileColor: AdminColors.ink,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    leading: Icon(items[i].$2, color: index == i ? Colors.white : const Color(0xFFBFD0C5)),
-                    title: Text(items[i].$1, style: TextStyle(color: index == i ? Colors.white : const Color(0xFFD5DFD6))),
-                    onTap: () => setState(() => index = i),
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      selected: index == i,
+                      selectedTileColor: AdminColors.ink,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      leading: Icon(
+                        items[i].$2,
+                        color: index == i
+                            ? Colors.white
+                            : const Color(0xFFBFD0C5),
+                      ),
+                      title: Text(
+                        items[i].$1,
+                        style: TextStyle(
+                          color: index == i
+                              ? Colors.white
+                              : const Color(0xFFD5DFD6),
+                        ),
+                      ),
+                      onTap: () => setState(() => index = i),
+                    ),
                   ),
                 ),
               const Spacer(),
-              ListTile(
+              Material(
+                color: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: ListTile(
                 leading: CircleAvatar(
                   backgroundColor: const Color(0xFFF7C58B),
                   child: Text((OwnerSession.instance.email ?? 'م').substring(0, 1).toUpperCase()),
@@ -166,19 +193,56 @@ class Brand extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(compact ? 11 : 15),
-          child: Image.asset('assets/mazedooneh-mark.png', width: compact ? 34 : 45, height: compact ? 34 : 45, fit: BoxFit.cover),
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(compact ? 11 : 15),
+        child: Image.asset(
+          'assets/mazedooneh-mark.png',
+          width: compact ? 34 : 45,
+          height: compact ? 34 : 45,
+          fit: BoxFit.cover,
         ),
-        const SizedBox(width: 10),
-        if (compact)
-          Text('مدیریت مزه‌دونه', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: dark ? Colors.white : null))
-        else
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('مدیریت مزه‌دونه', style: TextStyle(fontWeight: FontWeight.w800, color: dark ? Colors.white : null)),
-            Text('کاتالوگ زنده فروشگاه', style: TextStyle(fontSize: 10, color: dark ? const Color(0xFFB9C8BC) : Colors.grey)),
-          ]),
-      ]);
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: compact
+            ? Text(
+                'مدیریت مزه‌دونه',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: dark ? Colors.white : null,
+                ),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'مدیریت مزه‌دونه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: dark ? Colors.white : null,
+                    ),
+                  ),
+                  Text(
+                    'کاتالوگ زنده فروشگاه',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: dark ? const Color(0xFFB9C8BC) : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    ],
+  );
 }
-
