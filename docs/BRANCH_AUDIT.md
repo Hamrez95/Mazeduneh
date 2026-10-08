@@ -45,6 +45,23 @@ The branch updates above retain their GitHub PRs open. Merge only after the curr
 | `refactor/169-e-admin-shell` | #180 | `d9edff1103331ba8df2592df524922889490b220` | Merged; reachable from `main`. |
 | `refactor/169-e-remove-legacy-operations-shell` | #181 | `7f85846230ed3e9046ea2db4fb2a32afdbf98b33` | Merged; reachable from `main`. |
 
+## Local branches and worktrees
+
+The local checkout has no uncommitted changes. The following refs are deliberately retained because they are active, differ from their remote/main counterpart, or contain work not yet proven redundant:
+
+| Local branch/worktree | Current evidence | Decision |
+| --- | --- | --- |
+| `codex/169-f-navigation-ui` | Active PR #185 worktree; local docs commit is not the remote PR commit. | Keep until #185 is reviewed/merged. |
+| `codex/admin-edit-permissions-form-layout` | Unique permission editor/API branch; preserved above. | Keep. |
+| `codex/admin-permission-form-review` | Active PR #186 worktree with a newer local rate-limit test fix; CI #477 is running on the pushed commit. | Keep. |
+| `codex/dashboard-role-widgets` | Active PR #187 worktree; CI #475 passed on the pushed commit. | Keep. |
+| `codex/local-launcher` | Active worktree; local `ef2f524` differs from merged remote PR #184/main and contains launcher/security/test changes. | Keep for review; do not delete the connected remote ref yet. |
+| `codex/storefront-admin-operations-finance` | Active worktree with untracked/generated project files and branch-specific commerce changes. | Keep; preserve its working files. |
+| `refactor/169-e-remove-legacy-operations-shell` | Remote PR #181 is merged, but the local branch has two commits beyond `main` and differing shell/order/test files. | Keep pending comparison; remote merge does not prove the local-only work is redundant. |
+| `dev`, `main` | Protected/release refs. | Keep. |
+
+Local `codex/validate-183` was removed after confirming its tip is an ancestor of `main` and it was not attached to a worktree. The stale local `feat/169-f-typed-navigation-ui` ref was removed after confirming it is an ancestor of the active PR #185 head; its duplicate, detached merge worktree was archived as a recoverable snapshot. No staged or untracked work was discarded.
+
 ## Verified merged PR heads
 
 Each row records the exact current remote branch tip and its merged PR number. The PR merge commit is present in `main`; no branch-only commits remain.
