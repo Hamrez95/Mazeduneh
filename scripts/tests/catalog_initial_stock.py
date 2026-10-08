@@ -14,8 +14,9 @@ SLUG = "zero-opening-stock-fixture"
 ZERO, POSITIVE, ADDED = "CI-OPENING-ZERO", "CI-OPENING-POSITIVE", "CI-OPENING-ADDED"
 
 
-def request(path, method="GET", body=None, token=None):
+def request(path, method="GET", body=None, token=None, extra_headers=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
+    headers.update(extra_headers or {})
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
@@ -90,7 +91,7 @@ with tempfile.TemporaryFile() as log:
         assert len(movements(POSITIVE)) == 1  # Editing does not duplicate opening stock.
 
         status, adjusted = request("/api/v1/admin/inventory/adjust", "POST", {
-            "sku": ZERO, "quantityDelta": 5, "reason": "ci-receiving-zero-opening"}, token)
+            "sku": ZERO, "quantityDelta": 5, "reason": "ci-receiving-zero-opening"}, token, {"Idempotency-Key": "ci-initial-stock-adjust-01"})
         assert status == 200 and adjusted["balanceAfter"] == 5
         received = movements(ZERO)
         assert len(received) == 1 and received[0]["quantityDelta"] == 5

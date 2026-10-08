@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -738,13 +740,19 @@ class _StockAdjustmentDialogState extends State<_StockAdjustmentDialog> {
   final reason = TextEditingController(text: 'اصلاح دستی موجودی');
   bool submitting = false;
   String? error;
+  String? operationKey, previousPayload;
   @override
   void dispose() { sku.dispose(); delta.dispose(); reason.dispose(); super.dispose(); }
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
+    final payload = jsonEncode([sku.text.trim(), int.parse(delta.text.trim()), reason.text.trim()]);
+    if (operationKey == null || payload != previousPayload) {
+      operationKey = List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      previousPayload = payload;
+    }
     setState(() { submitting = true; error = null; });
     try {
-      await widget.api.adjustStock(sku.text.trim(), int.parse(delta.text.trim()), reason.text.trim());
+      await widget.api.adjustStock(sku.text.trim(), int.parse(delta.text.trim()), reason.text.trim(), operationKey: operationKey!);
       if (mounted) Navigator.pop(context, true);
     } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
     finally { if (mounted) setState(() => submitting = false); }

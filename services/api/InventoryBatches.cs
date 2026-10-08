@@ -127,7 +127,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         const string variantSql = """
-            select p.title,v.sku,v.display_label
+            select p.title,v.sku,v.display_label,v.available_packages
             from product_variants v join products p on p.id=v.product_id
             where upper(v.sku)=upper(@sku)
             for update of v;
@@ -144,7 +144,30 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         var title = reader.GetString(0);
         var sku = reader.GetString(1);
         var label = reader.GetString(2);
+        var availablePackages = reader.GetInt32(3);
         await reader.CloseAsync();
+
+        const string historySql = "select exists(select 1 from inventory_batches where upper(sku)=upper(@sku));";
+        await using var history = new NpgsqlCommand(historySql, connection, transaction);
+        history.Parameters.AddWithValue("sku", sku);
+        var hasBatchHistory = (bool)(await history.ExecuteScalarAsync(cancellationToken) ?? false);
+
+        const string pendingReservationSql = """
+            select exists(
+                select 1
+                from checkout_orders o
+                join checkout_order_lines l on l.order_id=o.id
+                where o.state='AwaitingPayment' and upper(l.sku)=upper(@sku));
+            """;
+        await using var pendingReservation = new NpgsqlCommand(pendingReservationSql, connection, transaction);
+        pendingReservation.Parameters.AddWithValue("sku", sku);
+        var hasPendingReservation = (bool)(await pendingReservation.ExecuteScalarAsync(cancellationToken) ?? false);
+
+        if (!hasBatchHistory && (availablePackages > 0 || hasPendingReservation))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, "موجودی قدیمیِ بدون بچ یا رزرو پرداخت‌نشده باقی مانده است؛ پس از مصرف یا آزادسازی آن، ثبت اولین خرید بچ‌دار را انجام دهید.");
+        }
 
         var id = Guid.NewGuid();
         var createdAt = DateTimeOffset.UtcNow;

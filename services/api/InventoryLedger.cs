@@ -28,6 +28,18 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "001-bootstrap", sql, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "inventory", "007-adjustment-replays", """
+            create table if not exists inventory_adjustment_operations (
+                actor text not null,
+                operation_key varchar(120) not null,
+                sku text not null,
+                quantity_delta integer not null,
+                reason text not null,
+                balance_after integer not null,
+                batch_code text null,
+                primary key (actor, operation_key)
+            );
+            """, cancellationToken);
         logger.LogInformation("Inventory stock ledger schema is ready.");
     }
 
@@ -62,17 +74,33 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, string actor, string requestId, CancellationToken cancellationToken)
+    public async Task<StockAdjustmentResult> AdjustAsync(StockAdjustmentRequest request, string actor, string requestId, CancellationToken cancellationToken, string? operationKey = null)
     {
         if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
         if (request.QuantityDelta == 0) return StockAdjustmentResult.Failed("مقدار تغییر باید صفر نباشد.");
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var replay = await TryReplayAsync(connection, transaction, actor, operationKey, request.Sku, request.QuantityDelta, request.Reason, null, cancellationToken);
+        if (replay is not null) return replay;
+
+        // Every receiver, checkout and waste flow locks the variant before batch rows.
+        await using (var variantLock = new NpgsqlCommand("select sku from product_variants where upper(sku)=upper(@sku) for update;", connection, transaction))
+        {
+            variantLock.Parameters.AddWithValue("sku", request.Sku.Trim());
+            if (await variantLock.ExecuteScalarAsync(cancellationToken) is null)
+                return StockAdjustmentResult.Failed("SKU پیدا نشد.");
+        }
+        await using (var batchCheck = new NpgsqlCommand("select exists(select 1 from inventory_batches where upper(sku)=upper(@sku));", connection, transaction))
+        {
+            batchCheck.Parameters.AddWithValue("sku", request.Sku.Trim());
+            if ((bool)(await batchCheck.ExecuteScalarAsync(cancellationToken))!)
+                return StockAdjustmentResult.Failed("این کالا سابقهٔ بچ دارد؛ برای ورود از ثبت خرید و برای خروج از ضایعات با انتخاب بچ استفاده کنید.");
+        }
         const string sql = """
             update product_variants
             set available_packages = available_packages + @delta
-            where upper(sku)=upper(@sku) and available_packages + @delta >= 0
+            where upper(sku)=upper(@sku) and available_packages::bigint + @delta between 0 and 2147483647
             returning sku,available_packages;
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
@@ -100,6 +128,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
             request.Reason.Trim(),
             requestId,
             cancellationToken);
+        await RecordOperationAsync(connection, transaction, actor, operationKey, sku, request.QuantityDelta, request.Reason, balance, null, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return StockAdjustmentResult.Success(sku, balance);
     }
@@ -111,12 +140,15 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
         string actor,
         string reason,
         string requestId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? operationKey = null)
     {
         if (!IsConfigured) return StockAdjustmentResult.Failed("دیتابیس موجودی تنظیم نشده است.");
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var replay = await TryReplayAsync(connection, transaction, actor, operationKey, sku, -quantity, reason, batchCode, cancellationToken);
+        if (replay is not null) return replay;
 
         const string variantLockSql = """
             select sku,available_packages from product_variants
@@ -210,8 +242,43 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
             new { sku = canonicalSku, batchCode = batchCode.Trim(), availablePackages = balance + quantity, batchRemaining = batchRemaining },
             new { sku = canonicalSku, batchCode = batchCode.Trim(), availablePackages = balance, batchRemaining = batchRemaining - quantity },
             reason, requestId, cancellationToken);
+        await RecordOperationAsync(connection, transaction, actor, operationKey, canonicalSku, -quantity, reason, balance, batchCode, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return StockAdjustmentResult.Success(canonicalSku, balance);
+    }
+
+    private static async Task<StockAdjustmentResult?> TryReplayAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        string actor, string? key, string sku, int delta, string reason, string? batchCode, CancellationToken cancellationToken)
+    {
+        if (key is null) return null;
+        await using var operationLock = new NpgsqlCommand("select pg_advisory_xact_lock(hashtextextended(@key,0));", connection, transaction);
+        operationLock.Parameters.AddWithValue("key", "inventory-adjust:" + actor + ":" + key);
+        await operationLock.ExecuteNonQueryAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("select sku,quantity_delta,reason,balance_after,batch_code from inventory_adjustment_operations where actor=@actor and operation_key=@key;", connection, transaction);
+        command.Parameters.AddWithValue("actor", actor);
+        command.Parameters.AddWithValue("key", key);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) return null;
+        var previousBatch = reader.IsDBNull(4) ? null : reader.GetString(4);
+        if (!string.Equals(reader.GetString(0), sku.Trim(), StringComparison.OrdinalIgnoreCase) || reader.GetInt32(1) != delta ||
+            reader.GetString(2) != reason.Trim() || !string.Equals(previousBatch, batchCode?.Trim(), StringComparison.OrdinalIgnoreCase))
+            return StockAdjustmentResult.Failed("شناسهٔ عملیات قبلاً با مقادیر دیگری استفاده شده است.");
+        return StockAdjustmentResult.Success(reader.GetString(0), reader.GetInt32(3));
+    }
+
+    private static async Task RecordOperationAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        string actor, string? key, string sku, int delta, string reason, int balance, string? batchCode, CancellationToken cancellationToken)
+    {
+        if (key is null) return;
+        await using var command = new NpgsqlCommand("insert into inventory_adjustment_operations(actor,operation_key,sku,quantity_delta,reason,balance_after,batch_code) values (@actor,@key,@sku,@delta,@reason,@balance,@batch);", connection, transaction);
+        command.Parameters.AddWithValue("actor", actor);
+        command.Parameters.AddWithValue("key", key);
+        command.Parameters.AddWithValue("sku", sku);
+        command.Parameters.AddWithValue("delta", delta);
+        command.Parameters.AddWithValue("reason", reason.Trim());
+        command.Parameters.AddWithValue("balance", balance);
+        command.Parameters.AddWithValue("batch", NpgsqlTypes.NpgsqlDbType.Text, (object?)batchCode?.Trim() ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<StockMovement>> ListAsync(
@@ -260,7 +327,12 @@ public static class InventoryLedgerModule
             if (string.IsNullOrWhiteSpace(request.Sku) || string.IsNullOrWhiteSpace(request.Reason))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Sku)] = ["SKU و دلیل تغییر الزامی است."] });
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var result = await database.AdjustAsync(request, actor, context.TraceIdentifier, cancellationToken);
+            var key = context.Request.Headers["Idempotency-Key"].ToString();
+            if (key.Length is < 8 or > 120 || !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z0-9_-]+$"))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["Idempotency-Key"] = ["شناسهٔ عملیات الزامی و باید معتبر باشد."] });
+            if (request.QuantityDelta is < -1_000_000 or > 1_000_000 || request.Reason.Trim().Length > 500)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["quantityDelta"] = ["تعداد یا طول دلیل خارج از محدودهٔ مجاز است."] });
+            var result = await database.AdjustAsync(request, actor, context.TraceIdentifier, cancellationToken, key);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -282,8 +354,11 @@ public static class InventoryLedgerModule
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var key = context.Request.Headers["Idempotency-Key"].ToString();
+            if (key.Length is < 8 or > 120 || !System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z0-9_-]+$"))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["Idempotency-Key"] = ["شناسهٔ عملیات الزامی و باید معتبر باشد."] });
             var result = await database.WriteOffBatchAsync(
-                request.Sku, request.BatchCode, request.Quantity, actor, request.Reason.Trim(), context.TraceIdentifier, cancellationToken);
+                request.Sku, request.BatchCode, request.Quantity, actor, request.Reason.Trim(), context.TraceIdentifier, cancellationToken, key);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 

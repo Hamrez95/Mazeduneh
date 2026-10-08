@@ -31,6 +31,8 @@ Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray
 Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
 Console.WriteLine("Purchase pagination cursor unit checks passed");
 
+await InventoryExpiryFixture.RunAsync(args);
+
 var privacyContext = new DefaultHttpContext();
 privacyContext.Items["AdminPrincipal"] = new AdminPrincipal("analyst@example.test", now.AddHours(1), "ReadOnlyAnalyst", [AdminPermissionCatalog.OrdersRead], Guid.NewGuid(), null, "default");
 var summary = new AdminOrderSummary(Guid.NewGuid(), "PII name", "09120000199", "PII province", "PII city", 100, "IRR", OrderState.Shipped, now, now.AddHours(1), 1, "PII reference", "Paid");
