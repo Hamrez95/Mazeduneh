@@ -77,6 +77,14 @@ with tempfile.TemporaryFile() as log:
         product = {"title": "محصول تست موجودی اولیه", "slug": SLUG, "category": "آزمایشی", "origin": "ایران",
                    "currency": "IRR", "unitType": "Weight", "isPublished": False,
                    "variants": [variant(ZERO, 0), variant(POSITIVE, 3, 500)]}
+        for invalid_slug, invalid_stock in (
+            ("fractional-opening-stock-fixture", 1.5),
+            ("overflow-opening-stock-fixture", 2147483648),
+        ):
+            invalid = dict(product, slug=invalid_slug, variants=[variant("CI-INVALID-STOCK", invalid_stock)])
+            status, body = request("/api/v1/products/", "POST", invalid, token)
+            assert status == 400, (invalid_slug, status, body)
+
         status, created = request("/api/v1/products/", "POST", product, token)
         assert status == 201, status
         assert movements(ZERO) == []
