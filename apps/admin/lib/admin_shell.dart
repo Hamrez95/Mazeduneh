@@ -115,8 +115,12 @@ class _AdminShellState extends State<AdminShell> {
             decoration: BoxDecoration(color: AdminColors.inkDeep, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Color(0x1424463A), blurRadius: 24, offset: Offset(0, 10))]),
             child: Column(children: [
               const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
-              const SizedBox(height: 20),
-              for (final i in visibleIndexes)
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final i in visibleIndexes)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Material(
@@ -149,7 +153,9 @@ class _AdminShellState extends State<AdminShell> {
                     ),
                   ),
                 ),
-              const Spacer(),
+                  ],
+                ),
+              ),
               Material(
                 color: Colors.transparent,
                 shape: RoundedRectangleBorder(
