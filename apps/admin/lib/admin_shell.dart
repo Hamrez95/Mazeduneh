@@ -115,7 +115,7 @@ class _AdminShellState extends State<AdminShell> {
             )
           : NavigationBar(
               selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
-              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : setState(() => index = primaryIndexes[value]),
+              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : _selectModule(primaryIndexes[value]),
               destinations: [for (final item in [for (final i in primaryIndexes) items[i], if (secondaryIndexes.isNotEmpty) ('بیشتر', Icons.more_horiz_rounded, '')]) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
             ),
       body: Row(children: [
@@ -161,7 +161,7 @@ class _AdminShellState extends State<AdminShell> {
                               : const Color(0xFFD5DFD6),
                         ),
                       ),
-                      onTap: () => setState(() => index = i),
+                      onTap: () => _selectModule(i),
                     ),
                   ),
                 ),
@@ -241,6 +241,15 @@ class _AdminShellState extends State<AdminShell> {
     setState(() { navigationHistory.add(navigation); navigation = intent; index = destination; });
   }
 
+  void _selectModule(int destination) {
+    if (destination < 0 || destination >= AdminModule.values.length) return;
+    setState(() {
+      navigationHistory.clear();
+      index = destination;
+      navigation = AdminNavigationIntent(module: AdminModule.values[destination]);
+    });
+  }
+
   void _goBack() {
     if (navigationHistory.isEmpty) return;
     final previous = navigationHistory.removeLast();
@@ -282,7 +291,7 @@ class _AdminShellState extends State<AdminShell> {
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => index = selected);
+    if (selected != null && mounted) _selectModule(selected);
   }
 }
 
