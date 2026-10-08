@@ -739,28 +739,28 @@ class _VariantEditor extends StatelessWidget {
                   width: 170,
                   controller: draft.priceToman,
                   label: 'قیمت فروش (تومان)',
-                  validator: _nonNegativeInt,
+                  validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
                   width: 170,
                   controller: draft.costPriceToman,
                   label: 'قیمت خرید/مواد (تومان)',
-                  validator: _nonNegativeInt,
+                  validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
                   width: 170,
                   controller: draft.packagingCostToman,
                   label: 'هزینه بسته‌بندی (تومان)',
-                  validator: _nonNegativeInt,
+                  validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
                   width: 170,
                   controller: draft.additionalCostToman,
                   label: 'هزینه جانبی (تومان)',
-                  validator: _nonNegativeInt,
+                  validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
@@ -906,13 +906,21 @@ String? _optionalNumber(String? value) {
 
 String? _optionalNonNegativeInt(String? value) {
   if (value == null || value.trim().isEmpty) return null;
-  final number = parsePersianInteger(value);
-  return number == null || number < 0 ? 'عدد صحیح صفر یا بیشتر وارد کنید.' : null;
+  final number = parsePersianInteger(value, min: 0, max: maxApiInteger);
+  return number == null ? 'عدد صحیح صفر یا بیشتر وارد کنید.' : null;
 }
 
 String? _nonNegativeInt(String? value) {
-  final number = parsePersianInteger(value);
-  if (number == null || number < 0) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
+  return _nonNegativeWhole(value, max: maxApiInteger);
+}
+
+String? _nonNegativeToman(String? value) {
+  return _nonNegativeWhole(value, max: maxSafeTomanAmount);
+}
+
+String? _nonNegativeWhole(String? value, {required int max}) {
+  final number = parsePersianInteger(value, min: 0, max: max);
+  if (number == null) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
   return null;
 }
 

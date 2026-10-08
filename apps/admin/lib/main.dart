@@ -948,7 +948,7 @@ class _ProductDialogState extends State<ProductDialog> {
                   controller: stock,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'تعداد بسته موجود'),
-                  validator: numberRequired,
+                  validator: stockRequired,
                 ),
               ]),
             ),
@@ -962,6 +962,9 @@ class _ProductDialogState extends State<ProductDialog> {
 
   String? required(String? value) => value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
   String? numberRequired(String? value) => parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
+  String? stockRequired(String? value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null
+      ? 'تعداد صحیح صفر یا بیشتر وارد کنید.'
+      : null;
 
   Future<void> pickImage() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
@@ -2146,7 +2149,15 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
                 hintText: isWaste ? 'تعداد بسته‌های غیرقابل‌فروش' : 'مثبت برای ورود، منفی برای خروج',
               ),
               validator: (value) {
-                final amount = parsePersianInteger(value);
+                final batchRemaining = selectedBatch?.remainingPackages ?? 0;
+                final maximum = isWaste && batchRemaining < maxInventoryAdjustment
+                    ? batchRemaining
+                    : maxInventoryAdjustment;
+                final amount = parsePersianInteger(
+                  value,
+                  min: isWaste ? 1 : -maxInventoryAdjustment,
+                  max: maximum,
+                );
                 if (amount == null) return 'عدد معتبر وارد کنید.';
                 if (isWaste && amount <= 0) return 'تعداد ضایعات باید بیشتر از صفر باشد.';
                 if (isWaste && selectedBatch == null) return 'بچ ضایعاتی را انتخاب کنید.';
@@ -2524,7 +2535,14 @@ class _CategoryDialogState extends State<CategoryDialog> {
             const SizedBox(height: 10),
             TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO')),
             const SizedBox(height: 10),
-            TextFormField(controller: sortOrder, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ترتیب نمایش')),
+            TextFormField(
+              controller: sortOrder,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'ترتیب نمایش'),
+              validator: (value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null
+                  ? 'عدد صحیح بین صفر و حد مجاز وارد کنید.'
+                  : null,
+            ),
             SwitchListTile.adaptive(
               contentPadding: EdgeInsets.zero,
               title: const Text('دسته فعال باشد'),

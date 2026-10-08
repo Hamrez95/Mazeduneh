@@ -8,6 +8,37 @@ const product = Product(id: '1', title: 'پسته', slug: 'pistachio', category:
 Finder field(String label) => find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == label);
 
 void main() {
+  testWidgets('fractional receipt quantity is rejected without saving', (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(
+          body: BatchDialog(
+            products: const [product],
+            onSave: (_) async {
+              attempts++;
+              throw StateError('should not be called');
+            },
+          ),
+        ),
+      ),
+    ));
+
+    await tester.pumpAndSettle();
+    await tester.enterText(field('کد خرید / بچ'), 'LOT-FRACTION');
+    await tester.enterText(field('نام تأمین‌کننده'), 'تأمین تست');
+    await tester.enterText(field('تاریخ تولید'), '۲۰۲۵-۱۲-۰۱');
+    await tester.enterText(field('تاریخ انقضا'), '۲۰۳۰-۰۱-۰۱');
+    await tester.enterText(field('تعداد بستهٔ خریداری‌شده'), '۱٫۵');
+    await tester.tap(find.text('ثبت خرید'));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 0);
+    expect(find.text('تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.'), findsOneWidget);
+    expect(tester.widget<TextField>(field('تعداد بستهٔ خریداری‌شده')).controller!.text, '۱٫۵');
+  });
+
   for (final width in [360.0, 768.0, 1280.0]) {
     testWidgets('receipt preserves failed draft and sends dated costs at $width', (tester) async {
       tester.view.physicalSize = Size(width, 1100); tester.view.devicePixelRatio = 1;

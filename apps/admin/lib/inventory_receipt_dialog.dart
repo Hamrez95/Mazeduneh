@@ -66,7 +66,7 @@ class _BatchDialogState extends State<BatchDialog> {
     setState(() { saving = true; error = null; });
     try {
       final batch = await widget.onSave(InventoryReceiptCommand(sku: sku, batchCode: fields['batch']!.text.trim(),
-        receivedPackages: parsePersianNumber(fields['quantity']!.text)!.toInt(), supplier: fields['supplier']!.text.trim(),
+        receivedPackages: parsePersianInteger(fields['quantity']!.text, min: 1, max: maxInventoryAdjustment)!, supplier: fields['supplier']!.text.trim(),
         supplierContactName: fields['supplierContactName']!.text.trim(), supplierPhone: fields['supplierPhone']!.text.trim(),
         supplierEmail: fields['supplierEmail']!.text.trim(), supplierAddress: fields['supplierAddress']!.text.trim(),
         supplierNotes: fields['supplierNotes']!.text.trim(),
@@ -100,7 +100,9 @@ class _BatchDialogState extends State<BatchDialog> {
         TextFormField(controller: fields['supplierAddress'], maxLength: 500, maxLines: 2, decoration: const InputDecoration(labelText: 'نشانی تأمین‌کننده (اختیاری)')),
         TextFormField(controller: fields['supplierNotes'], maxLength: 1000, maxLines: 2, decoration: const InputDecoration(labelText: 'یادداشت دربارهٔ تأمین‌کننده (اختیاری)')),
         TextFormField(controller: fields['quantity'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تعداد بستهٔ خریداری‌شده'),
-          validator: (v) { final n = parsePersianNumber(v); return n == null || !n.isFinite || n <= 0 || n > 1000000 || n != n.round() ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.' : null; }),
+          validator: (v) => parsePersianInteger(v, min: 1, max: maxInventoryAdjustment) == null
+              ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.'
+              : null),
         dateField('purchased', 'تاریخ خرید'), dateField('produced', 'تاریخ تولید'), dateField('expires', 'تاریخ انقضا'),
         money('cost', 'قیمت خرید / مواد'), money('packaging', 'بسته‌بندی'), money('additional', 'هزینهٔ جانبی'),
         if (saving) const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator()),
