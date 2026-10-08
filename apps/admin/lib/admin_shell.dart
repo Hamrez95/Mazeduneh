@@ -122,27 +122,48 @@ class _AdminShellState extends State<AdminShell> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: const Color(0xFFF7C58B),
-                  child: Text((OwnerSession.instance.email ?? 'م').substring(0, 1).toUpperCase()),
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFF7C58B),
+                    child: Text(
+                      (OwnerSession.instance.email ?? 'م')
+                          .substring(0, 1)
+                          .toUpperCase(),
+                    ),
+                  ),
+                  title: Text(
+                    OwnerSession.instance.email ?? 'کاربر فروشگاه',
+                    style: const TextStyle(color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    OwnerSession.instance.role == 'Owner'
+                        ? 'مدیر اصلی'
+                        : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
+                    style: const TextStyle(color: Color(0xFF9EACA1)),
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'خروج از حساب',
+                    onPressed: () async {
+                      try {
+                        await AuthApiClient().logout();
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFD5DFD6),
+                    ),
+                  ),
                 ),
-                title: Text(OwnerSession.instance.email ?? 'کاربر فروشگاه', style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis),
-                subtitle: Text(
-                  OwnerSession.instance.role == 'Owner' ? 'مدیر اصلی' : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
-                  style: const TextStyle(color: Color(0xFF9EACA1)),
-                ),
-                trailing: IconButton(
-                  tooltip: 'خروج از حساب',
-                  onPressed: () async {
-                    try {
-                      await AuthApiClient().logout();
-                    } catch (_) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.')));
-                    }
-                  },
-                  icon: const Icon(Icons.logout_rounded, color: Color(0xFFD5DFD6)),
-                ),
-              ),
             ]),
           ),
         Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
