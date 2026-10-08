@@ -63,7 +63,9 @@ def stop_api(process):
 
 
 with tempfile.TemporaryFile() as log:
-    api, token = start_api("DashboardPreferenceCI", log)
+    # Use real role names: unknown values normalize to Owner, which would
+    # accidentally make both processes share the same role-scoped preference.
+    api, token = start_api("WarehouseOperator", log)
     try:
         endpoint = "/api/v1/admin/dashboard/preferences"
         assert request(endpoint)[0] == 401
@@ -84,14 +86,14 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 
-    api, other_token = start_api("DashboardPreferenceOtherCI", log)
+    api, other_token = start_api("SalesOperator", log)
     try:
         status, other_role = request("/api/v1/admin/dashboard/preferences", token=other_token)
         assert status == 200 and [item["id"] for item in other_role["widgets"]] == WIDGETS
     finally:
         stop_api(api)
 
-    api, token = start_api("DashboardPreferenceCI", log)
+    api, token = start_api("WarehouseOperator", log)
     try:
         status, saved = request("/api/v1/admin/dashboard/preferences", token=token)
         assert status == 200 and saved == custom
