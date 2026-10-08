@@ -235,7 +235,7 @@ class _OrdersPageState extends State<OrdersPage> {
                 ),
               IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
             ]);
-            return constraints.maxWidth < 560
+            return constraints.maxWidth < 1120
                 ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [heading, const SizedBox(height: 10), controls])
                 : Row(children: [Expanded(child: heading), controls]);
           }),
