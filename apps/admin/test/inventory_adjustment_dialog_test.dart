@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
-import 'package:mazeduneh_admin/main.dart';
+import 'package:mazeduneh_admin/inventory_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
 void main() {

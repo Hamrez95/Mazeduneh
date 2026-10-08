@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
-import 'package:mazeduneh_admin/main.dart' show InventoryPage;
+import 'package:mazeduneh_admin/inventory_page.dart' show InventoryPage;
 import 'package:mazeduneh_admin/order_api.dart';
 
 Map<String,dynamic> batch(String id) => {'id':id,'sku':'PI-250','productTitle':'پسته','variantLabel':'۲۵۰ گرم',
