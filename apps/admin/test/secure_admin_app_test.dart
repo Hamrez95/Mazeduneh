@@ -88,7 +88,13 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.text('سفارش‌ها'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('سفارش‌ها'),
+        matching: find.byType(ListTile),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('محصولات'), findsNothing);
   });
 
