@@ -85,15 +85,6 @@ with tempfile.TemporaryFile() as log:
         assert request('/api/v1/admin/inventory/batches', 'POST', payload, token)[0] == 409
         payload.update(batchCode='CI-PURCHASE-TWO', costPrice=6000, purchasedAt='2026-02-01T00:00:00Z')
         assert request('/api/v1/admin/inventory/batches', 'POST', payload, token)[0] == 201
-        status, dashboard = request('/api/v1/admin/dashboard?days=1', token=token)
-        assert status == 200
-        fixture_batches = {
-            item['batchCode'] for item in dashboard['expiringSoon']
-            if item['sku'] == 'CI-PURCHASE-250'
-        }
-        assert fixture_batches == {
-            'CI-PURCHASE-ONE', 'CI-PURCHASE-TWO', 'CI-PURCHASE-THREE'
-        }, fixture_batches
         from urllib.parse import quote
         history_path = '/api/v1/admin/inventory/purchases?sku=CI-PURCHASE-250&limit=1'
         status, page1 = request(history_path, token=token)
@@ -114,6 +105,15 @@ with tempfile.TemporaryFile() as log:
         # New/backdated receipt inserted between pages must not move the cursor boundary.
         newer = dict(payload, batchCode='CI-PURCHASE-THREE', costPrice=8000, purchasedAt='2020-01-01T00:00:00Z')
         assert request('/api/v1/admin/inventory/batches','POST',newer,token)[0] == 201
+        status, dashboard = request('/api/v1/admin/dashboard?days=1', token=token)
+        assert status == 200
+        fixture_batches = {
+        item['batchCode'] for item in dashboard['expiringSoon']
+        if item['sku'] == 'CI-PURCHASE-250'
+        }
+        assert fixture_batches == {
+        'CI-PURCHASE-ONE', 'CI-PURCHASE-TWO', 'CI-PURCHASE-THREE'
+        }, fixture_batches
         status, page2 = request(history_path+'&cursor='+quote(page1['nextCursor'],safe=''),token=token)
         assert status == 200 and len(page2['items']) == 1 and page2['items'][0]['id'] == first['id']
         assert page2['nextCursor'] is None
