@@ -2150,9 +2150,19 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
             const SizedBox(height: 10),
             TextFormField(
               controller: reason,
-              decoration: const InputDecoration(labelText: 'علت اصلاح یا ضایعات'),
+              decoration: const InputDecoration(labelText: 'علت اصلاح یا ضایعات', counterText: ''),
               maxLength: 500,
               validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : value.trim().length > 500 ? 'علت حداکثر ۵۰۰ نویسه است.' : null,
+            ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: reason,
+              builder: (context, value, child) => Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Text(
+                  '${formatPersianInteger(value.text.length)} / ۵۰۰ نویسه',
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ),
             ),
           ])),
         ),
