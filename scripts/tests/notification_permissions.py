@@ -83,6 +83,17 @@ with tempfile.TemporaryFile() as log:
         status, owner = request("/api/v1/admin/notifications", token=token)
         assert status == 200 and owner["awaitingPayment"] > 0 and owner["lowStockItems"] > 0
         assert INVENTORY_MARKER in json.dumps(owner)
+        low_stock_notice = next(
+            item for item in owner["items"]
+            if item["type"] == "low-stock" and INVENTORY_MARKER in item["detail"]
+        )
+        assert low_stock_notice["target"]["module"] == "inventory"
+        assert low_stock_notice["target"]["sku"] == INVENTORY_MARKER
+        awaiting_notice = next(item for item in owner["items"] if item["type"] == "awaiting-payment")
+        assert awaiting_notice["target"]["module"] == "orders"
+        assert awaiting_notice["target"]["filter"] == "AwaitingPayment"
+        recent_notice = next(item for item in owner["items"] if item["type"] == "new-orders")
+        assert recent_notice["target"]["module"] == "orders"
         assert request("/api/v1/admin/notifications")[0] == 401
     finally:
         stop_api(api)
