@@ -19,9 +19,9 @@ There are 115 proven-redundant remote refs (108 merged PR heads + 6 ancestors + 
 
 | PR | Branch | Head SHA | Status |
 | --- | --- | --- | --- |
-| #185 | `feat/169-f-typed-navigation-ui` | `192551686bfa7c9bb7a91f0c8bce091fa90d79e3` | CI #471 passed; required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
-| #186 | `codex/admin-permission-form-review` | `b007e54aed3fb3268a8e96961c215cfc6bbc8bee` | CI #472 failed in the membership login contract; diagnostic assertion was added and CI #474 is running. Requires independent Sol security review. |
-| #187 | `codex/dashboard-role-widgets` | `b20622ad10721ea7ebd20852e3c4471fa8339de1` | CI #473 failed because both test roles normalized to Owner; test now uses two canonical roles and CI #475 is running. |
+| #185 | `feat/169-f-typed-navigation-ui` | `f775778f9af4c0ac1f72499f048f617b5b330446` | CI #479 passed on this head (API, Admin Flutter, Storefront); Vercel success. Required independent permission/route review is still absent. Completes only one UI slice of #169 F. |
+| #186 | `codex/admin-permission-form-review` | `e3ce2abb3ea9962cc4e95edc8a8e31b0466b3eff` | CI #477 passed after isolating the authorization test from the intentional five-request login rate limit. Requires independent Sol security review. |
+| #187 | `codex/dashboard-role-widgets` | `b20622ad10721ea7ebd20852e3c4471fa8339de1` | CI #475 passed all jobs after using distinct canonical operator roles in the isolation test. |
 
 The branch updates above retain their GitHub PRs open. Merge only after the current CI result, review requirements, and current-main validation pass.
 
@@ -59,7 +59,7 @@ The local checkout has no uncommitted changes. The following refs are deliberate
 | --- | --- | --- |
 | `codex/169-f-navigation-ui` | Active PR #185 worktree; local docs commit is not the remote PR commit. | Keep until #185 is reviewed/merged. |
 | `codex/admin-edit-permissions-form-layout` | Unique permission editor/API branch; preserved above. | Keep. |
-| `codex/admin-permission-form-review` | Active PR #186 worktree with a newer local rate-limit test fix; CI #477 is running on the pushed commit. | Keep. |
+| `codex/admin-permission-form-review` | Active PR #186 worktree with a newer local rate-limit test fix; CI #477 passed on the pushed commit. | Keep. |
 | `codex/dashboard-role-widgets` | Active PR #187 worktree; CI #475 passed on the pushed commit. | Keep. |
 | `codex/local-launcher` | Active worktree; local `ef2f524` differs from merged remote PR #184/main and contains launcher/security/test changes. | Keep for review; do not delete the connected remote ref yet. |
 | `codex/storefront-admin-operations-finance` | Active worktree with untracked/generated project files and branch-specific commerce changes. | Keep; preserve its working files. |
