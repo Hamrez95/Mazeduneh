@@ -17,20 +17,21 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 pwsh -File ./scripts/dev.ps1
 ```
 
-The launcher opens the storefront and the active admin web app in your browser, and starts the API with demo-only credentials. Everything listens on `127.0.0.1`; it does not use Supabase, PostgreSQL, Cloudflare, Vercel, or Liara. Without a configured PostgreSQL connection, API catalog products are held in memory: the storefront and admin use the same API, and edits appear on storefront reload or when its tab regains focus. Those edits reset when the API is stopped; inventory receipts and other database-backed operations require PostgreSQL. The public no-API preview stays unchanged.
+The launcher runs the latest fetched `origin/main` in an ignored detached worktree, so a developer's current branch and uncommitted work remain untouched. It starts the persistent local PostgreSQL Compose service, then the API, storefront, and secure Admin web entry point. Everything listens on `127.0.0.1`; it does not use Supabase, Cloudflare, Vercel, Liara, or a production account. The API connects to that PostgreSQL instance and applies its existing compatible migrations; it does not drop or reset data.
 
 Use these commands from the repository root:
 
 ```powershell
 pwsh -File ./scripts/dev.ps1 -Status
 pwsh -File ./scripts/dev.ps1 -Stop
+pwsh -File ./scripts/dev.ps1 -CurrentBranch -NoBrowser
 ```
 
 The admin login is printed when the launcher starts. Its random local-demo password is stored in the ignored `.local-dev` folder so it remains the same between runs. Keep this launcher bound to this computer; it is not a public deployment setup.
 
-To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app; `-Component storefront` also starts the API.
+To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app; `-Component storefront` also starts the API. The default runs the latest fetched main. Use `-CurrentBranch` only when intentionally testing the current checkout.
 
-Prerequisites: PowerShell 7.4+, Node.js/npm, .NET 10 SDK, and Flutter stable. On first run the launcher installs missing app dependencies.
+Prerequisites: PowerShell 7.4+, Git, Docker Desktop with Compose, Node.js/npm, .NET 10 SDK, and Flutter stable. The launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and prints the exact main SHA it runs. It never installs system tools automatically; when a required tool is missing it exits with the command to install or start it.
 
 ### Storefront order submission
 
@@ -66,3 +67,4 @@ Docker deployment files and the release checklist are in [`docs/LIARA_DEPLOYMENT
 ## Status
 
 The platform foundation is on `dev`. `main` remains the stable release branch until production gates pass.
+
