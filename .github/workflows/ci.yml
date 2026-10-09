@@ -555,7 +555,7 @@ jobs:
 
       - name: API readiness failure and recovery contract
         env:
-          READINESS_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          READINESS_POSTGRES_SERVICE: postgresql.service
         run: python3 scripts/tests/api_readiness.py
 
       - name: API request correlation and log redaction contract

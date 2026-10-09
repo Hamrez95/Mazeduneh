@@ -83,11 +83,22 @@ with tempfile.TemporaryFile() as log:
         stop_api(api)
 
     api = start_api()
-    postgres = os.environ["READINESS_POSTGRES_CONTAINER"]
+    postgres_container = os.environ.get("READINESS_POSTGRES_CONTAINER")
+    postgres_service = os.environ.get("READINESS_POSTGRES_SERVICE")
+
+    def set_postgres_running(running):
+        if postgres_container:
+            action = "start" if running else "stop"
+            subprocess.run(["docker", action, postgres_container], check=True, stdout=subprocess.DEVNULL)
+        elif postgres_service:
+            action = "start" if running else "stop"
+            subprocess.run(["sudo", "systemctl", action, postgres_service], check=True, stdout=subprocess.DEVNULL)
+        else:
+            raise AssertionError("Set READINESS_POSTGRES_CONTAINER or READINESS_POSTGRES_SERVICE")
     try:
         assert_ready(200, database="healthy", migrations="tracked", adminAuthentication="configured")
         try:
-            subprocess.run(["docker", "stop", postgres], check=True, stdout=subprocess.DEVNULL)
+            set_postgres_running(False)
             assert_ready(503, database="unhealthy", migrations="unavailable")
             assert request("/health/live")[:2] == (200, {"status": "alive"})
             status, body, _ = request("/health")
@@ -95,7 +106,7 @@ with tempfile.TemporaryFile() as log:
             assert body["migrations"]["status"] == "unavailable"
         finally:
             # Restore the disposable CI dependency even when an assertion fails.
-            subprocess.run(["docker", "start", postgres], check=True, stdout=subprocess.DEVNULL)
+            set_postgres_running(True)
 
         # The same API process must become ready without a restart.
         for attempt in range(40):
