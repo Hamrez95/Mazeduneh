@@ -1,49 +1,33 @@
-# Branch audit — 2026-10-09
+# Branch audit — 2026-10-10
 
-## Remote
+## Remote branches
 
-`git fetch origin --prune` succeeded. GitHub branch search and the fetched refs show only `main` and `dev` (plus the symbolic `origin/HEAD`). All other remote feature branches from the earlier audit have been merged or deleted. The newest `main` is `78836f8af35aef162fd3bd12bc49d0a24f02c9e0`; `dev` remains protected and is intentionally retained.
+GitHub branch search after merge cleanup shows exactly `main` and `dev`. The merged remote branches `codex/handoff-update` (#199), `codex/dev-docker-readiness` (#200), and `codex/docker-ready-return` (#201) were deleted through the repository branch page after checking their merged PRs. `origin/HEAD` points to the default branch and is not an additional branch.
 
-Recently merged slices verified on `main`:
+`main` is at `26b50be6cdfc05a5d45191aae5980015d0700ef`. `dev` remains the integration branch.
 
-| PR | Work | Merge SHA | CI |
+| PR | Delivery | Merge SHA | Verification |
 | --- | --- | --- | --- |
-| #195 | Local launcher menu and Docker setup guidance | `d193d5d28ce61517722ee651c419f86542a9d915` | #518 passed |
-| #196 | Branch audit and local handoff docs | `d2edfc1fb958b4dfc3bf3282d2f9619adb8ca8cb` | #520 passed |
-| #197 | Admin expiry text at narrow widths and large text scale | `893420dcbb83eb080ec86b88aeb51eb62e0104a9` | #522 passed |
-| #198 | Step-up authorization and audit for commerce pricing settings | `78836f8af35aef162fd3bd12bc49d0a24f02c9e0` | #525 passed |
-
-Remote branches for these merged PRs were deleted after merge verification. Historical refs are not retained on GitHub.
+| #199 | Branch audit and local handoff documentation | `fe130aab15ec26474e3a0623b8312ff05e277d20` | CI #527 passed |
+| #200 | Docker Desktop readiness and per-user install path | `7c8c06f1a1e4c3c80e45191aae5980015d0700ef` | CI #533 passed; follow-up correction in #201 |
+| #201 | Correctly return success after Docker becomes ready | `26b50be6cdfc05a5d45191aae5980015d0700ef` | CI #535 and Vercel status passed |
 
 ## Local branches and worktrees
 
-The local checkout has extra branch names because this machine still has managed worktrees. Their changes must be accounted for before reducing local refs to only `main` and `dev`; deleting a branch checked out in a worktree or discarding its working files would lose recoverable work.
+The repository root is clean on `main`. Local branch refs are `main`, `dev`, and `codex/storefront-admin-operations-finance`.
 
-| Local branch(es) | Evidence / current disposition |
-| --- | --- |
-| `codex/169-c-stock-ledger`, `codex/169-f-accessibility`, `codex/169-f-exact-navigation`, `codex/169-f-navigation-ui`, `codex/185-main-a735`, `codex/185-main-refresh`, `codex/185-refresh` | PR #185/#193/#197 navigation and accessibility work is present on `main`; the related worktrees include an untracked deep-navigation test, so retain that file until reviewed and either promoted or explicitly classified as scratch. |
-| `codex/186-main-a735`, `codex/186-scope-fix`, `codex/admin-edit-permissions-form-layout` | The permission editor slice is present on `main` through PR #186; one worktree has an uncommitted membership test change. Preserve it pending review. |
-| `codex/91-sensitive-step-up`, `codex/91-step-up-approval`, `codex/91-step-up-commerce-settings` | Role dashboards and inventory/commerce step-up slices are in `main` (#187, #194/#198). `codex/91-sensitive-step-up` has a generated `analysis_options.yaml` modification; do not include or discard it without inspection. |
-| `codex/92-service-health`, `codex/handoff-refresh`, `codex/dashboard-role-widgets` | Dashboard health, role preferences and time-range work are in `main` (#187/#189/#192/#193); the handoff worktree has two uncommitted documentation edits to inspect before cleanup. |
-| `codex/dev-launcher-menu`, `codex/local-launcher`, `codex/storefront-followup` | Launcher work is in `main` through #184/#195. The current launcher worktree is clean; retain until the final local launcher verification and worktree lifecycle are complete. |
-| `codex/branch-audit-handoff`, `codex/branch-audit-refresh` | Documentation snapshots superseded by this audit. Root handoff branch is clean; refresh worktree is clean and attached. |
-| `codex/storefront-admin-operations-finance` | Three unique commits include catalog, inventory, finance and storefront work not established as merged by commit ancestry. Six worktree entries (including untracked Flutter metadata) need classification; preserve. |
-| `refactor/169-e-remove-legacy-operations-shell` | Two local commits and a narrow secure-entry test diff remain outside ancestry; preserve pending comparison against current secure entry tests. |
-| `main`, `dev` | Protected delivery and integration branches; preserve. |
+The only extra local branch is checked out in `C:/Users/HamidReza Pakpour/.codex/worktrees/mazeduneh-commerce/Mazeduneh`, a worktree not attached to this Codex task. It contains three unique commits (`6bba276`, `782fb9c`, `dc01b05`) covering media/catalog/inventory/finance and storefront changes, plus untracked Flutter metadata and platform files. These changes have not been reconciled with current modular Admin/API implementations. Preserve this branch and its worktree until its owner reviews and promotes or abandons the valuable work; do not delete its branch while checked out or remove its untracked files.
 
-These are local-only references; GitHub has no corresponding feature refs. A local branch deletion pass is still required after the noted dirty/untracked work is reviewed and any valuable slice is promoted. The repository must not be reported as locally reduced to two branches until that pass is completed and rechecked.
+Other worktrees are detached snapshots or ignored launcher worktrees. The nested `.local-dev/main-worktree` under the managed launcher worktree runs the storefront preview; keep it while that process uses it. No additional local feature branch refs remain.
 
-## Remaining delivery work
+## Remaining project work
 
-- Issue #169 remains open: section A, B, C, D, E and F have independent slices, but privacy/security review, remaining acceptance checks, and the explicit physical keyboard/focus/screen-reader checks are not complete. Merging its listed PRs does not complete the epic.
-- Issue #91 remains open: step-up was added for inventory and commerce pricing changes, but MFA/session revocation, broader IDOR review, and full permission/audit criteria remain.
-- Issue #92 remains open for the remaining analytics acceptance criteria.
-- Full local PostgreSQL/API/Admin startup has not been verified on this Windows host because Docker Desktop/Compose is unavailable. The launcher correctly reports that prerequisite failure; no full-stack readiness is claimed.
-- Graphify is unavailable here; use the documented focused-search fallback and do not claim Graphify queries ran.
+- Issue #169 stays open. The implementation slices are present, but final privacy/security review and hands-on keyboard, focus, screen-reader and physical-device acceptance checks remain. The owner plans to do physical testing after code work.
+- Issue #91 (P0) stays open for MFA and broader IDOR/security review. The pricing step-up slices do not complete the epic.
+- Issue #92 stays open for remaining analytics acceptance criteria.
+- The local launch menu and Docker readiness logic are fixed, but full PostgreSQL/API/Admin startup is not verified: Docker Desktop is not installed. `wsl --status` reports WSL is absent; winget reached an Administrator request and failed with installer exit code `4294967290`. Install WSL 2 with Administrator approval and restart Windows, then install/start Docker Desktop and rerun the launcher.
+- Graphify is unavailable (`graphify --version` not found); focused `rg` and source review were used instead.
 
-## Required final cleanup checks
+## Cleanup result
 
-1. Inspect and preserve all dirty or untracked worktree files.
-2. Compare any potentially valuable local-only commits against `origin/main` by content and PR evidence, not only ancestry (squash merges rewrite ancestry).
-3. Remove only local branch refs whose work is confirmed present on `main` or whose unique work was deliberately abandoned after review; detach/archive associated managed worktrees safely first.
-4. Verify `git branch --format='%(refname:short)'` lists only `dev` and `main`, and verify the same on GitHub.
+GitHub is clean with only `main` and `dev`. Local refs are reduced to those two plus the preserved finance work branch in its active, unowned worktree. Deleting that branch now would risk valuable work and untracked files; it requires review in that worktree first.
