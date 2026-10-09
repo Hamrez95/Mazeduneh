@@ -37,6 +37,23 @@ Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>())
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
 
+var costProduct = new Product(Guid.NewGuid(), "محصول آزمون", "test-product", "آجیل", "ایران", "IRR", ProductUnitType.Weight, false,
+    [new ProductVariant("SKU-1", 250, "gram", "۲۵۰ گرم", 1000, 5, 640) { PackagingCost = 25, AdditionalCost = 15 }], now);
+var contentPrincipal = new AdminPrincipal("content@example.test", now.AddHours(1), "ContentManager", AdminPermissionCatalog.Resolve("ContentManager"), Guid.NewGuid(), null, "default");
+var accountantPrincipal = new AdminPrincipal("accountant@example.test", now.AddHours(1), "Accountant", AdminPermissionCatalog.Resolve("Accountant"), Guid.NewGuid(), null, "default");
+var contentProjection = ProductCostPrivacy.ProjectFor(costProduct, contentPrincipal);
+var accountantProjection = ProductCostPrivacy.ProjectFor(costProduct, accountantPrincipal);
+Check(contentProjection.Variants.Single() is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Content role received product cost data");
+Check(accountantProjection.Variants.Single() is { CostPrice: 640, PackagingCost: 25, AdditionalCost: 15 }, "Pricing reader lost product cost data");
+var attemptedCosts = new[] { new ProductVariant("sku-1", 250, "gram", "۲۵۰ گرم", 1100, 4, 1) { PackagingCost = 2, AdditionalCost = 3 } };
+var protectedUpdate = ProductCostPrivacy.ForUpdate(attemptedCosts, costProduct.Variants, canWriteCosts: false).Single();
+Check(protectedUpdate is { CostPrice: 640, PackagingCost: 25, AdditionalCost: 15 }, "Unauthorized update overwrote persisted costs");
+var addedVariant = ProductCostPrivacy.ForUpdate([.. attemptedCosts, new ProductVariant("SKU-2", 500, "gram", "۵۰۰ گرم", 1900, 3, 900)], costProduct.Variants, canWriteCosts: false).Last();
+Check(addedVariant is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Unauthorized update injected costs for a new SKU");
+Check(ProductCostPrivacy.ForUpdate(attemptedCosts, costProduct.Variants, canWriteCosts: true).Single().CostPrice == 1, "Authorized pricing writer could not update costs");
+Check(ProductCostPrivacy.ForCreate(attemptedCosts, canWriteCosts: false).Single() is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Unauthorized create stored submitted costs");
+Console.WriteLine("Product cost read/write permission privacy checks passed");
+
 var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["Admin:Email"] = "owner@example.test",

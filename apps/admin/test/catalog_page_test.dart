@@ -44,4 +44,16 @@ void main() {
     ]));
     expect(find.text('محصولی پیدا نشد'), findsOneWidget);
   });
+
+  testWidgets('product cost input is limited to pricing writers', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: ProductDialog(canWriteCosts: false)),
+    ));
+    expect(find.text('قیمت تمام‌شده ریال'), findsNothing);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: ProductDialog(canWriteCosts: true)),
+    ));
+    expect(find.text('قیمت تمام‌شده ریال'), findsOneWidget);
+  });
 }
