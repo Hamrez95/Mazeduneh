@@ -253,8 +253,13 @@ class _DashboardPageState extends State<DashboardPage> {
     final health = systemHealth!;
     final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
     String label(String value) => switch (value) {
-          'healthy' || 'ready' || 'tracked' || 'configured' => 'سالم',
+          'healthy' || 'ready' || 'tracked' => 'سالم',
+          'configured' => 'پیکربندی شده',
           'not-configured' => 'پیکربندی نشده',
+          'sandbox-enabled' => 'حالت آزمایشی فعال',
+          'disabled' => 'غیرفعال',
+          'local' => 'محلی',
+          's3-configured' => 'S3 پیکربندی شده',
           'empty' => 'نیازمند راه‌اندازی',
           'unhealthy' || 'unavailable' || 'degraded' || 'not-ready' => 'نیاز به بررسی',
           _ => 'نامشخص',
@@ -272,7 +277,7 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(children: [
             Icon(health.ready ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded, color: healthyColor),
             const SizedBox(width: 8),
-            Expanded(child: Text(health.ready ? 'سامانه آماده است' : 'سامانه نیاز به بررسی دارد', style: const TextStyle(fontWeight: FontWeight.w900))),
+            Expanded(child: Text(health.ready ? 'API و زیرساخت پایه آماده است' : 'API یا پایگاه داده نیاز به بررسی دارد', style: const TextStyle(fontWeight: FontWeight.w900))),
           ]),
           const SizedBox(height: 8),
           for (final item in [
@@ -280,11 +285,18 @@ class _DashboardPageState extends State<DashboardPage> {
             ('پایگاه داده', health.database),
             ('مهاجرت‌های پایگاه داده', health.migrations),
             ('ورود مدیر', health.adminAuthentication),
+            ('پرداخت', health.payment),
+            ('ذخیره‌سازی رسانه', health.mediaStorage),
           ])
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
             ),
+          const SizedBox(height: 6),
+          const Text(
+            'وضعیت پرداخت و رسانه از روی پیکربندی است؛ اتصال بیرونی آن‌ها اینجا آزموده نمی‌شود.',
+            style: TextStyle(fontSize: 11, color: AdminColors.muted),
+          ),
         ],
       ),
     );
@@ -672,5 +684,6 @@ class MetricCard extends StatelessWidget {
     ),
   );
 }
+
 
 

@@ -777,6 +777,8 @@ class AdminDashboardHealth {
     required this.database,
     required this.migrations,
     required this.adminAuthentication,
+    required this.payment,
+    required this.mediaStorage,
     required this.ready,
   });
 
@@ -784,6 +786,8 @@ class AdminDashboardHealth {
   final String database;
   final String migrations;
   final String adminAuthentication;
+  final String payment;
+  final String mediaStorage;
   final bool ready;
 
   factory AdminDashboardHealth.fromJson(Map<String, dynamic> json) => AdminDashboardHealth(
@@ -791,6 +795,8 @@ class AdminDashboardHealth {
         database: json['database'] as String? ?? 'unknown',
         migrations: json['migrations'] as String? ?? 'unknown',
         adminAuthentication: json['adminAuthentication'] as String? ?? 'unknown',
+        payment: json['payment'] as String? ?? 'unknown',
+        mediaStorage: json['mediaStorage'] as String? ?? 'unknown',
         ready: json['ready'] as bool? ?? false,
       );
 }
@@ -873,4 +879,5 @@ class InventoryPurchasePage {
   final List<InventoryBatch> items;
   final String? nextCursor;
 }
+
 

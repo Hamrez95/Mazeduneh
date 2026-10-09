@@ -35,6 +35,8 @@ void main() {
             'database': 'healthy',
             'migrations': 'tracked',
             'adminAuthentication': 'configured',
+            'payment': 'sandbox-enabled',
+            'mediaStorage': 'local',
             'ready': true,
           }),
           200,
@@ -89,6 +91,8 @@ void main() {
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('پرداخت: حالت آزمایشی فعال'), 350, maxScrolls: 20);
+    expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
@@ -237,6 +241,8 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
           'database': 'healthy',
           'migrations': 'tracked',
           'adminAuthentication': 'configured',
+          'payment': 'sandbox-enabled',
+          'mediaStorage': 'local',
           'ready': true,
         }),
         200,
