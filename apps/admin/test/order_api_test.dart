@@ -357,6 +357,8 @@ void main() {
         'database': 'healthy',
         'migrations': 'tracked',
         'adminAuthentication': 'configured',
+        'payment': 'sandbox-enabled',
+        'mediaStorage': 'local',
         'ready': true,
       }), 200);
     });
@@ -366,6 +368,8 @@ void main() {
     expect(health.ready, isTrue);
     expect(health.database, 'healthy');
     expect(health.migrations, 'tracked');
+    expect(health.payment, 'sandbox-enabled');
+    expect(health.mediaStorage, 'local');
   });
 
   test('dashboard preferences load and save the role widget order', () async {
@@ -399,3 +403,4 @@ void main() {
     expect(parsed.widgets.map((item) => item.id).toList(), DashboardPreferences.defaults.widgets.map((item) => item.id).toList());
   });
 }
+

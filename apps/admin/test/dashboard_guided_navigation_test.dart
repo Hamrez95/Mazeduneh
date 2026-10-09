@@ -32,6 +32,7 @@ void main() {
       if (request.url.path.endsWith('/dashboard/health')) {
         return http.Response(jsonEncode({
           'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
+          'payment': 'sandbox-enabled', 'mediaStorage': 'local',
           'adminAuthentication': 'configured', 'ready': true,
         }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
@@ -78,8 +79,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('سامانه آماده است'), 300, maxScrolls: 10);
+    await tester.scrollUntilVisible(find.text('API و زیرساخت پایه آماده است'), 300, maxScrolls: 10);
     expect(find.text('پایگاه داده: سالم'), findsOneWidget);
+    expect(find.text('پرداخت: حالت آزمایشی فعال'), findsOneWidget);
+    expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
     final today = DateUtils.dateOnly(DateTime.now());
     expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
     expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
@@ -247,6 +250,7 @@ Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, L
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(jsonEncode({
         'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
+        'payment': 'sandbox-enabled', 'mediaStorage': 'local',
         'adminAuthentication': 'configured', 'ready': true,
       }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     }
@@ -269,4 +273,5 @@ Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, L
     ),
   );
 }
+
 

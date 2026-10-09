@@ -74,7 +74,8 @@ with tempfile.TemporaryFile() as log:
         status, health = request(health_endpoint, token=token)
         assert status == 200 and health == {
             "api": "healthy", "database": "healthy", "migrations": "tracked",
-            "adminAuthentication": "configured", "ready": True,
+            "adminAuthentication": "configured", "payment": "sandbox-enabled",
+            "mediaStorage": "local", "ready": True,
         }, (status, health)
         endpoint = "/api/v1/admin/dashboard/preferences"
         assert request(endpoint)[0] == 401
@@ -121,4 +122,5 @@ with tempfile.TemporaryFile() as log:
         stop_api(api)
 
 print("Dashboard preferences API: auth, validation, persistence, visibility, order and role isolation passed")
+
 
