@@ -125,10 +125,13 @@ function Start-OrExplainDocker {
   try { & $docker.Source info --format '{{.ServerVersion}}' 2>$null | Out-Null }
   catch { }
   if ($LASTEXITCODE -ne 0) {
-    $desktop = Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'
-    if (Test-Path $desktop) {
+    $desktopCandidates = @(
+      (Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'),
+      (Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/Docker Desktop.exe')
+    ) | Where-Object { Test-Path $_ }
+    if ($desktopCandidates.Count -gt 0) {
       Write-Host 'Starting Docker Desktop; waiting for its engine...' -ForegroundColor Cyan
-      Start-Process -FilePath $desktop -WindowStyle Hidden
+      Start-Process -FilePath $desktopCandidates[0] -WindowStyle Hidden
       $deadline = [DateTime]::UtcNow.AddMinutes(2)
       $engineReady = $false
       do {
@@ -140,6 +143,7 @@ function Start-OrExplainDocker {
         Write-Host 'Docker Desktop is installed but its engine is not ready yet. Finish its first-run setup, wait for “Engine running”, then choose this option again.' -ForegroundColor Yellow
         return $false
       }
+      return $true
     } else {
       Write-Host 'Docker is installed but its engine is unavailable. Start Docker Desktop and wait for “Engine running”, then choose this option again.' -ForegroundColor Yellow
       Write-Host 'If Docker Desktop is not installed, use its official installer: https://www.docker.com/products/docker-desktop/' -ForegroundColor Yellow
@@ -157,8 +161,11 @@ function Start-OrExplainDocker {
 function Install-OrStartDocker {
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   if ($docker) {
-    $desktop = Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'
-    if (Test-Path $desktop) {
+    $desktopCandidates = @(
+      (Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'),
+      (Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/Docker Desktop.exe')
+    ) | Where-Object { Test-Path $_ }
+    if ($desktopCandidates.Count -gt 0) {
       [void](Start-OrExplainDocker)
       return
     }
@@ -449,4 +456,5 @@ if (-not $ready) {
   Stop-LocalServices
   exit 1
 }
+
 
