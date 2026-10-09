@@ -132,12 +132,16 @@ public static class OrderManagementModule
 
         admin.MapGet("/dashboard", async (
             int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
             if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
-            var dashboard = await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken);
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.BadRequest(new { message = "بازهٔ انتخابی نامعتبر است؛ تاریخ پایان باید بعد از شروع و حداکثر یک سال باشد." });
+            var dashboard = await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken, period);
             var canReadOrders = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead);
             var canReadInventory = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead);
             var canReadCustomers = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CustomersRead);
@@ -558,10 +562,12 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return await GetDetailAsync(orderId, cancellationToken);
     }
 
-    public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken)
+    public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
     {
         if (!IsConfigured) return new AdminDashboard(0, 0, 0, 0, 0, 0, Array.Empty<LowStockItem>());
-        var from = days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days);
+        var end = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? (days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days));
+        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((end - from).TotalDays), 1, 366);
         const string orderSql = """
             select
               count(*) filter (where state='AwaitingPayment')::int,
@@ -569,9 +575,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
               count(*) filter (where state='Shipped')::int,
               count(*) filter (where state='Delivered')::int,
               coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered')),0),
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from),0),
-              count(*) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from)::int,
-              coalesce(avg(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from),0)
+              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0),
+              count(*) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to)::int,
+              coalesce(avg(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0)
             from checkout_orders;
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -582,6 +588,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", end);
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             await reader.ReadAsync(cancellationToken);
@@ -632,14 +639,15 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 
         const string summarySql = """
             select
-              (select count(*)::int from customers where created_at >= @from),
-              (select count(*)::int from corporate_requests where status='New'),
-              (select count(*)::int from checkout_orders where state in ('Cancelled','Expired') and created_at >= @from);
+              (select count(*)::int from customers where created_at >= @from and created_at < @to),
+              (select count(*)::int from corporate_requests where status='New' and created_at >= @from and created_at < @to),
+              (select count(*)::int from checkout_orders where state in ('Cancelled','Expired') and created_at >= @from and created_at < @to);
             """;
         int newCustomers, corporateNewRequests, problemOrders;
         await using (var command = new NpgsqlCommand(summarySql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", end);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             newCustomers = reader.GetInt32(0);
@@ -647,7 +655,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             problemOrders = reader.GetInt32(2);
         }
 
-        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, days, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
+        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, periodDays, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
     }
 
     public async Task<DashboardPreferences> GetDashboardPreferencesAsync(string storeId, string role, CancellationToken cancellationToken)
@@ -1118,6 +1126,21 @@ public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shi
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
     IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
+public sealed record DashboardPeriod(DateTimeOffset From, DateTimeOffset To)
+{
+    public static bool TryCreate(DateTimeOffset? from, DateTimeOffset? to, DateTimeOffset now, out DashboardPeriod? period)
+    {
+        period = null;
+        if (from is null && to is null) return true;
+        if (from is null || to is null) return false;
+
+        var start = from.Value.ToUniversalTime();
+        var end = to.Value.ToUniversalTime();
+        if (start >= end || start > now || end > now.AddDays(2) || end - start > TimeSpan.FromDays(366)) return false;
+        period = new DashboardPeriod(start, end);
+        return true;
+    }
+}
 public sealed record DashboardWidgetPreference(string Id, bool Visible);
 public sealed record DashboardPreferencesInput(IReadOnlyList<DashboardWidgetPreference>? Widgets);
 public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreference> Widgets)

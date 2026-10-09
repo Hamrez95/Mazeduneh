@@ -52,8 +52,14 @@ class OrderApiClient {
     return response.bodyBytes;
   }
 
-  Future<AdminDashboard> fetchDashboard({int days = 1}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: {'days': '$days'}), headers: _headers());
+  Future<AdminDashboard> fetchDashboard({int days = 1, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both dashboard range boundaries are required.');
+    }
+    final query = fromUtc == null
+        ? {'days': '$days'}
+        : {'from': fromUtc.toUtc().toIso8601String(), 'to': toUtcExclusive!.toUtc().toIso8601String()};
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);

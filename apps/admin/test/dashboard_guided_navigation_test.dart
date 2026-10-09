@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -26,8 +27,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    http.Request? dashboardRequest;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard')) {
+        dashboardRequest = request;
         return http.Response(
           jsonEncode({
             'awaitingPayment': 2,
@@ -56,6 +59,9 @@ void main() {
     int? destination;
     await tester.pumpWidget(
       MaterialApp(
+        locale: const Locale('fa'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('fa'), Locale('en', 'US')],
         home: Directionality(
           textDirection: TextDirection.rtl,
           child: DashboardPage(
@@ -66,6 +72,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    final today = DateUtils.dateOnly(DateTime.now());
+    expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
+    expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
+    await tester.scrollUntilVisible(find.text('بازهٔ فروش'), 300, maxScrolls: 5);
+    expect(find.byKey(const ValueKey('dashboard-custom-range')), findsOneWidget);
+    expect(find.text('تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dashboard-custom-range')));
+    await tester.pumpAndSettle();
+    expect(find.text('روز شروع'), findsOneWidget);
+    expect(find.text('روز پایان'), findsOneWidget);
+    await tester.tap(find.text('اعمال بازه'));
+    await tester.pumpAndSettle();
+    expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
+    expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
 
     await tester.scrollUntilVisible(
       find.text('امروز چه کاری انجام دهید؟'),

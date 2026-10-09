@@ -25,6 +25,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool loading = true;
   DateTime? lastLoadedAt;
   int dashboardDays = 1;
+  DateTimeRange? customRange;
 
   @override
   void initState() { super.initState(); load(); }
@@ -32,7 +33,18 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
-      final result = await Future.wait([api.fetchDashboard(days: dashboardDays), api.fetchNotifications(), api.fetchDashboardPreferences()]);
+      final today = DateUtils.dateOnly(DateTime.now());
+      final rangeStart = customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
+      final rangeEnd = customRange?.end ?? today;
+      final result = await Future.wait([
+        api.fetchDashboard(
+          days: dashboardDays,
+          fromUtc: rangeStart.toUtc(),
+          toUtcExclusive: DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc(),
+        ),
+        api.fetchNotifications(),
+        api.fetchDashboardPreferences(),
+      ]);
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
@@ -52,6 +64,20 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (_) => DashboardPreferencesDialog(initial: preferences, onSave: api.saveDashboardPreferences),
     );
     if (updated != null && mounted) setState(() => preferences = updated);
+  }
+
+  Future<void> chooseCustomRange() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final selected = await showDialog<DateTimeRange>(
+      context: context,
+      builder: (_) => _DashboardRangeDialog(initialRange: customRange, today: today),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => customRange = DateTimeRange(
+          start: DateUtils.dateOnly(selected.start),
+          end: DateUtils.dateOnly(selected.end),
+        ));
+    await load();
   }
 
   @override
@@ -113,23 +139,34 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  String _periodLabel(int days) => switch (days) {
+  String _periodLabel(int days, DateTimeRange? range) {
+    if (range != null) return 'فروش ${formatPersianDate(range.start)} تا ${formatPersianDate(range.end)}';
+    return switch (days) {
         1 => 'فروش امروز',
         7 => 'فروش ۷ روز اخیر',
         30 => 'فروش ۳۰ روز اخیر',
         _ => 'فروش بازهٔ انتخابی',
       };
+  }
 
   Widget _metricsSection(AdminDashboard data, bool Function(String) can) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _DashboardPeriodSelector(
         selectedDays: dashboardDays,
-        onChanged: (days) { setState(() => dashboardDays = days); load(); },
+        customRange: customRange,
+        onChanged: (days) {
+          setState(() {
+            dashboardDays = days;
+            customRange = null;
+          });
+          load();
+        },
+        onChooseCustomRange: chooseCustomRange,
       ),
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
         if (can(AdminPermissions.ordersRead)) ...[
           MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
           if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
@@ -200,9 +237,11 @@ class _DashboardPageState extends State<DashboardPage> {
 }
 
 class _DashboardPeriodSelector extends StatelessWidget {
-  const _DashboardPeriodSelector({required this.selectedDays, required this.onChanged});
+  const _DashboardPeriodSelector({required this.selectedDays, required this.customRange, required this.onChanged, required this.onChooseCustomRange});
   final int selectedDays;
+  final DateTimeRange? customRange;
   final ValueChanged<int> onChanged;
+  final VoidCallback onChooseCustomRange;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -216,11 +255,92 @@ class _DashboardPeriodSelector extends StatelessWidget {
             for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
               ChoiceChip(
                 label: Text(option.$2),
-                selected: selectedDays == option.$1,
+                selected: customRange == null && selectedDays == option.$1,
                 onSelected: (_) => onChanged(option.$1),
               ),
+            OutlinedButton.icon(
+              key: const ValueKey('dashboard-custom-range'),
+              onPressed: onChooseCustomRange,
+              icon: const Icon(Icons.date_range_rounded),
+              label: Text(customRange == null
+                  ? 'بازهٔ دلخواه'
+                  : '${formatPersianDate(customRange!.start)} تا ${formatPersianDate(customRange!.end)}'),
+            ),
+            const Text('تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.', style: TextStyle(fontSize: 12, color: AdminColors.muted)),
           ],
         ),
+      );
+}
+
+class _DashboardRangeDialog extends StatefulWidget {
+  const _DashboardRangeDialog({required this.initialRange, required this.today});
+
+  final DateTimeRange? initialRange;
+  final DateTime today;
+
+  @override
+  State<_DashboardRangeDialog> createState() => _DashboardRangeDialogState();
+}
+
+class _DashboardRangeDialogState extends State<_DashboardRangeDialog> {
+  late DateTime start = widget.initialRange?.start ?? widget.today;
+  late DateTime end = widget.initialRange?.end ?? widget.today;
+
+  Future<void> pickStart() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(widget.today.year, widget.today.month, widget.today.day - 365),
+      lastDate: end,
+      locale: Localizations.localeOf(context),
+    );
+    if (selected == null) return;
+    setState(() => start = DateUtils.dateOnly(selected));
+  }
+
+  Future<void> pickEnd() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: end,
+      firstDate: start,
+      lastDate: widget.today,
+      locale: Localizations.localeOf(context),
+    );
+    if (selected == null) return;
+    setState(() => end = DateUtils.dateOnly(selected));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('بازهٔ گزارش را انتخاب کنید'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('روز شروع'),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: pickStart,
+              icon: const Icon(Icons.calendar_today_rounded),
+              label: Text(formatPersianDate(start)),
+            ),
+            const SizedBox(height: 12),
+            const Text('روز پایان'),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: pickEnd,
+              icon: const Icon(Icons.event_available_rounded),
+              label: Text(formatPersianDate(end)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, DateTimeRange(start: start, end: end)),
+            child: const Text('اعمال بازه'),
+          ),
+        ],
       );
 }
 
