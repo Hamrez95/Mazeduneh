@@ -28,6 +28,19 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard/health')) {
+        return http.Response(
+          jsonEncode({
+            'api': 'healthy',
+            'database': 'healthy',
+            'migrations': 'tracked',
+            'adminAuthentication': 'configured',
+            'ready': true,
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
       if (request.url.path.endsWith('/dashboard')) {
         return http.Response(
           jsonEncode({
@@ -216,13 +229,37 @@ void main() {
 
 
 Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
-  final client = MockClient((request) async => http.Response(
-        jsonEncode(request.url.path.endsWith('/dashboard')
-            ? {'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0,
-               'paidRevenue': 0, 'todayRevenue': 0, 'lowStock': lowStock, 'expiringSoon': []}
-            : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
-        200, headers: {'content-type': 'application/json; charset=utf-8'},
-      ));
+  final client = MockClient((request) async {
+    if (request.url.path.endsWith('/dashboard/health')) {
+      return http.Response(
+        jsonEncode({
+          'api': 'healthy',
+          'database': 'healthy',
+          'migrations': 'tracked',
+          'adminAuthentication': 'configured',
+          'ready': true,
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
+    return http.Response(
+      jsonEncode(request.url.path.endsWith('/dashboard')
+          ? {
+              'awaitingPayment': 0,
+              'processing': 0,
+              'shipped': 0,
+              'delivered': 0,
+              'paidRevenue': 0,
+              'todayRevenue': 0,
+              'lowStock': lowStock,
+              'expiringSoon': [],
+            }
+          : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  });
   return MaterialApp(
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),

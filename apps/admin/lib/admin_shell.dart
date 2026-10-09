@@ -354,4 +354,3 @@ class Brand extends StatelessWidget {
     ],
   );
 }
-

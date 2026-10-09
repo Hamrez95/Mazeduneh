@@ -65,6 +65,32 @@ void main() {
     expect(orders.single.paymentReference, 'SANDBOX-1');
   });
 
+  test('custom dashboard period sends explicit UTC boundaries', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'awaitingPayment': 0,
+        'processing': 0,
+        'shipped': 0,
+        'delivered': 0,
+        'paidRevenue': 0,
+        'todayRevenue': 0,
+        'lowStock': [],
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 8);
+
+    await OrderApiClient(client: client, baseUrl: 'https://api.test')
+        .fetchDashboard(fromUtc: from, toUtcExclusive: to);
+
+    expect(captured.url.path, '/api/v1/admin/dashboard');
+    expect(captured.url.queryParameters['from'], from.toIso8601String());
+    expect(captured.url.queryParameters['to'], to.toIso8601String());
+    expect(captured.url.queryParameters.containsKey('days'), isFalse);
+  });
+
   test('exportOrdersCsv preserves active filters and authenticated download contract', () async {
     late http.Request captured;
     final client = MockClient((request) async {
@@ -320,6 +346,26 @@ void main() {
     expect(captured.url.queryParameters['days'], '7');
     expect(dashboard.periodOrderCount, 3);
     expect(dashboard.averageOrderValue, 300000);
+  });
+
+  test('fetchDashboardHealth uses the authenticated admin endpoint', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'api': 'healthy',
+        'database': 'healthy',
+        'migrations': 'tracked',
+        'adminAuthentication': 'configured',
+        'ready': true,
+      }), 200);
+    });
+    final health = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchDashboardHealth();
+    expect(captured.url.path, '/api/v1/admin/dashboard/health');
+    expect(captured.headers['authorization'], startsWith('Bearer '));
+    expect(health.ready, isTrue);
+    expect(health.database, 'healthy');
+    expect(health.migrations, 'tracked');
   });
 
   test('dashboard preferences load and save the role widget order', () async {

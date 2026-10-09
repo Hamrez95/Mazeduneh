@@ -79,23 +79,41 @@ void main() {
           if (request.url.path.endsWith('/dashboard')) {
             return _json({
               'awaitingPayment': 1,
-              'processing': 0,
+              'processing': 2,
               'shipped': 0,
               'delivered': 0,
               'paidRevenue': 0,
               'todayRevenue': 0,
               'lowStock': [],
               'expiringSoon': [],
+              'problemOrders': 1,
             });
-          }
-          if (request.url.path.endsWith('/dashboard/preferences')) {
-            return _json(DashboardPreferences.defaults.toJson());
           }
           if (request.url.path.endsWith('/notifications')) {
             return _json({
               'awaitingPayment': 1,
               'lowStockItems': 0,
               'items': [],
+            });
+          }
+          if (request.url.path.endsWith('/dashboard/preferences')) {
+            return _json({
+              'widgets': [
+                {'id': 'metrics', 'visible': true},
+                {'id': 'quickActions', 'visible': true},
+                {'id': 'alerts', 'visible': true},
+                {'id': 'lowStock', 'visible': true},
+                {'id': 'expiring', 'visible': true},
+              ],
+            });
+          }
+          if (request.url.path.endsWith('/dashboard/health')) {
+            return _json({
+              'api': 'healthy',
+              'database': 'healthy',
+              'migrations': 'tracked',
+              'adminAuthentication': 'configured',
+              'ready': true,
             });
           }
           if (request.url.path.endsWith('/admin/orders'))
@@ -128,6 +146,20 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.text('وضعیت فروشگاه'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('در حال پردازش'), 350, maxScrolls: 15);
+      await tester.tap(find.text('در حال پردازش'));
+      await tester.pumpAndSettle();
+      expect(orderRequest?.queryParameters['state'], 'Processing');
+      await tester.tap(find.byTooltip('بازگشت به داشبورد'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('سفارش مشکل‌دار'), 350, maxScrolls: 15);
+      await tester.tap(find.text('سفارش مشکل‌دار'));
+      await tester.pumpAndSettle();
+      expect(orderRequest?.queryParameters['state'], 'Problem');
+      await tester.tap(find.byTooltip('بازگشت به داشبورد'));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );
@@ -173,4 +205,3 @@ http.Response _json(Object body) => http.Response(
   200,
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
-

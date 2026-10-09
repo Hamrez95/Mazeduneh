@@ -25,12 +25,14 @@ class _OrdersPageState extends State<OrdersPage> {
   final states = const <String, String>{
     '': 'همه سفارش‌ها',
     'AwaitingPayment': 'در انتظار پرداخت',
+    'Processing': 'در حال پردازش',
     'Paid': 'پرداخت‌شده',
     'Preparing': 'در حال آماده‌سازی',
     'Shipped': 'ارسال‌شده',
     'Delivered': 'تحویل‌شده',
     'Cancelled': 'لغوشده',
     'Expired': 'منقضی‌شده',
+    'Problem': 'لغوشده یا منقضی‌شده',
   };
   List<AdminOrder> orders = const [];
   List<AdminOverdueShipment> overdueShipments = const [];
@@ -709,5 +711,4 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
         'Shipped': 'ارسال‌شده', 'Delivered': 'تحویل‌شده', 'Cancelled': 'لغوشده', 'Expired': 'منقضی‌شده',
       }[value] ?? value;
 }
-
 

@@ -39,12 +39,14 @@ enum AdminModule {
 enum AdminOrderFilter {
   all(''),
   awaitingPayment('AwaitingPayment'),
+  processing('Processing'),
   paid('Paid'),
   preparing('Preparing'),
   shipped('Shipped'),
   delivered('Delivered'),
   cancelled('Cancelled'),
-  expired('Expired');
+  expired('Expired'),
+  problem('Problem');
 
   const AdminOrderFilter(this.apiValue);
 
@@ -53,12 +55,14 @@ enum AdminOrderFilter {
   static AdminOrderFilter? fromApiValue(String? value) => switch (value) {
         null || '' => all,
         'AwaitingPayment' => awaitingPayment,
+        'Processing' => processing,
         'Paid' => paid,
         'Preparing' => preparing,
         'Shipped' => shipped,
         'Delivered' => delivered,
         'Cancelled' => cancelled,
         'Expired' => expired,
+        'Problem' => problem,
         _ => null,
       };
 }
@@ -88,4 +92,3 @@ class AdminNavigationIntent {
   @override
   int get hashCode => Object.hash(module, orderFilter, sku, batchCode);
 }
-

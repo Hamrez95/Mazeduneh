@@ -53,8 +53,14 @@ class OrderApiClient {
     return response.bodyBytes;
   }
 
-  Future<AdminDashboard> fetchDashboard({int days = 1}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: {'days': '$days'}), headers: _headers());
+  Future<AdminDashboard> fetchDashboard({int days = 1, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both dashboard range boundaries are required.');
+    }
+    final query = fromUtc == null
+        ? {'days': '$days'}
+        : {'from': fromUtc.toUtc().toIso8601String(), 'to': toUtcExclusive!.toUtc().toIso8601String()};
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
@@ -65,6 +71,16 @@ class OrderApiClient {
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<AdminDashboardHealth> fetchDashboardHealth() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/dashboard/health'),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminDashboardHealth.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<DashboardPreferences> saveDashboardPreferences(DashboardPreferences preferences) async {
@@ -753,6 +769,30 @@ class AdminDashboard {
     newCustomers: (json['newCustomers'] as num?)?.toInt() ?? 0,
     corporateNewRequests: (json['corporateNewRequests'] as num?)?.toInt() ?? 0,
     problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0, financialsVisible: json['financialsVisible'] as bool? ?? true);
+}
+
+class AdminDashboardHealth {
+  const AdminDashboardHealth({
+    required this.api,
+    required this.database,
+    required this.migrations,
+    required this.adminAuthentication,
+    required this.ready,
+  });
+
+  final String api;
+  final String database;
+  final String migrations;
+  final String adminAuthentication;
+  final bool ready;
+
+  factory AdminDashboardHealth.fromJson(Map<String, dynamic> json) => AdminDashboardHealth(
+        api: json['api'] as String? ?? 'unknown',
+        database: json['database'] as String? ?? 'unknown',
+        migrations: json['migrations'] as String? ?? 'unknown',
+        adminAuthentication: json['adminAuthentication'] as String? ?? 'unknown',
+        ready: json['ready'] as bool? ?? false,
+      );
 }
 
 class DashboardWidgetPreference {
