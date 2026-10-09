@@ -84,17 +84,18 @@ with tempfile.TemporaryFile() as log:
 
     api = start_api()
     postgres_container = os.environ.get("READINESS_POSTGRES_CONTAINER")
-    postgres_service = os.environ.get("READINESS_POSTGRES_SERVICE")
+    postgres_cluster = os.environ.get("READINESS_POSTGRES_CLUSTER")
 
     def set_postgres_running(running):
         if postgres_container:
             action = "start" if running else "stop"
             subprocess.run(["docker", action, postgres_container], check=True, stdout=subprocess.DEVNULL)
-        elif postgres_service:
+        elif postgres_cluster:
             action = "start" if running else "stop"
-            subprocess.run(["sudo", "systemctl", action, postgres_service], check=True, stdout=subprocess.DEVNULL)
+            version, cluster = postgres_cluster.split("/", maxsplit=1)
+            subprocess.run(["sudo", "pg_ctlcluster", version, cluster, action], check=True, stdout=subprocess.DEVNULL)
         else:
-            raise AssertionError("Set READINESS_POSTGRES_CONTAINER or READINESS_POSTGRES_SERVICE")
+            raise AssertionError("Set READINESS_POSTGRES_CONTAINER or READINESS_POSTGRES_CLUSTER")
     try:
         assert_ready(200, database="healthy", migrations="tracked", adminAuthentication="configured")
         try:

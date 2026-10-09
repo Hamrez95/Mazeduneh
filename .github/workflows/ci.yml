@@ -555,7 +555,7 @@ jobs:
 
       - name: API readiness failure and recovery contract
         env:
-          READINESS_POSTGRES_SERVICE: postgresql.service
+          READINESS_POSTGRES_CLUSTER: 16/main
         run: python3 scripts/tests/api_readiness.py
 
       - name: API request correlation and log redaction contract
