@@ -80,7 +80,7 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     assert request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})[0] == 400
     status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password, "storeId": store_id})
-    assert status == 200 and login["role"] == role and login["storeId"] == store_id
+    assert status == 200 and login["role"] == role and login["storeId"] == store_id, (status, login)
     return login["accessToken"]
 
 
@@ -139,6 +139,10 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/logout", "POST", token=first_token)[0] == 204
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
 
+        # Restart to reset the shared login/invitation rate-limit window before the additional tenant flow.
+        stop_api(api)
+        api, owner_token = start_api(log)
+
         # Simulate a pre-existing membership Owner in a non-default store.
         # Omitting storeId must bind user-management queries and writes to the
         # authenticated membership, never fall back to the default store.
@@ -151,7 +155,8 @@ with tempfile.TemporaryFile() as log:
         tenant_token = accept_and_login(tenant_invitation, tenant_email, tenant_password,
                                         check_unaccepted_login=False, store_id="tenant-a", role="Owner")
         status, tenant_users = request("/api/v1/admin/users", token=tenant_token)
-        assert status == 200 and all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
+        assert status == 200 and any(user["id"] == tenant_invitation["user"]["id"] for user in tenant_users)
+        assert all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
         status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/permissions",
                                  "PATCH", {"permissions": []}, tenant_token)
         assert status == 404, (status, denied)
