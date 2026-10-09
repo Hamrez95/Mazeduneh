@@ -44,20 +44,6 @@ jobs:
   api:
     name: API
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: mazeduneh
-          POSTGRES_PASSWORD: mazeduneh_ci
-          POSTGRES_DB: mazeduneh
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U mazeduneh -d mazeduneh"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_ci
       Admin__Email: ci-owner@mazeduneh.test
@@ -69,6 +55,14 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
+      - name: Start PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql --set=ON_ERROR_STOP=1 --command "CREATE ROLE mazeduneh WITH LOGIN PASSWORD 'mazeduneh_ci';"
+          sudo -u postgres createdb --owner=mazeduneh mazeduneh
+          pg_isready --host 127.0.0.1 --port 5432 --username mazeduneh --dbname mazeduneh
       - name: Restore
         run: dotnet restore services/api/Mazeduneh.Api.csproj
       - name: Build
