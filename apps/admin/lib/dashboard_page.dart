@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 9056)
-Total output lines: 705
-
 import 'package:flutter/material.dart';
 
 import 'admin_navigation.dart';
@@ -329,7 +326,10 @@ class _DashboardPageState extends State<DashboardPage> {
         : data.expiringSoon.isEmpty
             ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
             : Column(children: [for (final item in data.expiringSoon.take(5)) LayoutBuilder(
-                builder: (context, cons…56 tokens truncated… ${formatPersianInteger(item.remainingPackages)} بسته';
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 460;
+                  final expiryDate = formatPersianDateTime(item.expiresAt);
+                  final details = '${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته';
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -699,7 +699,6 @@ class MetricCard extends StatelessWidget {
     ),
   );
 }
-
 
 
 
