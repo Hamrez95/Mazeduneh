@@ -11,6 +11,7 @@ public static class AdminSecurityExtensions
     {
         services.AddSingleton<AdminTokenService>();
         services.AddSingleton<OwnerAuthorizationFilter>();
+        services.AddSingleton<StepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -103,6 +104,36 @@ public static class AdminSecurityExtensions
                 await users.RevokeSessionAsync(userId, principal.StoreId, principal.SessionId, cancellationToken);
             return Results.NoContent();
         })
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/step-up", async Task<IResult> (
+            AdminStepUpRequest request,
+            AdminTokenService tokens,
+            AdminUsersDatabase users,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var bearer = AdminTokenService.ReadBearerToken(context.Request);
+            if (bearer is null || !tokens.TryValidate(bearer, out var principal))
+                return Results.Unauthorized();
+
+            if (principal.UserId is Guid userId)
+            {
+                if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
+                    return Results.Unauthorized();
+                var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
+                if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
+                    return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+            else if (!tokens.ValidateCredentials(principal.Email, request.Password))
+            {
+                return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var issued = tokens.IssueStepUp(principal);
+            return Results.Ok(new { stepUpToken = issued.Token, expiresAt = issued.ExpiresAt });
+        })
+        .RequireRateLimiting("admin-login")
         .WithTags("Admin Auth");
 
         endpoints.MapGet("/api/v1/admin/audit-log", async (
@@ -201,7 +232,9 @@ public static class AdminSecurityExtensions
 
 public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
+public sealed record AdminStepUpRequest(string Password);
 public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
+public sealed record IssuedAdminStepUpToken(string Token, DateTimeOffset ExpiresAt);
 public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId);
 
 public static class AdminPermissionCatalog
@@ -383,6 +416,40 @@ public sealed class AdminTokenService
     public IssuedAdminToken Issue(AdminUserSummary member) =>
         Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
 
+    public IssuedAdminStepUpToken IssueStepUp(AdminPrincipal principal)
+    {
+        if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
+        var expiresAtUnix = Math.Min(DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds(), principal.ExpiresAt.ToUnixTimeSeconds());
+        var expiresAt = DateTimeOffset.FromUnixTimeSeconds(expiresAtUnix);
+        var payload = $"{principal.SessionId:N}|{principal.UserId?.ToString("N") ?? string.Empty}|{expiresAt.ToUnixTimeSeconds()}|{Base64Url(Encoding.UTF8.GetBytes(principal.StoreId))}";
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var signature = HMACSHA256.HashData(_signingKey, Encoding.UTF8.GetBytes($"step-up|{payload}"));
+        return new IssuedAdminStepUpToken($"{Base64Url(payloadBytes)}.{Base64Url(signature)}", expiresAt);
+    }
+
+    public bool TryValidateStepUp(string token, AdminPrincipal principal)
+    {
+        var parts = token.Split('.', 2);
+        if (parts.Length != 2 || !TryBase64Url(parts[0], out var payloadBytes) || !TryBase64Url(parts[1], out var signature)) return false;
+        var payload = Encoding.UTF8.GetString(payloadBytes);
+        var expected = HMACSHA256.HashData(_signingKey, Encoding.UTF8.GetBytes($"step-up|{payload}"));
+        if (!CryptographicOperations.FixedTimeEquals(signature, expected)) return false;
+        var fields = payload.Split('|');
+        if (fields.Length != 4 ||
+            !Guid.TryParseExact(fields[0], "N", out var sessionId) ||
+            !long.TryParse(fields[2], out var unixExpiry) ||
+            !TryBase64Url(fields[3], out var storeBytes)) return false;
+        var userIdText = principal.UserId?.ToString("N") ?? string.Empty;
+        var storeId = Encoding.UTF8.GetString(storeBytes);
+        var expiresAt = DateTimeOffset.FromUnixTimeSeconds(unixExpiry);
+        return sessionId == principal.SessionId &&
+            string.Equals(fields[1], userIdText, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(storeId, principal.StoreId, StringComparison.Ordinal) &&
+            expiresAt > DateTimeOffset.UtcNow &&
+            expiresAt <= DateTimeOffset.UtcNow.AddMinutes(5) &&
+            expiresAt <= principal.ExpiresAt;
+    }
+
     private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId)
     {
         if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
@@ -497,5 +564,23 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         if (!AdminPermissionCatalog.AllowsOrderOutput(context.HttpContext, principal))
             return Results.Json(new { message = "برای این سند، دسترسی مجاز به اطلاعات مشتری لازم است." }, statusCode: StatusCodes.Status403Forbidden);
         return await next(context);
+    }
+}
+
+public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is not null && !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ProductsWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "این عملیات برای نقش فعلی مجاز نیست." },
+                statusCode: StatusCodes.Status403Forbidden));
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (principal is null || string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای این عملیات، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+        return next(context);
     }
 }

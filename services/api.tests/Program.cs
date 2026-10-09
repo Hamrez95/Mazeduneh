@@ -1,5 +1,6 @@
 using Npgsql;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 var now = DateTimeOffset.UtcNow;
@@ -35,6 +36,23 @@ Check(AdminPermissionCatalog.DefaultRoles.Values.All(AdminPermissionCatalog.AreV
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>()).Count == 0, "An explicit empty permission set fell back to role defaults");
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
+
+var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Email"] = "owner@example.test",
+    ["Admin:PasswordHash"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("owner-secret"u8)),
+    ["Admin:TokenSigningKey"] = new string('s', 64),
+}).Build();
+var stepUpTokens = new AdminTokenService(stepUpConfiguration);
+var ownerAccess = stepUpTokens.Issue("owner@example.test");
+Check(stepUpTokens.TryValidate(ownerAccess.Token, out var stepUpPrincipal), "Issued admin access token rejected");
+var stepUpCreatedAt = DateTimeOffset.UtcNow;
+var issuedStepUp = stepUpTokens.IssueStepUp(stepUpPrincipal);
+Check(stepUpTokens.TryValidateStepUp(issuedStepUp.Token, stepUpPrincipal), "Step-up token rejected for its issuing session");
+Check(issuedStepUp.ExpiresAt <= stepUpCreatedAt.AddMinutes(5) && issuedStepUp.ExpiresAt <= stepUpPrincipal.ExpiresAt, "Step-up token lifetime exceeded its bound");
+Check(!stepUpTokens.TryValidateStepUp(issuedStepUp.Token, stepUpPrincipal with { SessionId = Guid.NewGuid() }), "Step-up token crossed admin sessions");
+Check(!stepUpTokens.TryValidateStepUp(issuedStepUp.Token, stepUpPrincipal with { StoreId = "another-store" }), "Step-up token crossed stores");
+Console.WriteLine("Admin step-up token session, store, signature, and lifetime checks passed");
 
 var dashboardPreferences = DashboardPreferences.Default;
 var validDashboardPeriodStart = now.AddDays(-7);

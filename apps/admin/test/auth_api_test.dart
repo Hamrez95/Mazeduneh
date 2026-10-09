@@ -118,6 +118,44 @@ void main() {
     expect(products, isEmpty);
   });
 
+  test('step-up sends the current bearer and password without persisting the token', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'admin-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+    late http.Request captured;
+    final token = await AuthApiClient(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(jsonEncode({'stepUpToken': 'one-use-window'}), 200);
+      }),
+      baseUrl: 'https://api.example.com',
+    ).stepUp(password: 'fresh-password');
+
+    expect(captured.url.path, '/api/v1/admin/auth/step-up');
+    expect(captured.headers['authorization'], 'Bearer admin-session');
+    expect(jsonDecode(captured.body), {'password': 'fresh-password'});
+    expect(token, 'one-use-window');
+    expect(OwnerSession.instance.bearerToken, 'admin-session');
+  });
+
+  test('incorrect step-up password does not clear the authenticated session', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'admin-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+    await expectLater(
+      AuthApiClient(client: MockClient((request) async => http.Response.bytes(
+        utf8.encode(jsonEncode({'message': 'رمز عبور تأیید نشد.'})), 403,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      ))).stepUp(password: 'wrong-password'),
+      throwsA(isA<AuthApiException>().having((error) => error.statusCode, 'statusCode', 403)),
+    );
+    expect(OwnerSession.instance.bearerToken, 'admin-session');
+  });
+
   test('401 clears the owner session', () async {
     OwnerSession.instance.establish(
       accessToken: 'expired-token',
