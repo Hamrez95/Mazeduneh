@@ -80,7 +80,8 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     assert request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})[0] == 400
     status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password, "storeId": store_id})
-    assert status == 200 and login["role"] == role and login["storeId"] == store_id, (status, login)
+    assert status == 200 and login["role"] == role and login["storeId"] == store_id, (
+        status, login.get("role") if login else None, login.get("storeId") if login else None)
     return login["accessToken"]
 
 
