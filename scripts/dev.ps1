@@ -142,7 +142,7 @@ function Start-OrExplainDocker {
       if (-not $engineReady) {
         Write-Host 'Docker Desktop is installed but its engine is not ready yet. Finish its first-run setup, wait for “Engine running”, then choose this option again.' -ForegroundColor Yellow
         return $false
-      return `$true
+      return $true
       }
     } else {
       Write-Host 'Docker is installed but its engine is unavailable. Start Docker Desktop and wait for “Engine running”, then choose this option again.' -ForegroundColor Yellow
