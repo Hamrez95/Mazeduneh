@@ -24,7 +24,7 @@ public static class OrderManagementModule
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
+            if (!IsValidOrderFilter(state))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
@@ -40,7 +40,7 @@ public static class OrderManagementModule
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            if (!string.IsNullOrWhiteSpace(state) && !Enum.TryParse<OrderState>(state, true, out _))
+            if (!IsValidOrderFilter(state))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
@@ -327,6 +327,12 @@ public static class OrderManagementModule
 
         return endpoints;
     }
+
+    private static bool IsValidOrderFilter(string? state) =>
+        string.IsNullOrWhiteSpace(state) ||
+        state.Equals("Processing", StringComparison.OrdinalIgnoreCase) ||
+        state.Equals("Problem", StringComparison.OrdinalIgnoreCase) ||
+        Enum.TryParse<OrderState>(state, true, out _);
 }
 
 public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger, InventoryLedgerDatabase ledger)
@@ -396,7 +402,10 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             from checkout_orders o
             left join checkout_order_lines l on l.order_id=o.id
             left join payments p on p.order_id=o.id
-            where (@state = '' or lower(o.state)=lower(@state))
+            where (@state = ''
+                or (lower(@state) = 'processing' and o.state in ('Paid','Preparing'))
+                or (lower(@state) = 'problem' and o.state in ('Cancelled','Expired'))
+                or lower(o.state)=lower(@state))
               and (@query = '' or o.id::text ilike '%' || @query || '%'
                    or (@contact_search and (o.customer_name ilike '%' || @query || '%'
                    or o.mobile ilike '%' || @query || '%'

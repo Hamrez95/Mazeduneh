@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'admin_permissions.dart';
+import 'admin_navigation.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
@@ -11,20 +11,23 @@ class AdminNotificationTile extends StatelessWidget {
   const AdminNotificationTile({super.key, required this.item, this.onNavigate});
 
   final AdminNotification item;
-  final ValueChanged<int>? onNavigate;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
 
   @override
   Widget build(BuildContext context) {
-    final route = switch (item.type) {
-      'awaiting-payment' || 'new-orders' =>
-        (destination: 1, permission: AdminPermissions.ordersRead, label: 'مشاهده سفارش‌ها'),
-      'low-stock' =>
-        (destination: 3, permission: AdminPermissions.inventoryRead, label: 'مشاهده موجودی'),
-      _ => null,
-    };
+    final route = item.target?.toIntent();
     final session = OwnerSession.instance;
     final canNavigate = route != null && onNavigate != null &&
-        (!session.isAuthenticated || session.can(route.permission));
+        (!session.isAuthenticated || session.can(route.module.permission));
+    final routeLabel = switch (route?.module) {
+      AdminModule.orders => 'مشاهده سفارش‌ها',
+      AdminModule.inventory => 'مشاهده موجودی',
+      AdminModule.products => 'مشاهده محصولات',
+      AdminModule.customers => 'مشاهده مشتری‌ها',
+      AdminModule.corporate => 'مشاهده فروش سازمانی',
+      AdminModule.reports => 'مشاهده گزارش‌ها',
+      _ => 'مشاهده بخش مرتبط',
+    };
     final colors = Theme.of(context).colorScheme;
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -44,9 +47,9 @@ class AdminNotificationTile extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6),
             child: TextButton.icon(
               style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
-              onPressed: () => onNavigate!(route.destination),
+              onPressed: () => onNavigate!(route),
               icon: const Icon(Icons.arrow_back_rounded, size: 18),
-              label: Text(route.label),
+              label: Text(routeLabel),
             ),
           ),
       ]),

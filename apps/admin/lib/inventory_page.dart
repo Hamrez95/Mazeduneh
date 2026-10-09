@@ -14,9 +14,11 @@ import 'inventory_receipt_dialog.dart';
 import 'order_api.dart';
 
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key, this.catalog, this.orders});
+  const InventoryPage({super.key, this.catalog, this.orders, this.initialSku, this.initialBatchCode});
   final CatalogApiClient? catalog;
   final OrderApiClient? orders;
+  final String? initialSku;
+  final String? initialBatchCode;
   @override
   State<InventoryPage> createState() => _InventoryPageState();
 }
@@ -31,11 +33,22 @@ class _InventoryPageState extends State<InventoryPage> {
   bool loading = true;
   String? busySku;
   String? purchaseCursor, purchaseError, purchaseSku;
+  String? purchaseBatchCode;
   bool loadingPurchases = false;
   int purchaseGeneration = 0;
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() { super.initState(); purchaseSku = widget.initialSku; purchaseBatchCode = widget.initialBatchCode; load(); }
+
+  @override
+  void didUpdateWidget(covariant InventoryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialSku != widget.initialSku || oldWidget.initialBatchCode != widget.initialBatchCode) {
+      purchaseSku = widget.initialSku;
+      purchaseBatchCode = widget.initialBatchCode;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) load(); });
+    }
+  }
 
   Future<void> load() async {
     setState(() { loading = true; error = null; purchaseGeneration++; loadingPurchases = false; });
@@ -45,7 +58,7 @@ class _InventoryPageState extends State<InventoryPage> {
       final result = await Future.wait([
         catalog.fetchProducts(includeDrafts: true),
         orders.fetchInventoryMovements(limit: 30),
-        orders.fetchInventoryPurchases(sku: sku),
+        orders.fetchInventoryPurchases(sku: sku, batchCode: purchaseBatchCode),
       ]);
       if (mounted && generation == purchaseGeneration) setState(() {
         products = result[0] as List<Product>;
@@ -65,7 +78,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final generation = purchaseGeneration;
     setState(() { loadingPurchases = true; purchaseError = null; });
     try {
-      final page = await orders.fetchInventoryPurchases(sku: purchaseSku, cursor: purchaseCursor);
+      final page = await orders.fetchInventoryPurchases(sku: purchaseSku, batchCode: purchaseBatchCode, cursor: purchaseCursor);
       if (mounted && generation == purchaseGeneration) setState(() { batches = [...batches, ...page.items.where((item) => !batches.any((b) => b.id == item.id))]; purchaseCursor = page.nextCursor; });
     } catch (exception) {
       if (mounted && generation == purchaseGeneration) setState(() {
@@ -242,10 +255,19 @@ class _InventoryPageState extends State<InventoryPage> {
               onChanged: (value) {
                 final next = value == '' ? null : value;
                 if (next == purchaseSku) return;
-                setState(() => purchaseSku = next);
+                setState(() { purchaseSku = next; purchaseBatchCode = null; });
                 load();
               },
             ),
+            if (purchaseBatchCode != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: InputChip(
+                  avatar: const Icon(Icons.qr_code_2_rounded, size: 18),
+                  label: Text('فقط بچ $purchaseBatchCode'),
+                  onDeleted: () { setState(() => purchaseBatchCode = null); load(); },
+                ),
+              ),
             const SizedBox(height: 12),
             Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'خریدی پیدا نشد', detail: 'همهٔ کالاها را انتخاب کنید یا اولین خرید را ثبت کنید.')) : ListView.separated(
               key: const ValueKey('inventory-purchases'),

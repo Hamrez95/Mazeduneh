@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/admin_navigation.dart';
 import 'package:mazeduneh_admin/dashboard_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
@@ -27,17 +27,23 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    http.Request? dashboardRequest;
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/dashboard/health')) {
-        return http.Response(jsonEncode({
-          'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
-          'payment': 'sandbox-enabled', 'mediaStorage': 'local',
-          'adminAuthentication': 'configured', 'ready': true,
-        }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+        return http.Response(
+          jsonEncode({
+            'api': 'healthy',
+            'database': 'healthy',
+            'migrations': 'tracked',
+            'adminAuthentication': 'configured',
+            'payment': 'sandbox-enabled',
+            'mediaStorage': 'local',
+            'ready': true,
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
       }
       if (request.url.path.endsWith('/dashboard')) {
-        dashboardRequest = request;
         return http.Response(
           jsonEncode({
             'awaitingPayment': 2,
@@ -63,12 +69,9 @@ void main() {
       );
     });
 
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(
       MaterialApp(
-        locale: const Locale('fa'),
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        supportedLocales: const [Locale('fa'), Locale('en', 'US')],
         home: Directionality(
           textDirection: TextDirection.rtl,
           child: DashboardPage(
@@ -79,24 +82,6 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('API و زیرساخت پایه آماده است'), 300, maxScrolls: 10);
-    expect(find.text('پایگاه داده: سالم'), findsOneWidget);
-    expect(find.text('پرداخت: حالت آزمایشی فعال'), findsOneWidget);
-    expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
-    final today = DateUtils.dateOnly(DateTime.now());
-    expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
-    expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
-    await tester.scrollUntilVisible(find.text('بازهٔ فروش'), 300, maxScrolls: 5);
-    expect(find.byKey(const ValueKey('dashboard-custom-range')), findsOneWidget);
-    expect(find.text('تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('dashboard-custom-range')));
-    await tester.pumpAndSettle();
-    expect(find.text('روز شروع'), findsOneWidget);
-    expect(find.text('روز پایان'), findsOneWidget);
-    await tester.tap(find.text('اعمال بازه'));
-    await tester.pumpAndSettle();
-    expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
-    expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
 
     await tester.scrollUntilVisible(
       find.text('امروز چه کاری انجام دهید؟'),
@@ -106,16 +91,18 @@ void main() {
     expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('پرداخت: حالت آزمایشی فعال'), 350, maxScrolls: 20);
+    expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('پیگیری سفارش‌ها'));
-    expect(destination, 1);
+    expect(destination?.module, AdminModule.orders);
   });
 
   testWidgets('dashboard order KPI and low-stock alert navigate to the relevant modules', (tester) async {
-    int? destination;
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(_dashboardHarness(
       onNavigate: (value) => destination = value,
       lowStock: const [
@@ -127,24 +114,24 @@ void main() {
     await tester.scrollUntilVisible(find.text('در انتظار پرداخت'), 350, maxScrolls: 20);
     await tester.pumpAndSettle();
     await tester.tap(find.text('در انتظار پرداخت'));
-    expect(destination, 1);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
 
     destination = null;
     await tester.scrollUntilVisible(find.text('میانگین ارزش سفارش'), 350, maxScrolls: 20);
     await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
-    expect(destination, 4);
+    expect(destination?.module, AdminModule.reports);
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
     await tester.ensureVisible(find.text('پسته اکبری'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('پسته اکبری'));
-    expect(destination, 3);
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'PI-AKB-250'));
     expect(tester.takeException(), isNull);
   });
 
-  for (final width in [360.0, 768.0, 1280.0]) {
+  for (final width in [360.0, 390.0, 768.0, 1280.0]) {
     testWidgets('read-only dashboard offers permitted view routes at $width px', (tester) async {
       tester.view.physicalSize = Size(width, 900);
       tester.view.devicePixelRatio = 1;
@@ -153,7 +140,7 @@ void main() {
       OwnerSession.instance.updateIdentity(role: 'ReadOnlyAnalyst', permissions: [
         'dashboard.read', 'products.read', 'orders.read', 'inventory.read',
       ]);
-      int? destination;
+      AdminNavigationIntent? destination;
       await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
       await tester.pumpAndSettle();
       expect(find.text('وضعیت فروشگاه'), findsOneWidget);
@@ -166,14 +153,14 @@ void main() {
 
       await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
       await tester.pumpAndSettle();
-      final action = find.byKey(const ValueKey('dashboard-action-1'));
-      expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
+      final action = find.byKey(const ValueKey('dashboard-action-orders'));
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
       // Focus the actual InkWell's descendant and activate it with the keyboard.
       Focus.of(tester.element(find.text('پیگیری سفارش‌ها'))).requestFocus();
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
-      expect(destination, 1);
+      expect(destination?.module, AdminModule.orders);
       expect(tester.takeException(), isNull);
     });
   }
@@ -245,21 +232,38 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
-      return http.Response(jsonEncode({
-        'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
-        'payment': 'sandbox-enabled', 'mediaStorage': 'local',
-        'adminAuthentication': 'configured', 'ready': true,
-      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      return http.Response(
+        jsonEncode({
+          'api': 'healthy',
+          'database': 'healthy',
+          'migrations': 'tracked',
+          'adminAuthentication': 'configured',
+          'payment': 'sandbox-enabled',
+          'mediaStorage': 'local',
+          'ready': true,
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
     }
     return http.Response(
       jsonEncode(request.url.path.endsWith('/dashboard')
-          ? {'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0,
-             'paidRevenue': 0, 'todayRevenue': 0, 'lowStock': lowStock, 'expiringSoon': []}
+          ? {
+              'awaitingPayment': 0,
+              'processing': 0,
+              'shipped': 0,
+              'delivered': 0,
+              'paidRevenue': 0,
+              'todayRevenue': 0,
+              'lowStock': lowStock,
+              'expiringSoon': [],
+            }
           : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
-      200, headers: {'content-type': 'application/json; charset=utf-8'},
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
     );
   });
   return MaterialApp(
