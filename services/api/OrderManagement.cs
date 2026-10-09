@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 18136)
-Total output lines: 1216
-
 using System.Text.Json;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -579,7 +576,19 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
             command.Parameters.AddWithValue("id", orderId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            shippedAt = await…136 tokens truncated…uestId, cancellationToken);
+            shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
+                ? reader.GetFieldValue<DateTimeOffset>(0)
+                : null;
+        }
+
+        var after = new AdminShippingAuditSnapshot(
+            input.Carrier?.Trim(),
+            input.TrackingCode?.Trim(),
+            input.ActualShippingCost ?? 0m,
+            shippedAt);
+        await audit.RecordAsync(
+            connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
+            before, after, input.Reason!.Trim(), requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return await GetDetailAsync(orderId, cancellationToken);
     }
@@ -1203,5 +1212,4 @@ public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrde
     public static OrderOperationResult NotFound(string message) => new(OrderOperationStatus.NotFound, Message: message);
     public static OrderOperationResult Conflict(string message) => new(OrderOperationStatus.Conflict, Message: message);
 }
-
 
