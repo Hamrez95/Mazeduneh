@@ -1002,3 +1002,4 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
   );
 }
 
+\n

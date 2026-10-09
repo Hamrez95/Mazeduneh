@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_session.dart';
+import 'admin_navigation.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
 
 class OrderApiException implements Exception {
@@ -52,8 +53,14 @@ class OrderApiClient {
     return response.bodyBytes;
   }
 
-  Future<AdminDashboard> fetchDashboard({int days = 1}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: {'days': '$days'}), headers: _headers());
+  Future<AdminDashboard> fetchDashboard({int days = 1, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both dashboard range boundaries are required.');
+    }
+    final query = fromUtc == null
+        ? {'days': '$days'}
+        : {'from': fromUtc.toUtc().toIso8601String(), 'to': toUtcExclusive!.toUtc().toIso8601String()};
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/dashboard').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminDashboard.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
@@ -64,6 +71,16 @@ class OrderApiClient {
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<AdminDashboardHealth> fetchDashboardHealth() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/dashboard/health'),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminDashboardHealth.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
   Future<DashboardPreferences> saveDashboardPreferences(DashboardPreferences preferences) async {
@@ -141,9 +158,9 @@ class OrderApiClient {
     return decoded.map((item) => InventoryBatch.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<InventoryPurchasePage> fetchInventoryPurchases({String? sku, String? cursor, int limit = 50}) async {
+  Future<InventoryPurchasePage> fetchInventoryPurchases({String? sku, String? batchCode, String? cursor, int limit = 50}) async {
     final uri = Uri.parse('$baseUrl/api/v1/admin/inventory/purchases').replace(queryParameters: {
-      'limit': '$limit', if (sku != null) 'sku': sku, if (cursor != null) 'cursor': cursor,
+      'limit': '$limit', if (sku != null) 'sku': sku, if (batchCode != null) 'batchCode': batchCode, if (cursor != null) 'cursor': cursor,
     });
     final response = await _client.get(uri, headers: _headers());
     _guard(response);
@@ -641,12 +658,67 @@ class AdminAnalytics {
   );
 }
 
+class AdminNavigationTarget {
+  const AdminNavigationTarget({
+    required this.module,
+    this.filter,
+    this.sku,
+    this.batchCode,
+  });
+
+  final String module;
+  final String? filter;
+  final String? sku;
+  final String? batchCode;
+
+  factory AdminNavigationTarget.fromJson(Map<String, dynamic> json) =>
+      AdminNavigationTarget(
+        module: json['module'] as String? ?? '',
+        filter: json['filter'] as String?,
+        sku: json['sku'] as String?,
+        batchCode: json['batchCode'] as String?,
+      );
+
+  AdminNavigationIntent? toIntent() {
+    final parsedModule = AdminModule.fromApiValue(module);
+    if (parsedModule == null) return null;
+    final parsedFilter = AdminOrderFilter.fromApiValue(filter);
+    if (parsedModule == AdminModule.orders && parsedFilter == null) return null;
+    if (parsedModule != AdminModule.orders && filter != null) return null;
+    if (parsedModule != AdminModule.inventory && (sku != null || batchCode != null)) return null;
+    return AdminNavigationIntent(
+      module: parsedModule,
+      orderFilter: parsedFilter ?? AdminOrderFilter.all,
+      sku: sku,
+      batchCode: batchCode,
+    );
+  }
+}
+
 class AdminNotification {
-  const AdminNotification({required this.type, required this.title, required this.detail});
+  const AdminNotification({
+    required this.type,
+    required this.title,
+    required this.detail,
+    this.target,
+  });
+
   final String type;
   final String title;
   final String detail;
-  factory AdminNotification.fromJson(Map<String, dynamic> json) => AdminNotification(type: json['type'] as String, title: json['title'] as String, detail: json['detail'] as String);
+  final AdminNavigationTarget? target;
+
+  factory AdminNotification.fromJson(Map<String, dynamic> json) {
+    final rawTarget = json['target'];
+    return AdminNotification(
+      type: json['type'] as String,
+      title: json['title'] as String,
+      detail: json['detail'] as String,
+      target: rawTarget is Map<String, dynamic>
+          ? AdminNavigationTarget.fromJson(rawTarget)
+          : null,
+    );
+  }
 }
 
 class AdminNotifications {
@@ -697,6 +769,36 @@ class AdminDashboard {
     newCustomers: (json['newCustomers'] as num?)?.toInt() ?? 0,
     corporateNewRequests: (json['corporateNewRequests'] as num?)?.toInt() ?? 0,
     problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0, financialsVisible: json['financialsVisible'] as bool? ?? true);
+}
+
+class AdminDashboardHealth {
+  const AdminDashboardHealth({
+    required this.api,
+    required this.database,
+    required this.migrations,
+    required this.adminAuthentication,
+    required this.payment,
+    required this.mediaStorage,
+    required this.ready,
+  });
+
+  final String api;
+  final String database;
+  final String migrations;
+  final String adminAuthentication;
+  final String payment;
+  final String mediaStorage;
+  final bool ready;
+
+  factory AdminDashboardHealth.fromJson(Map<String, dynamic> json) => AdminDashboardHealth(
+        api: json['api'] as String? ?? 'unknown',
+        database: json['database'] as String? ?? 'unknown',
+        migrations: json['migrations'] as String? ?? 'unknown',
+        adminAuthentication: json['adminAuthentication'] as String? ?? 'unknown',
+        payment: json['payment'] as String? ?? 'unknown',
+        mediaStorage: json['mediaStorage'] as String? ?? 'unknown',
+        ready: json['ready'] as bool? ?? false,
+      );
 }
 
 class DashboardWidgetPreference {
@@ -755,18 +857,20 @@ class LowStockItem {
 }
 
 class ExpiringStockItem {
-  const ExpiringStockItem({required this.productTitle, required this.sku, required this.variantLabel, required this.expiresAt, required this.remainingPackages});
+  const ExpiringStockItem({required this.productTitle, required this.sku, required this.variantLabel, required this.expiresAt, required this.remainingPackages, this.batchCode});
   final String productTitle;
   final String sku;
   final String variantLabel;
   final DateTime expiresAt;
   final int remainingPackages;
+  final String? batchCode;
   factory ExpiringStockItem.fromJson(Map<String, dynamic> json) => ExpiringStockItem(
         productTitle: json['productTitle'] as String? ?? '',
         sku: json['sku'] as String? ?? '',
         variantLabel: json['variantLabel'] as String? ?? '',
         expiresAt: DateTime.parse(json['expiresAt'] as String),
         remainingPackages: (json['remainingPackages'] as num?)?.toInt() ?? 0,
+        batchCode: json['batchCode'] as String?,
       );
 }
 
@@ -775,3 +879,5 @@ class InventoryPurchasePage {
   final List<InventoryBatch> items;
   final String? nextCursor;
 }
+
+

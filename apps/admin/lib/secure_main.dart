@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'admin_auth_gate.dart';
 import 'admin_shell.dart';
@@ -52,6 +53,8 @@ class _MazedunehSecureAdminAppState extends State<MazedunehSecureAdminApp> {
         title: 'مدیریت مزه‌دونه',
         navigatorKey: navigatorKey,
         locale: const Locale('fa'),
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('fa'), Locale('en', 'US')],
         theme: buildAdminTheme(),
         home: widget.child ?? const AdminShell(),
         builder: (_, navigator) => Directionality(

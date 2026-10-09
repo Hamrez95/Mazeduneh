@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'admin_navigation.dart';
 import 'admin_permissions.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
@@ -11,7 +12,7 @@ import 'order_api.dart';
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
-  final ValueChanged<int>? onNavigate;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
@@ -19,20 +20,42 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminDashboard? dashboard;
+  AdminDashboardHealth? systemHealth;
   AdminNotifications? notifications;
   DashboardPreferences preferences = DashboardPreferences.defaults;
   Object? error;
   bool loading = true;
+  bool healthLoading = true;
   DateTime? lastLoadedAt;
   int dashboardDays = 1;
+  DateTimeRange? customRange;
 
   @override
   void initState() { super.initState(); load(); }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      healthLoading = true;
+      error = null;
+      systemHealth = null;
+    });
+    final healthFuture = api.fetchDashboardHealth()
+        .then<Object?>((value) => value)
+        .catchError((Object exception) => exception);
     try {
-      final result = await Future.wait([api.fetchDashboard(days: dashboardDays), api.fetchNotifications(), api.fetchDashboardPreferences()]);
+      final today = DateUtils.dateOnly(DateTime.now());
+      final rangeStart = customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
+      final rangeEnd = customRange?.end ?? today;
+      final result = await Future.wait([
+        api.fetchDashboard(
+          days: dashboardDays,
+          fromUtc: rangeStart.toUtc(),
+          toUtcExclusive: DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc(),
+        ),
+        api.fetchNotifications(),
+        api.fetchDashboardPreferences(),
+      ]);
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
@@ -44,6 +67,13 @@ class _DashboardPageState extends State<DashboardPage> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+    final healthResult = await healthFuture;
+    if (mounted) setState(() {
+      healthLoading = false;
+      if (healthResult is AdminDashboardHealth) {
+        systemHealth = healthResult;
+      }
+    });
   }
 
   Future<void> customizeDashboard() async {
@@ -52,6 +82,20 @@ class _DashboardPageState extends State<DashboardPage> {
       builder: (_) => DashboardPreferencesDialog(initial: preferences, onSave: api.saveDashboardPreferences),
     );
     if (updated != null && mounted) setState(() => preferences = updated);
+  }
+
+  Future<void> chooseCustomRange() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final selected = await showDialog<DateTimeRange>(
+      context: context,
+      builder: (_) => _DashboardRangeDialog(initialRange: customRange, today: today),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => customRange = DateTimeRange(
+          start: DateUtils.dateOnly(selected.start),
+          end: DateUtils.dateOnly(selected.end),
+        ));
+    await load();
   }
 
   @override
@@ -113,33 +157,44 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  String _periodLabel(int days) => switch (days) {
+  String _periodLabel(int days, DateTimeRange? range) {
+    if (range != null) return 'فروش ${formatPersianDate(range.start)} تا ${formatPersianDate(range.end)}';
+    return switch (days) {
         1 => 'فروش امروز',
         7 => 'فروش ۷ روز اخیر',
         30 => 'فروش ۳۰ روز اخیر',
         _ => 'فروش بازهٔ انتخابی',
       };
+  }
 
   Widget _metricsSection(AdminDashboard data, bool Function(String) can) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       _DashboardPeriodSelector(
         selectedDays: dashboardDays,
-        onChanged: (days) { setState(() => dashboardDays = days); load(); },
+        customRange: customRange,
+        onChanged: (days) {
+          setState(() {
+            dashboardDays = days;
+            customRange = null;
+          });
+          load();
+        },
+        onChooseCustomRange: chooseCustomRange,
       ),
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
         if (can(AdminPermissions.ordersRead)) ...[
-          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(4)),
-          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
-          MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(1)),
+          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders))),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
+          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
+          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
+          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
+          MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem))),
         ],
-        if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(6)),
-        if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(8)),
+        if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
+        if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.corporate))),
       ]),
     ],
   );
@@ -159,9 +214,91 @@ class _DashboardPageState extends State<DashboardPage> {
     return _DashboardPanel(
       title: 'هشدارهای عملیاتی',
       icon: Icons.notifications_active_rounded,
-      child: items.isEmpty
-          ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
-          : Column(children: [for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate)]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _systemHealthPanel(),
+          const SizedBox(height: 10),
+          if (items.isEmpty)
+            const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
+          else
+            for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate),
+        ],
+      ),
+    );
+  }
+
+  Widget _systemHealthPanel() {
+    if (healthLoading) {
+      return const ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+        title: Text('در حال بررسی وضعیت سامانه'),
+      );
+    }
+    if (systemHealth == null) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.cloud_off_outlined, color: AdminColors.coral),
+        title: const Text('وضعیت فنی در دسترس نیست'),
+        subtitle: const Text('ارتباط با سرویس وضعیت برقرار نشد. برای بررسی دوباره تلاش کنید.'),
+        trailing: IconButton(
+          tooltip: 'بررسی دوبارهٔ وضعیت سامانه',
+          onPressed: loading ? null : load,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      );
+    }
+
+    final health = systemHealth!;
+    final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
+    String label(String value) => switch (value) {
+          'healthy' || 'ready' || 'tracked' => 'سالم',
+          'configured' => 'پیکربندی شده',
+          'not-configured' => 'پیکربندی نشده',
+          'sandbox-enabled' => 'حالت آزمایشی فعال',
+          'disabled' => 'غیرفعال',
+          'local' => 'محلی',
+          's3-configured' => 'S3 پیکربندی شده',
+          'empty' => 'نیازمند راه‌اندازی',
+          'unhealthy' || 'unavailable' || 'degraded' || 'not-ready' => 'نیاز به بررسی',
+          _ => 'نامشخص',
+        };
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: health.ready ? AdminColors.mintSoft : const Color(0xFFFFF0D9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Icon(health.ready ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded, color: healthyColor),
+            const SizedBox(width: 8),
+            Expanded(child: Text(health.ready ? 'API و زیرساخت پایه آماده است' : 'API یا پایگاه داده نیاز به بررسی دارد', style: const TextStyle(fontWeight: FontWeight.w900))),
+          ]),
+          const SizedBox(height: 8),
+          for (final item in [
+            ('API', health.api),
+            ('پایگاه داده', health.database),
+            ('مهاجرت‌های پایگاه داده', health.migrations),
+            ('ورود مدیر', health.adminAuthentication),
+            ('پرداخت', health.payment),
+            ('ذخیره‌سازی رسانه', health.mediaStorage),
+          ])
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
+            ),
+          const SizedBox(height: 6),
+          const Text(
+            'وضعیت پرداخت و رسانه از روی پیکربندی است؛ اتصال بیرونی آن‌ها اینجا آزموده نمی‌شود.',
+            style: TextStyle(fontSize: 11, color: AdminColors.muted),
+          ),
+        ],
+      ),
     );
   }
 
@@ -177,7 +314,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text('${item.variantLabel} · ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                 trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
-                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
+                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku)) : null,
               )]),
   );
 
@@ -193,16 +330,18 @@ class _DashboardPageState extends State<DashboardPage> {
                 title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                 trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
-                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(3) : null,
+                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku, batchCode: item.batchCode)) : null,
               )]),
   );
 
 }
 
 class _DashboardPeriodSelector extends StatelessWidget {
-  const _DashboardPeriodSelector({required this.selectedDays, required this.onChanged});
+  const _DashboardPeriodSelector({required this.selectedDays, required this.customRange, required this.onChanged, required this.onChooseCustomRange});
   final int selectedDays;
+  final DateTimeRange? customRange;
   final ValueChanged<int> onChanged;
+  final VoidCallback onChooseCustomRange;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -216,11 +355,92 @@ class _DashboardPeriodSelector extends StatelessWidget {
             for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
               ChoiceChip(
                 label: Text(option.$2),
-                selected: selectedDays == option.$1,
+                selected: customRange == null && selectedDays == option.$1,
                 onSelected: (_) => onChanged(option.$1),
               ),
+            OutlinedButton.icon(
+              key: const ValueKey('dashboard-custom-range'),
+              onPressed: onChooseCustomRange,
+              icon: const Icon(Icons.date_range_rounded),
+              label: Text(customRange == null
+                  ? 'بازهٔ دلخواه'
+                  : '${formatPersianDate(customRange!.start)} تا ${formatPersianDate(customRange!.end)}'),
+            ),
+            const Text('تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.', style: TextStyle(fontSize: 12, color: AdminColors.muted)),
           ],
         ),
+      );
+}
+
+class _DashboardRangeDialog extends StatefulWidget {
+  const _DashboardRangeDialog({required this.initialRange, required this.today});
+
+  final DateTimeRange? initialRange;
+  final DateTime today;
+
+  @override
+  State<_DashboardRangeDialog> createState() => _DashboardRangeDialogState();
+}
+
+class _DashboardRangeDialogState extends State<_DashboardRangeDialog> {
+  late DateTime start = widget.initialRange?.start ?? widget.today;
+  late DateTime end = widget.initialRange?.end ?? widget.today;
+
+  Future<void> pickStart() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: DateTime(widget.today.year, widget.today.month, widget.today.day - 365),
+      lastDate: end,
+      locale: Localizations.localeOf(context),
+    );
+    if (selected == null) return;
+    setState(() => start = DateUtils.dateOnly(selected));
+  }
+
+  Future<void> pickEnd() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: end,
+      firstDate: start,
+      lastDate: widget.today,
+      locale: Localizations.localeOf(context),
+    );
+    if (selected == null) return;
+    setState(() => end = DateUtils.dateOnly(selected));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('بازهٔ گزارش را انتخاب کنید'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('روز شروع'),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: pickStart,
+              icon: const Icon(Icons.calendar_today_rounded),
+              label: Text(formatPersianDate(start)),
+            ),
+            const SizedBox(height: 12),
+            const Text('روز پایان'),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              onPressed: pickEnd,
+              icon: const Icon(Icons.event_available_rounded),
+              label: Text(formatPersianDate(end)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, DateTimeRange(start: start, end: end)),
+            child: const Text('اعمال بازه'),
+          ),
+        ],
       );
 }
 
@@ -335,7 +555,7 @@ class _DashboardSectionTitle extends StatelessWidget {
 
 class _DashboardQuickActions extends StatelessWidget {
   const _DashboardQuickActions({required this.onNavigate});
-  final ValueChanged<int>? onNavigate;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -344,16 +564,16 @@ class _DashboardQuickActions extends StatelessWidget {
     final actions = [
       if (can(AdminPermissions.productsRead))
         can(AdminPermissions.productsWrite)
-            ? (title: 'ثبت محصول', detail: 'محصول جدید را به‌صورت پیش‌نویس بسازید.', icon: Icons.add_box_rounded, destination: 2)
-            : (title: 'مشاهده محصولات', detail: 'مشخصات، قیمت و وضعیت انتشار را بررسی کنید.', icon: Icons.inventory_2_outlined, destination: 2),
+            ? (title: 'ثبت محصول', detail: 'محصول جدید را به‌صورت پیش‌نویس بسازید.', icon: Icons.add_box_rounded, destination: AdminModule.products)
+            : (title: 'مشاهده محصولات', detail: 'مشخصات، قیمت و وضعیت انتشار را بررسی کنید.', icon: Icons.inventory_2_outlined, destination: AdminModule.products),
       if (can(AdminPermissions.ordersRead))
-        (title: 'پیگیری سفارش‌ها', detail: 'سفارش‌های جدید و منتظر پرداخت را ببینید.', icon: Icons.receipt_long_rounded, destination: 1),
+        (title: 'پیگیری سفارش‌ها', detail: 'سفارش‌های جدید و منتظر پرداخت را ببینید.', icon: Icons.receipt_long_rounded, destination: AdminModule.orders),
       if (can(AdminPermissions.inventoryRead))
         can(AdminPermissions.inventoryWrite)
-            ? (title: 'اصلاح موجودی', detail: 'دریافت کالا یا اصلاح یک SKU را ثبت کنید.', icon: Icons.inventory_2_rounded, destination: 3)
-            : (title: 'مشاهده موجودی', detail: 'موجودی کالا و بچ‌های نزدیک انقضا را بررسی کنید.', icon: Icons.warehouse_outlined, destination: 3),
+            ? (title: 'اصلاح موجودی', detail: 'دریافت کالا یا اصلاح یک SKU را ثبت کنید.', icon: Icons.inventory_2_rounded, destination: AdminModule.inventory)
+            : (title: 'مشاهده موجودی', detail: 'موجودی کالا و بچ‌های نزدیک انقضا را بررسی کنید.', icon: Icons.warehouse_outlined, destination: AdminModule.inventory),
       if (can(AdminPermissions.corporateRead))
-        (title: 'پیگیری فروش سازمانی', detail: 'درخواست‌های جدید را از دست ندهید.', icon: Icons.business_center_rounded, destination: 8),
+        (title: 'پیگیری فروش سازمانی', detail: 'درخواست‌های جدید را از دست ندهید.', icon: Icons.business_center_rounded, destination: AdminModule.corporate),
     ];
     if (actions.isEmpty) {
       return const AdminEmptyState(
@@ -367,7 +587,7 @@ class _DashboardQuickActions extends StatelessWidget {
       final width = (constraints.maxWidth - ((columns - 1) * 12)) / columns;
       return Wrap(spacing: 12, runSpacing: 12, children: [
         for (final action in actions)
-          SizedBox(width: width, child: _DashboardQuickAction(action: action, onPressed: onNavigate == null ? null : () => onNavigate!(action.destination))),
+          SizedBox(width: width, child: _DashboardQuickAction(action: action, onPressed: onNavigate == null ? null : () => onNavigate!(AdminNavigationIntent(module: action.destination, orderFilter: action.destination == AdminModule.orders ? AdminOrderFilter.awaitingPayment : AdminOrderFilter.all)))),
       ]);
     });
   }
@@ -375,7 +595,7 @@ class _DashboardQuickActions extends StatelessWidget {
 
 class _DashboardQuickAction extends StatelessWidget {
   const _DashboardQuickAction({required this.action, required this.onPressed});
-  final ({String title, String detail, IconData icon, int destination}) action;
+  final ({String title, String detail, IconData icon, AdminModule destination}) action;
   final VoidCallback? onPressed;
 
   @override
@@ -385,7 +605,7 @@ class _DashboardQuickAction extends StatelessWidget {
         label: '${action.title}: ${action.detail}',
         child: Card(
           child: InkWell(
-            key: ValueKey('dashboard-action-${action.destination}'),
+            key: ValueKey('dashboard-action-${action.destination.name}'),
             onTap: onPressed,
             focusColor: AdminColors.mintSoft,
             borderRadius: BorderRadius.circular(18),
@@ -464,4 +684,6 @@ class MetricCard extends StatelessWidget {
     ),
   );
 }
+
+
 

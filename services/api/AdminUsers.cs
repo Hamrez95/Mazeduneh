@@ -226,7 +226,8 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         if (!IsConfigured) return null;
         await using var connection = await OpenAsync(cancellationToken);
         var before = await GetAsync(connection, id, cancellationToken);
-        if (before is null || !string.Equals(before.StoreId, NormalizeStoreId(storeId), StringComparison.Ordinal)) return null;
+        if (before is null || before.Role.Equals("Owner", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(before.StoreId, NormalizeStoreId(storeId), StringComparison.Ordinal)) return null;
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             update admin_users set is_active=@is_active, deactivated_at=case when @is_active then null else now() end
@@ -369,3 +370,4 @@ public sealed class AdminUserValidationException(Dictionary<string, string[]> er
     public Dictionary<string, string[]> Errors { get; } = errors;
 }
 
+\n

@@ -8,6 +8,8 @@ import 'audit_log_page.dart';
 import 'auth_api.dart';
 import 'auth_session.dart';
 import 'catalog_page.dart';
+import 'catalog_api.dart';
+import 'admin_navigation.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
 import 'customer_management_page.dart';
@@ -18,9 +20,10 @@ import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key, this.dashboardApi, this.ordersApi});
+  const AdminShell({super.key, this.dashboardApi, this.ordersApi, this.catalogApi});
   final OrderApiClient? dashboardApi;
   final OrderApiClient? ordersApi;
+  final CatalogApiClient? catalogApi;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -28,6 +31,8 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   var index = 0;
+  var navigation = const AdminNavigationIntent(module: AdminModule.dashboard);
+  final navigationHistory = <AdminNavigationIntent>[];
   final catalogKey = GlobalKey<CatalogPageState>();
   static const items = [
     ('داشبورد', Icons.space_dashboard_rounded, AdminPermissions.dashboardRead),
@@ -62,20 +67,26 @@ class _AdminShellState extends State<AdminShell> {
     final secondaryIndexes = visibleIndexes.skip(4).toList();
     final selectedPrimary = primaryIndexes.indexOf(index);
     final pages = [
-      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: (destination) => setState(() => index = destination))),
-      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(api: widget.ordersApi)),
+      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate)),
+      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter)),
       AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
-      const AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage()),
+      AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
       const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
-      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: (destination) => setState(() => index = destination))),
+      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: _navigate)),
       const AdminPermissionGate(permission: AdminPermissions.customersRead, child: CustomerManagementPage()),
       const AdminPermissionGate(permission: AdminPermissions.pricingRead, child: CommerceSettingsPage()),
       const AdminPermissionGate(permission: AdminPermissions.corporateRead, child: CorporateRequestsPage()),
       const AdminPermissionGate(permission: AdminPermissions.auditRead, child: AuditLogPage()),
       const AdminPermissionGate(permission: AdminPermissions.usersRead, child: AdminUsersPage()),
     ];
-    return Scaffold(
-      appBar: desktop ? null : AppBar(title: const Brand(compact: true)),
+    return PopScope<Object?>(
+      canPop: navigationHistory.isEmpty,
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) _goBack(); },
+      child: Scaffold(
+      appBar: desktop ? null : AppBar(
+        leading: navigationHistory.isEmpty ? null : IconButton(tooltip: 'بازگشت به ${_moduleLabel(navigationHistory.last.module)}', onPressed: _goBack, icon: const Icon(Icons.arrow_back_rounded)),
+        title: const Brand(compact: true),
+      ),
       bottomNavigationBar: desktop || visibleIndexes.isEmpty
           ? null
           : visibleIndexes.length == 1
@@ -104,7 +115,7 @@ class _AdminShellState extends State<AdminShell> {
             )
           : NavigationBar(
               selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
-              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : setState(() => index = primaryIndexes[value]),
+              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : _selectModule(primaryIndexes[value]),
               destinations: [for (final item in [for (final i in primaryIndexes) items[i], if (secondaryIndexes.isNotEmpty) ('بیشتر', Icons.more_horiz_rounded, '')]) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
             ),
       body: Row(children: [
@@ -150,7 +161,7 @@ class _AdminShellState extends State<AdminShell> {
                               : const Color(0xFFD5DFD6),
                         ),
                       ),
-                      onTap: () => setState(() => index = i),
+                      onTap: () => _selectModule(i),
                     ),
                   ),
                 ),
@@ -218,8 +229,41 @@ class _AdminShellState extends State<AdminShell> {
               label: const Text('محصول جدید'),
             )
       : null,
+      ),
     );
   }
+
+  void _navigate(AdminNavigationIntent intent) {
+    final session = OwnerSession.instance;
+    if (session.isAuthenticated && !session.can(intent.module.permission)) return;
+    final destination = AdminModule.values.indexOf(intent.module);
+    if (destination < 0 || destination >= items.length || intent == navigation) return;
+    setState(() { navigationHistory.add(navigation); navigation = intent; index = destination; });
+  }
+
+  void _selectModule(int destination) {
+    if (destination < 0 || destination >= AdminModule.values.length) return;
+    setState(() {
+      navigationHistory.clear();
+      index = destination;
+      navigation = AdminNavigationIntent(module: AdminModule.values[destination]);
+    });
+  }
+
+  void _goBack() {
+    if (navigationHistory.isEmpty) return;
+    final previous = navigationHistory.removeLast();
+    setState(() { navigation = previous; index = AdminModule.values.indexOf(previous.module); });
+  }
+
+  String _moduleLabel(AdminModule module) => switch (module) {
+    AdminModule.dashboard => 'داشبورد', AdminModule.orders => 'سفارش‌ها',
+    AdminModule.products => 'محصولات', AdminModule.inventory => 'انبار',
+    AdminModule.reports => 'گزارش‌ها', AdminModule.notifications => 'اعلان‌ها',
+    AdminModule.customers => 'مشتری‌ها', AdminModule.pricing => 'قیمت و ارسال',
+    AdminModule.corporate => 'فروش سازمانی', AdminModule.audit => 'امنیت',
+    AdminModule.users => 'کاربران',
+  };
 
   Future<void> _openMoreMenu(List<int> secondaryIndexes) async {
     final selected = await showModalBottomSheet<int>(
@@ -247,7 +291,7 @@ class _AdminShellState extends State<AdminShell> {
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => index = selected);
+    if (selected != null && mounted) _selectModule(selected);
   }
 }
 

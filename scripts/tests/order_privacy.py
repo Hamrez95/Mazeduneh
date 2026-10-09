@@ -96,12 +96,17 @@ with tempfile.TemporaryFile() as log:
             headers={'Idempotency-Key': 'ci-order-privacy-0002'})
         _, intent = request('/api/v1/payments/orders/' + order_id + '/intent', 'POST', {'receiptToken': created['receiptToken']})
         assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
+        status, processing_orders = request('/api/v1/admin/orders?state=Processing&q=' + order_id, token=token)
+        assert status == 200 and len(processing_orders) == 1 and processing_orders[0]['state'] == 'Paid'
         path = '/api/v1/admin/orders/' + order_id
         assert request(path + '/notes', 'POST', {'note': MOBILE + ' ' + ADDRESS}, token)[0] == 201
         assert request(path + '/shipping', 'PATCH', {'carrier': 'PrivacyFixtureCarrier',
             'trackingCode': 'PrivacyFixtureTracking', 'actualShippingCost': 100, 'reason': MOBILE}, token)[0] == 200
         for state in ['Preparing', 'Shipped']:
             assert request(path + '/state', 'PATCH', {'state': state, 'reason': MOBILE}, token)[0] == 200
+            if state == 'Preparing':
+                status, processing_orders = request('/api/v1/admin/orders?state=Processing&q=' + order_id, token=token)
+                assert status == 200 and len(processing_orders) == 1 and processing_orders[0]['state'] == 'Preparing'
         subprocess.run(['dotnet', 'run', '--project', 'services/api.tests/Mazeduneh.Api.Tests.csproj',
                         '--configuration', 'Release', '--', '--backdate-privacy-shipment', order_id],
                        cwd=ROOT, env=dict(os.environ, MAZEDUNEH_TEST_FIXTURES='true'), check=True)
@@ -166,6 +171,9 @@ with tempfile.TemporaryFile() as log:
                 status, bulk = request('/api/v1/admin/orders/bulk-state', 'POST', {'orderIds': [second['id']], 'state': 'Cancelled', 'reason': ADDRESS}, token)
                 assert status == 200 and len(bulk['updated']) == 1
                 assert_private(bulk)
+                status, problem_orders = request('/api/v1/admin/orders?state=Problem&q=' + second['id'], token=token)
+                assert status == 200 and len(problem_orders) == 1 and problem_orders[0]['state'] == 'Cancelled'
+                assert request('/api/v1/admin/orders?state=Unknown&q=' + second['id'], token=token)[0] == 400
         finally:
             stop_api(api)
 

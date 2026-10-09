@@ -59,17 +59,18 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
-def invite(owner_token, email, name, permissions=None):
+def invite(owner_token, email, name, permissions=None, store_id=None):
     payload = {"email": email, "displayName": name, "role": "WarehouseOperator"}
     if permissions is not None:
         payload["permissions"] = permissions
-    status, result = request("/api/v1/admin/users", "POST", payload, owner_token)
+    path = "/api/v1/admin/users" + ("?storeId=" + store_id if store_id else "")
+    status, result = request(path, "POST", payload, owner_token)
     assert status == 201, (status, result)
     assert result["user"]["email"] == email and result["invitationToken"] and result["expiresAt"]
     return result
 
 
-def accept_and_login(invitation, email, password, check_unaccepted_login=True):
+def accept_and_login(invitation, email, password, check_unaccepted_login=True, store_id="default", role="WarehouseOperator"):
     if check_unaccepted_login:
         status, _ = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})
         assert status == 401, status
@@ -78,8 +79,8 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True):
     assert status == 204, status
     assert request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})[0] == 400
-    status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})
-    assert status == 200 and login["role"] == "WarehouseOperator" and login["storeId"] == "default"
+    status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password, "storeId": store_id})
+    assert status == 200 and login["role"] == role and login["storeId"] == store_id
     return login["accessToken"]
 
 
@@ -138,6 +139,28 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/logout", "POST", token=first_token)[0] == 204
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
 
+        # Simulate a pre-existing membership Owner in a non-default store.
+        # Omitting storeId must bind user-management queries and writes to the
+        # authenticated membership, never fall back to the default store.
+        tenant_email = "membership-tenant-owner@example.test"
+        tenant_password = "Membership-CI-Tenant-Password!"
+        tenant_invitation = invite(owner_token, tenant_email, "CI tenant owner", store_id="tenant-a")
+        subprocess.run(["dotnet", "run", "--project", "services/api.tests/Mazeduneh.Api.Tests.csproj",
+                        "--configuration", "Release", "--no-build", "--", "--promote-membership-owner", tenant_email, "tenant-a"],
+                       cwd=ROOT, env=dict(os.environ, MAZEDUNEH_TEST_FIXTURES="true"), check=True)
+        tenant_token = accept_and_login(tenant_invitation, tenant_email, tenant_password,
+                                        check_unaccepted_login=False, store_id="tenant-a", role="Owner")
+        status, tenant_users = request("/api/v1/admin/users", token=tenant_token)
+        assert status == 200 and all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
+        status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/permissions",
+                                 "PATCH", {"permissions": []}, tenant_token)
+        assert status == 404, (status, denied)
+        assert request("/api/v1/admin/users?storeId=default", token=tenant_token)[0] == 403
+        status, owner_unchanged = request("/api/v1/admin/users/" + tenant_invitation["user"]["id"] + "/status?storeId=tenant-a",
+                                          "PATCH", {"isActive": False}, owner_token)
+        assert status == 404, (status, owner_unchanged)
+        assert request("/api/v1/admin/auth/session", token=tenant_token)[0] == 200
+
         # Start a fresh in-memory rate-limit window before checking deactivation separately.
         stop_api(api)
         api, owner_token = start_api(log)
@@ -157,3 +180,4 @@ with tempfile.TemporaryFile() as log:
 
 print("Membership invitation, one-time use, permissions, store binding and revocation passed")
 
+\n

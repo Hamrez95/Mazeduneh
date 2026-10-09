@@ -118,8 +118,9 @@ public static class AdminSecurityExtensions
         endpoints.MapGet("/api/v1/admin/users", async (
             string? storeId,
             AdminUsersDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.ListAsync(storeId, cancellationToken)))
+            Results.Ok(await database.ListAsync(ResolveMembershipStore(context, storeId), cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>()
             .WithTags("Admin Users");
 
@@ -141,7 +142,7 @@ public static class AdminSecurityExtensions
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
             try
             {
-                var created = await database.CreateAsync(request, actor, storeId, context.TraceIdentifier, cancellationToken);
+                var created = await database.CreateAsync(request, actor, ResolveMembershipStore(context, storeId), context.TraceIdentifier, cancellationToken);
                 return Results.Created($"/api/v1/admin/users/{created.User.Id}", new { user = created.User, invitationToken = created.InvitationToken, expiresAt = created.ExpiresAt });
             }
             catch (AdminUserValidationException exception)
@@ -163,7 +164,7 @@ public static class AdminSecurityExtensions
             if (!AdminPermissionCatalog.AreValidPermissions(request.Permissions))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Permissions)] = ["فهرست دسترسی‌ها معتبر نیست."] });
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var updated = await database.SetPermissionsAsync(id, request.Permissions, storeId, actor, context.TraceIdentifier, cancellationToken);
+            var updated = await database.SetPermissionsAsync(id, request.Permissions, ResolveMembershipStore(context, storeId), actor, context.TraceIdentifier, cancellationToken);
             return updated is null
                 ? Results.NotFound(new { message = "کاربر پیدا نشد یا امکان ویرایش دسترسی مدیر اصلی وجود ندارد." })
                 : Results.Ok(updated);
@@ -180,7 +181,7 @@ public static class AdminSecurityExtensions
             CancellationToken cancellationToken) =>
         {
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var updated = await database.SetStatusAsync(id, request.IsActive, storeId, actor, context.TraceIdentifier, cancellationToken);
+            var updated = await database.SetStatusAsync(id, request.IsActive, ResolveMembershipStore(context, storeId), actor, context.TraceIdentifier, cancellationToken);
             return updated is null
                 ? Results.NotFound(new { message = "کاربر پیدا نشد." })
                 : Results.Ok(updated);
@@ -189,6 +190,12 @@ public static class AdminSecurityExtensions
         .WithTags("Admin Users");
 
         return endpoints;
+    }
+
+    private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
+    {
+        var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
+        return principal?.UserId is not null ? principal.StoreId : requestedStoreId;
     }
 }
 
@@ -493,3 +500,4 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
     }
 }
 
+\n

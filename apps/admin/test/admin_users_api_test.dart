@@ -78,3 +78,4 @@ Map<String, dynamic> userJson({bool isActive = true, String? deactivatedAt, List
       'deactivatedAt': deactivatedAt,
     };
 
+\n

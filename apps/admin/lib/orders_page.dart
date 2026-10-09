@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_permissions.dart';
+import 'admin_navigation.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
 import 'auth_session.dart';
@@ -11,8 +12,9 @@ import 'formatters.dart';
 import 'order_api.dart';
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key, this.api});
+  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all});
   final OrderApiClient? api;
+  final AdminOrderFilter initialFilter;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -23,16 +25,18 @@ class _OrdersPageState extends State<OrdersPage> {
   final states = const <String, String>{
     '': 'همه سفارش‌ها',
     'AwaitingPayment': 'در انتظار پرداخت',
+    'Processing': 'در حال پردازش',
     'Paid': 'پرداخت‌شده',
     'Preparing': 'در حال آماده‌سازی',
     'Shipped': 'ارسال‌شده',
     'Delivered': 'تحویل‌شده',
     'Cancelled': 'لغوشده',
     'Expired': 'منقضی‌شده',
+    'Problem': 'لغوشده یا منقضی‌شده',
   };
   List<AdminOrder> orders = const [];
   List<AdminOverdueShipment> overdueShipments = const [];
-  String selectedState = '';
+  late String selectedState = widget.initialFilter.apiValue;
   bool overdueOnly = false;
   int overdueDays = 3;
   final searchController = TextEditingController();
@@ -48,6 +52,17 @@ class _OrdersPageState extends State<OrdersPage> {
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void didUpdateWidget(covariant OrdersPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialFilter != widget.initialFilter && selectedState != widget.initialFilter.apiValue) {
+      selectedState = widget.initialFilter.apiValue;
+      overdueOnly = false;
+      selectedOrders.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) load(); });
+    }
   }
 
   Future<void> load() async {

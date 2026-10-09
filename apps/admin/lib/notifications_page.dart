@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_navigation.dart';
 import 'notification_tile.dart';
 import 'order_api.dart';
 
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
-  final ValueChanged<int>? onNavigate;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }

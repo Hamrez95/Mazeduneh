@@ -73,6 +73,11 @@ String formatPersianNumber(num value, {int fractionDigits = 0}) {
 
 String formatToman(num rial) => formatPersianInteger((rial / 10).round());
 
+String formatPersianDate(DateTime value) {
+  String two(int number) => number.toString().padLeft(2, '0');
+  return toPersianDigits('${value.year}/${two(value.month)}/${two(value.day)}');
+}
+
 String formatPersianDateTime(DateTime value) {
   final local = value.toLocal();
   String two(int number) => number.toString().padLeft(2, '0');
