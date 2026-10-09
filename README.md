@@ -17,7 +17,11 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 pwsh -File ./scripts/dev.ps1
 ```
 
-The launcher runs the latest fetched `origin/main` in an ignored detached worktree, so a developer's current branch and uncommitted work remain untouched. It starts the persistent local PostgreSQL Compose service, then the API, storefront, and secure Admin web entry point. Everything listens on `127.0.0.1`; it does not use Supabase, Cloudflare, Vercel, Liara, or a production account. The API connects to that PostgreSQL instance and applies its existing compatible migrations; it does not drop or reset data.
+The launcher opens a menu. Choose the full system, website, Admin, or API separately; choose **Storefront preview** to browse the sample catalog without Docker or an API. The preview cannot submit real orders. For full end-to-end testing, install/start Docker Desktop from menu option 8, wait until it says **Engine running**, then run the launcher again and choose the system parts you need.
+
+Full local mode needs PowerShell 7.4+, Git, Docker Desktop with Compose, Node.js/npm, .NET 10 SDK, and Flutter stable. If Docker is missing, the launcher offers the official Docker Desktop installer through `winget`; Windows may require Administrator approval or a restart. If Docker is installed but stopped, the launcher starts it and waits for readiness. Missing tools are reported with an install hint instead of a PowerShell stack trace.
+
+The launcher runs the latest fetched `origin/main` in an ignored detached worktree, so a developer's current branch and uncommitted work remain untouched. Full mode starts persistent local PostgreSQL, then the API, Storefront, and secure Admin web entry point. Everything listens on `127.0.0.1`; it does not use Supabase, Cloudflare, Vercel, Liara, or a production account. The API connects to that PostgreSQL instance and applies its existing compatible migrations; it does not drop or reset data. If fetching the latest `main` fails, the launcher stops rather than presenting an old checkout as current.
 
 Use these commands from the repository root:
 
@@ -25,13 +29,14 @@ Use these commands from the repository root:
 pwsh -File ./scripts/dev.ps1 -Status
 pwsh -File ./scripts/dev.ps1 -Stop
 pwsh -File ./scripts/dev.ps1 -CurrentBranch -NoBrowser
+pwsh -File ./scripts/dev.ps1 -Component storefront-preview -NoBrowser
 ```
 
 The admin login is printed when the launcher starts. Its random local-demo password is stored in the ignored `.local-dev` folder so it remains the same between runs. Keep this launcher bound to this computer; it is not a public deployment setup.
 
-To run only the storefront or API, use `-Component storefront` or `-Component api`. `-Component admin` starts both the API and admin app; `-Component storefront` also starts the API. The default runs the latest fetched main. Use `-CurrentBranch` only when intentionally testing the current checkout.
+For scripted runs, use `-Component all`, `storefront`, `admin`, or `api`; `admin` and `storefront` also start the API and PostgreSQL they need. `storefront-preview` starts the sample catalog only. `-Status`, `-Stop`, and `-NoBrowser` are also available. The default menu runs the latest fetched main. Use `-CurrentBranch` only when intentionally testing the current checkout.
 
-Prerequisites: PowerShell 7.4+, Git, Docker Desktop with Compose, Node.js/npm, .NET 10 SDK, and Flutter stable. The launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and prints the exact main SHA it runs. It never installs system tools automatically; when a required tool is missing it exits with the command to install or start it.
+The launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and prints the exact main SHA it runs. If startup fails after launching app processes, it stops only those processes owned by that run and leaves PostgreSQL data intact.
 
 ### Storefront order submission
 
