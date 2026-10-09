@@ -3,10 +3,13 @@ import 'admin_state.dart';
 import 'commerce_api.dart';
 import 'formatters.dart';
 import 'admin_theme.dart';
+import 'admin_step_up_dialog.dart';
+import 'auth_api.dart';
 
 class CommerceSettingsPage extends StatefulWidget {
-  const CommerceSettingsPage({super.key, this.api});
+  const CommerceSettingsPage({super.key, this.api, this.auth});
   final CommerceApiClient? api;
+  final AuthApiClient? auth;
   @override
   State<CommerceSettingsPage> createState() => _CommerceSettingsPageState();
 }
@@ -42,9 +45,11 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
     if (!formKey.currentState!.validate() || settings == null) return;
     setState(() { saving = true; error = null; });
     try {
+      final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+      if (stepUpToken == null || !mounted) return;
       final draft = settings!;
       draft.taxRatePercent = parsePersianNumber(tax.text)!;
-      final value = await api.updateSettings(draft);
+      final value = await api.updateSettings(draft, stepUpToken: stepUpToken);
       if (mounted) setState(() => settings = value);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تنظیمات قیمت‌گذاری ذخیره شد.')));
     } catch (exception) {

@@ -71,10 +71,10 @@ class CommerceApiClient {
     return CommerceSettings.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<CommerceSettings> updateSettings(CommerceSettings settings) async {
+  Future<CommerceSettings> updateSettings(CommerceSettings settings, {required String stepUpToken}) async {
     final response = await _client.put(
       Uri.parse('$baseUrl/api/v1/admin/commerce/settings'),
-      headers: {..._headers(), 'content-type': 'application/json; charset=utf-8'},
+      headers: {..._headers(), 'content-type': 'application/json; charset=utf-8', 'x-admin-step-up': stepUpToken},
       body: jsonEncode(settings.toJson()),
     );
     _guard(response);
