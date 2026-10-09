@@ -114,7 +114,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final width in [360.0, 768.0, 1280.0]) {
+  for (final width in [360.0, 390.0, 768.0, 1280.0]) {
     testWidgets('read-only dashboard offers permitted view routes at $width px', (tester) async {
       tester.view.physicalSize = Size(width, 900);
       tester.view.devicePixelRatio = 1;
@@ -137,7 +137,7 @@ void main() {
       await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
       await tester.pumpAndSettle();
       final action = find.byKey(const ValueKey('dashboard-action-orders'));
-      expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
       // Focus the actual InkWell's descendant and activate it with the keyboard.
       Focus.of(tester.element(find.text('پیگیری سفارش‌ها'))).requestFocus();
       await tester.pumpAndSettle();
@@ -234,4 +234,5 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
     ),
   );
 }
+
 
