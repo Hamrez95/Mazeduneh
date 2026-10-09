@@ -32,6 +32,14 @@ Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded
 Console.WriteLine("Purchase pagination cursor unit checks passed");
 
 var dashboardPreferences = DashboardPreferences.Default;
+var validDashboardPeriodStart = now.AddDays(-7);
+Check(DashboardPeriod.TryCreate(validDashboardPeriodStart, now, now, out var dashboardPeriod) && dashboardPeriod is not null,
+    "Valid dashboard date range rejected");
+Check(!DashboardPeriod.TryCreate(validDashboardPeriodStart, null, now, out _), "Dashboard range with one missing boundary accepted");
+Check(!DashboardPeriod.TryCreate(now, now, now, out _), "Empty dashboard date range accepted");
+Check(!DashboardPeriod.TryCreate(now.AddDays(1), now.AddDays(2), now, out _), "Future dashboard date range accepted");
+Check(!DashboardPeriod.TryCreate(now.AddDays(-367), now, now, out _), "Dashboard range beyond one year accepted");
+Check(DashboardPeriod.TryCreate(now.AddDays(-1), now.AddHours(24), now, out _), "Local end-of-day dashboard range rejected");
 Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets)).Count == 0, "Default dashboard preferences rejected");
 Check(DashboardPreferences.Validate(new DashboardPreferencesInput(dashboardPreferences.Widgets.Take(4).ToArray())).Count > 0, "Incomplete dashboard order accepted");
 Check(DashboardPreferences.Validate(new DashboardPreferencesInput(null)).Count > 0, "Missing dashboard preferences accepted");

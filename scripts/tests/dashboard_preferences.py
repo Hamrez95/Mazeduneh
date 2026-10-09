@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -71,6 +73,17 @@ with tempfile.TemporaryFile() as log:
         assert request(endpoint)[0] == 401
         status, defaults = request(endpoint, token=token)
         assert status == 200 and [item["id"] for item in defaults["widgets"]] == WIDGETS
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        period = urlencode({"from": (now - timedelta(days=7)).isoformat(), "to": now.isoformat()})
+        status, dashboard = request("/api/v1/admin/dashboard?" + period, token=token)
+        assert status == 200 and dashboard["periodDays"] == 7, (status, dashboard)
+        assert request("/api/v1/admin/dashboard?" + urlencode({"from": now.isoformat()}), token=token)[0] == 400
+        assert request("/api/v1/admin/dashboard?" + urlencode({
+            "from": now.isoformat(), "to": (now - timedelta(days=1)).isoformat(),
+        }), token=token)[0] == 400
+        assert request("/api/v1/admin/dashboard?" + urlencode({
+            "from": (now - timedelta(days=367)).isoformat(), "to": now.isoformat(),
+        }), token=token)[0] == 400
         custom = {"widgets": [
             {"id": "alerts", "visible": True},
             {"id": "metrics", "visible": False},
