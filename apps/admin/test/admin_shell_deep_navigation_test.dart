@@ -159,10 +159,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('پسته اکبری'));
       await tester.pumpAndSettle();
-      expect(purchaseQueries, contains(containsPair('sku', 'PI-AKB-250')));
       expect(
         purchaseQueries,
-        contains(containsPair('batchCode', 'BATCH-1405-07')),
+        contains(
+          allOf(
+            containsPair('sku', 'PI-AKB-250'),
+            containsPair('batchCode', 'BATCH-1405-07'),
+          ),
+        ),
       );
 
       await tester.tap(find.byTooltip('بازگشت به داشبورد'));
@@ -180,6 +184,9 @@ void main() {
         isTrue,
       );
       expect(find.byTooltip('بازگشت به داشبورد'), findsOneWidget);
+      await tester.tap(find.byTooltip('بازگشت به داشبورد'));
+      await tester.pumpAndSettle();
+      expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
