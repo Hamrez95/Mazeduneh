@@ -399,4 +399,3 @@ void main() {
     expect(parsed.widgets.map((item) => item.id).toList(), DashboardPreferences.defaults.widgets.map((item) => item.id).toList());
   });
 }
-
