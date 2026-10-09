@@ -118,8 +118,9 @@ public static class AdminSecurityExtensions
         endpoints.MapGet("/api/v1/admin/users", async (
             string? storeId,
             AdminUsersDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.ListAsync(storeId, cancellationToken)))
+            Results.Ok(await database.ListAsync(ResolveMembershipStore(context, storeId), cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>()
             .WithTags("Admin Users");
 
@@ -141,7 +142,7 @@ public static class AdminSecurityExtensions
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
             try
             {
-                var created = await database.CreateAsync(request, actor, storeId, context.TraceIdentifier, cancellationToken);
+                var created = await database.CreateAsync(request, actor, ResolveMembershipStore(context, storeId), context.TraceIdentifier, cancellationToken);
                 return Results.Created($"/api/v1/admin/users/{created.User.Id}", new { user = created.User, invitationToken = created.InvitationToken, expiresAt = created.ExpiresAt });
             }
             catch (AdminUserValidationException exception)
@@ -156,6 +157,21 @@ public static class AdminSecurityExtensions
         .AddEndpointFilter<OwnerAuthorizationFilter>()
         .WithTags("Admin Users");
 
+        endpoints.MapPatch("/api/v1/admin/users/{id:guid}/permissions", async (
+            Guid id, AdminUserPermissionsRequest request, string? storeId, AdminUsersDatabase database,
+            HttpContext context, CancellationToken cancellationToken) =>
+        {
+            if (!AdminPermissionCatalog.AreValidPermissions(request.Permissions))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Permissions)] = ["فهرست دسترسی‌ها معتبر نیست."] });
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var updated = await database.SetPermissionsAsync(id, request.Permissions, ResolveMembershipStore(context, storeId), actor, context.TraceIdentifier, cancellationToken);
+            return updated is null
+                ? Results.NotFound(new { message = "کاربر پیدا نشد یا امکان ویرایش دسترسی مدیر اصلی وجود ندارد." })
+                : Results.Ok(updated);
+        })
+        .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .WithTags("Admin Users");
+
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/status", async (
             Guid id,
             AdminUserStatusRequest request,
@@ -165,7 +181,7 @@ public static class AdminSecurityExtensions
             CancellationToken cancellationToken) =>
         {
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var updated = await database.SetStatusAsync(id, request.IsActive, storeId, actor, context.TraceIdentifier, cancellationToken);
+            var updated = await database.SetStatusAsync(id, request.IsActive, ResolveMembershipStore(context, storeId), actor, context.TraceIdentifier, cancellationToken);
             return updated is null
                 ? Results.NotFound(new { message = "کاربر پیدا نشد." })
                 : Results.Ok(updated);
@@ -174,6 +190,12 @@ public static class AdminSecurityExtensions
         .WithTags("Admin Users");
 
         return endpoints;
+    }
+
+    private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
+    {
+        var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
+        return principal?.UserId is not null ? principal.StoreId : requestedStoreId;
     }
 }
 
@@ -218,6 +240,18 @@ public static class AdminPermissionCatalog
         CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
     ];
 
+    public static IReadOnlyList<string> AllPermissions { get; } =
+    [
+        DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead,
+        ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead,
+        CustomersPiiRead, CustomersExport, ReportsRead,
+        CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
+    ];
+
+    public static bool AreValidPermissions(IEnumerable<string>? permissions) =>
+        permissions is not null && permissions.All(permission => AllPermissions.Contains(permission, StringComparer.OrdinalIgnoreCase));
+
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> DefaultRoles { get; } =
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
@@ -253,7 +287,7 @@ public static class AdminPermissionCatalog
 
     public static IReadOnlyList<string> Resolve(string? role, IReadOnlyList<string>? overridePermissions = null)
     {
-        if (overridePermissions is { Count: > 0 })
+        if (overridePermissions is not null)
             return overridePermissions.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         return DefaultRoles.TryGetValue(NormalizeRole(role), out var permissions) ? permissions : Owner;
     }
@@ -344,7 +378,7 @@ public sealed class AdminTokenService
     }
 
     public IssuedAdminToken Issue(string email) =>
-        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions), null, "default");
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default");
 
     public IssuedAdminToken Issue(AdminUserSummary member) =>
         Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);

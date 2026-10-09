@@ -41,7 +41,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('کاربران و دسترسی‌ها'), findsOneWidget);
     expect(find.text('مدیر اصلی').first, findsOneWidget);
-    expect(find.byTooltip('مدیر اصلی قابل غیرفعال‌سازی نیست'), findsOneWidget);
+    expect(find.byTooltip('مدیر اصلی قابل ویرایش نیست'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -73,15 +73,75 @@ void main() {
     expect(find.text('نام نمایشی'), findsOneWidget);
     expect(find.text('ایمیل کاری'), findsOneWidget);
   });
+
+  testWidgets('lets the owner edit a member permission and submits the selected set', (tester) async {
+    tester.view.physicalSize = const Size(900, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final requests = <http.Request>[];
+    final permissions = <String>['inventory.read'];
+    var failPermissionUpdate = true;
+    final api = AdminUsersApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/roles')) {
+          return http.Response(jsonEncode([
+            {'role': 'WarehouseOperator', 'permissions': ['inventory.read', 'inventory.write'], 'titleFa': 'اپراتور انبار'},
+          ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+        }
+        if (request.url.path.endsWith('/permissions')) {
+          if (failPermissionUpdate) {
+            return http.Response(jsonEncode({'message': 'خطای آزمایشی'}), 500, headers: {'content-type': 'application/json; charset=utf-8'});
+          }
+          final selected = (jsonDecode(request.body) as Map<String, dynamic>)['permissions'] as List<dynamic>;
+          permissions
+            ..clear()
+            ..addAll(selected.cast<String>());
+          return http.Response(jsonEncode(userJson(role: 'WarehouseOperator', permissions: permissions)), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+        }
+        if (request.url.path.endsWith('/users')) {
+          return http.Response(jsonEncode([userJson(role: 'WarehouseOperator', permissions: permissions)]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+        }
+        return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }),
+    );
+
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api)))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('دسترسی‌ها'));
+    await tester.pumpAndSettle();
+    expect(find.text('دسترسی‌های همکار'), findsOneWidget);
+    final exportPermission = find.widgetWithText(CheckboxListTile, 'دریافت خروجی سفارش‌ها');
+    await tester.ensureVisible(exportPermission);
+    await tester.tap(exportPermission);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ذخیره دسترسی‌ها'));
+    await tester.pumpAndSettle();
+    expect(find.text('دسترسی‌های همکار'), findsOneWidget);
+    expect(find.text('خطای آزمایشی'), findsOneWidget);
+    expect(tester.widget<CheckboxListTile>(exportPermission).value, isTrue);
+
+    failPermissionUpdate = false;
+    await tester.tap(find.text('ذخیره دسترسی‌ها'));
+    await tester.pumpAndSettle();
+
+    final update = requests.lastWhere((request) => request.url.path.endsWith('/permissions'));
+    expect((jsonDecode(update.body) as Map<String, dynamic>)['permissions'], ['inventory.read', 'orders.export']);
+    expect(requests.where((request) => request.url.path.endsWith('/permissions')), hasLength(2));
+    expect(find.text('دسترسی‌های کاربر به‌روزرسانی شد.'), findsOneWidget);
+  });
 }
 
-Map<String, dynamic> userJson() => {
-      'id': 'owner-1',
-      'email': 'owner@example.com',
-      'displayName': 'مدیر اصلی',
-      'role': 'Owner',
+Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions = const ['users.read']}) => {
+      'id': role == 'Owner' ? 'owner-1' : 'member-1',
+      'email': role == 'Owner' ? 'owner@example.com' : 'warehouse@example.com',
+      'displayName': role == 'Owner' ? 'مدیر اصلی' : 'اپراتور انبار',
+      'role': role,
       'isActive': true,
-      'permissions': ['users.read'],
+      'permissions': permissions,
       'createdAt': '2026-10-03T12:00:00Z',
       'deactivatedAt': null,
     };

@@ -59,15 +59,18 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
-def invite(owner_token, email, name):
-    status, result = request("/api/v1/admin/users", "POST", {
-        "email": email, "displayName": name, "role": "WarehouseOperator"}, owner_token)
+def invite(owner_token, email, name, permissions=None, store_id=None):
+    payload = {"email": email, "displayName": name, "role": "WarehouseOperator"}
+    if permissions is not None:
+        payload["permissions"] = permissions
+    path = "/api/v1/admin/users" + ("?storeId=" + store_id if store_id else "")
+    status, result = request(path, "POST", payload, owner_token)
     assert status == 201, (status, result)
     assert result["user"]["email"] == email and result["invitationToken"] and result["expiresAt"]
     return result
 
 
-def accept_and_login(invitation, email, password, check_unaccepted_login=True):
+def accept_and_login(invitation, email, password, check_unaccepted_login=True, store_id="default", role="WarehouseOperator"):
     if check_unaccepted_login:
         status, _ = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})
         assert status == 401, status
@@ -76,8 +79,9 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True):
     assert status == 204, status
     assert request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})[0] == 400
-    status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password})
-    assert status == 200 and login["role"] == "WarehouseOperator" and login["storeId"] == "default"
+    status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password, "storeId": store_id})
+    assert status == 200 and login["role"] == role and login["storeId"] == store_id, (
+        status, login.get("role") if login else None, login.get("storeId") if login else None)
     return login["accessToken"]
 
 
@@ -103,11 +107,65 @@ with tempfile.TemporaryFile() as log:
         for path, method, body in wrong_store_requests:
             status, denial = request(path, method, body, first_token)
             assert status == 403 and denial["message"] == "به این فروشگاه دسترسی ندارید.", (path, status, denial)
+
+        member_id = first_invitation["user"]["id"]
+        status, revised = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
+                                 {"permissions": ["inventory.read"]}, owner_token)
+        assert status == 200 and revised["permissions"] == ["inventory.read"]
+        # Keep the production rate limit intact while proving both the override
+        # and session revocation survive an API restart against the same database.
+        stop_api(api)
+        api, owner_token = start_api(log)
+        assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
+        status, limited_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": first_email, "password": first_password})
+        assert status == 200 and limited_login["permissions"] == ["inventory.read"], (status, limited_login)
+        limited_token = limited_login["accessToken"]
+        assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=limited_token)[0] == 200
+        assert request("/api/v1/admin/orders", token=limited_token)[0] == 403
+
+        status, cleared = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
+                                  {"permissions": []}, owner_token)
+        assert status == 200 and cleared["permissions"] == []
+        assert request("/api/v1/admin/auth/session", token=limited_token)[0] == 401
+        status, empty_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": first_email, "password": first_password})
+        assert status == 200 and empty_login["permissions"] == []
+        assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=empty_login["accessToken"])[0] == 403
+
         status, audit = request("/api/v1/admin/audit-log?entityType=AdminUser&entityId=" + first_invitation["user"]["id"], token=owner_token)
         assert status == 200
         assert any(item["action"] == "admin-user.invitation-accepted" for item in audit)
+        assert len([item for item in audit if item["action"] == "admin-user.permissions-changed"]) == 2
         assert request("/api/v1/admin/auth/logout", "POST", token=first_token)[0] == 204
         assert request("/api/v1/admin/auth/session", token=first_token)[0] == 401
+
+        # Restart to reset the shared login/invitation rate-limit window before the additional tenant flow.
+        stop_api(api)
+        api, owner_token = start_api(log)
+
+        # Simulate a pre-existing membership Owner in a non-default store.
+        # Omitting storeId must bind user-management queries and writes to the
+        # authenticated membership, never fall back to the default store.
+        tenant_email = "membership-tenant-owner@example.test"
+        tenant_password = "Membership-CI-Tenant-Password!"
+        tenant_invitation = invite(owner_token, tenant_email, "CI tenant owner", store_id="tenant-a")
+        subprocess.run(["dotnet", "run", "--project", "services/api.tests/Mazeduneh.Api.Tests.csproj",
+                        "--configuration", "Release", "--no-build", "--", "--promote-membership-owner", tenant_email, "tenant-a"],
+                       cwd=ROOT, env=dict(os.environ, MAZEDUNEH_TEST_FIXTURES="true"), check=True)
+        tenant_token = accept_and_login(tenant_invitation, tenant_email, tenant_password,
+                                        check_unaccepted_login=False, store_id="tenant-a", role="Owner")
+        status, tenant_users = request("/api/v1/admin/users", token=tenant_token)
+        assert status == 200 and any(user["id"] == tenant_invitation["user"]["id"] for user in tenant_users)
+        assert all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
+        status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/permissions",
+                                 "PATCH", {"permissions": []}, tenant_token)
+        assert status == 404, (status, denied)
+        assert request("/api/v1/admin/users?storeId=default", token=tenant_token)[0] == 403
+        status, owner_unchanged = request("/api/v1/admin/users/" + tenant_invitation["user"]["id"] + "/status?storeId=tenant-a",
+                                          "PATCH", {"isActive": False}, owner_token)
+        assert status == 404, (status, owner_unchanged)
+        assert request("/api/v1/admin/auth/session", token=tenant_token)[0] == 200
 
         # Start a fresh in-memory rate-limit window before checking deactivation separately.
         stop_api(api)
@@ -115,7 +173,7 @@ with tempfile.TemporaryFile() as log:
 
         second_email = "membership-two@example.test"
         second_password = "Membership-CI-Password-2!"
-        second_invitation = invite(owner_token, second_email, "CI member two")
+        second_invitation = invite(owner_token, second_email, "CI member two", ["orders.read", "customers.pii.read"])
         second_token = accept_and_login(second_invitation, second_email, second_password, check_unaccepted_login=False)
         member_id = second_invitation["user"]["id"]
         status, disabled = request("/api/v1/admin/users/" + member_id + "/status", "PATCH",

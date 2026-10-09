@@ -31,6 +31,11 @@ Check(!InventoryPurchaseCursor.TryDecode(Convert.ToBase64String("null"u8.ToArray
 Check(!InventoryPurchaseCursor.TryDecode(new string('x',513), out _), "Unbounded cursor accepted");
 Console.WriteLine("Purchase pagination cursor unit checks passed");
 
+Check(AdminPermissionCatalog.DefaultRoles.Values.All(AdminPermissionCatalog.AreValidPermissions), "A standard role contains a permission rejected by the membership editor");
+Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>()).Count == 0, "An explicit empty permission set fell back to role defaults");
+Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
+Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
+
 var dashboardPreferences = DashboardPreferences.Default;
 var validDashboardPeriodStart = now.AddDays(-7);
 Check(DashboardPeriod.TryCreate(validDashboardPeriodStart, now, now, out var dashboardPeriod) && dashboardPeriod is not null,
@@ -84,4 +89,15 @@ if (args.Length == 2 && args[0] == "--backdate-privacy-shipment")
     await using var fixtureCommand = new NpgsqlCommand("update checkout_orders set shipped_at=now()-interval '5 days' where id=@id and state='Shipped' and customer_name='PrivacyFixtureCustomer'", fixtureConnection);
     fixtureCommand.Parameters.AddWithValue("id", fixtureOrderId);
     Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly the privacy fixture shipment");
+}
+
+if (args.Length == 3 && args[0] == "--promote-membership-owner")
+{
+    Check(Environment.GetEnvironmentVariable("MAZEDUNEH_TEST_FIXTURES") == "true", "Fixture mutation disabled");
+    await using var fixtureConnection = new NpgsqlConnection(Environment.GetEnvironmentVariable("ConnectionStrings__Catalog"));
+    await fixtureConnection.OpenAsync();
+    await using var fixtureCommand = new NpgsqlCommand("update admin_users set role='Owner', permissions_json=null where email=@email and store_id=@store_id and is_active=true", fixtureConnection);
+    fixtureCommand.Parameters.AddWithValue("email", args[1]);
+    fixtureCommand.Parameters.AddWithValue("store_id", args[2]);
+    Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly one active membership fixture");
 }
