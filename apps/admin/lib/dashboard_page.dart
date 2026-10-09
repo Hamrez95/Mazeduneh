@@ -19,10 +19,12 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminDashboard? dashboard;
+  AdminDashboardHealth? systemHealth;
   AdminNotifications? notifications;
   DashboardPreferences preferences = DashboardPreferences.defaults;
   Object? error;
   bool loading = true;
+  bool healthLoading = true;
   DateTime? lastLoadedAt;
   int dashboardDays = 1;
   DateTimeRange? customRange;
@@ -31,7 +33,15 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() { super.initState(); load(); }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; });
+    setState(() {
+      loading = true;
+      healthLoading = true;
+      error = null;
+      systemHealth = null;
+    });
+    final healthFuture = api.fetchDashboardHealth()
+        .then<Object?>((value) => value)
+        .catchError((Object exception) => exception);
     try {
       final today = DateUtils.dateOnly(DateTime.now());
       final rangeStart = customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
@@ -56,6 +66,13 @@ class _DashboardPageState extends State<DashboardPage> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+    final healthResult = await healthFuture;
+    if (mounted) setState(() {
+      healthLoading = false;
+      if (healthResult is AdminDashboardHealth) {
+        systemHealth = healthResult;
+      }
+    });
   }
 
   Future<void> customizeDashboard() async {
@@ -196,9 +213,79 @@ class _DashboardPageState extends State<DashboardPage> {
     return _DashboardPanel(
       title: 'هشدارهای عملیاتی',
       icon: Icons.notifications_active_rounded,
-      child: items.isEmpty
-          ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
-          : Column(children: [for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate)]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _systemHealthPanel(),
+          const SizedBox(height: 10),
+          if (items.isEmpty)
+            const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'همه‌چیز آرام است', detail: 'هشدار فوری برای پیگیری وجود ندارد.')
+          else
+            for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate),
+        ],
+      ),
+    );
+  }
+
+  Widget _systemHealthPanel() {
+    if (healthLoading) {
+      return const ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+        title: Text('در حال بررسی وضعیت سامانه'),
+      );
+    }
+    if (systemHealth == null) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.cloud_off_outlined, color: AdminColors.coral),
+        title: const Text('وضعیت فنی در دسترس نیست'),
+        subtitle: const Text('ارتباط با سرویس وضعیت برقرار نشد. برای بررسی دوباره تلاش کنید.'),
+        trailing: IconButton(
+          tooltip: 'بررسی دوبارهٔ وضعیت سامانه',
+          onPressed: loading ? null : load,
+          icon: const Icon(Icons.refresh_rounded),
+        ),
+      );
+    }
+
+    final health = systemHealth!;
+    final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
+    String label(String value) => switch (value) {
+          'healthy' || 'ready' || 'tracked' || 'configured' => 'سالم',
+          'not-configured' => 'پیکربندی نشده',
+          'empty' => 'نیازمند راه‌اندازی',
+          'unhealthy' || 'unavailable' || 'degraded' || 'not-ready' => 'نیاز به بررسی',
+          _ => 'نامشخص',
+        };
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: health.ready ? AdminColors.mintSoft : const Color(0xFFFFF0D9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Icon(health.ready ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded, color: healthyColor),
+            const SizedBox(width: 8),
+            Expanded(child: Text(health.ready ? 'سامانه آماده است' : 'سامانه نیاز به بررسی دارد', style: const TextStyle(fontWeight: FontWeight.w900))),
+          ]),
+          const SizedBox(height: 8),
+          for (final item in [
+            ('API', health.api),
+            ('پایگاه داده', health.database),
+            ('مهاجرت‌های پایگاه داده', health.migrations),
+            ('ورود مدیر', health.adminAuthentication),
+          ])
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
+            ),
+        ],
+      ),
     );
   }
 

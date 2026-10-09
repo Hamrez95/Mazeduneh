@@ -348,6 +348,26 @@ void main() {
     expect(dashboard.averageOrderValue, 300000);
   });
 
+  test('fetchDashboardHealth uses the authenticated admin endpoint', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({
+        'api': 'healthy',
+        'database': 'healthy',
+        'migrations': 'tracked',
+        'adminAuthentication': 'configured',
+        'ready': true,
+      }), 200);
+    });
+    final health = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchDashboardHealth();
+    expect(captured.url.path, '/api/v1/admin/dashboard/health');
+    expect(captured.headers['authorization'], startsWith('Bearer '));
+    expect(health.ready, isTrue);
+    expect(health.database, 'healthy');
+    expect(health.migrations, 'tracked');
+  });
+
   test('dashboard preferences load and save the role widget order', () async {
     late http.Request captured;
     final client = MockClient((request) async {
