@@ -325,12 +325,27 @@ class _DashboardPageState extends State<DashboardPage> {
         ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'دسترسی انبار لازم است', detail: 'برای مشاهده بچ‌های نزدیک انقضا، دسترسی انبار را از مدیر سیستم بگیرید.')
         : data.expiringSoon.isEmpty
             ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'بچ نزدیک انقضا نداریم', detail: 'تا ۳۰ روز آینده موردی برای پیگیری ثبت نشده است.')
-            : Column(children: [for (final item in data.expiringSoon.take(5)) ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text('${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                trailing: Text(formatPersianDateTime(item.expiresAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
-                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku, batchCode: item.batchCode)) : null,
+            : Column(children: [for (final item in data.expiringSoon.take(5)) LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 460;
+                  final expiryDate = formatPersianDateTime(item.expiresAt);
+                  final details = '${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته';
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: compact
+                        ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(details, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                            const SizedBox(height: 4),
+                            Text('انقضا: $expiryDate', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
+                          ])
+                        : Text(details, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                    trailing: compact
+                        ? null
+                        : Text(expiryDate, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
+                    onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku, batchCode: item.batchCode)) : null,
+                  );
+                },
               )]),
   );
 
