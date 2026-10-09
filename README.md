@@ -72,5 +72,3 @@ Docker deployment files and the release checklist are in [`docs/LIARA_DEPLOYMENT
 ## Status
 
 The platform foundation is on `dev`. `main` remains the stable release branch until production gates pass.
-
-
