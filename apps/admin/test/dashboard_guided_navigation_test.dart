@@ -131,6 +131,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(_dashboardHarness(textScale: 2, expiringSoon: const [
+      {
+        'productTitle': 'پسته اکبری',
+        'sku': 'PI-AKB-250',
+        'variantLabel': '۲۵۰ گرم',
+        'batchCode': 'LOT-1405-01',
+        'expiresAt': '2026-01-02T03:04:00',
+        'remainingPackages': 3,
+      },
+    ]));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), 300, maxScrolls: 20);
+    expect(find.text('نزدیک به انقضا'), findsOneWidget);
+    expect(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), findsOneWidget);
+    expect(find.textContaining('۳ بسته'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final width in [360.0, 390.0, 768.0, 1280.0]) {
     testWidgets('read-only dashboard offers permitted view routes at $width px', (tester) async {
       tester.view.physicalSize = Size(width, 900);
@@ -232,7 +259,7 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const []}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(
@@ -259,7 +286,7 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
               'paidRevenue': 0,
               'todayRevenue': 0,
               'lowStock': lowStock,
-              'expiringSoon': [],
+              'expiringSoon': expiringSoon,
             }
           : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
       200,
@@ -277,5 +304,6 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
     ),
   );
 }
+
 
 
