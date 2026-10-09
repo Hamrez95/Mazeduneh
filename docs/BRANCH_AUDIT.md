@@ -1,35 +1,30 @@
 # Branch audit — 2026-10-09
 
-Audited remote refs after refreshing `main` to `b533a64fcaff44afeb63ae49841b2f94dc67ba3e`. The repository currently has 11 branches (excluding `origin/HEAD`). Decisions below use PR status, merge evidence and whether unique commits remain; branch age alone is not used.
+Audited `Hamrez95/Mazeduneh` against `origin/main` at `d193d5d28ce61517722ee651c419f86542a9d915`, after fetching and pruning. The only remote branches are `main` and `dev`; `origin/HEAD` points to `dev`.
 
-## Remote branches retained
+## Remote branch decisions
 
 | Branch | Evidence | Decision |
 | --- | --- | --- |
-| `main` | Current default delivery branch. | Preserve. |
-| `dev` | Integration branch; not a cleanup candidate. | Preserve. |
-| `feat/169-f-typed-navigation-ui` | Open PR #185; all four checks green on head `247fb4a`; required independent Sol permission/route review is absent and base needs refreshing. | Keep; review and revalidate before merge. |
-| `codex/admin-permission-form-review` | Open PR #186; all four checks green on head `ff098d3`; required independent Sol security review is absent and base needs refreshing. | Keep; review and revalidate before merge. |
-| `codex/local-launcher` | PR #184 is merged; the launcher worktree remains active and full Docker startup is blocked by missing Docker Desktop/WSL. | Preserve while the worktree is active. |
-| `codex/92-dashboard-custom-range` | PR #189 is merged as `4fde631`; tip `41f60d5` was the reviewed PR head. | Delete after merge confirmation; deletion is pending because no authenticated delete-ref path is available in this environment. |
-| `codex/92-dashboard-health` | PR #190 is merged as `b533a64`; tip `d9bba1d` passed all four checks. | Delete after merge confirmation; deletion is pending because no authenticated delete-ref path is available in this environment. |
-| `codex/admin-edit-permissions-form-layout` | No open PR; unique permission UI/API work remains. | Preserve for review and recovery. |
-| `feat/admin-media-picker` | Closed PR #56 is unmerged; unique storage API/UI work remains. | Preserve for follow-up. |
-| `feat/inventory-ledger` | No open PR; unique, data-critical implementation remains. | Preserve for review and recovery. |
-| `feat/storefront-mockup-followup` | Closed PR #63 is unmerged; unique storefront UX work remains. | Preserve for design review. |
+| `main` | Current delivery branch; includes PR #195 at `d193d5d`. CI run #518 passed Storefront, API/PostgreSQL, and Admin Flutter. | Keep. |
+| `dev` | Integration branch, not a duplicate of `main`; it remains the repository's remote HEAD. | Keep. |
+| `codex/dev-launcher-menu` | PR #195 merged into `main`; branch page showed the merged PR and successful checks. | Deleted after merge and verification. |
+| `codex/admin-edit-permissions-form-layout` | No PR. Its permission editor and responsive product edit controls are present in the later merged PR #186 (`dc121c5`). | Superseded; deleted. |
+| `feat/admin-media-picker` | Closed, unmerged PR #56 used a local-only media API. Current `main` has the media picker in product editing and the newer provider-based media storage with metadata/delete routes. | Superseded; deleted. |
+| `feat/storefront-mockup-followup` | Closed, unmerged PR #63 used a hard-coded demo catalog and duplicated the storefront header. Current `main` has shared storefront chrome and Admin-backed catalog integration from #64, #65, and #154; applying the old commit conflicts with that newer implementation. | Superseded; deleted. |
+| `feat/inventory-ledger` | Earlier branch audit found its unfinished inventory prototype superseded by merged PR #172. | Deleted after comparison with `main`. |
 
-Previously verified merged/no-delta branches are absent from the current remote list: `feat/admin-media-picker-v2`, `feat/mazedoone-brand-storefront-pwa`, `feat/169-f-batch-aware-navigation-contract`, and the merged #181/#182 branch refs. The local-only `refactor/169-e-remove-legacy-operations-shell` remains preserved because it diverges from its deleted remote ref and may contain recoverable commits. The local duplicate working branch `codex/92-dashboard-next` was removed after confirming its implementation had landed in #190 and retaining no unique commit.
+Merged feature branches for PRs #181–#195 were deleted only after their merges were confirmed. Local branches and worktrees with active or uncommitted work were preserved; remote cleanup does not authorize deleting those local checkouts. The root checkout is still on `codex/branch-audit-handoff` with its local commit and is ahead/behind `origin/main`; it was not reset or overwritten.
 
-## Open delivery work
+## Delivery status
 
-- #169 remains open. A–E and responsive shell work are in `main`. #185 contains the typed-navigation F slice, but the mandatory independent permission/route review is absent; its CI is green on the old base, so refresh and revalidate before merge.
-- #91 remains open. #186 contains only the per-user permission editor slice; independent security review is absent and MFA/step-up plus expanded IDOR work remain.
-- #92 remains open. PR #187 delivered role preferences, #189 delivered device-local date ranges, and #190 delivered an authenticated safe readiness summary. Remaining work includes actionable health alerts, broader cross-module drill-downs and other acceptance criteria in the issue.
+- PR #195 delivered the menu-driven launcher and merged as `d193d5d28ce61517722ee651c419f86542a9d915`. Its required CI passed.
+- `scripts/dev.ps1 -Component storefront-preview -NoBrowser` was run successfully twice, with `-Status`, `-Stop`, and occupied-port behavior verified. Full PostgreSQL/API/Admin startup remains unverified because Docker Desktop/CLI is absent on this machine.
+- #169 remains open. A–E and parts of F have merged, but the Issue's remaining accessibility evidence for keyboard/focus/tap targets and Persian date/price clarity is not yet complete.
+- #91 remains open for MFA/step-up on more sensitive operations and broader IDOR review. #92 remains open for deeper profit/cost analytics, health alerts, and additional drill-downs.
+- Graphify is unavailable in this workspace (`graphify` is not found). Focused `rg` searches were used; no Graphify execution is claimed.
 
-## Cleanup and validation
+## Local branches and worktrees
 
-- Remote deletion was attempted for merged #190 branch `codex/92-dashboard-health`; `git push` could not authenticate (`fatal: could not read Username`). The GitHub connector exposes branch create/update but no branch delete operation. The merged #189 ref is likewise still present. Do not claim either remote ref has been deleted.
-- `main`, `dev`, open-PR branches, branches with unique work and the active launcher worktree were preserved. No shared branch was force-pushed.
-- Graphify is unavailable (`command not found`); focused `rg` consumer searches were used as the #151 fallback.
-- Full local launcher readiness is not verified: Docker Desktop/WSL are unavailable. See `docs/LOCAL_CODEX_HANDOFF.md`.
+Several Codex-managed worktrees still contain active task branches, including security, inventory, dashboard, navigation, and commerce work. They are retained to protect their local commits and working-tree changes. Review and archive those checkouts individually after their changes have been merged or explicitly abandoned; do not remove them as part of remote branch cleanup.
 
