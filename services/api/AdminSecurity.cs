@@ -572,15 +572,19 @@ public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpo
     public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
-        if (principal is not null && !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ProductsWrite))
+        var requiredPermissions = context.HttpContext.GetEndpoint()?.Metadata
+            .GetMetadata<StepUpPermissionRequirement>()?.Permissions ?? [];
+        if (principal is null || requiredPermissions.Any(permission => !AdminPermissionCatalog.Allows(principal, permission)))
             return ValueTask.FromResult<object?>(Results.Json(
                 new { message = "این عملیات برای نقش فعلی مجاز نیست." },
                 statusCode: StatusCodes.Status403Forbidden));
         var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
-        if (principal is null || string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
             return ValueTask.FromResult<object?>(Results.Json(
                 new { message = "برای این عملیات، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
         return next(context);
     }
 }
+
+public sealed record StepUpPermissionRequirement(params string[] Permissions);

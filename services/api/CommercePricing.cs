@@ -105,7 +105,12 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
         return new CommerceSettings(reader.GetDecimal(0), methods, reader.GetFieldValue<DateTimeOffset>(2));
     }
 
-    public async Task<CommerceSettings> UpdateAsync(CommerceSettingsRequest request, CancellationToken cancellationToken)
+    public async Task<CommerceSettings> UpdateAsync(
+        CommerceSettingsRequest request,
+        string actor,
+        string requestId,
+        AdminAuditLogDatabase audit,
+        CancellationToken cancellationToken)
     {
         var errors = request.Validate();
         if (errors.Count > 0) throw new CommerceSettingsValidationException(errors);
@@ -113,6 +118,22 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
             return new CommerceSettings(request.TaxRatePercent, request.ShippingMethods, DateTimeOffset.UtcNow);
 
         var updatedAt = DateTimeOffset.UtcNow;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        const string readSql = "select tax_rate_percent, shipping_methods, updated_at from commerce_settings where id=1 for update;";
+        CommerceSettings before;
+        await using (var read = new NpgsqlCommand(readSql, connection, transaction))
+        await using (var reader = await read.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken))
+                throw new InvalidOperationException("Commerce settings row has not been initialized.");
+            before = new CommerceSettings(
+                reader.GetDecimal(0),
+                JsonSerializer.Deserialize<IReadOnlyCollection<ShippingMethodDefinition>>(reader.GetString(1)) ?? _configuredShippingMethods,
+                reader.GetFieldValue<DateTimeOffset>(2));
+        }
+
         const string sql = """
             insert into commerce_settings (id, tax_rate_percent, shipping_methods, updated_at)
             values (1, @tax_rate_percent, @shipping_methods::jsonb, @updated_at)
@@ -121,14 +142,16 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
                 shipping_methods = excluded.shipping_methods,
                 updated_at = excluded.updated_at;
             """;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("tax_rate_percent", request.TaxRatePercent);
         command.Parameters.AddWithValue("shipping_methods", JsonSerializer.Serialize(request.ShippingMethods));
         command.Parameters.AddWithValue("updated_at", updatedAt);
         await command.ExecuteNonQueryAsync(cancellationToken);
-        return new CommerceSettings(request.TaxRatePercent, request.ShippingMethods, updatedAt);
+        var updated = new CommerceSettings(request.TaxRatePercent, request.ShippingMethods, updatedAt);
+        await audit.RecordAsync(connection, transaction, actor, "commerce-settings.update", "commerce_settings", "default",
+            before, updated, "sensitive-settings-update", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return updated;
     }
 
     public async Task<(CommerceQuote? Quote, string? Error)> QuoteAsync(decimal subtotal, string? shippingMethod, CancellationToken cancellationToken)
@@ -190,12 +213,16 @@ public static class CommercePricingModule
         endpoints.MapPut("/api/v1/admin/commerce/settings", async (
             CommerceSettingsRequest request,
             CommercePricingDatabase database,
+            AdminAuditLogDatabase audit,
+            HttpContext context,
             CancellationToken cancellationToken) =>
         {
             var errors = request.Validate();
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            return Results.Ok(await database.UpdateAsync(request, cancellationToken));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+            var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+            return Results.Ok(await database.UpdateAsync(request, principal.Email, context.TraceIdentifier, audit, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>().AddEndpointFilter<StepUpAuthorizationFilter>()
+            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.PricingWrite));
 
         return endpoints;
     }

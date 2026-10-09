@@ -137,6 +137,21 @@ with tempfile.TemporaryFile() as log:
     try:
         _, state = request(PATH, token=token)
         assert state['currentPrice'] == 6630 and state['recipe']['markupPercent'] == 25
+        _, settings = request('/api/v1/admin/commerce/settings', token=token)
+        update = {'taxRatePercent': 8, 'shippingMethods': settings['shippingMethods']}
+        settings_path = '/api/v1/admin/commerce/settings'
+        assert request(settings_path, 'PUT', update, token)[0] == 428
+        assert step_up(token, 'incorrect-password')[0] == 403
+        status, proof = step_up(token)
+        assert status == 200 and proof.get('stepUpToken')
+        headers = {'X-Admin-Step-Up': proof['stepUpToken']}
+        assert request(settings_path, 'PUT', update, token, headers)[0] == 200
+        _, updated_settings = request(settings_path, token=token)
+        assert updated_settings['taxRatePercent'] == 8
+        _, events = request('/api/v1/admin/audit-log?entityType=commerce_settings&entityId=default', token=token)
+        assert any(event['action'] == 'commerce-settings.update'
+                   and event['actor'] == os.environ['Admin__Email']
+                   and event['beforeJson'] and event['afterJson'] for event in events)
     finally:
         stop_api(api)
     for permissions in ['inventory.read', 'inventory.read,pricing.write', 'inventory.read,products.write']:
@@ -144,6 +159,21 @@ with tempfile.TemporaryFile() as log:
         try:
             assert request(PATH+'/preview', 'POST', recipe, token)[0] == 200
             assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token)[0] == 403
+        finally:
+            stop_api(api)
+    for permissions, expected_status in [('pricing.read', 403), ('pricing.read,pricing.write', 428)]:
+        api, token = start_api(permissions)
+        try:
+            _, settings = request('/api/v1/admin/commerce/settings', token=token)
+            update = {'taxRatePercent': settings['taxRatePercent'], 'shippingMethods': settings['shippingMethods']}
+            settings_path = '/api/v1/admin/commerce/settings'
+            status, _ = request(settings_path, 'PUT', update, token)
+            assert status == expected_status, (permissions, status)
+            if expected_status == 428:
+                status, proof = step_up(token)
+                assert status == 200
+                assert request(settings_path, 'PUT', update, token,
+                               {'X-Admin-Step-Up': proof['stepUpToken']})[0] == 200
         finally:
             stop_api(api)
 print('Pricing arithmetic, preview/apply, permissions, stale safety, audit, persistence, catalog and order snapshot passed')
