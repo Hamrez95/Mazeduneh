@@ -169,11 +169,14 @@ class OrderApiClient {
     return InventoryPurchasePage((json['items'] as List).map((item) => InventoryBatch.fromJson(item as Map<String, dynamic>)).toList(), json['nextCursor'] as String?);
   }
 
-  Future<Map<String, dynamic>> inventoryPricing(String sku, {String? action, Map<String, dynamic>? input}) async {
+  Future<Map<String, dynamic>> inventoryPricing(String sku, {String? action, Map<String, dynamic>? input, String? stepUpToken}) async {
     final uri = Uri.parse('$baseUrl/api/v1/admin/inventory/pricing/${Uri.encodeComponent(sku)}${action == null ? '' : '/$action'}');
     final response = action == null
       ? await _client.get(uri, headers: _headers())
-      : await _client.post(uri, headers: _headers(json: true), body: jsonEncode(input));
+      : await _client.post(uri, headers: {
+          ..._headers(json: true),
+          if (action == 'apply' && stepUpToken != null) 'x-admin-step-up': stepUpToken,
+        }, body: jsonEncode(input));
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

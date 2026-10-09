@@ -70,6 +70,31 @@ class AuthApiClient {
     );
   }
 
+  Future<String> stepUp({required String password}) async {
+    final token = OwnerSession.instance.bearerToken;
+    if (token == null) {
+      throw AuthApiException('نشست شما منقضی شده است.', statusCode: 401);
+    }
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/auth/step-up'),
+      headers: {
+        'authorization': 'Bearer $token',
+        'content-type': 'application/json; charset=utf-8',
+      },
+      body: jsonEncode({'password': password}),
+    );
+    if (response.statusCode == 401) OwnerSession.instance.clear();
+    if (response.statusCode != 200) {
+      throw AuthApiException(_message(response), statusCode: response.statusCode);
+    }
+    final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final stepUpToken = body['stepUpToken'] as String?;
+    if (stepUpToken == null || stepUpToken.isEmpty) {
+      throw AuthApiException('پاسخ تأیید هویت از سرور کامل نیست.');
+    }
+    return stepUpToken;
+  }
+
   Future<void> acceptInvitation({
     required String token,
     required String password,

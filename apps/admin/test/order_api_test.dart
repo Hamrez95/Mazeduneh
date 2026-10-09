@@ -33,6 +33,21 @@ void main() {
     ]);
   });
 
+  test('inventory price changes require step-up header only for apply', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      return http.Response(jsonEncode({'sellingPrice': 1200}), 200);
+    });
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    await api.inventoryPricing('SKU-1', action: 'preview', input: {'markupPercent': 10});
+    await api.inventoryPricing('SKU-1', action: 'apply', stepUpToken: 'fresh-token', input: {'expectedPrice': 1000});
+
+    expect(captured[0].headers.containsKey('x-admin-step-up'), isFalse);
+    expect(captured[1].headers['x-admin-step-up'], 'fresh-token');
+    expect(captured[1].headers['authorization'], 'Bearer order-test-token');
+  });
+
   test('fetchOrders sends Bearer token and parses payment data', () async {
     late http.Request captured;
     final client = MockClient((request) async {

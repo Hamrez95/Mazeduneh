@@ -142,7 +142,7 @@ public static class InventoryPricingModule
             var errors = request.Recipe.Validate(); if (errors.Count > 0) return Results.ValidationProblem(errors);
             var result = await database.ExecuteAsync(sku, request.Recipe, request.ExpectedPrice, principal.Email, context.TraceIdentifier, true, ct);
             return result.Quote is null ? Results.Conflict(new { message = result.Error }) : Results.Ok(result.Quote);
-        });
+        }).AddEndpointFilter<StepUpAuthorizationFilter>();
         return endpoints;
     }
 }

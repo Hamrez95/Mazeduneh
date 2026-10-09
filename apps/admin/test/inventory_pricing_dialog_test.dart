@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/auth_api.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/inventory_pricing_dialog.dart';
 import 'package:mazeduneh_admin/order_api.dart';
@@ -13,10 +14,10 @@ const product = Product(id: '1', title: 'پسته', slug: 'pistachio', category:
 const batch = {'id':'receipt-1','batchCode':'LOT-1','costPrice':4000,'packagingCost':500,'additionalCost':100};
 const quote = {'purchaseCost':4000,'packagingCost':1000,'additionalCost':300,'totalCost':5300,'sellingPrice':6630,'profit':1330,'marginPercent':20.06};
 Finder input(String label) => find.byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == label);
-Widget app(OrderApiClient client, {double scale = 1}) => MaterialApp(builder: (context, child) => MediaQuery(
+Widget app(OrderApiClient client, {double scale = 1, AuthApiClient? auth}) => MaterialApp(builder: (context, child) => MediaQuery(
   data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)), child: child!),
   home: Directionality(textDirection: TextDirection.rtl, child: Scaffold(body: Builder(builder: (context) => TextButton(
-    onPressed: () => showDialog<bool>(context: context, builder: (_) => InventoryPricingDialog(products: const [product], orders: client)), child: const Text('باز کردن'))))));
+    onPressed: () => showDialog<bool>(context: context, builder: (_) => InventoryPricingDialog(products: const [product], orders: client, auth: auth)), child: const Text('باز کردن'))))));
 
 void main() {
   setUp(() => OwnerSession.instance.establish(accessToken: 'pricing-test', expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)), email: 'owner@example.test'));
@@ -26,11 +27,26 @@ void main() {
       tester.view.physicalSize = Size(width,1100); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       Map<String,dynamic>? applied;
+      String? stepUpHeader;
       final client = OrderApiClient(baseUrl: 'https://api.test', client: MockClient((request) async {
-        if (request.url.path.endsWith('/apply')) applied = jsonDecode(request.body) as Map<String,dynamic>;
+        if (request.url.path.endsWith('/apply')) {
+          applied = jsonDecode(request.body) as Map<String,dynamic>;
+          stepUpHeader = request.headers['x-admin-step-up'];
+        }
         return http.Response(jsonEncode(request.method == 'GET' ? {'sku':'PI-250','currentPrice':5000,'recipe':null,'batches':[batch]} : quote),200);
       }));
-      await tester.pumpWidget(app(client, scale: width == 360 ? 2 : 1));
+      final auth = AuthApiClient(baseUrl: 'https://api.test', client: MockClient((request) async {
+        expect(request.url.path, '/api/v1/admin/auth/step-up');
+        expect(request.headers['authorization'], 'Bearer pricing-test');
+        final password = (jsonDecode(request.body) as Map<String, dynamic>)['password'];
+        if (password == 'wrong-password') {
+          return http.Response.bytes(utf8.encode(jsonEncode({'message': 'رمز عبور تأیید نشد.'})), 403,
+            headers: {'content-type': 'application/json; charset=utf-8'});
+        }
+        expect(password, 'secret');
+        return http.Response(jsonEncode({'stepUpToken': 'short-lived-step-up'}), 200);
+      }));
+      await tester.pumpWidget(app(client, auth: auth, scale: width == 360 ? 2 : 1));
       await tester.tap(find.text('باز کردن')); await tester.pumpAndSettle();
       for (final entry in {'ضریب بسته‌بندی':'۱٫۲','درصد بسته‌بندی از خرید':'۱۰','درصد جانبی از خرید':'۵','درصد سود روی بهای تمام‌شده':'۲۵'}.entries) {
         await tester.ensureVisible(input(entry.key)); await tester.pumpAndSettle(); await tester.enterText(input(entry.key),entry.value);
@@ -45,7 +61,17 @@ void main() {
       await tester.tap(find.text('اعمال قیمت فروش')); await tester.pumpAndSettle();
       expect(find.text('تأیید قیمت فروش'),findsOneWidget);
       await tester.tap(find.text('تأیید اعمال قیمت')); await tester.pumpAndSettle();
+      expect(find.text('تأیید دوبارهٔ هویت'), findsOneWidget);
+      await tester.enterText(input('رمز عبور فعلی'), 'wrong-password');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
+      expect(find.text('رمز عبور تأیید نشد.'), findsOneWidget);
+      expect(find.textContaining('قیمت پیشنهادی: ۶۶۳ تومان'), findsOneWidget);
+      await tester.enterText(input('رمز عبور فعلی'), 'secret');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
       expect(applied?['expectedPrice'],5000);
+      expect(stepUpHeader, 'short-lived-step-up');
       final recipe = applied?['recipe'] as Map<String,dynamic>;
       expect(recipe['markupPercent'],25); expect(recipe['packagingMultiplier'],1.2); expect(recipe['packagingCost'],500);
       expect(find.byType(InventoryPricingDialog),findsNothing); expect(tester.takeException(),isNull);

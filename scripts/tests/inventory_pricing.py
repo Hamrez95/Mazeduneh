@@ -64,6 +64,10 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
+def step_up(token, password="Mazeduneh-CI-Owner-Password!"):
+    return request('/api/v1/admin/auth/step-up', 'POST', {'password': password}, token)
+
+
 SKU = 'CI-PRICE-250'
 PATH = '/api/v1/admin/inventory/pricing/' + SKU
 
@@ -100,12 +104,17 @@ with tempfile.TemporaryFile() as log:
         assert state['currentPrice'] == 5000 and state['recipe'] is None  # Preview never mutates.
         assert request(PATH+'/preview', 'POST', dict(recipe, roundingStep=0), token)[0] == 400
         assert request(PATH+'/preview', 'POST', dict(recipe, batchId='00000000-0000-0000-0000-000000000001'), token)[0] == 409
-        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 4999}, token)[0] == 409
-        assert request(PATH+'/apply', 'POST', {'recipe': recipe}, token)[0] == 400
-        status, applied = request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token)
+        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token)[0] == 428
+        assert step_up(token, 'incorrect-password')[0] == 403
+        status, step_up_response = step_up(token)
+        assert status == 200 and step_up_response.get('stepUpToken')
+        step_up_headers = {'X-Admin-Step-Up': step_up_response['stepUpToken']}
+        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 4999}, token, step_up_headers)[0] == 409
+        assert request(PATH+'/apply', 'POST', {'recipe': recipe}, token, step_up_headers)[0] == 400
+        status, applied = request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token, step_up_headers)
         assert status == 200 and applied == quote
-        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token)[0] == 409
-        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token)[0] == 200  # No-op, no duplicate audit.
+        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token, step_up_headers)[0] == 409
+        assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token, step_up_headers)[0] == 200  # No-op, no duplicate audit.
         _, events = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId='+SKU, token=token)
         assert len(events) == 1 and events[0]['actor'] == os.environ['Admin__Email']
         assert events[0]['beforeJson'] and events[0]['afterJson']

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'admin_step_up_dialog.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
+import 'auth_api.dart';
 import 'catalog_api.dart';
 import 'formatters.dart';
 import 'order_api.dart';
 
 class InventoryPricingDialog extends StatefulWidget {
-  const InventoryPricingDialog({super.key, required this.products, required this.orders});
+  const InventoryPricingDialog({super.key, required this.products, required this.orders, this.auth});
   final List<Product> products;
   final OrderApiClient orders;
+  final AuthApiClient? auth;
   @override
   State<InventoryPricingDialog> createState() => _InventoryPricingDialogState();
 }
@@ -64,9 +67,12 @@ class _InventoryPricingDialogState extends State<InventoryPricingDialog> {
         FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأیید اعمال قیمت'))],
     ));
     if (confirmed != true || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
     setState(() { busy = true; error = null; });
     try {
-      await widget.orders.inventoryPricing(sku, action: 'apply', input: {'recipe': recipe(), 'expectedPrice': state!['currentPrice']});
+      await widget.orders.inventoryPricing(sku, action: 'apply', stepUpToken: stepUpToken,
+        input: {'recipe': recipe(), 'expectedPrice': state!['currentPrice']});
       if (mounted) Navigator.pop(context, true);
     } catch (exception) { if (mounted) setState(() { quote = null; error = 'اعمال قیمت تأیید نشد: $exception. تازه‌سازی کنید و پیش‌نمایش جدید بگیرید؛ ممکن است درخواست قبلی ثبت شده باشد.'; }); }
     finally { if (mounted) setState(() => busy = false); }
