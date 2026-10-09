@@ -101,5 +101,3 @@ if (args.Length == 3 && args[0] == "--promote-membership-owner")
     fixtureCommand.Parameters.AddWithValue("store_id", args[2]);
     Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly one active membership fixture");
 }
-
-\n

@@ -179,5 +179,3 @@ with tempfile.TemporaryFile() as log:
         stop_api(api)
 
 print("Membership invitation, one-time use, permissions, store binding and revocation passed")
-
-\n

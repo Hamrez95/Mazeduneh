@@ -145,5 +145,3 @@ Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions =
       'createdAt': '2026-10-03T12:00:00Z',
       'deactivatedAt': null,
     };
-
-\n

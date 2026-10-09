@@ -369,5 +369,3 @@ public sealed class AdminUserValidationException(Dictionary<string, string[]> er
 {
     public Dictionary<string, string[]> Errors { get; } = errors;
 }
-
-\n

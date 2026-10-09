@@ -152,5 +152,3 @@ class AdminPermissionOption {
   final String label;
   final String description;
 }
-
-\n

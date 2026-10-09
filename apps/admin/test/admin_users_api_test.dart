@@ -77,5 +77,3 @@ Map<String, dynamic> userJson({bool isActive = true, String? deactivatedAt, List
       'createdAt': '2026-10-03T12:00:00Z',
       'deactivatedAt': deactivatedAt,
     };
-
-\n

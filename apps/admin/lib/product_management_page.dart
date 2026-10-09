@@ -1001,5 +1001,3 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
     actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
   );
 }
-
-\n
