@@ -69,6 +69,13 @@ with tempfile.TemporaryFile() as log:
     # accidentally make both processes share the same role-scoped preference.
     api, token = start_api("WarehouseOperator", log)
     try:
+        health_endpoint = "/api/v1/admin/dashboard/health"
+        assert request(health_endpoint)[0] == 401
+        status, health = request(health_endpoint, token=token)
+        assert status == 200 and health == {
+            "api": "healthy", "database": "healthy", "migrations": "tracked",
+            "adminAuthentication": "configured", "ready": True,
+        }, (status, health)
         endpoint = "/api/v1/admin/dashboard/preferences"
         assert request(endpoint)[0] == 401
         status, defaults = request(endpoint, token=token)
@@ -114,3 +121,4 @@ with tempfile.TemporaryFile() as log:
         stop_api(api)
 
 print("Dashboard preferences API: auth, validation, persistence, visibility, order and role isolation passed")
+

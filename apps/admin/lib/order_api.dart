@@ -72,6 +72,16 @@ class OrderApiClient {
     return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<AdminDashboardHealth> fetchDashboardHealth() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/dashboard/health'),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminDashboardHealth.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
   Future<DashboardPreferences> saveDashboardPreferences(DashboardPreferences preferences) async {
     final response = await _client.put(
       Uri.parse('$baseUrl/api/v1/admin/dashboard/preferences'),
@@ -705,6 +715,30 @@ class AdminDashboard {
     problemOrders: (json['problemOrders'] as num?)?.toInt() ?? 0, financialsVisible: json['financialsVisible'] as bool? ?? true);
 }
 
+class AdminDashboardHealth {
+  const AdminDashboardHealth({
+    required this.api,
+    required this.database,
+    required this.migrations,
+    required this.adminAuthentication,
+    required this.ready,
+  });
+
+  final String api;
+  final String database;
+  final String migrations;
+  final String adminAuthentication;
+  final bool ready;
+
+  factory AdminDashboardHealth.fromJson(Map<String, dynamic> json) => AdminDashboardHealth(
+        api: json['api'] as String? ?? 'unknown',
+        database: json['database'] as String? ?? 'unknown',
+        migrations: json['migrations'] as String? ?? 'unknown',
+        adminAuthentication: json['adminAuthentication'] as String? ?? 'unknown',
+        ready: json['ready'] as bool? ?? false,
+      );
+}
+
 class DashboardWidgetPreference {
   const DashboardWidgetPreference({required this.id, required this.visible});
   final String id;
@@ -781,3 +815,4 @@ class InventoryPurchasePage {
   final List<InventoryBatch> items;
   final String? nextCursor;
 }
+

@@ -29,6 +29,12 @@ void main() {
 
     http.Request? dashboardRequest;
     final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard/health')) {
+        return http.Response(jsonEncode({
+          'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
+          'adminAuthentication': 'configured', 'ready': true,
+        }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
       if (request.url.path.endsWith('/dashboard')) {
         dashboardRequest = request;
         return http.Response(
@@ -72,6 +78,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('سامانه آماده است'), 300, maxScrolls: 10);
+    expect(find.text('پایگاه داده: سالم'), findsOneWidget);
     final today = DateUtils.dateOnly(DateTime.now());
     expect(dashboardRequest!.url.queryParameters['from'], today.toUtc().toIso8601String());
     expect(dashboardRequest!.url.queryParameters['to'], DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String());
@@ -235,13 +243,21 @@ void main() {
 
 
 Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const []}) {
-  final client = MockClient((request) async => http.Response(
-        jsonEncode(request.url.path.endsWith('/dashboard')
-            ? {'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0,
-               'paidRevenue': 0, 'todayRevenue': 0, 'lowStock': lowStock, 'expiringSoon': []}
-            : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
-        200, headers: {'content-type': 'application/json; charset=utf-8'},
-      ));
+  final client = MockClient((request) async {
+    if (request.url.path.endsWith('/dashboard/health')) {
+      return http.Response(jsonEncode({
+        'api': 'healthy', 'database': 'healthy', 'migrations': 'tracked',
+        'adminAuthentication': 'configured', 'ready': true,
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    }
+    return http.Response(
+      jsonEncode(request.url.path.endsWith('/dashboard')
+          ? {'awaitingPayment': 0, 'processing': 0, 'shipped': 0, 'delivered': 0,
+             'paidRevenue': 0, 'todayRevenue': 0, 'lowStock': lowStock, 'expiringSoon': []}
+          : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
+      200, headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  });
   return MaterialApp(
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
@@ -253,3 +269,4 @@ Widget _dashboardHarness({ValueChanged<int>? onNavigate, double textScale = 1, L
     ),
   );
 }
+

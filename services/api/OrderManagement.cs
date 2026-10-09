@@ -168,6 +168,21 @@ public static class OrderManagementModule
             return Results.Ok(dashboard);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/dashboard/health", async (
+            ApiHealthProbe healthProbe,
+            AdminTokenService adminTokens,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            if (context.Items["AdminPrincipal"] is not AdminPrincipal) return Results.Unauthorized();
+            context.Response.Headers.CacheControl = "no-store";
+            var database = await healthProbe.CheckDatabaseAsync(cancellationToken);
+            var authentication = adminTokens.IsConfigured ? "configured" : "not-configured";
+            var ready = database.IsReady && adminTokens.IsConfigured;
+            return Results.Ok(new AdminDashboardHealth(
+                "healthy", database.Database, database.MigrationStatus, authentication, ready));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/dashboard/preferences", async (
             OrderManagementDatabase database,
             HttpContext context,
@@ -1126,6 +1141,7 @@ public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shi
     decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
     int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
     IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
+public sealed record AdminDashboardHealth(string Api, string Database, string Migrations, string AdminAuthentication, bool Ready);
 public sealed record DashboardPeriod(DateTimeOffset From, DateTimeOffset To)
 {
     public static bool TryCreate(DateTimeOffset? from, DateTimeOffset? to, DateTimeOffset now, out DashboardPeriod? period)
@@ -1173,3 +1189,4 @@ public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrde
     public static OrderOperationResult NotFound(string message) => new(OrderOperationStatus.NotFound, Message: message);
     public static OrderOperationResult Conflict(string message) => new(OrderOperationStatus.Conflict, Message: message);
 }
+
