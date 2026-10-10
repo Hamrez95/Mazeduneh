@@ -43,6 +43,7 @@ apps/storefront/.test-build/
 apps/storefront/.test-results/
 
 # Graphify local caches and transient analysis files
+.graphify-venv/
 graphify-out/cache/
 graphify-out/.graphify_*.json
 graphify-out/.graphify_python
