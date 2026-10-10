@@ -13,11 +13,21 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 
 ### Local demo on Windows
 
+For a fresh checkout, install PowerShell 7.4+, Git, Docker Desktop, Node.js 24, the .NET 10 SDK, and Flutter stable, then run:
+
+```powershell
+git clone https://github.com/Hamrez95/Mazeduneh.git
+cd Mazeduneh
+pwsh -File ./scripts/dev.ps1
+```
+
+The default menu starts the full local stack. Use menu options 2–5 for smaller slices. If Docker Desktop is missing, option 8 offers its official installer; Windows may require Administrator approval or a restart.
+
 ```powershell
 pwsh -File ./scripts/dev.ps1
 ```
 
-The launcher opens a menu. Choose the full system, website, Admin, or API separately; choose **Storefront preview** to browse the sample catalog without Docker or an API. The preview cannot submit real orders. For full end-to-end testing, install/start Docker Desktop from menu option 8, wait until it says **Engine running**, then run the launcher again and choose the system parts you need.
+The launcher opens a menu. Choose the full system, website, Admin, or API separately; choose **Storefront preview** to browse the sample catalog without Docker or an API. The preview cannot submit real orders or start the Admin panel. For full end-to-end testing, install/start Docker Desktop from menu option 8, wait until it says **Engine running**, then run the launcher again and choose the system parts you need.
 
 Full local mode needs PowerShell 7.4+, Git, Docker Desktop with Compose, Node.js/npm, .NET 10 SDK, and Flutter stable. If Docker is missing, the launcher offers the official Docker Desktop installer through `winget`; Windows may require Administrator approval or a restart. If Docker is installed but stopped, the launcher starts it from either the machine-wide or per-user install location and waits for readiness before continuing. Missing tools are reported with an install hint instead of a PowerShell stack trace.
 

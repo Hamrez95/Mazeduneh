@@ -195,6 +195,10 @@ function Install-OrStartDocker {
 if ($Component -eq 'menu') {
   Show-LauncherMenu
   $choice = Read-Host 'Enter 0-8'
+  if ([string]::IsNullOrWhiteSpace($choice)) {
+    Write-Host 'No option was selected. Run the launcher again in an interactive PowerShell window.' -ForegroundColor Yellow
+    exit 0
+  }
   switch ($choice.Trim()) {
     '1' { $Component = 'all' }
     '2' { $Component = 'storefront' }
@@ -342,14 +346,22 @@ if ($startApi) {
   if (-not (Test-Path $composeFile)) { throw "compose.yaml is missing from $RunRoot." }
   Write-Host 'Starting the persistent local PostgreSQL service...' -ForegroundColor Cyan
   & docker compose -f $composeFile up -d postgres
-  if ($LASTEXITCODE -ne 0) { throw 'Docker Compose could not start PostgreSQL. Start Docker Desktop, then rerun this command.' }
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host 'Docker Compose could not start PostgreSQL. Check Docker Desktop and the message above, then rerun the selected component.' -ForegroundColor Red
+    exit 2
+  }
   $deadline = [DateTime]::UtcNow.AddSeconds(90)
   do {
     $databaseState = (& docker compose -f $composeFile ps --format json postgres 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue).Health
     if ($databaseState -eq 'healthy') { break }
     Start-Sleep -Seconds 2
   } while ([DateTime]::UtcNow -lt $deadline)
-  if ($databaseState -ne 'healthy') { throw 'PostgreSQL did not become healthy within 90 seconds. Run docker compose ps from the run worktree for details.' }
+  if ($databaseState -ne 'healthy') {
+    Write-Host 'PostgreSQL did not become healthy within 90 seconds. Current Compose status:' -ForegroundColor Red
+    & docker compose -f $composeFile ps postgres
+    Write-Host "For details, inspect Docker Desktop logs for the mazeduneh-postgres service in $RunRoot." -ForegroundColor Yellow
+    exit 2
+  }
 }
 
 if ($startStorefront) {
