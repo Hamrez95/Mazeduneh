@@ -1,0 +1,49 @@
+name: Graphify bootstrap
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  graphify:
+    name: Version, build, query, and update
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify pinned Graphify CLI without secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          trap 'rm -rf "$smoke_dir"' EXIT
+          cat > "$smoke_dir/probe.py" <<'PY'
+          class GraphifyBootstrapProbe:
+              def run(self):
+                  return "initial"
+          PY
+
+          cd "$smoke_dir"
+          python "$GITHUB_WORKSPACE/scripts/graphify.py" --version
+          python "$GITHUB_WORKSPACE/scripts/graphify.py" . --code-only --no-viz
+          test -s graphify-out/graph.json
+          python "$GITHUB_WORKSPACE/scripts/graphify.py" query "What does GraphifyBootstrapProbe do?"
+
+          cat > probe.py <<'PY'
+          class GraphifyBootstrapUpdatedProbe:
+              def run(self):
+                  return "updated"
+          PY
+          python "$GITHUB_WORKSPACE/scripts/graphify.py" update .
+          python - <<'PY'
+          from pathlib import Path
+          graph = Path("graphify-out/graph.json").read_text(encoding="utf-8")
+          assert "GraphifyBootstrapUpdatedProbe" in graph
+          PY
