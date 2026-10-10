@@ -69,6 +69,17 @@ public sealed record InventoryBatch(
     public decimal PurchaseTotal => CostPrice * ReceivedPackages;
 }
 
+public static class InventoryBatchPrivacy
+{
+    public static InventoryBatch ProjectFor(InventoryBatch batch, AdminPrincipal principal) =>
+        AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingRead)
+            ? batch
+            : batch with { CostPrice = 0, PackagingCost = 0, AdditionalCost = 0 };
+
+    public static InventoryPurchasePage ProjectFor(InventoryPurchasePage page, AdminPrincipal principal) =>
+        page with { Items = page.Items.Select(item => ProjectFor(item, principal)).ToArray() };
+}
+
 public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger<InventoryBatchDatabase> logger, InventoryLedgerDatabase ledger, AdminAuditLogDatabase audit)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
@@ -351,12 +362,15 @@ public static class InventoryBatchModule
             string? cursor,
             int? limit,
             InventoryBatchDatabase database,
+            HttpContext context,
             CancellationToken ct) =>
         {
             InventoryPurchaseCursor? decoded = null;
             if (limit is < 1 or > 250 || (cursor is not null && !InventoryPurchaseCursor.TryDecode(cursor, out decoded)))
                 return (IResult)Results.ValidationProblem(new Dictionary<string, string[]> { ["pagination"] = ["صفحه یا تعداد دریافت معتبر نیست؛ فهرست را تازه کنید."] });
-            return Results.Ok(await database.PurchasesAsync(sku, batchCode, decoded, limit ?? 50, ct));
+            var page = await database.PurchasesAsync(sku, batchCode, decoded, limit ?? 50, ct);
+            var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+            return Results.Ok(InventoryBatchPrivacy.ProjectFor(page, principal));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
         endpoints.MapPost("/api/v1/admin/inventory/batches", async (
             InventoryBatchRequest request,
@@ -364,10 +378,16 @@ public static class InventoryBatchModule
             HttpContext context,
             CancellationToken cancellationToken) =>
         {
+            var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+            if (!AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite) &&
+                (request.CostPrice != 0 || request.PackagingCost != 0 || request.AdditionalCost != 0))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             var errors = request.Validate();
             if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var result = await database.CreateAsync(request, ((AdminPrincipal)context.Items["AdminPrincipal"]!).Email, context.TraceIdentifier, cancellationToken);
-            return result.Batch is null ? Results.Conflict(new { message = result.Error }) : Results.Created($"/api/v1/admin/inventory/batches/{result.Batch.Id}", result.Batch);
+            var result = await database.CreateAsync(request, principal.Email, context.TraceIdentifier, cancellationToken);
+            return result.Batch is null
+                ? Results.Conflict(new { message = result.Error })
+                : Results.Created($"/api/v1/admin/inventory/batches/{result.Batch.Id}", InventoryBatchPrivacy.ProjectFor(result.Batch, principal));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         endpoints.MapGet("/api/v1/admin/inventory/batches", async (
@@ -375,8 +395,13 @@ public static class InventoryBatchModule
             bool? includeExpired,
             int? limit,
             InventoryBatchDatabase database,
+            HttpContext context,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.ListAsync(sku, includeExpired ?? true, Math.Clamp(limit ?? 100, 1, 250), cancellationToken)))
+        {
+            var batches = await database.ListAsync(sku, includeExpired ?? true, Math.Clamp(limit ?? 100, 1, 250), cancellationToken);
+            var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+            return Results.Ok(batches.Select(batch => InventoryBatchPrivacy.ProjectFor(batch, principal)));
+        })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         return endpoints;
     }

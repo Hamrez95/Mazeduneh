@@ -211,21 +211,22 @@ products.MapPut("/{slug}", async (
     if (errors.Count > 0) return Results.ValidationProblem(errors);
     var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
     var catalogUpdate = productCatalog.Update(existing, request);
+    var canWriteCosts = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite);
     var updated = catalogUpdate with
     {
         Variants = ProductCostPrivacy.ForUpdate(
             catalogUpdate.Variants,
             existing.Variants,
-            AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite))
+            canWriteCosts)
     };
     if (existing.IsPublished)
     {
         var publicationErrors = productCatalog.ValidateForPublication(updated);
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
-    await db.UpdateAsync(updated, cancellationToken);
-    productCatalog.Add(updated);
-    return Results.Ok(ProductCostPrivacy.ProjectFor(updated, principal));
+    var persisted = await db.UpdateAsync(updated, canWriteCosts, cancellationToken);
+    productCatalog.Add(persisted);
+    return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -265,7 +266,7 @@ products.MapPatch("/{slug}/publication", async (
     return Results.Ok(new
     {
         message = request.IsPublished ? "محصول با موفقیت منتشر شد." : "محصول از فروشگاه خارج شد.",
-        product = updated
+        product = ProductCostPrivacy.ProjectFor(updated, (AdminPrincipal)context.Items["AdminPrincipal"]!)
     });
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
