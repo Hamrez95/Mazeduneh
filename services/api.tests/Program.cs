@@ -1,8 +1,23 @@
 using Npgsql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Net;
+using System.Text;
 using System.Text.Json;
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
+static void CheckZibalVerifyPayloads(SequenceHttpMessageHandler handler)
+{
+    foreach (var requestBody in handler.RequestBodies)
+    {
+        using var postedPayload = JsonDocument.Parse(requestBody);
+        var payload = postedPayload.RootElement;
+        Check(payload.GetProperty("merchant").GetString() == "zibal", "Zibal merchant was not sent during verify or inquiry");
+        Check(payload.GetProperty("trackId").GetInt64() == 987654, "Zibal verify or inquiry used the wrong track id");
+    }
+}
+static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string json) =>
+    new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 var now = DateTimeOffset.UtcNow;
 var valid = new InventoryBatchRequest("SKU", "receipt", 2, now.AddDays(-2), now.AddDays(100), 100, 20, 5, now.AddDays(-1), "supplier");
 Check(valid.Validate().Count == 0, "Valid receipt rejected");
@@ -53,6 +68,102 @@ Check(addedVariant is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Un
 Check(ProductCostPrivacy.ForUpdate(attemptedCosts, costProduct.Variants, canWriteCosts: true).Single().CostPrice == 1, "Authorized pricing writer could not update costs");
 Check(ProductCostPrivacy.ForCreate(attemptedCosts, canWriteCosts: false).Single() is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Unauthorized create stored submitted costs");
 Console.WriteLine("Product cost read/write permission privacy checks passed");
+
+var zibalConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Payments:Zibal:Merchant"] = "zibal",
+    ["Payments:Zibal:CallbackUrl"] = "https://api.example.test/api/v1/payments/zibal/callback",
+    ["Payments:Zibal:ReturnUrl"] = "https://store.example.test/checkout",
+}).Build();
+var zibalOrder = new PaymentOrderSnapshot(Guid.NewGuid(), "09120000000", 6630, "IRR", OrderState.AwaitingPayment, now.AddMinutes(20));
+var requestHandler = new SequenceHttpMessageHandler((_, _) =>
+    Task.FromResult(JsonResponse(HttpStatusCode.OK, "{\"trackId\":987654,\"result\":100}")));
+using var requestClient = new HttpClient(requestHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+var zibalGateway = new ZibalGateway(requestClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance);
+Check(zibalGateway.IsConfigured, "Valid Zibal staging settings were rejected");
+var intent = await zibalGateway.RequestAsync(zibalOrder, CancellationToken.None);
+Check(intent.IsSuccess && intent.TrackId == "987654", "Zibal request did not return its track id");
+Check(requestHandler.Paths.SequenceEqual(["/v1/request"]), "Zibal request used the wrong endpoint");
+using (var postedPayload = JsonDocument.Parse(requestHandler.RequestBodies.Single()))
+{
+    var payload = postedPayload.RootElement;
+    Check(payload.GetProperty("merchant").GetString() == "zibal", "Zibal merchant was not sent by the API");
+    Check(payload.GetProperty("amount").GetInt64() == 6630, "Zibal did not receive the order snapshot amount in rials");
+    Check(payload.GetProperty("callbackUrl").GetString() == zibalConfiguration["Payments:Zibal:CallbackUrl"], "Zibal callback URL changed");
+    Check(payload.GetProperty("orderId").GetString() == zibalOrder.Id.ToString("N"), "Zibal order id did not match the payment order");
+}
+Check(zibalGateway.StartUrl(intent.TrackId!) == "https://gateway.zibal.ir/start/987654", "Zibal redirect URL was incorrect");
+Check(zibalGateway.ReturnUrl(zibalOrder.Id, "success").Contains("payment=success", StringComparison.Ordinal), "Customer return URL lost payment outcome");
+
+var verifyHandler = new SequenceHttpMessageHandler((_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK,
+    $"{{\"trackId\":987654,\"result\":100,\"status\":1,\"amount\":6630,\"orderId\":\"{zibalOrder.Id:N}\",\"refNumber\":456}}")));
+using var verifyClient = new HttpClient(verifyHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+var verified = await new ZibalGateway(verifyClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+    .VerifyAsync("987654", CancellationToken.None);
+Check(verified.IsSuccess && verified.Amount == 6630 && verified.OrderId == zibalOrder.Id.ToString("N") && verified.Reference == "456",
+    "Successful server-side Zibal verification lost the amount, order, or reference");
+Check(verifyHandler.Paths.SequenceEqual(["/v1/verify"]), "Successful payment did not use server-side verify");
+CheckZibalVerifyPayloads(verifyHandler);
+
+var declinedHandler = new SequenceHttpMessageHandler(
+    (_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK, "{\"trackId\":987654,\"result\":201}")),
+    (_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK,
+        $"{{\"trackId\":987654,\"result\":100,\"status\":2,\"orderId\":\"{zibalOrder.Id:N}\"}}")));
+using var declinedClient = new HttpClient(declinedHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+var declined = await new ZibalGateway(declinedClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+    .VerifyAsync("987654", CancellationToken.None);
+Check(declined.IsFinalFailure && !declined.IsSuccess && declined.OrderId == zibalOrder.Id.ToString("N"),
+    "Inquiry-confirmed decline was not represented as a final payment failure");
+Check(declinedHandler.Paths.SequenceEqual(["/v1/verify", "/v1/inquiry"]), "Unconfirmed verify did not fall back to inquiry");
+CheckZibalVerifyPayloads(declinedHandler);
+
+var networkHandler = new SequenceHttpMessageHandler(
+    (_, _) => Task.FromException<HttpResponseMessage>(new HttpRequestException("gateway unavailable")),
+    (_, _) => Task.FromResult(JsonResponse(HttpStatusCode.ServiceUnavailable, "{}")));
+using var networkClient = new HttpClient(networkHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+var uncertain = await new ZibalGateway(networkClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+    .VerifyAsync("987654", CancellationToken.None);
+Check(!uncertain.IsSuccess && !uncertain.IsFinalFailure, "Network uncertainty was incorrectly recorded as a decline or success");
+Check(networkHandler.Paths.SequenceEqual(["/v1/verify", "/v1/inquiry"]), "Network uncertainty skipped the inquiry retry");
+CheckZibalVerifyPayloads(networkHandler);
+
+var failedRequestHandler = new SequenceHttpMessageHandler((_, _) =>
+    Task.FromResult(JsonResponse(HttpStatusCode.OK, "{\"trackId\":null,\"result\":102}")));
+using var failedRequestClient = new HttpClient(failedRequestHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+var failedIntent = await new ZibalGateway(failedRequestClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+    .RequestAsync(zibalOrder, CancellationToken.None);
+Check(!failedIntent.IsSuccess && failedIntent.TrackId is null, "Rejected Zibal request was treated as an accepted payment");
+
+foreach (var invalidGatewayTrackId in new long[] { 0, -1 })
+{
+    var invalidRequestHandler = new SequenceHttpMessageHandler((_, _) =>
+        Task.FromResult(JsonResponse(HttpStatusCode.OK, $"{{\"trackId\":{invalidGatewayTrackId},\"result\":100}}")));
+    using var invalidRequestClient = new HttpClient(invalidRequestHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+    var invalidRequest = await new ZibalGateway(invalidRequestClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+        .RequestAsync(zibalOrder, CancellationToken.None);
+    Check(!invalidRequest.IsSuccess && invalidRequest.TrackId is null,
+        $"Zibal request with invalid track id '{invalidGatewayTrackId}' was treated as accepted");
+}
+
+foreach (var invalidTrackId in new[] { "not-a-track-id", "0", "-1" })
+{
+    var invalidTrackHandler = new SequenceHttpMessageHandler((_, _) =>
+        Task.FromResult(JsonResponse(HttpStatusCode.OK, "{}")));
+    using var invalidTrackClient = new HttpClient(invalidTrackHandler) { BaseAddress = new Uri("https://gateway.zibal.ir") };
+    var invalidTrack = await new ZibalGateway(invalidTrackClient, zibalConfiguration, NullLogger<ZibalGateway>.Instance)
+        .VerifyAsync(invalidTrackId, CancellationToken.None);
+    Check(!invalidTrack.IsSuccess && invalidTrackHandler.Paths.Count == 0, $"Invalid track id '{invalidTrackId}' reached the payment gateway");
+}
+
+var unconfiguredZibalSettings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Payments:Zibal:Merchant"] = "zibal",
+    ["Payments:Zibal:CallbackUrl"] = "http://api.example.test/callback",
+    ["Payments:Zibal:ReturnUrl"] = "https://store.example.test/checkout",
+}).Build();
+Check(!new ZibalGateway(new HttpClient(), unconfiguredZibalSettings, NullLogger<ZibalGateway>.Instance).IsConfigured,
+    "Zibal accepted an insecure HTTP callback URL");
+Console.WriteLine("Zibal request, server-side verify, inquiry, decline, retry, and configuration contract checks passed");
 
 var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
@@ -135,4 +246,19 @@ if (args.Length == 3 && args[0] == "--promote-membership-owner")
     fixtureCommand.Parameters.AddWithValue("email", args[1]);
     fixtureCommand.Parameters.AddWithValue("store_id", args[2]);
     Check(await fixtureCommand.ExecuteNonQueryAsync() == 1, "Expected exactly one active membership fixture");
+}
+
+sealed class SequenceHttpMessageHandler(params Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>[] responses) : HttpMessageHandler
+{
+    private readonly Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>> _responses = new(responses);
+    public List<string> Paths { get; } = [];
+    public List<string> RequestBodies { get; } = [];
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Paths.Add(request.RequestUri?.AbsolutePath ?? string.Empty);
+        RequestBodies.Add(request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken));
+        if (_responses.Count == 0) throw new InvalidOperationException("No stubbed gateway response remains.");
+        return await _responses.Dequeue()(request, cancellationToken);
+    }
 }

@@ -24,7 +24,7 @@ public sealed class ZibalGateway(HttpClient client, IConfiguration configuration
         {
             using var response = await client.PostAsJsonAsync("/v1/request", payload, cancellationToken);
             var body = await response.Content.ReadFromJsonAsync<ZibalResponse>(cancellationToken: cancellationToken);
-            if (!response.IsSuccessStatusCode || body is null || body.Result != 100 || body.TrackId is null)
+            if (!response.IsSuccessStatusCode || body is null || body.Result != 100 || body.TrackId is null || body.TrackId.Value <= 0)
             {
                 logger.LogWarning("Zibal payment request was rejected with HTTP {StatusCode} and result {Result}.", (int)response.StatusCode, body?.Result);
                 return ZibalRequestResult.Failed();
@@ -50,7 +50,7 @@ public sealed class ZibalGateway(HttpClient client, IConfiguration configuration
 
     public async Task<ZibalVerifyResult> VerifyAsync(string trackId, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(trackId, out var parsedTrackId)) return ZibalVerifyResult.Failed();
+        if (!long.TryParse(trackId, out var parsedTrackId) || parsedTrackId <= 0) return ZibalVerifyResult.Failed();
         try
         {
             using var response = await client.PostAsJsonAsync("/v1/verify", new ZibalVerifyRequest(_merchant, parsedTrackId), cancellationToken);
