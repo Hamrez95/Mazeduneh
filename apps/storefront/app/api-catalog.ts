@@ -1,0 +1,163 @@
+"use client";
+
+import type { DemoProduct, ProductArt } from "./demo/catalog";
+import { toPersianDigits } from "./formatters";
+
+type ApiProductVariant = {
+  sku: string;
+  quantity: number;
+  baseUnit: string;
+  displayLabel: string;
+  price: number;
+  availablePackages: number;
+  costPrice?: number;
+};
+
+export type ApiProduct = {
+  id: string;
+  title: string;
+  slug: string;
+  category: string;
+  origin: string;
+  currency: string;
+  unitType: "Weight" | "Count";
+  isPublished: boolean;
+  variants: ApiProductVariant[];
+  shortDescription?: string;
+  description?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  primaryImage?: string;
+  galleryImages?: string[];
+  specifications?: Record<string, string>;
+  ingredients?: string;
+  allergens?: string[];
+  nutritionFacts?: Record<string, number>;
+  storageInstructions?: string;
+  shelfLifeDays?: number;
+  netWeight?: number;
+  netWeightUnit?: string;
+  expiryLabel?: string;
+  earliestAvailableExpiryAt?: string;
+};
+
+export const API_BASE = (
+  process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim()
+  || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim()
+  || ""
+).replace(/\/$/, "");
+
+export function resolveMediaUrl(value?: string) {
+  const candidate = value?.trim();
+  if (!candidate) return undefined;
+  if (/^(?:https?:|data:)/i.test(candidate)) return candidate;
+  if (!API_BASE) return candidate;
+  try {
+    return new URL(candidate, `${API_BASE}/`).toString();
+  } catch {
+    return `${API_BASE}/${candidate.replace(/^\/+/, "")}`;
+  }
+}
+
+const artByKeyword: Array<[string, ProductArt]> = [
+  ["پسته", "pistachio"],
+  ["بادام", "almond"],
+  ["گردو", "walnut"],
+  ["میوه", "fruit"],
+  ["لواشک", "fruit"],
+  ["تخمه", "seed"],
+  ["کوکی", "cookie"],
+  ["شیرینی", "cookie"],
+  ["هدیه", "gift"],
+];
+
+const accents = ["sage", "mint", "sand", "peach", "apricot", "olive", "lilac", "rose"] as const;
+
+function inferArt(title: string): ProductArt {
+  return artByKeyword.find(([keyword]) => title.includes(keyword))?.[1] ?? "almond";
+}
+
+function inferAccent(slug: string) {
+  let hash = 0;
+  for (const character of slug) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  return accents[Math.abs(hash) % accents.length];
+}
+
+function tomanFromApiPrice(price: number) {
+  return Math.max(0, Math.round(price / 10));
+}
+
+export function mapApiProduct(product: ApiProduct): DemoProduct | null {
+  const variants = product.variants
+    ?.slice()
+    .sort((left, right) => left.quantity - right.quantity);
+  const variant = variants?.find((item) => item.availablePackages > 0) ?? variants?.[0];
+  if (!variant || !product.isPublished) return null;
+
+  const galleryImages = (product.galleryImages ?? [])
+    .map(resolveMediaUrl)
+    .filter((image): image is string => Boolean(image));
+
+  return {
+    id: product.slug,
+    sku: variant.sku,
+    variants: variants.map((item) => ({
+      sku: item.sku,
+      packageLabel: toPersianDigits(item.displayLabel),
+      price: tomanFromApiPrice(item.price),
+      stock: item.availablePackages,
+    })),
+    title: toPersianDigits(product.title),
+    subtitle: toPersianDigits(`${variant.displayLabel} · ${product.unitType === "Weight" ? "فروش وزنی" : "فروش عددی"}`),
+    category: toPersianDigits(product.category),
+    origin: toPersianDigits(product.origin),
+    art: inferArt(product.title),
+    accent: inferAccent(product.slug),
+    price: tomanFromApiPrice(variant.price),
+    packageLabel: toPersianDigits(variant.displayLabel),
+    stock: variant.availablePackages,
+    note: `کد کالا: ${variant.sku}`,
+    description: toPersianDigits(product.description || product.shortDescription || `${product.title} با کیفیت و بسته‌بندی مزه‌دونه.`),
+    seoTitle: toPersianDigits(product.seoTitle || product.title),
+    seoDescription: toPersianDigits(product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`),
+    primaryImage: resolveMediaUrl(product.primaryImage),
+    galleryImages: galleryImages.length ? galleryImages : undefined,
+    specifications: product.specifications
+      ? Object.fromEntries(Object.entries(product.specifications).map(([key, value]) => [toPersianDigits(key), toPersianDigits(value)]))
+      : undefined,
+    ingredients: toPersianDigits(product.ingredients ?? ""),
+    allergens: (product.allergens ?? []).map(toPersianDigits),
+    nutritionFacts: product.nutritionFacts
+      ? Object.fromEntries(Object.entries(product.nutritionFacts).map(([key, value]) => [toPersianDigits(key), value]))
+      : undefined,
+    storageInstructions: toPersianDigits(product.storageInstructions ?? ""),
+    shelfLifeDays: product.shelfLifeDays,
+    netWeight: product.netWeight,
+    netWeightUnit: product.netWeightUnit,
+    expiryLabel: toPersianDigits(product.expiryLabel ?? ""),
+    earliestAvailableExpiryAt: product.earliestAvailableExpiryAt,
+  };
+}
+
+export async function fetchLiveProducts(signal?: AbortSignal) {
+  if (!API_BASE) return null;
+  const response = await fetch(`${API_BASE}/api/v1/products`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`catalog-${response.status}`);
+  const payload = await response.json() as ApiProduct[];
+  return payload.map(mapApiProduct).filter((product): product is DemoProduct => product !== null);
+}
+
+export async function fetchLiveProduct(slug: string, signal?: AbortSignal) {
+  if (!API_BASE) return null;
+  const response = await fetch(`${API_BASE}/api/v1/products/${encodeURIComponent(slug)}`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`product-${response.status}`);
+  return mapApiProduct(await response.json() as ApiProduct);
+}
+
+export async function fetchLiveCategories(signal?: AbortSignal) {
+  if (!API_BASE) return null;
+  const response = await fetch(`${API_BASE}/api/v1/categories`, { signal, cache: "no-store" });
+  if (!response.ok) throw new Error(`categories-${response.status}`);
+  const payload = await response.json() as Array<{ name: string; isActive: boolean }>;
+  return payload.filter((item) => item.isActive).map((item) => toPersianDigits(item.name));
+}

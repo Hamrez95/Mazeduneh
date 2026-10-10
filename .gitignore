@@ -9,6 +9,9 @@ node_modules/
 out/
 coverage/
 *.log
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 # .NET
 bin/
@@ -34,6 +37,10 @@ secrets/
 # Local infrastructure
 .pgdata/
 .redis-data/
+.local-dev/
+
+apps/storefront/.test-build/
+apps/storefront/.test-results/
 
 # Graphify local caches and transient analysis files
 graphify-out/cache/

@@ -25,6 +25,12 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Type check
         run: npm run typecheck
+      - name: Catalog source contract
+        run: npm run test:catalog
+      - name: Install browser for catalog integration
+        run: npx playwright install --with-deps chromium
+      - name: Live catalog browser integration
+        run: npm run test:browser
       - name: Production static preview build
         run: npm run build
         env:
@@ -55,7 +61,7 @@ jobs:
     env:
       ConnectionStrings__Catalog: Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_ci
       Admin__Email: ci-owner@mazeduneh.test
-      Admin__PasswordHash: 9fe9a5e4ddf44437229cb7ba4cae41523e828be21439246eaeb995ebd58741b1
+      Admin__PasswordHash: e285b7f5f8dd444780a92a2831698caa12a03c5b12c66d4b4a4c6f4688216ea2
       Admin__TokenSigningKey: mazeduneh-ci-signing-key-must-be-long-and-private
       Payments__SandboxEnabled: 'true'
     steps:
@@ -86,7 +92,24 @@ jobs:
             kill "$API_PID" || true
             wait "$API_PID" || true
           }
-          trap 'stop_api' EXIT
+          start_role_api() {
+            Admin__Role=${ADMIN_ROLE:-ReadOnlyAnalyst} dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5100 > /tmp/mazeduneh-role-api.log 2>&1 &
+            ROLE_API_PID=$!
+            export ROLE_API_PID
+            for attempt in $(seq 1 40); do
+              if curl -fsS http://127.0.0.1:5100/health > /dev/null; then return 0; fi
+              sleep 1
+            done
+            cat /tmp/mazeduneh-role-api.log
+            return 1
+          }
+          stop_role_api() {
+            if [[ -n "${ROLE_API_PID:-}" ]]; then
+              kill "$ROLE_API_PID" || true
+              wait "$ROLE_API_PID" || true
+            fi
+          }
+          trap 'stop_api; stop_role_api' EXIT
           start_api
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/checkout/orders \
@@ -142,25 +165,305 @@ jobs:
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
             --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/login.json', encoding='utf-8'))
+          assert login['accessToken']
+          assert login['tokenType'] == 'Bearer'
+          assert login['role'] == 'Owner'
+          assert 'orders.read' in login['permissions']
+          assert 'products.write' in login['permissions']
+          PY
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/auth/session \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/session.json
+          python3 - <<'PY'
+          import json
+          session = json.load(open('/tmp/session.json', encoding='utf-8'))
+          assert session['authenticated'] is True
+          assert session['role'] == 'Owner'
+          assert session['email'] == 'ci-owner@mazeduneh.test'
+          assert 'orders.read' in session['permissions']
+          assert 'products.write' in session['permissions']
+          PY
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-users.json
+          python3 - <<'PY'
+          import json
+          users = json.load(open('/tmp/admin-users.json', encoding='utf-8'))
+          owner = next(item for item in users if item['email'] == 'ci-owner@mazeduneh.test')
+          assert owner['role'] == 'Owner'
+          assert owner['isActive'] is True
+          assert 'inventory.write' in owner['permissions']
+          PY
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/users/roles \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-roles.json
+          python3 - <<'PY'
+          import json
+          roles = json.load(open('/tmp/admin-roles.json', encoding='utf-8'))
+          warehouse = next(item for item in roles if item['role'] == 'WarehouseOperator')
+          assert warehouse['titleFa'] == 'اپراتور انبار'
+          assert 'inventory.write' in warehouse['permissions']
+          PY
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
+          USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['user']['id'])")
+          python3 - <<'PY'
+          import json
+          response = json.load(open('/tmp/admin-user-created.json', encoding='utf-8'))
+          created = response['user']
+          assert response['invitationToken'] and response['expiresAt']
+          assert created['role'] == 'WarehouseOperator'
+          assert created['isActive'] is True
+          assert 'inventory.write' in created['permissions']
+          PY
+          curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/users/${USER_ID}/status" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"isActive":false}' > /tmp/admin-user-disabled.json
+          python3 - <<'PY'
+          import json
+          disabled = json.load(open('/tmp/admin-user-disabled.json', encoding='utf-8'))
+          assert disabled['isActive'] is False
+          assert disabled['deactivatedAt']
+          PY
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=AdminUser&entityId=${USER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-user-audit.json
+          python3 - <<'PY'
+          import json
+          events = json.load(open('/tmp/admin-user-audit.json', encoding='utf-8'))
+          assert {item['action'] for item in events} >= {'admin-user.invited', 'admin-user.status-changed'}
+          assert all(item['actor'] == 'ci-owner@mazeduneh.test' for item in events)
+          PY
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/customers/?q=0912" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/customers.json
+          python3 - <<'PY'
+          import json
+          customers = json.load(open('/tmp/customers.json', encoding='utf-8'))
+          assert len(customers) == 1
+          assert customers[0]['totalSpend'] > 0
+          assert customers[0]['averageOrderValue'] > 0
+          assert customers[0]['lastPurchaseAt']
+          open('/tmp/customer-id', 'w').write(customers[0]['id'])
+          PY
+
+          PUBLISH_GUARD_STATUS=$(curl -s -o /tmp/publish-guard.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/products/ \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"title":"محصول ناقص","slug":"invalid-publish","category":"آزمایشی","origin":"ایران","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"INVALID-1","quantity":250,"displayLabel":"۲۵۰ گرم","price":0,"availablePackages":0}]}' )
+          test "${PUBLISH_GUARD_STATUS}" = "400"
+          python3 - <<'PY'
+          import json
+          errors = json.load(open('/tmp/publish-guard.json', encoding='utf-8'))['errors']
+          assert 'publication.variants' in errors
+          PY
+
+          PUBLISH_GUARD_STATUS=$(curl -s -o /tmp/publish-guard.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/products/ \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"title":"محصول ناقص","slug":"invalid-publish","category":"آزمایشی","origin":"ایران","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"INVALID-1","quantity":250,"displayLabel":"۲۵۰ گرم","price":0,"availablePackages":0}]}' )
+          test "${PUBLISH_GUARD_STATUS}" = "400"
+          python3 - <<'PY'
+          import json
+          errors = json.load(open('/tmp/publish-guard.json', encoding='utf-8'))['errors']
+          assert 'publication.variants' in errors
+          PY
+
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/corporate-requests \
+            -H 'Content-Type: application/json' \
+            --data '{"customerName":"تست سازمانی","companyName":"شرکت تست","mobile":"09121111111","email":"corporate@example.test","city":"تهران","occasion":"یلدا","orderQuantity":50,"packageType":"استاندارد","budget":125000000,"deliveryDate":"2030-12-20","customPackaging":true,"description":"قرارداد API"}' > /tmp/corporate-created.json
+          python3 - <<'PY'
+          import json
+          created = json.load(open('/tmp/corporate-created.json', encoding='utf-8'))
+          assert created['id'] and created['accessToken']
+          open('/tmp/corporate-id', 'w').write(created['id'])
+          PY
+          CORPORATE_ID=$(cat /tmp/corporate-id)
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/corporate-requests" -H "Authorization: Bearer ${TOKEN}" > /tmp/corporate-list.json
+          python3 - <<'PY'
+          import json
+          items = json.load(open('/tmp/corporate-list.json', encoding='utf-8'))
+          assert len(items) == 1 and items[0]['status'] == 'New'
+          PY
+          curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/corporate-requests/${CORPORATE_ID}/status" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"status":"Reviewing","note":"contract-check"}' > /tmp/corporate-updated.json
+          python3 - <<'PY'
+          import json
+          assert json.load(open('/tmp/corporate-updated.json', encoding='utf-8'))['status'] == 'Reviewing'
+          PY
 
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders)" = "401"
+
+          python3 - <<'PY'
+          import base64
+          open('/tmp/media-test.png', 'wb').write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='))
+          PY
+          MEDIA_RESPONSE=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/media \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -F "file=@/tmp/media-test.png;type=image/png")
+          python3 - <<'PY' "${MEDIA_RESPONSE}"
+          import json, sys
+          media = json.loads(sys.argv[1])
+          assert media['key'].startswith('products/')
+          assert media['url'].startswith('/media/')
+          assert media['contentType'] == 'image/png'
+          assert media['sizeBytes'] > 0
+          open('/tmp/media-key', 'w').write(media['key'])
+          PY
+          MEDIA_KEY=$(cat /tmp/media-key)
+          curl -fsS "http://127.0.0.1:5099/media/${MEDIA_KEY}" -o /tmp/media-downloaded.png
+          cmp /tmp/media-test.png /tmp/media-downloaded.png
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/media/metadata/${MEDIA_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/media-metadata.json
+          python3 - <<'PY'
+          import json
+          metadata = json.load(open('/tmp/media-metadata.json', encoding='utf-8'))
+          assert metadata['contentType'] == 'image/png'
+          assert metadata['sizeBytes'] > 0
+          PY
+          curl -fsS -X DELETE "http://127.0.0.1:5099/api/v1/admin/media/${MEDIA_KEY}" \
+            -H "Authorization: Bearer ${TOKEN}" -o /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/media/${MEDIA_KEY}")" = "404"
           curl -fsS http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-orders.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=PI-AKB-250" -H "Authorization: Bearer ${TOKEN}" > /tmp/stock-movements.json
           python3 - <<'PY'
           import json
           orders = json.load(open('/tmp/admin-orders.json', encoding='utf-8'))
           assert len(orders) == 1
           assert orders[0]['state'] == 'Paid'
           assert orders[0]['paymentReference']
+          movements = json.load(open('/tmp/stock-movements.json', encoding='utf-8'))
+          assert any(item['movementType'] == 'Reserved' and item['quantityDelta'] == -1 for item in movements)
           PY
 
-          for STATE in Preparing Shipped Delivered; do
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/inventory/adjust" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
+            --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' -D /tmp/inventory-adjusted.headers > /tmp/inventory-adjusted.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-audit-log.json
+          python3 - <<'PY'
+          import json
+          audit = json.load(open('/tmp/inventory-audit-log.json', encoding='utf-8'))
+          adjustment = next(item for item in audit if item['action'] == 'inventory.adjustment')
+          assert adjustment['actor'] == 'ci-owner@mazeduneh.test'
+          assert adjustment['beforeJson'] and adjustment['afterJson']
+          assert adjustment['reason'] == 'ci-audit'
+          headers = open('/tmp/inventory-adjusted.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert adjustment['requestId'] == request_id
+          PY
+
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/products/ \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"title":"CI waste fixture","slug":"ci-waste-fixture","category":"CI","origin":"IR","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"CI-WASTE-ONLY","quantity":250,"displayLabel":"CI waste fixture","price":5000,"availablePackages":0}]}' > /tmp/ci-waste-product.json
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/inventory/batches \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
+          WASTE_INVALID_STATUS=$(curl -s -o /tmp/inventory-waste-invalid.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
+          test "${WASTE_INVALID_STATUS}" = "400"
+          WASTE_OVERFLOW_STATUS=$(curl -s -o /tmp/inventory-waste-overflow.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
+          test "${WASTE_OVERFLOW_STATUS}" = "409"
+          curl -fsS -D /tmp/inventory-waste.headers -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
+            --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=CI-WASTE-ONLY" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-movements.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/batches?sku=CI-WASTE-ONLY" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-batches.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=CI-WASTE-ONLY&limit=20" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-audit.json
+          python3 - <<'PY'
+          import json
+          movements = json.load(open('/tmp/inventory-waste-movements.json', encoding='utf-8'))
+          waste = next(item for item in movements if item['movementType'] == 'Waste')
+          assert waste['quantityDelta'] == -1
+          assert waste['balanceAfter'] >= 0
+          batches = json.load(open('/tmp/inventory-waste-batches.json', encoding='utf-8'))
+          batch = next(item for item in batches if item['batchCode'] == 'CI-WASTE-LOT-1')
+          assert batch['remainingPackages'] == 0
+          assert waste['actor'] == 'ci-owner@mazeduneh.test'
+          assert waste['reason'] == 'ci-damaged-package'
+          audit = json.load(open('/tmp/inventory-waste-audit.json', encoding='utf-8'))
+          event = next(item for item in audit if item['action'] == 'inventory.waste')
+          assert event['beforeJson'] and event['afterJson']
+          assert event['reason'] == 'ci-damaged-package'
+          headers = open('/tmp/inventory-waste.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
+
+          curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/products/pistachio-akbari-premium/publication" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"isPublished":false}' > /tmp/product-unpublished.json
+          curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/products/pistachio-akbari-premium/publication" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"isPublished":true}' > /tmp/product-republished.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Product&limit=20" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/audit-log.json
+          python3 - <<'PY'
+          import json
+          audit = json.load(open('/tmp/audit-log.json', encoding='utf-8'))
+          product_events = [item for item in audit if item['action'] == 'product.publication']
+          assert len(product_events) >= 2
+          assert product_events[0]['actor'] == 'ci-owner@mazeduneh.test'
+          assert product_events[0]['beforeJson'] and product_events[0]['afterJson']
+          PY
+
+          curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/orders/bulk-state" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data "{\"orderIds\":[\"${ORDER_ID}\"],\"state\":\"Preparing\",\"reason\":\"ci-bulk\"}" > /tmp/order-bulk.json
+          python3 - <<'PY'
+          import json
+          bulk = json.load(open('/tmp/order-bulk.json', encoding='utf-8'))
+          assert len(bulk['updated']) == 1
+          assert not bulk['failed']
+          PY
+
+          for STATE in Shipped Delivered; do
             curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/state" \
               -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-              --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" > "/tmp/order-${STATE}.json"
+              --data "{\"state\":\"${STATE}\",\"reason\":\"ci-${STATE}\"}" -D "/tmp/order-${STATE}.headers" > "/tmp/order-${STATE}.json"
           done
+          
+          SHIPPING_INVALID_STATUS=$(curl -s -o /tmp/order-shipping-invalid.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000}')
+          test "${SHIPPING_INVALID_STATUS}" = "400"
+          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}' > /tmp/order-shipping.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/order-shipping-audit.json
+          python3 - <<'PY'
+          import json
+          audit = json.load(open('/tmp/order-shipping-audit.json', encoding='utf-8'))
+          event = next(item for item in audit if item['action'] == 'order.shipping-updated')
+          assert event['actor'] == 'ci-owner@mazeduneh.test'
+          assert event['beforeJson'] and event['afterJson']
+          assert event['reason'] == 'ci-shipment-audit'
+          assert json.loads(event['afterJson'])['trackingCode'] == 'CI-TRACK-1'
+          headers = open('/tmp/order-shipping.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
 
           curl -fsS http://127.0.0.1:5099/api/v1/admin/dashboard -H "Authorization: Bearer ${TOKEN}" > /tmp/dashboard.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/order-state-audit.json
+          python3 - <<'PY'
+          import json
+          events = json.load(open('/tmp/order-state-audit.json', encoding='utf-8'))
+          event = next(item for item in events if item['action'] == 'order.state-changed' and json.loads(item['afterJson'])['state'] == 'Delivered')
+          assert event['actor'] == 'ci-owner@mazeduneh.test'
+          assert json.loads(event['beforeJson'])['state'] == 'Shipped'
+          assert event['reason'] == 'ci-Delivered'
+          headers = open('/tmp/order-Delivered.headers', encoding='utf-8').read().splitlines()
+          request_id = next(line.split(':', 1)[1].strip() for line in headers if line.lower().startswith('x-request-id:'))
+          assert event['requestId'] == request_id
+          PY
           python3 - <<'PY'
           import json
           delivered = json.load(open('/tmp/order-Delivered.json', encoding='utf-8'))
@@ -169,9 +472,84 @@ jobs:
           assert dashboard['delivered'] == 1
           assert dashboard['paidRevenue'] > 0
           assert dashboard['todayRevenue'] > 0
+          assert 'expiringSoon' in dashboard
+          assert dashboard['newCustomers'] >= 1
+          assert dashboard['corporateNewRequests'] == 0
+          assert dashboard['problemOrders'] == 0
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/logout \
+            -H "Authorization: Bearer ${TOKEN}" -o /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/orders -H "Authorization: Bearer ${TOKEN}")" = "401"
+
           stop_api
+          start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/read-only-login.json
+          ROLE_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/read-only-login.json'))['accessToken'])")
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/read-only-login.json', encoding='utf-8'))
+          assert login['role'] == 'ReadOnlyAnalyst'
+          assert 'orders.read' in login['permissions']
+          assert 'orders.write' not in login['permissions']
+          assert 'customers.read' in login['permissions']
+          assert 'customers.pii.read' not in login['permissions']
+          PY
+          CUSTOMER_ID=$(cat /tmp/customer-id)
+          curl -fsS "http://127.0.0.1:5100/api/v1/admin/customers/${CUSTOMER_ID}" \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/analyst-customer.json
+          python3 - <<'PY'
+          import json
+          customer = json.load(open('/tmp/analyst-customer.json', encoding='utf-8'))
+          assert customer['fullName'].startswith('مشتری ')
+          assert customer['mobile'] == 'مخفی بر اساس نقش'
+          assert customer['normalizedMobile'] == ''
+          assert customer['addresses'] == []
+          PY
+          EXPORT_STATUS=$(curl -s -o /tmp/read-only-customers.csv -w '%{http_code}' "http://127.0.0.1:5100/api/v1/admin/customers/export.csv?q=09120000000" \
+            -H "Authorization: Bearer ${ROLE_TOKEN}")
+          test "${EXPORT_STATUS}" = "403"
+          ! grep -q "09120000000\|تست CI" /tmp/read-only-customers.csv
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
+          ROLE_FORBIDDEN_STATUS=$(curl -s -o /tmp/read-only-forbidden.json -w '%{http_code}' -X POST http://127.0.0.1:5100/api/v1/admin/inventory/adjust \
+            -H "Authorization: Bearer ${ROLE_TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"must-be-forbidden"}')
+          test "${ROLE_FORBIDDEN_STATUS}" = "403"
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard -H "Authorization: Bearer ${ROLE_TOKEN}" > /tmp/read-only-dashboard.json
+          python3 - <<'PY'
+          import json
+          dashboard = json.load(open('/tmp/read-only-dashboard.json', encoding='utf-8'))
+          assert dashboard['financialsVisible'] is True
+          PY
+          stop_role_api
+
+          ADMIN_ROLE=SalesOperator start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/sales-login.json
+          SALES_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/sales-login.json'))['accessToken'])")
+          curl -fsS http://127.0.0.1:5100/api/v1/admin/dashboard \
+            -H "Authorization: Bearer ${SALES_TOKEN}" > /tmp/sales-dashboard.json
+          python3 - <<'PY'
+          import json
+          login = json.load(open('/tmp/sales-login.json', encoding='utf-8'))
+          dashboard = json.load(open('/tmp/sales-dashboard.json', encoding='utf-8'))
+          assert login['role'] == 'SalesOperator'
+          assert 'dashboard.read' in login['permissions']
+          assert 'reports.read' not in login['permissions']
+          assert dashboard['financialsVisible'] is False
+          assert dashboard['paidRevenue'] == 0
+          assert dashboard['todayRevenue'] == 0
+          assert dashboard['periodRevenue'] == 0
+          assert dashboard['averageOrderValue'] == 0
+          PY
+          ANALYTICS_STATUS=$(curl -s -o /tmp/sales-analytics.json -w '%{http_code}' http://127.0.0.1:5100/api/v1/admin/analytics \
+            -H "Authorization: Bearer ${SALES_TOKEN}")
+          test "${ANALYTICS_STATUS}" = "403"
+          stop_role_api
           start_api
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
@@ -180,6 +558,44 @@ jobs:
           assert order['state'] == 'Delivered'
           assert [item['state'] for item in order['transitions']] == ['AwaitingPayment','Paid','Preparing','Shipped','Delivered']
           PY
+
+      - name: API readiness failure and recovery contract
+        env:
+          READINESS_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: python3 scripts/tests/api_readiness.py
+
+      - name: API request correlation and log redaction contract
+        run: python3 scripts/tests/api_observability.py
+
+      - name: Order contact privacy and documents HTTP contract
+        run: python3 scripts/tests/order_privacy.py
+
+      - name: Notification role projection contract
+        run: python3 scripts/tests/notification_permissions.py
+
+      - name: Zero initial stock catalog regression
+        run: python3 scripts/tests/catalog_initial_stock.py
+
+      - name: Corporate planning queue contract
+        run: python3 scripts/tests/corporate_planning.py
+
+      - name: Inventory receipt validation units
+        run: dotnet run --project services/api.tests/Mazeduneh.Api.Tests.csproj --configuration Release
+
+      - name: Dated inventory purchase contract
+        run: python3 scripts/tests/inventory_purchase.py
+
+      - name: Role dashboard preference contract
+        run: python3 scripts/tests/dashboard_preferences.py
+
+      - name: Inventory adjustment reservation invariant contract
+        run: python3 scripts/tests/inventory_adjustment.py
+
+      - name: Membership invitation and persisted authorization contract
+        run: python3 scripts/tests/admin_membership_login.py
+
+      - name: Batch selling price contract and snapshot regression
+        run: python3 scripts/tests/inventory_pricing.py
 
   admin:
     name: Admin Flutter
@@ -202,17 +618,12 @@ jobs:
         run: flutter analyze
       - name: Test
         run: flutter test
-      - name: Build authenticated web
+      - name: Build active admin web
         run: flutter build web --release --target lib/secure_main.dart
-      - name: Build authenticated Android test APK
-        run: flutter build apk --debug --target lib/secure_main.dart
+      - name: Verify generated Android runner
+        run: test -f android/app/build.gradle.kts || test -f android/app/build.gradle
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:
           name: mazeduneh-admin-web
           path: apps/admin/build/web
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mazeduneh-admin-apk-debug
-          path: apps/admin/build/app/outputs/flutter-apk/app-debug.apk

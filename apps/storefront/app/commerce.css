@@ -11,8 +11,8 @@
   padding: 9px 14px;
   font-size: .78rem;
 }
-.statusDot { width: 9px; height: 9px; border-radius: 50%; background: #c69242; box-shadow: 0 0 0 5px rgba(198,146,66,.12); }
-.statusDot.live { background: #4f8157; box-shadow: 0 0 0 5px rgba(79,129,87,.12); }
+.statusDot { width: 9px; height: 9px; border-radius: 50%; background: #9a7742; box-shadow: 0 0 0 5px rgba(198,146,66,.12); }
+.statusDot.live { background: #5f8174; box-shadow: 0 0 0 5px rgba(79,129,87,.12); }
 .statusDot.error { background: #b55f55; box-shadow: 0 0 0 5px rgba(181,95,85,.12); }
 .sectionHeading small { color: var(--muted); }
 .weightRow button.selected { color: var(--green-700); background: var(--green-100); outline: 1px solid var(--green-200); }

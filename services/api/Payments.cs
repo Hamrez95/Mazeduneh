@@ -7,6 +7,7 @@ public static class PaymentModule
     public static IServiceCollection AddPayments(this IServiceCollection services)
     {
         services.AddSingleton<PaymentDatabase>();
+        services.AddHttpClient<ZibalGateway>(client => client.BaseAddress = new Uri("https://gateway.zibal.ir"));
         services.AddHostedService<PaymentSchemaInitializer>();
         return services;
     }
@@ -19,17 +20,34 @@ public static class PaymentModule
             Guid orderId,
             PaymentIntentRequest request,
             PaymentDatabase database,
+            ZibalGateway zibal,
             CancellationToken cancellationToken) =>
         {
-            var result = await database.CreateIntentAsync(orderId, request.ReceiptToken, cancellationToken);
+            var result = zibal.IsConfigured
+                ? await database.CreateZibalIntentAsync(orderId, request.ReceiptToken, zibal, cancellationToken)
+                : await database.CreateIntentAsync(orderId, request.ReceiptToken, cancellationToken);
             return result.Status switch
             {
-                PaymentOperationStatus.Created => Results.Created($"/api/v1/payments/sandbox/{result.Payment!.Authority}", result.Payment),
-                PaymentOperationStatus.Replayed => Results.Ok(result.Payment),
-                PaymentOperationStatus.Disabled => Results.Problem(title: "پرداخت آزمایشی غیرفعال است.", statusCode: 503),
+                PaymentOperationStatus.Created => Results.Created($"/api/v1/payments/orders/{orderId}/intent", PaymentIntentResponse.From(result.Payment!, zibal)),
+                PaymentOperationStatus.Replayed => Results.Ok(PaymentIntentResponse.From(result.Payment!, zibal)),
+                PaymentOperationStatus.Disabled => Results.Problem(title: "درگاه پرداخت پیکربندی نشده است.", statusCode: 503),
                 PaymentOperationStatus.NotFound => Results.NotFound(new { message = result.Message }),
                 _ => Results.Conflict(new { message = result.Message })
             };
+        });
+
+        payments.MapGet("/zibal/callback", async (
+            string? trackId,
+            PaymentDatabase database,
+            ZibalGateway zibal,
+            CancellationToken cancellationToken) =>
+        {
+            if (!zibal.IsConfigured || string.IsNullOrWhiteSpace(trackId))
+                return Results.BadRequest(new { message = "بازگشت پرداخت معتبر نیست." });
+
+            var result = await database.CompleteZibalAsync(trackId, zibal, cancellationToken);
+            if (result.Payment is null) return Results.NotFound(new { message = result.Message ?? "پرداخت پیدا نشد." });
+            return Results.Redirect(zibal.ReturnUrl(result.Payment.OrderId, result.Status is PaymentOperationStatus.Succeeded or PaymentOperationStatus.Replayed));
         });
 
         payments.MapPost("/sandbox/{authority}/complete", async (
@@ -80,8 +98,7 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "payments", "001-bootstrap", sql, cancellationToken);
         logger.LogInformation("Payment PostgreSQL schema is ready; sandbox enabled: {Enabled}.", SandboxEnabled);
     }
 
@@ -129,22 +146,7 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
             Guid.NewGuid(), orderId, "Sandbox", Convert.ToHexString(RandomNumberGenerator.GetBytes(18)).ToLowerInvariant(),
             order.Value.Payable, order.Value.Currency, PaymentState.Pending, null, now, null);
 
-        const string sql = """
-            insert into payments (id,order_id,provider,authority,amount,currency,state,reference,created_at,completed_at)
-            values (@id,@order_id,@provider,@authority,@amount,@currency,@state,null,@created_at,null);
-            """;
-        await using (var command = new NpgsqlCommand(sql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("id", payment.Id);
-            command.Parameters.AddWithValue("order_id", payment.OrderId);
-            command.Parameters.AddWithValue("provider", payment.Provider);
-            command.Parameters.AddWithValue("authority", payment.Authority);
-            command.Parameters.AddWithValue("amount", payment.Amount);
-            command.Parameters.AddWithValue("currency", payment.Currency);
-            command.Parameters.AddWithValue("state", payment.State.ToString());
-            command.Parameters.AddWithValue("created_at", payment.CreatedAt);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
+        await InsertPaymentAsync(connection, transaction, payment, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return PaymentOperationResult.Created(payment);
@@ -245,6 +247,153 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
         });
     }
 
+    public async Task<PaymentOperationResult> CreateZibalIntentAsync(
+        Guid orderId,
+        string receiptToken,
+        ZibalGateway gateway,
+        CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return PaymentOperationResult.Disabled();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var order = await LoadOrderForUpdateAsync(connection, transaction, orderId, cancellationToken);
+        if (order is null || !TokenEquals(order.Value.ReceiptToken, receiptToken))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.NotFound("سفارش یا مجوز رسید پیدا نشد.");
+        }
+
+        var existing = await FindByOrderAsync(connection, transaction, orderId, cancellationToken);
+        if (existing is not null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Replayed(existing);
+        }
+
+        if (order.Value.State != OrderState.AwaitingPayment || order.Value.ReservationExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict("این سفارش دیگر امکان پرداخت ندارد یا رزرو آن منقضی شده است.");
+        }
+
+        var request = await gateway.RequestAsync(new PaymentOrderSnapshot(order.Value.Id, order.Value.Mobile, order.Value.Payable,
+            order.Value.Currency, order.Value.State, order.Value.ReservationExpiresAt), cancellationToken);
+        if (!request.IsSuccess || request.TrackId is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict("ایجاد درخواست پرداخت در زیبال انجام نشد. دوباره تلاش کنید.");
+        }
+
+        var payment = new PaymentRecord(Guid.NewGuid(), orderId, "Zibal", request.TrackId, order.Value.Payable,
+            order.Value.Currency, PaymentState.Pending, null, DateTimeOffset.UtcNow, null);
+        await InsertPaymentAsync(connection, transaction, payment, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return PaymentOperationResult.Created(payment);
+    }
+
+    public async Task<PaymentOperationResult> CompleteZibalAsync(string trackId, ZibalGateway gateway, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var payment = await FindByAuthorityForUpdateAsync(connection, transaction, trackId.Trim(), cancellationToken);
+        if (payment is null || !string.Equals(payment.Provider, "Zibal", StringComparison.Ordinal))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.NotFound("پرداخت زیبال پیدا نشد.");
+        }
+
+        var order = await LoadOrderForUpdateAsync(connection, transaction, payment.OrderId, cancellationToken);
+        if (order is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict(payment, "سفارش پرداخت پیدا نشد.");
+        }
+        if (payment.State == PaymentState.Succeeded && order.Value.State == OrderState.Paid)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Replayed(payment);
+        }
+        if (order.Value.State != OrderState.AwaitingPayment || order.Value.ReservationExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict(payment, "رزرو سفارش منقضی شده یا سفارش دیگر قابل پرداخت نیست.");
+        }
+
+        var verification = await gateway.VerifyAsync(trackId, cancellationToken);
+        if (!verification.IsSuccess || verification.Amount != decimal.ToInt64(payment.Amount) ||
+            !string.Equals(verification.OrderId, order.Value.Id.ToString("N"), StringComparison.OrdinalIgnoreCase))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict(payment, "پرداخت توسط زیبال تأیید نشد.");
+        }
+
+        var completed = await MarkSucceededAsync(connection, transaction, payment, order.Value.Id,
+            verification.Reference ?? $"ZIBAL-{trackId}", "payment-zibal", "zibal-payment-verified", cancellationToken);
+        if (completed is null)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return PaymentOperationResult.Conflict(payment, "وضعیت پرداخت هم‌زمان تغییر کرده است؛ دوباره وضعیت را بررسی کنید.");
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return PaymentOperationResult.Succeeded(completed);
+    }
+
+    private static async Task InsertPaymentAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, PaymentRecord payment, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            insert into payments (id,order_id,provider,authority,amount,currency,state,reference,created_at,completed_at)
+            values (@id,@order_id,@provider,@authority,@amount,@currency,@state,null,@created_at,null);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("id", payment.Id);
+        command.Parameters.AddWithValue("order_id", payment.OrderId);
+        command.Parameters.AddWithValue("provider", payment.Provider);
+        command.Parameters.AddWithValue("authority", payment.Authority);
+        command.Parameters.AddWithValue("amount", payment.Amount);
+        command.Parameters.AddWithValue("currency", payment.Currency);
+        command.Parameters.AddWithValue("state", payment.State.ToString());
+        command.Parameters.AddWithValue("created_at", payment.CreatedAt);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<PaymentRecord?> MarkSucceededAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        PaymentRecord payment,
+        Guid orderId,
+        string reference,
+        string actor,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await using (var command = new NpgsqlCommand("update payments set state='Succeeded', reference=@reference, completed_at=@completed_at where id=@id and state='Pending';", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", payment.Id);
+            command.Parameters.AddWithValue("reference", reference);
+            command.Parameters.AddWithValue("completed_at", now);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1) return null;
+        }
+        await using (var command = new NpgsqlCommand("update checkout_orders set state='Paid' where id=@id and state='AwaitingPayment';", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            if (await command.ExecuteNonQueryAsync(cancellationToken) != 1) return null;
+        }
+        await using (var command = new NpgsqlCommand("insert into checkout_order_transitions (id,order_id,state,actor,occurred_at,reason) values (@id,@order_id,'Paid',@actor,@at,@reason);", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", Guid.NewGuid());
+            command.Parameters.AddWithValue("order_id", orderId);
+            command.Parameters.AddWithValue("actor", actor);
+            command.Parameters.AddWithValue("at", now);
+            command.Parameters.AddWithValue("reason", reason);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        return payment with { State = PaymentState.Succeeded, Reference = reference, CompletedAt = now };
+    }
+
     private static async Task<OrderPaymentSnapshot?> LoadOrderForUpdateAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
@@ -252,15 +401,15 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
         CancellationToken cancellationToken)
     {
         const string sql = """
-            select id,receipt_token,payable,currency,state,reservation_expires_at
+            select id,receipt_token,mobile,payable,currency,state,reservation_expires_at
             from checkout_orders where id=@id for update;
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("id", orderId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
-        return new OrderPaymentSnapshot(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3),
-            Enum.Parse<OrderState>(reader.GetString(4)), reader.GetFieldValue<DateTimeOffset>(5));
+        return new OrderPaymentSnapshot(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetDecimal(3), reader.GetString(4),
+            Enum.Parse<OrderState>(reader.GetString(5)), reader.GetFieldValue<DateTimeOffset>(6));
     }
 
     private static async Task<PaymentRecord?> FindByOrderAsync(
@@ -306,7 +455,7 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
         return expected.Length == supplied.Length && CryptographicOperations.FixedTimeEquals(expected, supplied);
     }
 
-    private readonly record struct OrderPaymentSnapshot(Guid Id, string ReceiptToken, decimal Payable, string Currency,
+    private readonly record struct OrderPaymentSnapshot(Guid Id, string ReceiptToken, string Mobile, decimal Payable, string Currency,
         OrderState State, DateTimeOffset ReservationExpiresAt);
 }
 
@@ -318,6 +467,14 @@ public sealed class PaymentSchemaInitializer(PaymentDatabase database) : IHosted
 
 public sealed record PaymentIntentRequest(string ReceiptToken);
 public sealed record SandboxPaymentCompleteRequest(string ReceiptToken);
+public sealed record PaymentIntentResponse(Guid Id, string Provider, string Authority, decimal Amount, string Currency,
+    PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt, string? RedirectUrl)
+{
+    public static PaymentIntentResponse From(PaymentRecord payment, ZibalGateway gateway) =>
+        new(payment.Id, payment.Provider, payment.Authority, payment.Amount, payment.Currency, payment.State, payment.Reference,
+            payment.CreatedAt, payment.CompletedAt,
+            string.Equals(payment.Provider, "Zibal", StringComparison.Ordinal) ? gateway.StartUrl(payment.Authority) : null);
+}
 public enum PaymentState { Pending, Succeeded }
 public enum PaymentOperationStatus { Created, Succeeded, Replayed, Disabled, NotFound, Conflict }
 public sealed record PaymentRecord(Guid Id, Guid OrderId, string Provider, string Authority, decimal Amount,
@@ -334,4 +491,5 @@ public sealed record PaymentOperationResult(
     public static PaymentOperationResult Disabled() => new(PaymentOperationStatus.Disabled);
     public static PaymentOperationResult NotFound(string message) => new(PaymentOperationStatus.NotFound, Message: message);
     public static PaymentOperationResult Conflict(string message) => new(PaymentOperationStatus.Conflict, Message: message);
+    public static PaymentOperationResult Conflict(PaymentRecord payment, string message) => new(PaymentOperationStatus.Conflict, payment, message);
 }

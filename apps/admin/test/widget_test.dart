@@ -1,16 +1,25 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mazeduneh_admin/main.dart';
+import 'package:mazeduneh_admin/admin_shell.dart';
 
 void main() {
-  testWidgets('dashboard renders primary management metrics', (tester) async {
-    await tester.pumpWidget(const MazedunehAdminApp());
-    await tester.pumpAndSettle();
+  testWidgets('admin shell renders branded navigation while dashboard loads', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-    expect(find.text('فروش امروز'), findsOneWidget);
-    expect(find.text('سفارش جدید'), findsOneWidget);
-    expect(find.text('کاتالوگ'), findsOneWidget);
-    expect(find.text('متصل به API'), findsOneWidget);
-    expect(find.text('وضعیت پرداخت'), findsOneWidget);
-    expect(find.text('غیرفعال'), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AdminShell())));
+    await tester.pump();
+
+    expect(find.text('مدیریت مزه‌دونه'), findsOneWidget);
+    expect(find.text('سفارش‌ها'), findsOneWidget);
+    expect(find.text('محصولات'), findsOneWidget);
+    expect(find.text('انبار'), findsOneWidget);
+    expect(find.text('بیشتر'), findsOneWidget);
+
+    await tester.tap(find.text('بیشتر'));
+    await tester.pumpAndSettle();
+    expect(find.text('گزارش‌ها'), findsOneWidget);
   });
 }
