@@ -268,9 +268,9 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task UpdateAsync(Product product, CancellationToken cancellationToken)
+    public async Task<Product> UpdateAsync(Product product, bool canWriteCosts, CancellationToken cancellationToken)
     {
-        if (!IsConfigured) return;
+        if (!IsConfigured) return product;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -289,11 +289,16 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         }
         foreach (var variant in product.Variants)
         {
-            const string updateVariant = """
-                update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price,cost_price=@cost_price,
-                    packaging_cost=@packaging_cost,additional_cost=@additional_cost
-                where product_id=@product_id and sku=@sku;
-                """;
+            var updateVariant = canWriteCosts
+                ? """
+                    update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price,
+                        cost_price=@cost_price,packaging_cost=@packaging_cost,additional_cost=@additional_cost
+                    where product_id=@product_id and sku=@sku;
+                    """
+                : """
+                    update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price
+                    where product_id=@product_id and sku=@sku;
+                    """;
             await using var command = new NpgsqlCommand(updateVariant, connection, transaction);
             command.Parameters.AddWithValue("product_id", product.Id);
             command.Parameters.AddWithValue("sku", variant.Sku);
@@ -301,9 +306,12 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             command.Parameters.AddWithValue("base_unit", variant.BaseUnit);
             command.Parameters.AddWithValue("display_label", variant.DisplayLabel);
             command.Parameters.AddWithValue("price", variant.Price);
-            command.Parameters.AddWithValue("cost_price", variant.CostPrice);
-            command.Parameters.AddWithValue("packaging_cost", variant.PackagingCost);
-            command.Parameters.AddWithValue("additional_cost", variant.AdditionalCost);
+            if (canWriteCosts)
+            {
+                command.Parameters.AddWithValue("cost_price", variant.CostPrice);
+                command.Parameters.AddWithValue("packaging_cost", variant.PackagingCost);
+                command.Parameters.AddWithValue("additional_cost", variant.AdditionalCost);
+            }
             if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
@@ -311,6 +319,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             }
         }
         await transaction.CommitAsync(cancellationToken);
+        return (await LoadAsync(cancellationToken)).Single(item => item.Id == product.Id);
     }
 
     public async Task SetPublicationAsync(Guid productId, bool isPublished, CancellationToken cancellationToken)

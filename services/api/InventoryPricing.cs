@@ -136,14 +136,16 @@ public static class InventoryPricingModule
         group.MapPost("/{sku}/apply", async (string sku, InventoryPriceApply request, InventoryPricingDatabase database, HttpContext context, CancellationToken ct) =>
         {
             var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
-            if (!AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ProductsWrite)) return (IResult)Results.StatusCode(403);
+            if (!AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite) ||
+                !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingRead))
+                return (IResult)Results.StatusCode(403);
             if (!database.IsConfigured) return Results.Problem("دیتابیس قیمت‌گذاری تنظیم نشده است.", statusCode: 503);
             if (request.Recipe is null || request.ExpectedPrice is null or < 0) return Results.ValidationProblem(new Dictionary<string, string[]> { ["request"] = ["فرمول و قیمت فعلی برای تأیید لازم است."] });
             var errors = request.Recipe.Validate(); if (errors.Count > 0) return Results.ValidationProblem(errors);
             var result = await database.ExecuteAsync(sku, request.Recipe, request.ExpectedPrice, principal.Email, context.TraceIdentifier, true, ct);
             return result.Quote is null ? Results.Conflict(new { message = result.Error }) : Results.Ok(result.Quote);
         }).AddEndpointFilter<StepUpAuthorizationFilter>()
-            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.ProductsWrite));
+            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.PricingWrite));
         return endpoints;
     }
 }

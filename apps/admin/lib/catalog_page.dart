@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_permissions.dart';
+import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'formatters.dart';
 import 'media_api.dart';
@@ -52,7 +54,11 @@ class CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> openCreateDialog() async {
-    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(mediaApi: MediaApiClient(), categories: categories));
+    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(
+      mediaApi: MediaApiClient(),
+      categories: categories,
+      canWriteCosts: OwnerSession.instance.can(AdminPermissions.pricingWrite),
+    ));
     if (command == null) return;
     try {
       await api.createProduct(command);
@@ -240,9 +246,10 @@ class _PublicationBadge extends StatelessWidget {
 }
 
 class ProductDialog extends StatefulWidget {
-  const ProductDialog({super.key, this.mediaApi, this.categories = const []});
+  const ProductDialog({super.key, this.mediaApi, this.categories = const [], this.canWriteCosts = false});
   final MediaApiClient? mediaApi;
   final List<Category> categories;
+  final bool canWriteCosts;
 
   @override
   State<ProductDialog> createState() => _ProductDialogState();
@@ -407,7 +414,7 @@ class _ProductDialogState extends State<ProductDialog> {
                   validator: numberRequired,
                 ),
                 const SizedBox(height: 10),
-                TextFormField(
+                if (widget.canWriteCosts) TextFormField(
                   controller: costPrice,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'قیمت تمام‌شده ریال', helperText: 'برای محاسبه سود و حاشیه سود استفاده می‌شود.'),
@@ -514,7 +521,7 @@ class _ProductDialogState extends State<ProductDialog> {
             quantity: quantity,
             displayLabel: label,
             price: parsePersianNumber(price.text)!,
-            costPrice: parsePersianNumber(costPrice.text)!,
+            costPrice: widget.canWriteCosts ? parsePersianNumber(costPrice.text)! : 0,
             availablePackages: parsePersianInteger(stock.text)!,
           ),
         ],

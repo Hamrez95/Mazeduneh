@@ -10,17 +10,18 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "http://127.0.0.1:5107"
+RESTRICTED_BASE = "http://127.0.0.1:5108"
 SLUG = "price-calculator-fixture"
 ZERO, POSITIVE, ADDED = "CI-OPENING-ZERO", "CI-OPENING-POSITIVE", "CI-OPENING-ADDED"
 
 
-def request(path, method="GET", body=None, token=None, extra_headers=None):
+def request(path, method="GET", body=None, token=None, extra_headers=None, base=BASE):
     headers = {"Content-Type": "application/json"} if body is not None else {}
     headers.update(extra_headers or {})
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
-        response = urlopen(Request(BASE + path, method=method, headers=headers,
+        response = urlopen(Request(base + path, method=method, headers=headers,
                                    data=json.dumps(body).encode() if body is not None else None), timeout=8)
     except HTTPError as error:
         response = error
@@ -29,21 +30,21 @@ def request(path, method="GET", body=None, token=None, extra_headers=None):
         return response.status, json.loads(content) if content else None
 
 
-def start_api(permissions=None):
+def start_api(permissions=None, base=BASE):
     env = os.environ.copy()
     if permissions is not None:
         env.update(Admin__Role="ReadOnlyAnalyst", Admin__Permissions=permissions)
     process = subprocess.Popen(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
-                                "--configuration", "Release", "--no-build", "--urls", BASE],
+                                "--configuration", "Release", "--no-build", "--urls", base],
                                cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
     try:
         for _ in range(40):
             if process.poll() is not None:
                 raise AssertionError("Purchase test API exited")
             try:
-                if request("/health/live")[0] == 200:
+                if request("/health/live", base=base)[0] == 200:
                     status, login = request("/api/v1/admin/auth/login", "POST", {
-                        "email": os.environ["Admin__Email"], "password": "Mazeduneh-CI-Owner-Password!"})
+                        "email": os.environ["Admin__Email"], "password": "Mazeduneh-CI-Owner-Password!"}, base=base)
                     assert status == 200
                     return process, login["accessToken"]
             except (URLError, TimeoutError):
@@ -157,8 +158,14 @@ with tempfile.TemporaryFile() as log:
     for permissions in ['inventory.read', 'inventory.read,pricing.write', 'inventory.read,products.write']:
         api, token = start_api(permissions)
         try:
-            assert request(PATH+'/preview', 'POST', recipe, token)[0] == 200
-            assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token)[0] == 403
+            assert request(PATH+'/preview', 'POST', recipe, token)[0] == 403
+            expected_apply_status = 428 if 'pricing.write' in permissions else 403
+            assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token)[0] == expected_apply_status
+            if 'pricing.write' in permissions:
+                status, proof = step_up(token)
+                assert status == 200
+                assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token,
+                               {'X-Admin-Step-Up': proof['stepUpToken']})[0] == 403
         finally:
             stop_api(api)
     for permissions, expected_status in [('pricing.read', 403), ('pricing.read,pricing.write', 428)]:
@@ -176,4 +183,73 @@ with tempfile.TemporaryFile() as log:
                                {'X-Admin-Step-Up': proof['stepUpToken']})[0] == 200
         finally:
             stop_api(api)
+
+    # A limited writer starts with an old in-memory catalog while a separate
+    # pricing session updates persisted costs. Its later PUT must leave them intact.
+    api, owner_token = start_api()
+    content_api, content_token = start_api(
+        'products.read,products.write,inventory.read,inventory.write', RESTRICTED_BASE)
+    try:
+        _, state = request(PATH, token=owner_token)
+        updated_recipe = dict(recipe, packagingCost=700, additionalCost=250, markupPercent=30)
+        status, proof = step_up(owner_token)
+        assert status == 200
+        status, quote = request(PATH+'/apply', 'POST',
+                                {'recipe': updated_recipe, 'expectedPrice': state['currentPrice']},
+                                owner_token, {'X-Admin-Step-Up': proof['stepUpToken']})
+        assert status == 200 and quote['purchaseCost'] == 4000
+
+        status, products = request('/api/v1/products/admin', token=content_token, base=RESTRICTED_BASE)
+        assert status == 200
+        product = next(item for item in products if item['slug'] == SLUG)
+        variant = product['variants'][0]
+        for field in ('costPrice', 'packagingCost', 'additionalCost'):
+            assert variant[field] == 0, (field, variant[field])
+
+        status, batches = request('/api/v1/admin/inventory/batches?sku='+SKU,
+                                  token=content_token, base=RESTRICTED_BASE)
+        assert status == 200 and batches
+        assert all(batch[field] == 0 for batch in batches for field in
+                   ('costPrice', 'packagingCost', 'additionalCost', 'purchaseTotal'))
+        status, purchases = request('/api/v1/admin/inventory/purchases?sku='+SKU,
+                                    token=content_token, base=RESTRICTED_BASE)
+        assert status == 200 and purchases['items']
+        assert all(batch[field] == 0 for batch in purchases['items'] for field in
+                   ('costPrice', 'packagingCost', 'additionalCost', 'purchaseTotal'))
+        assert request(PATH, token=content_token, base=RESTRICTED_BASE)[0] == 403
+        assert request(PATH+'/preview', 'POST', updated_recipe, content_token,
+                       base=RESTRICTED_BASE)[0] == 403
+
+        status, publication = request('/api/v1/products/'+SLUG+'/publication', 'PATCH',
+                                      {'isPublished': False}, content_token, base=RESTRICTED_BASE)
+        assert status == 200
+        assert all(publication['product']['variants'][0][field] == 0 for field in
+                   ('costPrice', 'packagingCost', 'additionalCost'))
+
+        update = {
+            'title': 'CI price content update', 'category': product['category'],
+            'origin': product['origin'], 'currency': product['currency'],
+            'unitType': product['unitType'],
+            'variants': [{
+                'sku': variant['sku'], 'quantity': variant['quantity'],
+                'displayLabel': variant['displayLabel'], 'price': quote['sellingPrice'],
+                'availablePackages': variant['availablePackages'],
+                'costPrice': 999999, 'packagingCost': 999999, 'additionalCost': 999999,
+            }],
+        }
+        status, updated_product = request('/api/v1/products/'+SLUG, 'PUT', update,
+                                          content_token, base=RESTRICTED_BASE)
+        assert status == 200
+        assert all(updated_product['variants'][0][field] == 0 for field in
+                   ('costPrice', 'packagingCost', 'additionalCost'))
+
+        _, persisted = request('/api/v1/products/admin', token=owner_token)
+        persisted_variant = next(item for item in persisted if item['slug'] == SLUG)['variants'][0]
+        assert persisted_variant['costPrice'] == 4000
+        assert persisted_variant['packagingCost'] == quote['packagingCost']
+        assert persisted_variant['additionalCost'] == quote['additionalCost']
+        assert persisted_variant['price'] == quote['sellingPrice']
+    finally:
+        stop_api(content_api)
+        stop_api(api)
 print('Pricing arithmetic, preview/apply, permissions, stale safety, audit, persistence, catalog and order snapshot passed')

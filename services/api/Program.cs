@@ -141,8 +141,10 @@ products.MapGet("/admin", async (
     ProductCatalog productCatalog,
     CatalogDatabase liveDatabase,
     InventoryBatchDatabase batches,
+    HttpContext context,
     CancellationToken cancellationToken) =>
-    Results.Ok(await CatalogWithExpiryAsync(await CurrentCatalogAsync(productCatalog, liveDatabase, true, cancellationToken), batches, cancellationToken, includeCosts: true)))
+    Results.Ok((await CatalogWithExpiryAsync(await CurrentCatalogAsync(productCatalog, liveDatabase, true, cancellationToken), batches, cancellationToken, includeCosts: true))
+        .Select(product => ProductCostPrivacy.ProjectFor(product, (AdminPrincipal)context.Items["AdminPrincipal"]!))))
     .AddEndpointFilter<OwnerAuthorizationFilter>();
 products.MapGet("/{slug}", async (
     string slug,
@@ -161,6 +163,7 @@ products.MapPost("/", async (
     CreateProductRequest request,
     ProductCatalog productCatalog,
     CatalogDatabase db,
+    HttpContext context,
     CancellationToken cancellationToken) =>
 {
     var errors = request.Validate();
@@ -170,7 +173,12 @@ products.MapPost("/", async (
     if (productCatalog.SkuExists(request.Variants.Select(item => item.Sku)))
         return Results.Conflict(new { message = "حداقل یک SKU قبلاً استفاده شده است." });
 
-    var product = productCatalog.Build(request);
+    var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+    var builtProduct = productCatalog.Build(request);
+    var product = builtProduct with
+    {
+        Variants = ProductCostPrivacy.ForCreate(builtProduct.Variants, AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite))
+    };
     if (request.IsPublished)
     {
         var publicationErrors = productCatalog.ValidateForPublication(product);
@@ -180,7 +188,7 @@ products.MapPost("/", async (
     {
         await db.InsertAsync(product, cancellationToken);
         productCatalog.Add(product);
-        return Results.Created($"/api/v1/products/{product.Slug}", product);
+        return Results.Created($"/api/v1/products/{product.Slug}", ProductCostPrivacy.ProjectFor(product, principal));
     }
     catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
     {
@@ -194,21 +202,31 @@ products.MapPut("/{slug}", async (
     UpdateProductRequest request,
     ProductCatalog productCatalog,
     CatalogDatabase db,
+    HttpContext context,
     CancellationToken cancellationToken) =>
 {
     var existing = productCatalog.FindBySlug(slug);
     if (existing is null) return Results.NotFound(new { message = "محصول موردنظر پیدا نشد." });
     var errors = request.Validate();
     if (errors.Count > 0) return Results.ValidationProblem(errors);
-    var updated = productCatalog.Update(existing, request);
+    var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
+    var catalogUpdate = productCatalog.Update(existing, request);
+    var canWriteCosts = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite);
+    var updated = catalogUpdate with
+    {
+        Variants = ProductCostPrivacy.ForUpdate(
+            catalogUpdate.Variants,
+            existing.Variants,
+            canWriteCosts)
+    };
     if (existing.IsPublished)
     {
         var publicationErrors = productCatalog.ValidateForPublication(updated);
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
-    await db.UpdateAsync(updated, cancellationToken);
-    productCatalog.Add(updated);
-    return Results.Ok(updated);
+    var persisted = await db.UpdateAsync(updated, canWriteCosts, cancellationToken);
+    productCatalog.Add(persisted);
+    return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -248,7 +266,7 @@ products.MapPatch("/{slug}/publication", async (
     return Results.Ok(new
     {
         message = request.IsPublished ? "محصول با موفقیت منتشر شد." : "محصول از فروشگاه خارج شد.",
-        product = updated
+        product = ProductCostPrivacy.ProjectFor(updated, (AdminPrincipal)context.Items["AdminPrincipal"]!)
     });
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
