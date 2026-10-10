@@ -40,7 +40,7 @@ The launcher synchronizes npm and Flutter dependencies from their lockfiles, wai
 
 ### Storefront order submission
 
-Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. Live products carry their server SKU; preview-only cart lines stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until a real payment provider is integrated and confirms payment server-side.
+Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the public HTTPS origin of the API. Configure the API's `Cors__AllowedOrigins__0` with the storefront origin (for example, `https://mazedoone-storefront-preview.vercel.app`) and use PostgreSQL for durable order and inventory data. Live products carry their server SKU; preview-only cart lines stay blocked instead of creating an invalid order. A submitted order remains `AwaitingPayment` until Zibal verifies it server-side. See [`docs/ZIBAL_PAYMENT.md`](docs/ZIBAL_PAYMENT.md) for the required production settings.
 
 ### Liara deployment preparation
 
@@ -68,6 +68,7 @@ Docker deployment files and the release checklist are in [`docs/LIARA_DEPLOYMENT
 - `docs/BUSINESS_OPERATIONS.md`
 - `docs/DELIVERY_LOOP.md`
 - `docs/ROADMAP.md`
+- `docs/ZIBAL_PAYMENT.md`
 
 ## Status
 

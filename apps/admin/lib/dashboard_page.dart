@@ -255,6 +255,7 @@ class _DashboardPageState extends State<DashboardPage> {
     String label(String value) => switch (value) {
           'healthy' || 'ready' || 'tracked' => 'سالم',
           'configured' => 'پیکربندی شده',
+          'zibal-configured' => 'زیبال پیکربندی شده',
           'not-configured' => 'پیکربندی نشده',
           'sandbox-enabled' => 'حالت آزمایشی فعال',
           'disabled' => 'غیرفعال',

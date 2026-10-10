@@ -173,6 +173,7 @@ public static class OrderManagementModule
             ApiHealthProbe healthProbe,
             AdminTokenService adminTokens,
             PaymentDatabase payments,
+            ZibalGateway zibal,
             IOptions<MediaStorageOptions> mediaOptions,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -181,7 +182,7 @@ public static class OrderManagementModule
             context.Response.Headers.CacheControl = "no-store";
             var database = await healthProbe.CheckDatabaseAsync(cancellationToken);
             var authentication = adminTokens.IsConfigured ? "configured" : "not-configured";
-            var payment = payments.SandboxEnabled ? "sandbox-enabled" : "disabled";
+            var payment = zibal.IsConfigured ? "zibal-configured" : payments.SandboxEnabled ? "sandbox-enabled" : "disabled";
             var storageOptions = mediaOptions.Value;
             var storage = storageOptions.Provider.Trim().ToLowerInvariant() switch
             {

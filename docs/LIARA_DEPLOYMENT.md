@@ -38,6 +38,10 @@ Media__S3__Region=<region باکت>
 Media__S3__AccessKey=<access key>
 Media__S3__SecretKey=<secret key>
 Media__S3__ForcePathStyle=true
+Payments__SandboxEnabled=false
+Payments__Zibal__Merchant=<merchant-code>
+Payments__Zibal__CallbackUrl=https://<دامنه-api>/api/v1/payments/zibal/callback
+Payments__Zibal__ReturnUrl=https://<دامنه-فروشگاه>/checkout
 ```
 
 اطلاعات دقیق اتصال دیتابیس و Object Storage را از خود پنل لیارا می‌گیریم. ذخیره‌سازی `Local` برای فایل‌های آپلودی production مناسب نیست، چون دیسک کانتینر محل نگهداری پایدار فایل نیست.
@@ -77,5 +81,5 @@ liara deploy --path apps/admin --app $adminApp --platform docker --port 8080 --b
 - نام دامنه‌های نهایی را به CORS API اضافه می‌کنیم.
 - رمز مدیر و `Admin__TokenSigningKey` مستقل و تصادفی تولید می‌شوند.
 - اتصال API به دیتابیس و آپلود/دریافت فایل در Object Storage را روی محیط staging بررسی می‌کنیم.
-- پرداخت واقعی تا زمان پیاده‌سازی درگاه و تأیید سمت سرور فعال نمی‌شود.
+- Merchant Code زیبال، Callback و Return URL را فقط در Environment API قرار می‌دهیم؛ Callback باید HTTPS عمومی باشد و دامنه و IP API در پنل زیبال ثبت شوند. راهنمای کامل در [ZIBAL_PAYMENT.md](ZIBAL_PAYMENT.md) است.
 - Docker روی محیط توسعهٔ فعلی نصب نیست؛ بنابراین Dockerfileها در این سیستم image-build نشده‌اند. ساخت image و تطبیق نهایی CLI هنگام آماده‌شدن حساب لیارا انجام می‌شود.
