@@ -11,6 +11,19 @@ import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
 
+String _paymentStateLabel(String state) => switch (state) {
+      'Pending' => 'در انتظار تأیید',
+      'Succeeded' => 'موفق',
+      'Failed' => 'ناموفق',
+      _ => state,
+    };
+
+String _paymentProviderLabel(String provider) => switch (provider) {
+      'Zibal' => 'زیبال',
+      'Sandbox' => 'آزمایشی',
+      _ => provider,
+    };
+
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all});
   final OrderApiClient? api;
@@ -642,8 +655,8 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           if (detail.payment != null) ...[
             const SizedBox(height: 12),
             _detailCard(title: 'پرداخت', icon: Icons.payments_outlined, child: Wrap(spacing: 28, runSpacing: 14, children: [
-              _detailValue('وضعیت', detail.payment!.state),
-              _detailValue('درگاه', detail.payment!.provider),
+              _detailValue('وضعیت', _paymentStateLabel(detail.payment!.state)),
+              _detailValue('درگاه', _paymentProviderLabel(detail.payment!.provider)),
               _detailValue('مبلغ', '${formatPersianNumber(detail.payment!.amount)} ${detail.payment!.currency}'),
               if (detail.payment!.reference != null) _detailValue('شناسه پیگیری', detail.payment!.reference!),
             ])),
