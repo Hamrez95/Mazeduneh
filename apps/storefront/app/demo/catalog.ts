@@ -9,6 +9,9 @@ export type ProductArt =
 
 export type DemoProduct = {
   id: string;
+  /** Server SKU used when this product came from the live catalog. */
+  sku?: string;
+  variants?: Array<{ sku: string; packageLabel: string; price: number; stock: number }>;
   title: string;
   subtitle: string;
   category: string;
@@ -21,6 +24,21 @@ export type DemoProduct = {
   stock: number;
   badge?: string;
   note: string;
+  description?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  primaryImage?: string;
+  galleryImages?: string[];
+  specifications?: Record<string, string>;
+  ingredients?: string;
+  allergens?: string[];
+  nutritionFacts?: Record<string, number>;
+  storageInstructions?: string;
+  shelfLifeDays?: number;
+  netWeight?: number;
+  netWeightUnit?: string;
+  expiryLabel?: string;
+  earliestAvailableExpiryAt?: string;
 };
 
 export const categories = [
@@ -48,6 +66,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 12,
     badge: "پرفروش",
     note: "شور ملایم · سایز یکدست",
+    primaryImage: "/products/pistachio-pouch-new.webp",
+    galleryImages: ["/products/pistachio-pouch-new.webp", "/products/pistachio-scene-new.webp", "/products/pistachio-pouch.webp", "/products/pistachio-akbari.webp"],
   },
   {
     id: "pistachio-ahmad",
@@ -62,9 +82,17 @@ export const demoProducts: DemoProduct[] = [
     stock: 10,
     badge: "انتخاب مهمانی",
     note: "بوداده روز · نمک کنترل‌شده",
+    primaryImage: "/products/pistachio-pouch-new.webp",
+    galleryImages: ["/products/pistachio-pouch-new.webp", "/products/pistachio-scene-new.webp", "/products/pistachio-pouch.webp", "/products/pistachio-ahmad.webp"],
   },
   {
     id: "almond",
+    sku: "NU-ALM-500",
+    variants: [
+      { sku: "NU-ALM-250", packageLabel: "بسته ۲۵۰ گرمی", price: 175000, stock: 25 },
+      { sku: "NU-ALM-500", packageLabel: "بسته ۵۰۰ گرمی", price: 330000, stock: 16 },
+      { sku: "NU-ALM-1000", packageLabel: "بسته ۱۰۰۰ گرمی", price: 640000, stock: 8 },
+    ],
     title: "بادام درختی خام",
     subtitle: "بدون نمک، ترد و مناسب میان‌وعده",
     category: "آجیل و مغزها",
@@ -75,6 +103,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 16,
     note: "خام · بدون افزودنی",
+    primaryImage: "/products/almond-pouch-new.webp",
+    galleryImages: ["/products/almond-pouch-new.webp", "/products/almond-pouch.webp", "/products/almond.webp"],
   },
   {
     id: "walnut",
@@ -88,6 +118,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 8,
     note: "شکستگی کم · طعم تازه",
+    primaryImage: "/products/walnut-character-new.webp",
+    galleryImages: ["/products/walnut-character-new.webp", "/products/walnut-character.webp", "/products/walnut.webp"],
   },
   {
     id: "dried-fruit",
@@ -103,6 +135,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 21,
     badge: "ترکیب تازه",
     note: "بدون سرخ‌کردن · برش یکدست",
+    primaryImage: "/products/dried-fruit.webp",
+    galleryImages: ["/products/dried-fruit.webp"],
   },
   {
     id: "pumpkin-seeds",
@@ -116,6 +150,8 @@ export const demoProducts: DemoProduct[] = [
     packageLabel: "بسته ۵۰۰ گرمی",
     stock: 14,
     note: "تازه‌برشت · کم‌نمک",
+    primaryImage: "/products/pumpkin-seeds.webp",
+    galleryImages: ["/products/pumpkin-seeds.webp"],
   },
   {
     id: "protein-cookie",
@@ -130,6 +166,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 20,
     badge: "کم‌شکر · پروتئینی",
     note: "پخت روز · بافت نرم",
+    primaryImage: "/products/protein-cookie.webp",
+    galleryImages: ["/products/protein-cookie.webp", "/products/cocoa-cookie-dragon.webp", "/products/dragon-box-new.webp"],
   },
   {
     id: "fruit-leather",
@@ -144,6 +182,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 18,
     badge: "دست‌ساز",
     note: "بدون رنگ مصنوعی · میوه‌محور",
+    primaryImage: "/products/fruit-leather.webp",
+    galleryImages: ["/products/fruit-leather.webp"],
   },
   {
     id: "oat-cookie",
@@ -158,6 +198,8 @@ export const demoProducts: DemoProduct[] = [
     stock: 15,
     badge: "کم‌شکر",
     note: "جو دوسر · بدون شیرینی اضافه",
+    primaryImage: "/products/oat-cookie.webp",
+    galleryImages: ["/products/oat-cookie.webp", "/products/cookie-mouth-packaging.webp"],
   },
   {
     id: "gift-box",
@@ -173,9 +215,9 @@ export const demoProducts: DemoProduct[] = [
     stock: 7,
     badge: "هدیه ویژه",
     note: "کارت تبریک · چیدمان سفارشی",
+    primaryImage: "/products/gift-box.webp",
+    galleryImages: ["/products/gift-box.webp", "/products/one-kilo-box-packaging.webp", "/products/mixed-nuts-character.webp", "/products/gift-boxes-new.webp"],
   },
 ];
 
-export function toman(value: number) {
-  return new Intl.NumberFormat("fa-IR").format(value);
-}
+export { formatNumber as toman } from "../formatters";

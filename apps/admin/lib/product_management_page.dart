@@ -1,3 +1,4 @@
+import 'formatters.dart';
 import 'package:flutter/material.dart';
 
 import 'catalog_api.dart';
@@ -8,11 +9,13 @@ class ProductManagementPage extends StatefulWidget {
     required this.products,
     required this.api,
     required this.onReload,
+    this.categories = const [],
   });
 
   final List<Product> products;
   final CatalogApiClient api;
   final Future<void> Function() onReload;
+  final List<Category> categories;
 
   @override
   State<ProductManagementPage> createState() => _ProductManagementPageState();
@@ -64,11 +67,35 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
     }
   }
 
+  Future<void> _openCreateCategoryDialog() async {
+    final created = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CreateCategoryDialog(api: widget.api),
+    );
+    if (created != true) return;
+    await widget.onReload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسته‌بندی ثبت شد.')));
+  }
+
+  Future<void> _openEditDialog(Product product) async {
+    final updated = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories, initialProduct: product),
+    );
+    if (updated != true) return;
+    await widget.onReload();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌روزرسانی شد.')));
+  }
+
   Future<void> _openCreateDialog() async {
     final created = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CreateProductDialog(api: widget.api),
+      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories),
     );
     if (created != true) return;
     await widget.onReload();
@@ -102,10 +129,20 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                 ],
               ),
             ),
-            FilledButton.icon(
-              onPressed: _openCreateDialog,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('محصول جدید'),
+            Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _openCreateCategoryDialog,
+                  icon: const Icon(Icons.category_outlined),
+                  label: const Text('دسته جدید'),
+                ),
+                FilledButton.icon(
+                  onPressed: _openCreateDialog,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('محصول جدید'),
+                ),
+              ],
             ),
           ],
         ),
@@ -175,7 +212,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                     Text(product.isWeight ? 'واحد پایه: گرم' : 'واحد پایه: عدد'),
                                     const Spacer(),
                                     Text(
-                                      '${product.totalStock} بسته',
+                                      '${formatPersianInteger(product.totalStock)} بسته',
                                       style: const TextStyle(fontWeight: FontWeight.w800),
                                     ),
                                   ],
@@ -189,10 +226,10 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                       children: [
                                         for (final variant in product.variants)
                                           Tooltip(
-                                            message: '${variant.sku} · ${_formatToman(variant.price)} تومان',
+                                            message: '${variant.sku} · ${formatToman(variant.price)} تومان',
                                             child: Chip(
                                               label: Text(
-                                                '${variant.displayLabel} · ${variant.availablePackages}',
+                                                '${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)}',
                                               ),
                                             ),
                                           ),
@@ -201,27 +238,25 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                   ),
                                 ),
                                 const Divider(),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        product.isPublished
-                                            ? 'قابل نمایش و سفارش در سایت'
-                                            : 'فقط در پنل مدیریت دیده می‌شود',
-                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                                      ),
-                                    ),
-                                    if (changing)
-                                      const SizedBox.square(
-                                        dimension: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    else
-                                      OutlinedButton(
-                                        onPressed: () => _togglePublication(product),
-                                        child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار'),
-                                      ),
-                                  ],
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final actions = changing
+                                        ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                                        : Wrap(spacing: 8, children: [
+                                            OutlinedButton.icon(onPressed: () => _openEditDialog(product), icon: const Icon(Icons.edit_outlined, size: 17), label: const Text('ویرایش')),
+                                            Tooltip(
+                                              message: product.isPublished ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.' : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
+                                              child: OutlinedButton(onPressed: () => _togglePublication(product), child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار')),
+                                            ),
+                                          ]);
+                                    final status = Text(
+                                      product.isPublished ? 'قابل نمایش و سفارش در سایت' : 'فقط در پنل مدیریت دیده می‌شود',
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    );
+                                    return constraints.maxWidth < 410
+                                        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [status, const SizedBox(height: 8), Align(alignment: AlignmentDirectional.centerEnd, child: actions)])
+                                        : Row(children: [Expanded(child: status), actions]);
+                                  },
                                 ),
                               ],
                             ),
@@ -238,9 +273,11 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
 }
 
 class _CreateProductDialog extends StatefulWidget {
-  const _CreateProductDialog({required this.api});
+  const _CreateProductDialog({required this.api, required this.categories, this.initialProduct});
 
   final CatalogApiClient api;
+  final List<Category> categories;
+  final Product? initialProduct;
 
   @override
   State<_CreateProductDialog> createState() => _CreateProductDialogState();
@@ -250,13 +287,68 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
   final formKey = GlobalKey<FormState>();
   final title = TextEditingController();
   final slug = TextEditingController();
-  final category = TextEditingController(text: 'پسته و مغزیجات');
+  final category = TextEditingController();
   final origin = TextEditingController();
+  final shortDescription = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  final seoKeywords = TextEditingController();
+  final primaryImage = TextEditingController();
+  final galleryImages = TextEditingController();
+  final specifications = TextEditingController();
+  final ingredients = TextEditingController();
+  final allergens = TextEditingController();
+  final nutritionFacts = TextEditingController();
+  final storageInstructions = TextEditingController();
+  final shelfLifeDays = TextEditingController();
+  final netWeight = TextEditingController();
+  final expiryLabel = TextEditingController(text: 'best-before');
 
   String unitType = 'Weight';
+  String? selectedCategory;
   bool submitting = false;
   String? errorMessage;
   late List<_VariantDraft> variants = _weightVariants();
+
+  @override
+  void initState() {
+    super.initState();
+    final product = widget.initialProduct;
+    if (product == null) return;
+    title.text = product.title;
+    slug.text = product.slug;
+    category.text = product.category;
+    origin.text = product.origin;
+    selectedCategory = widget.categories.any((item) => item.name == product.category) ? product.category : null;
+    unitType = product.unitType;
+    shortDescription.text = product.shortDescription;
+    description.text = product.description;
+    seoTitle.text = product.seoTitle;
+    seoDescription.text = product.seoDescription;
+    seoKeywords.text = product.seoKeywords;
+    primaryImage.text = product.primaryImage;
+    galleryImages.text = product.galleryImages.join('\\n');
+    specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    ingredients.text = product.ingredients;
+    allergens.text = product.allergens.join('، ');
+    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${toPersianDigits(entry.value)}').join('\\n');
+    storageInstructions.text = product.storageInstructions;
+    shelfLifeDays.text = product.shelfLifeDays == null ? '' : toPersianDigits(product.shelfLifeDays);
+    netWeight.text = product.netWeight == null ? '' : toPersianDigits(product.netWeight);
+    expiryLabel.text = product.expiryLabel;
+    for (final variant in variants) variant.dispose();
+    variants = product.variants.map((variant) => _VariantDraft(
+      sku: variant.sku,
+      quantity: toPersianDigits(variant.quantity),
+      label: variant.displayLabel,
+      priceToman: toPersianDigits((variant.price / 10).round()),
+      costPriceToman: toPersianDigits((variant.costPrice / 10).round()),
+      packagingCostToman: toPersianDigits((variant.packagingCost / 10).round()),
+      additionalCostToman: toPersianDigits((variant.additionalCost / 10).round()),
+      stock: toPersianDigits(variant.availablePackages),
+    )).toList();
+  }
 
   @override
   void dispose() {
@@ -264,6 +356,21 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     slug.dispose();
     category.dispose();
     origin.dispose();
+    shortDescription.dispose();
+    description.dispose();
+    seoTitle.dispose();
+    seoDescription.dispose();
+    seoKeywords.dispose();
+    primaryImage.dispose();
+    galleryImages.dispose();
+    specifications.dispose();
+    ingredients.dispose();
+    allergens.dispose();
+    nutritionFacts.dispose();
+    storageInstructions.dispose();
+    shelfLifeDays.dispose();
+    netWeight.dispose();
+    expiryLabel.dispose();
     for (final variant in variants) {
       variant.dispose();
     }
@@ -309,23 +416,69 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
       final command = CreateProductCommand(
         title: title.text.trim(),
         slug: slug.text.trim().toLowerCase(),
-        category: category.text.trim(),
+        category: (selectedCategory ?? category.text).trim(),
         origin: origin.text.trim(),
         unitType: unitType,
         isPublished: false,
+        shortDescription: shortDescription.text.trim(),
+        description: description.text.trim(),
+        seoTitle: seoTitle.text.trim(),
+        seoDescription: seoDescription.text.trim(),
+        seoKeywords: seoKeywords.text.trim(),
+        primaryImage: primaryImage.text.trim(),
+        galleryImages: galleryImages.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        specifications: _parseSpecifications(specifications.text),
+        ingredients: ingredients.text.trim(),
+        allergens: allergens.text.split('،').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        nutritionFacts: _parseDecimalMap(nutritionFacts.text),
+        storageInstructions: storageInstructions.text.trim(),
+        shelfLifeDays: parsePersianInteger(shelfLifeDays.text),
+        netWeight: parsePersianNumber(netWeight.text),
+        expiryLabel: expiryLabel.text.trim().isEmpty ? 'best-before' : expiryLabel.text.trim(),
         variants: variants
             .map(
               (variant) => CreateVariantCommand(
                 sku: variant.sku.text.trim().toUpperCase(),
-                quantity: num.parse(variant.quantity.text.trim()),
+                quantity: parsePersianNumber(variant.quantity.text)!,
                 displayLabel: variant.label.text.trim(),
-                price: int.parse(variant.priceToman.text.trim()) * 10,
-                availablePackages: int.parse(variant.stock.text.trim()),
+                price: parsePersianInteger(variant.priceToman.text)! * 10,
+                costPrice: parsePersianInteger(variant.costPriceToman.text)! * 10,
+                packagingCost: parsePersianInteger(variant.packagingCostToman.text)! * 10,
+                additionalCost: parsePersianInteger(variant.additionalCostToman.text)! * 10,
+                availablePackages: parsePersianInteger(variant.stock.text)!,
               ),
             )
             .toList(),
       );
-      await widget.api.createProduct(command);
+      if (widget.initialProduct == null) {
+        await widget.api.createProduct(command);
+      } else {
+        await widget.api.updateProduct(
+          widget.initialProduct!.slug,
+          UpdateProductCommand(
+            title: command.title,
+            category: command.category,
+            origin: command.origin,
+            unitType: command.unitType,
+            variants: command.variants,
+            shortDescription: command.shortDescription,
+            description: command.description,
+            seoTitle: command.seoTitle,
+            seoDescription: command.seoDescription,
+            seoKeywords: command.seoKeywords,
+            primaryImage: command.primaryImage,
+            galleryImages: command.galleryImages,
+            specifications: command.specifications,
+            ingredients: command.ingredients,
+            allergens: command.allergens,
+            nutritionFacts: command.nutritionFacts,
+            storageInstructions: command.storageInstructions,
+            shelfLifeDays: command.shelfLifeDays,
+            netWeight: command.netWeight,
+            expiryLabel: command.expiryLabel,
+          ),
+        );
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) setState(() => errorMessage = error.toString());
@@ -339,7 +492,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     return Dialog.fullscreen(
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('محصول جدید'),
+          title: Text(widget.initialProduct == null ? 'محصول جدید' : 'ویرایش محصول'),
           leading: IconButton(
             onPressed: submitting ? null : () => Navigator.pop(context, false),
             icon: const Icon(Icons.close_rounded),
@@ -355,7 +508,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save_rounded),
-                label: const Text('ذخیره پیش‌نویس'),
+                label: Text(widget.initialProduct == null ? 'ذخیره پیش‌نویس' : 'ذخیره تغییرات'),
               ),
             ),
           ],
@@ -389,10 +542,50 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                             validator: _slugValidator,
                             textDirection: TextDirection.ltr,
                           ),
-                          _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required),
+                          if (widget.categories.isEmpty)
+                            _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required)
+                          else
+                            SizedBox(
+                              width: MediaQuery.sizeOf(context).width < 520 ? MediaQuery.sizeOf(context).width - 56 : 430,
+                              child: DropdownButtonFormField<String>(
+                                value: selectedCategory,
+                                decoration: const InputDecoration(labelText: 'دسته‌بندی'),
+                                items: widget.categories.where((item) => item.isActive).map((item) => DropdownMenuItem(value: item.name, child: Text(item.name))).toList(),
+                                onChanged: submitting ? null : (value) => setState(() => selectedCategory = value),
+                                validator: (value) => value == null ? 'دسته‌بندی را انتخاب کنید.' : null,
+                              ),
+                            ),
                           _Input(width: 430, controller: origin, label: 'مبدأ یا برند', validator: _required),
+                          _Input(width: 430, controller: shortDescription, label: 'توضیح کوتاه', hint: 'برای کارت محصول و خلاصه سئو'),
+                          _Input(width: 872, controller: description, label: 'توضیحات کامل محصول', maxLines: 4),
                         ],
                       ),
+                      const SizedBox(height: 24),
+                      const _SectionTitle(
+                        title: 'اطلاعات خوراکی و نگهداری',
+                        subtitle: 'این اطلاعات مستقیماً از پنل به صفحه محصول منتقل می‌شود و hard-code نیست.',
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 12, runSpacing: 12, children: [
+                        _Input(width: 430, controller: ingredients, label: 'مواد تشکیل‌دهنده', hint: 'پسته، نمک، زعفران'),
+                        _Input(width: 430, controller: allergens, label: 'آلرژن‌ها', hint: 'بادام، بادام‌زمینی، گلوتن'),
+                        _Input(width: 430, controller: nutritionFacts, label: 'ارزش غذایی', hint: 'کالری: ۵۶۰\\nپروتئین: ۲۰', maxLines: 4),
+                        _Input(width: 430, controller: storageInstructions, label: 'نحوه نگهداری', hint: 'در جای خشک و خنک نگهداری شود', maxLines: 3),
+                        _Input(width: 210, controller: shelfLifeDays, label: 'ماندگاری (روز)', validator: _optionalNonNegativeInt, keyboardType: TextInputType.number),
+                        _Input(width: 210, controller: netWeight, label: 'وزن خالص', validator: _optionalNumber, keyboardType: TextInputType.number),
+                        _Input(width: 210, controller: expiryLabel, label: 'نوع تاریخ', hint: 'best-before'),
+                      ]),
+                      const SizedBox(height: 24),
+                      const _SectionTitle(title: 'تصاویر و سئوی محصول', subtitle: 'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.'),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 12, runSpacing: 12, children: [
+                        _Input(width: 430, controller: primaryImage, label: 'تصویر اصلی', hint: '/products/pistachio-pouch-new.webp', textDirection: TextDirection.ltr),
+                        _Input(width: 430, controller: seoTitle, label: 'عنوان SEO'),
+                        _Input(width: 430, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
+                        _Input(width: 430, controller: seoKeywords, label: 'کلمات کلیدی SEO'),
+                        _Input(width: 430, controller: galleryImages, label: 'گالری تصاویر', maxLines: 4, textDirection: TextDirection.ltr),
+                        _Input(width: 430, controller: specifications, label: 'مشخصات کلیدی', hint: 'وزن: ۲۵۰ گرم\nدرجه: ممتاز', maxLines: 4),
+                      ]),
                       const SizedBox(height: 24),
                       const _SectionTitle(
                         title: 'نوع واحد فروش',
@@ -497,7 +690,7 @@ class _VariantEditor extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'بسته ${index + 1}',
+                    'بسته ${formatPersianInteger(index + 1)}',
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -538,7 +731,28 @@ class _VariantEditor extends StatelessWidget {
                   width: 170,
                   controller: draft.priceToman,
                   label: 'قیمت فروش (تومان)',
-                  validator: _nonNegativeInt,
+                  validator: _nonNegativeToman,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
+                  width: 170,
+                  controller: draft.costPriceToman,
+                  label: 'قیمت خرید/مواد (تومان)',
+                  validator: _nonNegativeToman,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
+                  width: 170,
+                  controller: draft.packagingCostToman,
+                  label: 'هزینه بسته‌بندی (تومان)',
+                  validator: _nonNegativeToman,
+                  keyboardType: TextInputType.number,
+                ),
+                _Input(
+                  width: 170,
+                  controller: draft.additionalCostToman,
+                  label: 'هزینه جانبی (تومان)',
+                  validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                 ),
                 _Input(
@@ -566,6 +780,7 @@ class _Input extends StatelessWidget {
     this.validator,
     this.keyboardType,
     this.textDirection,
+    this.maxLines = 1,
   });
 
   final double width;
@@ -575,16 +790,18 @@ class _Input extends StatelessWidget {
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
   final TextDirection? textDirection;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: width,
+      width: width.clamp(0, MediaQuery.sizeOf(context).width - 56).toDouble(),
       child: TextFormField(
         controller: controller,
         validator: validator,
         keyboardType: keyboardType,
         textDirection: textDirection,
+        maxLines: maxLines,
         decoration: InputDecoration(labelText: label, hintText: hint),
       ),
     );
@@ -617,18 +834,27 @@ class _VariantDraft {
     String sku = '',
     String quantity = '',
     String label = '',
-    String priceToman = '0',
-    String stock = '0',
+    String priceToman = '۰',
+    String costPriceToman = '۰',
+    String packagingCostToman = '۰',
+    String additionalCostToman = '۰',
+    String stock = '۰',
   })  : sku = TextEditingController(text: sku),
         quantity = TextEditingController(text: quantity),
         label = TextEditingController(text: label),
         priceToman = TextEditingController(text: priceToman),
+        costPriceToman = TextEditingController(text: costPriceToman),
+        packagingCostToman = TextEditingController(text: packagingCostToman),
+        additionalCostToman = TextEditingController(text: additionalCostToman),
         stock = TextEditingController(text: stock);
 
   final TextEditingController sku;
   final TextEditingController quantity;
   final TextEditingController label;
   final TextEditingController priceToman;
+  final TextEditingController costPriceToman;
+  final TextEditingController packagingCostToman;
+  final TextEditingController additionalCostToman;
   final TextEditingController stock;
 
   void dispose() {
@@ -636,19 +862,22 @@ class _VariantDraft {
     quantity.dispose();
     label.dispose();
     priceToman.dispose();
+    costPriceToman.dispose();
+    packagingCostToman.dispose();
+    additionalCostToman.dispose();
     stock.dispose();
   }
 }
 
 List<_VariantDraft> _weightVariants() => [
-      _VariantDraft(quantity: '250', label: '۲۵۰ گرم'),
-      _VariantDraft(quantity: '500', label: '۵۰۰ گرم'),
-      _VariantDraft(quantity: '1000', label: '۱۰۰۰ گرم'),
+      _VariantDraft(quantity: '۲۵۰', label: '۲۵۰ گرم'),
+      _VariantDraft(quantity: '۵۰۰', label: '۵۰۰ گرم'),
+      _VariantDraft(quantity: '۱۰۰۰', label: '۱۰۰۰ گرم'),
     ];
 
 List<_VariantDraft> _countVariants() => [
-      _VariantDraft(quantity: '1', label: '۱ عدد'),
-      _VariantDraft(quantity: '4', label: 'پک ۴ عددی'),
+      _VariantDraft(quantity: '۱', label: '۱ عدد'),
+      _VariantDraft(quantity: '۴', label: 'پک ۴ عددی'),
     ];
 
 String? _required(String? value) {
@@ -657,14 +886,33 @@ String? _required(String? value) {
 }
 
 String? _positiveNumber(String? value) {
-  final number = num.tryParse(value ?? '');
+  final number = parsePersianNumber(value);
   if (number == null || number <= 0) return 'عدد مثبت وارد کنید.';
   return null;
 }
 
+String? _optionalNumber(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  return parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
+}
+
+String? _optionalNonNegativeInt(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final number = parsePersianInteger(value, min: 0, max: maxApiInteger);
+  return number == null ? 'عدد صحیح صفر یا بیشتر وارد کنید.' : null;
+}
+
 String? _nonNegativeInt(String? value) {
-  final number = int.tryParse(value ?? '');
-  if (number == null || number < 0) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
+  return _nonNegativeWhole(value, max: maxApiInteger);
+}
+
+String? _nonNegativeToman(String? value) {
+  return _nonNegativeWhole(value, max: maxSafeTomanAmount);
+}
+
+String? _nonNegativeWhole(String? value, {required int max}) {
+  final number = parsePersianInteger(value, min: 0, max: max);
+  if (number == null) return 'عدد صحیح صفر یا بیشتر وارد کنید.';
   return null;
 }
 
@@ -684,9 +932,72 @@ String? _skuValidator(String? value) {
   return null;
 }
 
-String _formatToman(num irr) {
-  return '${(irr / 10).round()}'.replaceAllMapped(
-    RegExp(r'\B(?=(\d{3})+(?!\d))'),
-    (_) => '٬',
+Map<String, dynamic> _parseDecimalMap(String raw) {
+  final result = <String, dynamic>{};
+  for (final line in raw.split('\\n')) {
+    final separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    final key = line.substring(0, separator).trim();
+    final value = parsePersianNumber(line.substring(separator + 1));
+    if (key.isNotEmpty && value != null) result[key] = value;
+  }
+  return result;
+}
+
+Map<String, dynamic> _parseSpecifications(String raw) {
+  final result = <String, dynamic>{};
+  for (final line in raw.split('\n')) {
+    final separator = line.indexOf(':');
+    if (separator <= 0) continue;
+    final key = line.substring(0, separator).trim();
+    final value = line.substring(separator + 1).trim();
+    if (key.isNotEmpty && value.isNotEmpty) result[key] = value;
+  }
+  return result;
+}
+
+class _CreateCategoryDialog extends StatefulWidget {
+  const _CreateCategoryDialog({required this.api});
+  final CatalogApiClient api;
+  @override
+  State<_CreateCategoryDialog> createState() => _CreateCategoryDialogState();
+}
+
+class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
+  final formKey = GlobalKey<FormState>();
+  final name = TextEditingController();
+  final slug = TextEditingController();
+  final description = TextEditingController();
+  final seoTitle = TextEditingController();
+  final seoDescription = TextEditingController();
+  bool submitting = false;
+  String? error;
+  @override
+  void dispose() { name.dispose(); slug.dispose(); description.dispose(); seoTitle.dispose(); seoDescription.dispose(); super.dispose(); }
+  Future<void> submit() async {
+    if (!formKey.currentState!.validate()) return;
+    setState(() { submitting = true; error = null; });
+    try {
+      await widget.api.createCategory(CreateCategoryCommand(name: name.text.trim(), slug: slug.text.trim().toLowerCase(), description: description.text.trim(), seoTitle: seoTitle.text.trim(), seoDescription: seoDescription.text.trim()));
+      if (mounted) Navigator.pop(context, true);
+    } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
+    finally { if (mounted) setState(() => submitting = false); }
+  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('دسته‌بندی جدید'),
+    content: SizedBox(width: 460, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      _Input(width: double.infinity, controller: name, label: 'نام دسته‌بندی', validator: _required),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: slug, label: 'شناسه انگلیسی URL', validator: _slugValidator, textDirection: TextDirection.ltr),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: description, label: 'توضیح'),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: seoTitle, label: 'عنوان SEO'),
+      const SizedBox(height: 10),
+      _Input(width: double.infinity, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
+    ])))),
+    actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
   );
 }

@@ -1,0 +1,308 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:mazeduneh_admin/auth_session.dart';
+import 'package:mazeduneh_admin/admin_navigation.dart';
+import 'package:mazeduneh_admin/dashboard_page.dart';
+import 'package:mazeduneh_admin/order_api.dart';
+
+void main() {
+  setUp(() {
+    OwnerSession.instance.establish(
+      accessToken: 'dashboard-test-token',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+  });
+
+  tearDown(OwnerSession.instance.clear);
+
+  testWidgets('dashboard quick actions expose a guided route on a narrow screen', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/dashboard/health')) {
+        return http.Response(
+          jsonEncode({
+            'api': 'healthy',
+            'database': 'healthy',
+            'migrations': 'tracked',
+            'adminAuthentication': 'configured',
+            'payment': 'sandbox-enabled',
+            'mediaStorage': 'local',
+            'ready': true,
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      if (request.url.path.endsWith('/dashboard')) {
+        return http.Response(
+          jsonEncode({
+            'awaitingPayment': 2,
+            'processing': 3,
+            'shipped': 4,
+            'delivered': 8,
+            'paidRevenue': 1200000,
+            'todayRevenue': 850000,
+            'periodDays': 1,
+            'periodOrderCount': 2,
+            'periodRevenue': 850000,
+            'averageOrderValue': 425000,
+            'lowStock': [],
+          }),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }
+      return http.Response(
+        jsonEncode({'awaitingPayment': 2, 'lowStockItems': 0, 'items': []}),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: DashboardPage(
+            api: OrderApiClient(client: client, baseUrl: 'https://api.test'),
+            onNavigate: (value) => destination = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('امروز چه کاری انجام دهید؟'),
+      500,
+      maxScrolls: 10,
+    );
+    expect(find.text('امروز چه کاری انجام دهید؟'), findsOneWidget);
+    expect(find.text('ثبت محصول'), findsOneWidget);
+    expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('پرداخت: حالت آزمایشی فعال'), 350, maxScrolls: 20);
+    expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('پیگیری سفارش‌ها'));
+    expect(destination?.module, AdminModule.orders);
+  });
+
+  testWidgets('dashboard order KPI and low-stock alert navigate to the relevant modules', (tester) async {
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(_dashboardHarness(
+      onNavigate: (value) => destination = value,
+      lowStock: const [
+        {'productTitle': 'پسته اکبری', 'sku': 'PI-AKB-250', 'variantLabel': '۲۵۰ گرم', 'availablePackages': 2},
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('در انتظار پرداخت'), 350, maxScrolls: 20);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('در انتظار پرداخت'));
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
+
+    destination = null;
+    await tester.scrollUntilVisible(find.text('میانگین ارزش سفارش'), 350, maxScrolls: 20);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('میانگین ارزش سفارش'));
+    expect(destination?.module, AdminModule.reports);
+
+    destination = null;
+    await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
+    await tester.ensureVisible(find.text('پسته اکبری'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('پسته اکبری'));
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'PI-AKB-250'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(_dashboardHarness(textScale: 2, expiringSoon: const [
+      {
+        'productTitle': 'پسته اکبری',
+        'sku': 'PI-AKB-250',
+        'variantLabel': '۲۵۰ گرم',
+        'batchCode': 'LOT-1405-01',
+        'expiresAt': '2026-01-02T03:04:00',
+        'remainingPackages': 3,
+      },
+    ]));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), 300, maxScrolls: 20);
+    expect(find.text('نزدیک به انقضا'), findsOneWidget);
+    expect(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), findsOneWidget);
+    expect(find.textContaining('۳ بسته'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [360.0, 390.0, 768.0, 1280.0]) {
+    testWidgets('read-only dashboard offers permitted view routes at $width px', (tester) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      OwnerSession.instance.updateIdentity(role: 'ReadOnlyAnalyst', permissions: [
+        'dashboard.read', 'products.read', 'orders.read', 'inventory.read',
+      ]);
+      AdminNavigationIntent? destination;
+      await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
+      await tester.pumpAndSettle();
+      expect(find.text('وضعیت فروشگاه'), findsOneWidget);
+      expect(find.text('سلام حمیدرضا 🌿'), findsNothing);
+      await tester.scrollUntilVisible(find.text('مشاهده محصولات'), 400, maxScrolls: 15);
+      expect(find.text('ثبت محصول'), findsNothing);
+      expect(find.text('اصلاح موجودی'), findsNothing);
+      expect(find.text('پیگیری فروش سازمانی'), findsNothing);
+      expect(find.text('مشاهده موجودی'), findsOneWidget);
+
+      await tester.ensureVisible(find.text('پیگیری سفارش‌ها'));
+      await tester.pumpAndSettle();
+      final action = find.byKey(const ValueKey('dashboard-action-orders'));
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
+      // Focus the actual InkWell's descendant and activate it with the keyboard.
+      Focus.of(tester.element(find.text('پیگیری سفارش‌ها'))).requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(destination?.module, AdminModule.orders);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('dashboard-only role gets an educational empty action state', (tester) async {
+    OwnerSession.instance.updateIdentity(role: 'DashboardViewer', permissions: ['dashboard.read']);
+    await tester.pumpWidget(_dashboardHarness());
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('مسیر عملیاتی برای نقش شما فعال نیست'), 400, maxScrolls: 15);
+    expect(find.text('ثبت محصول'), findsNothing);
+    expect(find.text('پیگیری سفارش‌ها'), findsNothing);
+    expect(find.text('مشاهده موجودی'), findsNothing);
+    expect(find.textContaining('با مدیر فروشگاه هماهنگ کنید'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('role dashboard editor keeps visibility and ordering in the saved preference', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    DashboardPreferences? saved;
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) => Scaffold(body: Center(child: FilledButton(
+        onPressed: () => showDialog<DashboardPreferences>(
+          context: context,
+          builder: (_) => DashboardPreferencesDialog(
+            initial: DashboardPreferences.defaults,
+            onSave: (value) async {
+              attempts++;
+              if (attempts == 1) throw OrderApiException('خطای موقت', statusCode: 503);
+              return value;
+            },
+          ),
+        ).then((value) => saved = value),
+        child: const Text('تنظیم'),
+      )))),
+    ));
+    await tester.tap(find.text('تنظیم'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox).first);
+    await tester.pump();
+    await tester.tap(find.byTooltip('انتقال به پایین').first);
+    await tester.pump();
+    await tester.tap(find.text('ذخیره چیدمان'));
+    await tester.pumpAndSettle();
+    expect(find.text('سرویس موقتاً در دسترس نیست؛ بعداً دوباره تلاش کنید.'), findsOneWidget);
+    expect(saved, isNull);
+    await tester.tap(find.text('ذخیره چیدمان'));
+    await tester.pumpAndSettle();
+    expect(saved, isNotNull);
+    expect(saved!.widgets[1].id, 'metrics');
+    expect(saved!.widgets[1].visible, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('permitted actions stay readable at 360 px and double text scale', (tester) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(_dashboardHarness(textScale: 2));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('ثبت محصول'), 400, maxScrolls: 25);
+    expect(tester.takeException(), isNull);
+  });
+
+}
+
+
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const []}) {
+  final client = MockClient((request) async {
+    if (request.url.path.endsWith('/dashboard/health')) {
+      return http.Response(
+        jsonEncode({
+          'api': 'healthy',
+          'database': 'healthy',
+          'migrations': 'tracked',
+          'adminAuthentication': 'configured',
+          'payment': 'sandbox-enabled',
+          'mediaStorage': 'local',
+          'ready': true,
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
+    return http.Response(
+      jsonEncode(request.url.path.endsWith('/dashboard')
+          ? {
+              'awaitingPayment': 0,
+              'processing': 0,
+              'shipped': 0,
+              'delivered': 0,
+              'paidRevenue': 0,
+              'todayRevenue': 0,
+              'lowStock': lowStock,
+              'expiringSoon': expiringSoon,
+            }
+          : {'awaitingPayment': 0, 'lowStockItems': 0, 'items': []}),
+      200,
+      headers: {'content-type': 'application/json; charset=utf-8'},
+    );
+  });
+  return MaterialApp(
+    builder: (context, child) => MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+      child: child!,
+    ),
+    home: Directionality(
+      textDirection: TextDirection.rtl,
+      child: DashboardPage(api: OrderApiClient(client: client, baseUrl: 'https://api.test'), onNavigate: onNavigate),
+    ),
+  );
+}
+
+
