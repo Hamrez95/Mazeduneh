@@ -245,7 +245,7 @@ type CheckoutOrderResponse = {
 type ShippingMethodOption = { code: string; title: string; price: number; freeAbove: number; isActive: boolean };
 type PublicCommerceSettings = { shippingMethods: ShippingMethodOption[] };
 type PaymentIntentResponse = { redirectUrl?: string | null };
-type CheckoutReceipt = { name: string; orderId: string; receiptToken: string; payable: number; tax: number; shipping: number; expiresAt: string; state: string };
+type CheckoutReceipt = { name: string; orderId: string; receiptToken: string; payable: number; tax: number; shipping: number; expiresAt: string; state: string; paymentOutcome?: "failed" | "review" | "success" };
 
 
 const checkoutStateLabels: Record<string, string> = {
@@ -315,16 +315,17 @@ export function CheckoutPage() {
     try {
       const saved = JSON.parse(window.sessionStorage.getItem(checkoutReceiptStorageKey) ?? "null") as CheckoutReceipt | null;
       if (saved?.orderId.toLowerCase() === orderId.toLowerCase()) {
-        setReceipt(saved);
-        if (payment === "success") {
-          setError("پرداخت در حال تأیید نهایی است.");
+        const returnedReceipt = { ...saved, paymentOutcome: payment === "failed" ? "failed" as const : payment === "success" ? "success" as const : "review" as const };
+        setReceipt(returnedReceipt);
+        if (payment === "success" || payment === "review") {
+          setError(payment === "success" ? "پرداخت در حال تأیید نهایی است." : "در حال بررسی وضعیت پرداخت با سرویس زیبال…");
           fetch(`${apiBaseUrl}/api/v1/checkout/orders/${saved.orderId}?receiptToken=${encodeURIComponent(saved.receiptToken)}`, { cache: "no-store" })
             .then((response) => response.ok ? response.json() as Promise<CheckoutOrderResponse> : Promise.reject(new Error("order-status")))
             .then((order) => {
-              setReceipt({ ...saved, state: order.state });
-              setError(order.state === "Paid" ? "پرداخت با موفقیت تأیید شد." : "تأیید پرداخت کامل نشد؛ وضعیت سفارش را دوباره بررسی کن.");
-            })
-            .catch(() => setError("پرداخت برگشته است؛ برای نمایش وضعیت نهایی اتصال را بررسی کن."));
+              const paid = order.state === "Paid";
+              setReceipt({ ...returnedReceipt, state: order.state, paymentOutcome: paid ? "success" : returnedReceipt.paymentOutcome });
+              setError(paid ? "پرداخت با موفقیت تأیید شد." : "وضعیت پرداخت هنوز قطعی نیست. پیش از تلاش دوباره، وضعیت سفارش را بررسی کن.");
+            }).catch(() => setError("وضعیت پرداخت هنوز از سرویس فروش دریافت نشده است. چند لحظه دیگر دوباره بررسی کن."));
         } else {
           setError("پرداخت تأیید نشد؛ می‌توانی دوباره تلاش کنی.");
         }
@@ -402,7 +403,21 @@ export function CheckoutPage() {
     }
   }
 
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}<a className={styles.secondaryAction} href={receipt.receiptToken ? `${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/invoice?receiptToken=${encodeURIComponent(receipt.receiptToken)}` : "#"}>دانلود فاکتور</a><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
+  async function refreshPaymentStatus(nextReceipt: CheckoutReceipt) {
+    setError("در حال بررسی وضعیت پرداخت…");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/checkout/orders/${nextReceipt.orderId}?receiptToken=${encodeURIComponent(nextReceipt.receiptToken)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("order-status");
+      const order = await response.json() as CheckoutOrderResponse;
+      const paid = order.state === "Paid";
+      setReceipt({ ...nextReceipt, state: order.state, paymentOutcome: paid ? "success" : "review" });
+      setError(paid ? "پرداخت با موفقیت تأیید شد." : "وضعیت پرداخت هنوز قطعی نیست؛ چند لحظه دیگر دوباره بررسی کن.");
+    } catch {
+      setError("وضعیت پرداخت از سرویس فروش دریافت نشد؛ چند لحظه دیگر دوباره بررسی کن.");
+    }
+  }
+
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && receipt.paymentOutcome === "review" && <button className={styles.primaryAction} type="button" onClick={() => refreshPaymentStatus(receipt)}>بررسی دوبارهٔ وضعیت</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome !== "review" && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}<a className={styles.secondaryAction} href={receipt.receiptToken ? `${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/invoice?receiptToken=${encodeURIComponent(receipt.receiptToken)}` : "#"}>دانلود فاکتور</a><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
     <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>
