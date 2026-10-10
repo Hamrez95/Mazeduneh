@@ -5,8 +5,9 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
 Rules:
-- Before broad source browsing, check for `graphify-out/graph.json`. If it is missing, run `graphify . --code-only --no-viz` first; this builds a local AST graph without an LLM or API key. For codebase questions, then run `graphify query "<question>"` when the graph exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Before broad source browsing, check for `graphify-out/graph.json`. Run Graphify through `python scripts/graphify.py ...`; the first call installs the pinned CLI in an ignored project-local environment. If the graph is missing, run `python scripts/graphify.py . --code-only --no-viz` first; this builds a local AST graph without an LLM or API key. For codebase questions, use `python scripts/graphify.py query "<question>"` when the graph exists. Use `path` and `explain` the same way for focused traversal.
 - Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- After modifying code, run `python scripts/graphify.py update .` to keep the graph current (AST-only, no API cost).
+- If this execution surface cannot mount a repository checkout, follow the limited GitHub browsing fallback in `docs/GRAPHIFY_AGENT_SETUP.md` and state that graph generation was not run.
