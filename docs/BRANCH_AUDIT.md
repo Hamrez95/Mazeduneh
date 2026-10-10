@@ -31,3 +31,14 @@ Other worktrees are detached snapshots or ignored launcher worktrees. The nested
 ## Cleanup result
 
 GitHub is clean with only `main` and `dev`. Local refs are reduced to those two plus the preserved finance work branch in its active, unowned worktree. Deleting that branch now would risk valuable work and untracked files; it requires review in that worktree first.
+
+
+## Current branches after PR #202
+
+- `main`: `e97ed1af8b49eb917c5bcaaf9f339644b11fcb68` at session start.
+- `dev`: retained integration branch; its current check is failing and it is not a cleanup candidate.
+- `codex/branch-audit-refresh`: PR #202 merged; delete after verifying merge SHA on main.
+- `codex/91-product-cost-privacy`: open PR #203; retain through independent security review and merge.
+- `codex/dev-menu-readiness`: open PR #204; retain through CI and merge.
+
+Latest delivery state: #203 CI run #544 passed all three required jobs. #204 PowerShell checks passed locally; its CI is pending. The finance branch in the separate unowned worktree remains preserved as documented above.

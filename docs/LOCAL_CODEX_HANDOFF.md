@@ -12,3 +12,13 @@ Updated: 2026-10-10
 - Open acceptance work: #169 physical accessibility/privacy checks; #91 MFA and broader IDOR/security; #92 analytics criteria. Do not close these issues early.
 - Graphify is unavailable; only focused `rg` and source review are claimed.
 - Next: once WSL/Docker is ready, run the full launcher and exercise product edits through Admin and Storefront. Then continue the P0 #91 security review; preserve physical acceptance for the owner's test pass.
+
+
+## Session handoff — 2026-10-10
+
+- Main at session start: `e97ed1af8b49eb917c5bcaaf9f339644b11fcb68`.
+- PR #203 (`codex/91-product-cost-privacy`), head `678e67065551a0f3f5ed90d18d5d1b01f25823d2`: product purchase costs are hidden without `pricing.read`, and edits preserve costs without `pricing.write`. Local .NET build/API tests and Flutter analyze/tests passed; CI run #544 passed all Storefront, API, and Admin jobs. PR is open for independent security review before merge; Issue #91 stays open.
+- PR #204 (`codex/dev-menu-readiness`), head `4bebc6124ba095b3f7fec0e5a30340886e951747`: fresh-clone steps, clean empty-menu exit, clearer Compose failure diagnostics. PowerShell 7.6.5 parse, menu exit, empty input, Docker-missing path, and diff check passed. CI/rebase/merge remain pending.
+- Launcher menu offers full, Storefront, Admin, API, and no-API Storefront preview modes. Full local API/Admin startup is still blocked on this host because Docker/WSL are unavailable; WSL 2/Admin install and restart are required before physical full-stack validation.
+- Remote branches currently include `main`, `dev`, `codex/branch-audit-refresh` (#202 merged, safe to delete), and the open PR branches #203/#204. Preserve the local finance branch/worktree because it contains unreviewed valuable work and untracked files.
+- Next: delete the merged #202 branch; obtain the security review and merge #203; rebase/validate #204 on current main and merge; then continue remaining #91 security criteria and #92 dashboard work. Do not close either umbrella issue early.
