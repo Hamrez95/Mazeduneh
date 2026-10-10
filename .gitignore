@@ -41,4 +41,11 @@ secrets/
 
 apps/storefront/.test-build/
 apps/storefront/.test-results/
-__pycache__/
+
+# Graphify local caches and transient analysis files
+graphify-out/cache/
+graphify-out/.graphify_*.json
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_version
+graphify-out/graph.html

@@ -27,7 +27,7 @@ public static class ApiHealthEndpoints
         // Keep the legacy diagnostic contract; orchestrators should use /health/ready.
         endpoints.MapGet("/health", async (
             ApiHealthProbe probe, AdminTokenService adminTokens,
-            PaymentDatabase payments, HttpContext context, CancellationToken cancellationToken) =>
+            PaymentDatabase payments, ZibalGateway zibal, HttpContext context, CancellationToken cancellationToken) =>
         {
             context.Response.Headers.CacheControl = "no-store";
             var database = await probe.CheckDatabaseAsync(cancellationToken);
@@ -45,6 +45,7 @@ public static class ApiHealthEndpoints
                 },
                 adminAuthentication = adminTokens.IsConfigured ? "configured" : "not-configured",
                 paymentSandbox = payments.SandboxEnabled ? "enabled" : "disabled",
+                payment = zibal.IsConfigured ? "zibal-configured" : payments.SandboxEnabled ? "sandbox-enabled" : "disabled",
                 utc = DateTimeOffset.UtcNow
             });
         });
