@@ -21,6 +21,34 @@ public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUni
     public decimal AdditionalCost { get; init; }
 };
 
+public static class ProductCostPrivacy
+{
+    public static Product ProjectFor(Product product, AdminPrincipal principal)
+    {
+        if (AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingRead)) return product;
+        return product with { Variants = WithoutCosts(product.Variants) };
+    }
+
+    public static IReadOnlyCollection<ProductVariant> ForCreate(
+        IEnumerable<ProductVariant> submitted,
+        bool canWriteCosts) => canWriteCosts ? submitted.ToArray() : WithoutCosts(submitted);
+
+    public static IReadOnlyCollection<ProductVariant> ForUpdate(
+        IEnumerable<ProductVariant> submitted,
+        IEnumerable<ProductVariant> existing,
+        bool canWriteCosts)
+    {
+        if (canWriteCosts) return submitted.ToArray();
+        var savedBySku = existing.ToDictionary(item => item.Sku, StringComparer.OrdinalIgnoreCase);
+        return submitted.Select(item => savedBySku.TryGetValue(item.Sku, out var saved)
+            ? item with { CostPrice = saved.CostPrice, PackagingCost = saved.PackagingCost, AdditionalCost = saved.AdditionalCost }
+            : item with { CostPrice = 0, PackagingCost = 0, AdditionalCost = 0 }).ToArray();
+    }
+
+    private static IReadOnlyCollection<ProductVariant> WithoutCosts(IEnumerable<ProductVariant> variants) =>
+        variants.Select(item => item with { CostPrice = 0, PackagingCost = 0, AdditionalCost = 0 }).ToArray();
+}
+
 public sealed record CreateProductRequest(string Title, string Slug, string Category, string Origin, string Currency,
     string UnitType, bool IsPublished, IReadOnlyCollection<CreateProductVariantRequest> Variants,
     string? ShortDescription = null, string? Description = null, string? SeoTitle = null, string? SeoDescription = null,
