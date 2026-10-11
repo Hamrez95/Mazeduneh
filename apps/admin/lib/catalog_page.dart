@@ -6,6 +6,7 @@ import 'admin_theme.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
+import 'edit_product_dialog.dart';
 import 'formatters.dart';
 import 'media_api.dart';
 
@@ -68,6 +69,34 @@ class CatalogPageState extends State<CatalogPage> {
       }
     } catch (exception) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    }
+  }
+
+  Future<void> editProduct(Product product) async {
+    if (!OwnerSession.instance.can(AdminPermissions.productsWrite)) return;
+    final command = await showDialog<UpdateProductCommand>(
+      context: context,
+      builder: (_) => ProductEditDialog(
+        product: product,
+        categories: categories,
+      ),
+    );
+    if (command == null || !mounted) return;
+
+    try {
+      await api.updateProduct(product.slug, command);
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تغییرات محصول ذخیره شد.')),
+        );
+      }
+    } catch (exception) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(exception.toString())),
+        );
+      }
     }
   }
 
@@ -161,6 +190,9 @@ class CatalogPageState extends State<CatalogPage> {
             product,
             publicationBusy: changingPublication.contains(product.slug),
             onPublicationPressed: () => changePublication(product),
+            onEdit: OwnerSession.instance.can(AdminPermissions.productsWrite)
+                ? () => editProduct(product)
+                : null,
           );
         },
       );
@@ -174,11 +206,13 @@ class ProductCard extends StatelessWidget {
     super.key,
     required this.publicationBusy,
     required this.onPublicationPressed,
+    this.onEdit,
   });
 
   final Product product;
   final bool publicationBusy;
   final VoidCallback onPublicationPressed;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -207,13 +241,18 @@ class ProductCard extends StatelessWidget {
                 Chip(label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10))),
             ]),
             const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: Text(
-                  'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
-                  style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+            Text(
+              'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
+              style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
+              if (onEdit != null)
+                OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('ویرایش'),
                 ),
-              ),
               FilledButton.tonalIcon(
                 onPressed: publicationBusy ? null : onPublicationPressed,
                 icon: publicationBusy

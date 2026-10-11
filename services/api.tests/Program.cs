@@ -67,6 +67,10 @@ var addedVariant = ProductCostPrivacy.ForUpdate([.. attemptedCosts, new ProductV
 Check(addedVariant is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Unauthorized update injected costs for a new SKU");
 Check(ProductCostPrivacy.ForUpdate(attemptedCosts, costProduct.Variants, canWriteCosts: true).Single().CostPrice == 1, "Authorized pricing writer could not update costs");
 Check(ProductCostPrivacy.ForCreate(attemptedCosts, canWriteCosts: false).Single() is { CostPrice: 0, PackagingCost: 0, AdditionalCost: 0 }, "Unauthorized create stored submitted costs");
+var pricingWriter = new AdminPrincipal("pricing-writer@example.test", now.AddMinutes(5), "Accountant", [AdminPermissionCatalog.PricingWrite], Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(!ProductCostPrivacy.CanWriteCosts(pricingWriter), "Pricing write without pricing read was allowed to replace hidden product costs");
+var writeOnlyCostUpdate = ProductCostPrivacy.ForUpdate(attemptedCosts, costProduct.Variants, ProductCostPrivacy.CanWriteCosts(pricingWriter)).Single();
+Check(writeOnlyCostUpdate is { CostPrice: 640, PackagingCost: 25, AdditionalCost: 15 }, "Product content update overwrote costs hidden from a write-only principal");
 Console.WriteLine("Product cost read/write permission privacy checks passed");
 
 var zibalConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
