@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'admin_config.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
 
@@ -15,12 +16,14 @@ class AuthApiException implements Exception {
 }
 
 class AuthApiClient {
-  AuthApiClient({http.Client? client, String? baseUrl})
+  AuthApiClient({http.Client? client, String? baseUrl, String? storeId})
     : _client = client ?? http.Client(),
-      baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), '');
+      baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), ''),
+      storeId = _normalizeStoreId(storeId ?? adminStoreId);
 
   final http.Client _client;
   final String baseUrl;
+  final String storeId;
 
   Future<void> login({required String email, required String password}) async {
     OwnerSession.instance.clear();
@@ -28,7 +31,11 @@ class AuthApiClient {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/auth/login'),
       headers: const {'content-type': 'application/json; charset=utf-8'},
-      body: jsonEncode({'email': email.trim(), 'password': password}),
+      body: jsonEncode({
+        'email': email.trim(),
+        'password': password,
+        'storeId': storeId,
+      }),
     );
 
     if (response.statusCode != 200) {
@@ -52,6 +59,13 @@ class AuthApiClient {
 
     // Do not publish provisional credentials or build protected pages until validated.
     final identity = await _readSession(token);
+    final authenticatedStoreId = identity['storeId'] as String?;
+    if (authenticatedStoreId == null || authenticatedStoreId != storeId) {
+      throw AuthApiException(
+        'حساب شما به فروشگاه پیکربندی‌شده دسترسی ندارد.',
+        statusCode: 403,
+      );
+    }
     final expiry = DateTime.tryParse(expiresAtRaw);
     if (expiry == null || !expiry.isAfter(DateTime.now().toUtc())) {
       throw AuthApiException('نشست دریافتی معتبر نیست.');
@@ -66,7 +80,7 @@ class AuthApiClient {
       permissions: identity.containsKey('permissions')
           ? _stringList(identity['permissions'])
           : permissions,
-      storeId: identity['storeId'] as String? ?? storeId,
+      storeId: authenticatedStoreId,
     );
   }
 
@@ -85,9 +99,13 @@ class AuthApiClient {
     );
     if (response.statusCode == 401) OwnerSession.instance.clear();
     if (response.statusCode != 200) {
-      throw AuthApiException(_message(response), statusCode: response.statusCode);
+      throw AuthApiException(
+        _message(response),
+        statusCode: response.statusCode,
+      );
     }
-    final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final stepUpToken = body['stepUpToken'] as String?;
     if (stepUpToken == null || stepUpToken.isEmpty) {
       throw AuthApiException('پاسخ تأیید هویت از سرور کامل نیست.');
@@ -176,6 +194,11 @@ class AuthApiClient {
             .where((item) => item.isNotEmpty)
             .toList()
       : const [];
+
+  static String _normalizeStoreId(String value) {
+    final normalizedStoreId = value.trim();
+    return normalizedStoreId.isEmpty ? 'default' : normalizedStoreId;
+  }
 
   String _message(http.Response response) {
     if (response.statusCode == 401) return 'ایمیل یا رمز عبور صحیح نیست.';
