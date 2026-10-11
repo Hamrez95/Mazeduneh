@@ -364,14 +364,26 @@ public static class AdminPermissionCatalog
             (path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/packing-slip", StringComparison.OrdinalIgnoreCase));
     }
 
-    public static bool AllowsOrderOutput(HttpContext context, AdminPrincipal principal)
+    public static bool AllowsSensitiveAdminOutput(HttpContext context, AdminPrincipal principal)
     {
         var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
         if (IsOrderDocument(context))
             return Allows(principal, OrdersRead) && Allows(principal, CustomersPiiRead);
         if (path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase))
             return Allows(principal, OrdersRead);
+        if (path.Equals("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase) &&
+            RequiresOrderAuditPii(context))
+            return Allows(principal, CustomersPiiRead);
         return true;
+    }
+
+    private static bool RequiresOrderAuditPii(HttpContext context)
+    {
+        var entityType = context.Request.Query["entityType"].ToString().Trim();
+        // An unfiltered audit query can include order snapshots, so it needs the
+        // same PII permission as an explicitly filtered order audit query.
+        return string.IsNullOrEmpty(entityType) ||
+            string.Equals(entityType, "Order", StringComparison.OrdinalIgnoreCase);
     }
 
 }
@@ -561,7 +573,7 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         var requiredPermission = AdminPermissionCatalog.RequiredPermission(context.HttpContext);
         if (requiredPermission is not null && !AdminPermissionCatalog.Allows(principal, requiredPermission))
             return Results.Json(new { message = "این عملیات برای نقش فعلی مجاز نیست." }, statusCode: StatusCodes.Status403Forbidden);
-        if (!AdminPermissionCatalog.AllowsOrderOutput(context.HttpContext, principal))
+        if (!AdminPermissionCatalog.AllowsSensitiveAdminOutput(context.HttpContext, principal))
             return Results.Json(new { message = "برای این سند، دسترسی مجاز به اطلاعات مشتری لازم است." }, statusCode: StatusCodes.Status403Forbidden);
         return await next(context);
     }
