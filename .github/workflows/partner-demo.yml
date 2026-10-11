@@ -2,7 +2,7 @@ name: Partner Demo
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   workflow_dispatch:
 
 permissions:

@@ -77,9 +77,10 @@ liara deploy --path apps/admin --app $adminApp --platform docker --port 8080 --b
 
 ## بررسی‌های لازم پیش از انتشار واقعی
 
+- چک‌لیست محیط مستقل، smoke، بازیابی، rollback و تصمیم GO/NO-GO در [RELEASE_READINESS.md](RELEASE_READINESS.md) است؛ تنظیم فایل‌های لیارا به‌تنهایی مدرک آماده‌بودن انتشار نیست.
 - API هنگام شروع، migrationهای PostgreSQL را اجرا می‌کند؛ اجرای اول روی دیتابیس خالی چند محصول نمونه هم درج می‌کند. پیش از اتصال دیتابیس production، seed و migrationها باید بازبینی شوند.
 - نام دامنه‌های نهایی را به CORS API اضافه می‌کنیم.
 - رمز مدیر و `Admin__TokenSigningKey` مستقل و تصادفی تولید می‌شوند.
 - اتصال API به دیتابیس و آپلود/دریافت فایل در Object Storage را روی محیط staging بررسی می‌کنیم.
 - Merchant Code زیبال، Callback و Return URL را فقط در Environment API قرار می‌دهیم؛ Callback باید HTTPS عمومی باشد و دامنه و IP API در پنل زیبال ثبت شوند. راهنمای کامل در [ZIBAL_PAYMENT.md](ZIBAL_PAYMENT.md) است.
-- Docker روی محیط توسعهٔ فعلی نصب نیست؛ بنابراین Dockerfileها در این سیستم image-build نشده‌اند. ساخت image و تطبیق نهایی CLI هنگام آماده‌شدن حساب لیارا انجام می‌شود.
+- GitHub Actions در pull requestها image هر سه سرویس را می‌سازد، اما آن‌ها را push یا deploy نمی‌کند. ممکن است Docker در سیستم توسعه محلی در دسترس نباشد؛ تا زمان تنظیم حساب واقعی مقصد، انتشار image و بررسی CLI میزبان ادعا نمی‌شود.
