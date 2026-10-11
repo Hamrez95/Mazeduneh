@@ -289,30 +289,14 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         }
         foreach (var variant in product.Variants)
         {
-            var updateVariant = canWriteCosts
-                ? """
-                    update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price,
-                        cost_price=@cost_price,packaging_cost=@packaging_cost,additional_cost=@additional_cost
-                    where product_id=@product_id and sku=@sku;
-                    """
-                : """
-                    update product_variants set quantity=@quantity,base_unit=@base_unit,display_label=@display_label,price=@price
-                    where product_id=@product_id and sku=@sku;
-                    """;
-            await using var command = new NpgsqlCommand(updateVariant, connection, transaction);
+            await using var command = new NpgsqlCommand(
+                "select exists(select 1 from product_variants where product_id=@product_id and sku=@sku)",
+                connection,
+                transaction);
             command.Parameters.AddWithValue("product_id", product.Id);
             command.Parameters.AddWithValue("sku", variant.Sku);
-            command.Parameters.AddWithValue("quantity", variant.Quantity);
-            command.Parameters.AddWithValue("base_unit", variant.BaseUnit);
-            command.Parameters.AddWithValue("display_label", variant.DisplayLabel);
-            command.Parameters.AddWithValue("price", variant.Price);
-            if (canWriteCosts)
-            {
-                command.Parameters.AddWithValue("cost_price", variant.CostPrice);
-                command.Parameters.AddWithValue("packaging_cost", variant.PackagingCost);
-                command.Parameters.AddWithValue("additional_cost", variant.AdditionalCost);
-            }
-            if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+            var variantExists = (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+            if (!variantExists)
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
                 await RecordInitialStockAsync(connection, transaction, variant, "catalog-variant-added", cancellationToken);

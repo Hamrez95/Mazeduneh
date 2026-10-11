@@ -6,6 +6,7 @@ import 'admin_theme.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
+import 'edit_product_dialog.dart';
 import 'formatters.dart';
 import 'media_api.dart';
 
@@ -71,6 +72,34 @@ class CatalogPageState extends State<CatalogPage> {
     }
   }
 
+  Future<void> editProduct(Product product) async {
+    if (!OwnerSession.instance.can(AdminPermissions.productsWrite)) return;
+    final command = await showDialog<UpdateProductCommand>(
+      context: context,
+      builder: (_) => ProductEditDialog(
+        product: product,
+        categories: categories,
+      ),
+    );
+    if (command == null || !mounted) return;
+
+    try {
+      await api.updateProduct(product.slug, command);
+      await load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تغییرات محصول ذخیره شد.')),
+        );
+      }
+    } catch (exception) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(exception.toString())),
+        );
+      }
+    }
+  }
+
   Future<void> changePublication(Product product) async {
     final target = !product.isPublished;
     final confirmed = await showDialog<bool>(
@@ -109,14 +138,12 @@ class CatalogPageState extends State<CatalogPage> {
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('محصولات', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-                const Text('پیش‌نویس‌ها فقط در پنل دیده می‌شوند.', style: TextStyle(color: Colors.grey, fontSize: 11)),
-              ]),
-            ),
-            OutlinedButton.icon(
+          LayoutBuilder(builder: (context, constraints) {
+            final title = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('محصولات', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+              const Text('پیش‌نویس‌ها فقط در پنل دیده می‌شوند.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ]);
+            final categoriesButton = OutlinedButton.icon(
               onPressed: () async {
                 await showDialog<void>(
                   context: context,
@@ -125,16 +152,29 @@ class CatalogPageState extends State<CatalogPage> {
               },
               icon: const Icon(Icons.category_rounded),
               label: Text('دسته‌ها (${formatPersianInteger(categories.length)})'),
-            ),
-            const SizedBox(width: 8),
-            FilterChip(
+            );
+            final draftsFilter = FilterChip(
               label: const Text('نمایش پیش‌نویس‌ها'),
               selected: showDrafts,
               onSelected: (value) => setState(() => showDrafts = value),
-            ),
-            const SizedBox(width: 8),
-            IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-          ]),
+            );
+            final refreshButton = IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
+            if (constraints.maxWidth < 700) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [Expanded(child: title), refreshButton]),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [categoriesButton, draftsFilter]),
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: title),
+              categoriesButton,
+              const SizedBox(width: 8),
+              draftsFilter,
+              const SizedBox(width: 8),
+              refreshButton,
+            ]);
+          }),
           const SizedBox(height: 18),
           Expanded(child: _body()),
         ]),
@@ -150,7 +190,7 @@ class CatalogPageState extends State<CatalogPage> {
       return GridView.builder(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: columns,
-          mainAxisExtent: 285,
+          mainAxisExtent: constraints.maxWidth < 1100 ? 350 : 285,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
@@ -161,6 +201,9 @@ class CatalogPageState extends State<CatalogPage> {
             product,
             publicationBusy: changingPublication.contains(product.slug),
             onPublicationPressed: () => changePublication(product),
+            onEdit: OwnerSession.instance.can(AdminPermissions.productsWrite)
+                ? () => editProduct(product)
+                : null,
           );
         },
       );
@@ -174,11 +217,13 @@ class ProductCard extends StatelessWidget {
     super.key,
     required this.publicationBusy,
     required this.onPublicationPressed,
+    this.onEdit,
   });
 
   final Product product;
   final bool publicationBusy;
   final VoidCallback onPublicationPressed;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -207,13 +252,18 @@ class ProductCard extends StatelessWidget {
                 Chip(label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10))),
             ]),
             const SizedBox(height: 8),
-            Row(children: [
-              Expanded(
-                child: Text(
-                  'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
-                  style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+            Text(
+              'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
+              style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
+              if (onEdit != null)
+                OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('ویرایش'),
                 ),
-              ),
               FilledButton.tonalIcon(
                 onPressed: publicationBusy ? null : onPublicationPressed,
                 icon: publicationBusy

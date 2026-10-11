@@ -23,6 +23,10 @@ public sealed record ProductVariant(string Sku, decimal Quantity, string BaseUni
 
 public static class ProductCostPrivacy
 {
+    public static bool CanWriteCosts(AdminPrincipal principal) =>
+        AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingRead) &&
+        AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite);
+
     public static Product ProjectFor(Product product, AdminPrincipal principal)
     {
         if (AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingRead)) return product;
