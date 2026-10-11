@@ -121,17 +121,29 @@ with tempfile.TemporaryFile() as log:
         assert request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token)[0] == 200
         for endpoint in ['/api/v1/admin/orders', path, path + '/invoice', path + '/packing-slip', '/api/v1/admin/orders/export.csv']:
             assert request(endpoint)[0] == 401
+        status, order_audit = request('/api/v1/admin/audit-log?entityType=Order&entityId=' + order_id, token=token)
+        assert status == 200 and any(item['action'] == 'order.shipping-updated' for item in order_audit)
+        assert any('PrivacyFixtureTracking' in (item['afterJson'] or '') for item in order_audit)
     finally:
         stop_api(api)
 
     for permissions in ['orders.read', 'orders.read,orders.export',
                         'orders.read,orders.export,orders.documents.read', 'orders.export',
                         'orders.read,customers.pii.read', 'orders.documents.read,customers.pii.read',
-                        'dashboard.read', 'orders.read,orders.write']:
+                        'dashboard.read', 'orders.read,orders.write', 'audit.read',
+                        'audit.read,customers.pii.read']:
         api, token = start_api(permissions)
         try:
             can_read = 'orders.read' in permissions.split(',')
             can_pii = 'customers.pii.read' in permissions.split(',')
+            can_read_audit = 'audit.read' in permissions.split(',')
+            if can_read_audit:
+                status, audit = request('/api/v1/admin/audit-log?entityType=Order&entityId=' + order_id, token=token)
+                assert status == (200 if can_pii else 403)
+                if can_pii:
+                    assert any('PrivacyFixtureTracking' in (item['afterJson'] or '') for item in audit)
+                status, audit = request('/api/v1/admin/audit-log', token=token)
+                assert status == (200 if can_pii else 403)
             status, rows = request('/api/v1/admin/orders?q=' + order_id, token=token)
             assert status == (200 if can_read else 403)
             if can_read:

@@ -57,33 +57,34 @@ class _AuditLogPageState extends State<AuditLogPage> {
 
   @override
   Widget build(BuildContext context) {
-    final content = loading && entries.isEmpty
-        ? const Center(child: CircularProgressIndicator())
-        : error != null && entries.isEmpty
-            ? AdminErrorState(error: error!, onRetry: load)
-            : ListView(
-                padding: const EdgeInsets.all(28),
-                children: [
-                  if (error != null) AdminStaleBanner(detail: 'گزارش‌های نمایش‌داده‌شده ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
-                  _AuditHeader(lastLoadedAt: lastLoadedAt, loading: loading, onRefresh: load),
-                  const SizedBox(height: 18),
-                  _AuditFilters(
-                    entityType: entityType,
-                    entityIdController: entityIdController,
-                    onTypeChanged: (value) => setState(() => entityType = value ?? ''),
-                    onSearch: load,
-                  ),
-                  const SizedBox(height: 18),
-                  if (entries.isEmpty)
-                    const Card(child: AdminEmptyState(
-                      icon: Icons.fact_check_outlined,
-                      title: 'هنوز فعالیت حساسی ثبت نشده است',
-                      detail: 'وقتی انتشار محصول یا اصلاح موجودی انجام شود، خلاصه تغییرات اینجا دیده می‌شود.',
-                    ))
-                  else
-                    _AuditResults(entries: entries),
-                ],
-              );
+    final content = ListView(
+      padding: const EdgeInsets.all(28),
+      children: [
+        _AuditHeader(lastLoadedAt: lastLoadedAt, loading: loading, onRefresh: load),
+        const SizedBox(height: 18),
+        _AuditFilters(
+          entityType: entityType,
+          entityIdController: entityIdController,
+          onTypeChanged: (value) => setState(() => entityType = value ?? ''),
+          onSearch: load,
+        ),
+        const SizedBox(height: 18),
+        if (error != null && entries.isNotEmpty)
+          AdminStaleBanner(detail: 'گزارش‌های نمایش‌داده‌شده ممکن است تازه نباشند. ${requestErrorMessage(error!)}', onRetry: load),
+        if (loading && entries.isEmpty)
+          const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+        else if (error != null && entries.isEmpty)
+          SizedBox(height: 260, child: AdminErrorState(error: error!, onRetry: load))
+        else if (entries.isEmpty)
+          const Card(child: AdminEmptyState(
+            icon: Icons.fact_check_outlined,
+            title: 'هنوز فعالیت حساسی ثبت نشده است',
+            detail: 'وقتی انتشار محصول یا اصلاح موجودی انجام شود، خلاصه تغییرات اینجا دیده می‌شود.',
+          ))
+        else
+          _AuditResults(entries: entries),
+      ],
+    );
     return content;
   }
 }
