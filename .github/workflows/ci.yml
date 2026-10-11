@@ -621,3 +621,27 @@ jobs:
         with:
           name: mazeduneh-admin-web
           path: apps/admin/build/web
+
+  production-container-images:
+    name: Production container images
+    runs-on: ubuntu-latest
+    needs: [storefront, api, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build --pull --tag mazeduneh-api:ci ./services/api
+      - name: Build Storefront image
+        run: >-
+          docker build --pull
+          --build-arg NEXT_PUBLIC_MAZEDUNEH_API_URL=https://api.example.invalid
+          --build-arg NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE=false
+          --build-arg NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL=https://admin.example.invalid
+          --build-arg NEXT_PUBLIC_SITE_URL=https://store.example.invalid
+          --tag mazeduneh-storefront:ci
+          ./apps/storefront
+      - name: Build secure Admin image
+        run: >-
+          docker build --pull
+          --build-arg MAZEDUNEH_API_BASE_URL=https://api.example.invalid
+          --tag mazeduneh-admin:ci
+          ./apps/admin
