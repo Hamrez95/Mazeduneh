@@ -73,6 +73,55 @@ void main() {
     expect(jsonDecode(captured.body), {'isPublished': true});
   });
 
+  test('updateProduct sends a PUT without changing the publication state', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response(
+        jsonEncode({
+          'id': '1',
+          'title': 'پسته ویرایش‌شده',
+          'slug': 'akbari',
+          'category': 'مغزیجات',
+          'origin': 'رفسنجان',
+          'unitType': 'Weight',
+          'isPublished': true,
+          'variants': [],
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    });
+
+    const command = UpdateProductCommand(
+      title: 'پسته ویرایش‌شده',
+      category: 'مغزیجات',
+      origin: 'رفسنجان',
+      unitType: 'Weight',
+      variants: [
+        CreateVariantCommand(
+          sku: 'AK-250',
+          quantity: 250,
+          displayLabel: '۲۵۰ گرم',
+          price: 125000,
+          availablePackages: 4,
+        ),
+      ],
+    );
+    final api = CatalogApiClient(client: client, baseUrl: 'https://api.test');
+
+    final updated = await api.updateProduct('akbari', command);
+
+    expect(captured.method, 'PUT');
+    expect(captured.url.path, '/api/v1/products/akbari');
+    expect(captured.headers['authorization'], 'Bearer test-token');
+    final payload = jsonDecode(captured.body) as Map<String, dynamic>;
+    expect(payload['title'], 'پسته ویرایش‌شده');
+    expect(payload['isPublished'], isNull);
+    expect((payload['variants'] as List).single['availablePackages'], 4);
+    expect(updated.isPublished, isTrue);
+  });
+
   test('new products default to draft', () {
     const command = CreateProductCommand(
       title: 'کوکی', slug: 'cookie', category: 'سالم', origin: 'مزه‌دونه', unitType: 'Count',

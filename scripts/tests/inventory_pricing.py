@@ -191,6 +191,12 @@ with tempfile.TemporaryFile() as log:
         'products.read,products.write,inventory.read,inventory.write', RESTRICTED_BASE)
     try:
         _, state = request(PATH, token=owner_token)
+        status, products = request('/api/v1/products/admin', token=content_token, base=RESTRICTED_BASE)
+        assert status == 200
+        product = next(item for item in products if item['slug'] == SLUG)
+        variant = product['variants'][0]
+        stale_price = variant['price']
+
         updated_recipe = dict(recipe, packagingCost=700, additionalCost=250, markupPercent=30)
         status, proof = step_up(owner_token)
         assert status == 200
@@ -198,11 +204,8 @@ with tempfile.TemporaryFile() as log:
                                 {'recipe': updated_recipe, 'expectedPrice': state['currentPrice']},
                                 owner_token, {'X-Admin-Step-Up': proof['stepUpToken']})
         assert status == 200 and quote['purchaseCost'] == 4000
+        assert quote['sellingPrice'] != stale_price, (quote['sellingPrice'], stale_price)
 
-        status, products = request('/api/v1/products/admin', token=content_token, base=RESTRICTED_BASE)
-        assert status == 200
-        product = next(item for item in products if item['slug'] == SLUG)
-        variant = product['variants'][0]
         for field in ('costPrice', 'packagingCost', 'additionalCost'):
             assert variant[field] == 0, (field, variant[field])
 
@@ -232,7 +235,7 @@ with tempfile.TemporaryFile() as log:
             'unitType': product['unitType'],
             'variants': [{
                 'sku': variant['sku'], 'quantity': variant['quantity'],
-                'displayLabel': variant['displayLabel'], 'price': quote['sellingPrice'],
+                'displayLabel': variant['displayLabel'], 'price': stale_price,
                 'availablePackages': variant['availablePackages'],
                 'costPrice': 999999, 'packagingCost': 999999, 'additionalCost': 999999,
             }],

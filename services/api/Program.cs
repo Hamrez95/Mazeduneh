@@ -211,7 +211,7 @@ products.MapPut("/{slug}", async (
     if (errors.Count > 0) return Results.ValidationProblem(errors);
     var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
     var catalogUpdate = productCatalog.Update(existing, request);
-    var canWriteCosts = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite);
+    var canWriteCosts = ProductCostPrivacy.CanWriteCosts(principal);
     var updated = catalogUpdate with
     {
         Variants = ProductCostPrivacy.ForUpdate(
