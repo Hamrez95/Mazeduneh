@@ -50,7 +50,7 @@ Set `NEXT_PUBLIC_MAZEDUNEH_API_URL` in the storefront build environment to the p
 
 ### Liara deployment preparation
 
-Docker deployment files and the release checklist are in [`docs/LIARA_DEPLOYMENT.md`](docs/LIARA_DEPLOYMENT.md). Deploying remains separate until production data, secrets, domains, and Liara services are ready.
+Docker deployment files and the controlled launch checklist are in [`docs/LIARA_DEPLOYMENT.md`](docs/LIARA_DEPLOYMENT.md) and [`docs/RELEASE_READINESS.md`](docs/RELEASE_READINESS.md). CI builds all three production container images; deployment remains separate until a host, staging data services, secrets, and domains are configured.
 
 ## Branching
 
