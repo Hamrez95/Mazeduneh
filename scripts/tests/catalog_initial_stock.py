@@ -115,7 +115,8 @@ with tempfile.TemporaryFile() as log:
         status, public = request('/api/v1/products/' + SLUG)
         assert status == 200 and public['title'] == product['title'] and public['description'] == product['description']
         public_variants = {item['sku']: item for item in public['variants']}
-        assert public_variants[ZERO]['price'] == 43210 and public_variants[ZERO]['availablePackages'] == 5
+        # Product content saves keep the separately managed price and inventory unchanged.
+        assert public_variants[ZERO]['price'] == 1000 and public_variants[ZERO]['availablePackages'] == 5
         assert public_variants[ADDED]['availablePackages'] == 0  # Sold-out SKU is still an editable catalog entry.
         assert all(item['costPrice'] == 0 for item in public['variants'])
         assert request('/api/v1/products/' + SLUG + '/publication', 'PATCH', {'isPublished': False}, token)[0] == 200
