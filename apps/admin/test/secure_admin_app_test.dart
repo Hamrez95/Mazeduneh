@@ -15,6 +15,7 @@ http.Response identity() => http.Response(
     'authenticated': true,
     'role': 'Owner',
     'permissions': ['orders.read'],
+    'storeId': 'default',
   }),
   200,
 );
@@ -26,6 +27,7 @@ http.Response login() => http.Response(
         .add(const Duration(hours: 1))
         .toIso8601String(),
     'email': 'owner@example.test',
+    'storeId': 'default',
   }),
   200,
 );

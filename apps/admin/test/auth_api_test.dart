@@ -20,6 +20,7 @@ void main() {
             'authenticated': true,
             'role': 'Owner',
             'permissions': ['orders.read', 'products.write'],
+            'storeId': 'tenant-north',
           }),
           200,
         );
@@ -29,6 +30,7 @@ void main() {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['email'], 'owner@example.com');
       expect(body['password'], 'secret');
+      expect(body['storeId'], 'tenant-north');
       return http.Response(
         jsonEncode({
           'accessToken': 'signed-token',
@@ -39,6 +41,7 @@ void main() {
           'email': 'owner@example.com',
           'role': 'Owner',
           'permissions': ['orders.read', 'products.write'],
+          'storeId': 'tenant-north',
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -48,6 +51,7 @@ void main() {
     await AuthApiClient(
       client: client,
       baseUrl: 'https://api.example.com',
+      storeId: 'tenant-north',
     ).login(email: 'owner@example.com', password: 'secret');
 
     expect(OwnerSession.instance.isAuthenticated, isTrue);
@@ -56,6 +60,50 @@ void main() {
     expect(OwnerSession.instance.role, 'Owner');
     expect(OwnerSession.instance.can('orders.read'), isTrue);
     expect(OwnerSession.instance.permissions, contains('products.write'));
+    expect(OwnerSession.instance.storeId, 'tenant-north');
+  });
+
+  test('login rejects a server session bound to another store', () async {
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/session')) {
+        return http.Response(
+          jsonEncode({
+            'authenticated': true,
+            'role': 'WarehouseOperator',
+            'permissions': ['inventory.read'],
+            'storeId': 'tenant-south',
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'accessToken': 'signed-token',
+          'expiresAt': DateTime.now()
+              .toUtc()
+              .add(const Duration(minutes: 10))
+              .toIso8601String(),
+          'storeId': 'tenant-north',
+        }),
+        200,
+      );
+    });
+
+    await expectLater(
+      AuthApiClient(
+        client: client,
+        baseUrl: 'https://api.example.com',
+        storeId: 'tenant-north',
+      ).login(email: 'member@example.com', password: 'secret'),
+      throwsA(
+        isA<AuthApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          403,
+        ),
+      ),
+    );
+    expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
 
   test(
@@ -75,6 +123,7 @@ void main() {
             'email': 'owner@example.com',
             'role': 'StoreManager',
             'permissions': ['orders.read'],
+            'storeId': 'default',
             'expiresAt': DateTime.now()
                 .toUtc()
                 .add(const Duration(minutes: 10))
@@ -181,7 +230,11 @@ void main() {
   });
 
   test('rate limited login has a safe Persian message', () async {
-    final client = MockClient((request) async => http.Response('{}', 429));
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['storeId'], 'default');
+      return http.Response('{}', 429);
+    });
     await expectLater(
       AuthApiClient(
         client: client,
