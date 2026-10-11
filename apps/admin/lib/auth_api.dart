@@ -52,9 +52,15 @@ class AuthApiClient {
     final ownerEmail = body['email'] as String? ?? email.trim();
     final role = body['role'] as String? ?? 'Owner';
     final permissions = _stringList(body['permissions']);
-    final storeId = body['storeId'] as String? ?? 'default';
+    final loginStoreId = body['storeId'] as String? ?? 'default';
     if (token == null || expiresAtRaw == null) {
       throw AuthApiException('پاسخ ورود از سرور کامل نیست.');
+    }
+    if (loginStoreId != storeId) {
+      throw AuthApiException(
+        'حساب شما به فروشگاه پیکربندی‌شده دسترسی ندارد.',
+        statusCode: 403,
+      );
     }
 
     // Do not publish provisional credentials or build protected pages until validated.
