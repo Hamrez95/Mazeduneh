@@ -79,6 +79,10 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     assert status == 204, status
     assert request("/api/v1/admin/auth/accept-invite", "POST", {
         "token": invitation["invitationToken"], "password": password})[0] == 400
+    if store_id != "default":
+        status, _ = request("/api/v1/admin/auth/login", "POST", {
+            "email": email, "password": password})
+        assert status == 401, ("membership login must not fall back to another store", status)
     status, login = request("/api/v1/admin/auth/login", "POST", {"email": email, "password": password, "storeId": store_id})
     assert status == 200 and login["role"] == role and login["storeId"] == store_id, (
         status, login.get("role") if login else None, login.get("storeId") if login else None)
