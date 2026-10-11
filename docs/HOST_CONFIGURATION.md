@@ -13,9 +13,12 @@
 | مبداهای مجاز مرورگر | Cors__AllowedOrigins__0 و __1 | آدرس دقیق HTTPS فروشگاه و پنل |
 | فروشگاه → API | NEXT_PUBLIC_MAZEDUNEH_API_URL | هنگام build فروشگاه؛ عمومی |
 | پنل → API | MAZEDUNEH_API_BASE_URL | هنگام build پنل با dart-define؛ عمومی |
+| پنل → زمینهٔ فروشگاه | MAZEDUNEH_ADMIN_STORE_ID | هنگام build پنل؛ عمومی و با مقدار پیش‌فرض `default` |
 | آدرس‌های برند/پنل | NEXT_PUBLIC_SITE_URL و NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL | هنگام build فروشگاه؛ عمومی |
 
 نمونهٔ بدون اطلاعات واقعی در services/api/.env.example و apps/storefront/.env.example است. API دات‌نت فایل .env را خودکار نمی‌خواند؛ مقادیر باید در Environment یا secret manager میزبان تنظیم شوند. Dockerfile هر سرویس از پوشهٔ خود ساخته می‌شود. پنل اکنون lib/secure_main.dart را می‌سازد؛ همان entry point امن فعال و تست‌شده در CI.
+
+`MAZEDUNEH_ADMIN_STORE_ID` فقط مشخص می‌کند پنل هنگام ورود کدام عضویت فروشگاه را درخواست کند؛ مجوز دسترسی محسوب نمی‌شود. API عضویت فعالِ همان ایمیل/رمز را در همان فروشگاه بررسی می‌کند و شناسهٔ فروشگاه نشست را از توکن امضاشده می‌خواند. کلاینت پس از ورود نمی‌تواند زمینهٔ نشست را با query string عوض کند.
 
 ## اطلاعاتی که پس از خرید سرویس وارد می‌شوند
 
