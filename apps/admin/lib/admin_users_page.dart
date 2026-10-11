@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'admin_users_api.dart';
+import 'admin_users_filters.dart';
 import 'auth_session.dart';
 import 'auth_api.dart';
 import 'formatters.dart';
@@ -28,11 +29,20 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   bool loading = true;
   String? changingUserId;
   DateTime? lastLoadedAt;
+  final TextEditingController searchController = TextEditingController();
+  AdminUserStatusFilter statusFilter = AdminUserStatusFilter.all;
+  String? roleFilter;
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -57,6 +67,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleUsers = _filteredUsers();
     if (loading && users.isEmpty) return const Center(child: CircularProgressIndicator());
     if (error != null && users.isEmpty) return AdminErrorState(error: error!, onRetry: load);
 
@@ -71,6 +82,23 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
               const SizedBox(height: 14),
               AdminStaleBanner(detail: 'فهرست نمایش‌داده‌شده ممکن است تازه نباشد. ${requestErrorMessage(error!)}', onRetry: load),
             ],
+            if (users.isNotEmpty) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: AdminUsersFilterBar(
+                    users: users,
+                    searchController: searchController,
+                    status: statusFilter,
+                    role: roleFilter,
+                    onStatusChanged: (filter) => setState(() => statusFilter = filter),
+                    onRoleChanged: (role) => setState(() => roleFilter = role),
+                    onSearchChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
             const SizedBox(height: 20),
             if (users.isEmpty)
               Card(
@@ -82,12 +110,47 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   onAction: roles.where((role) => role.role != 'Owner').isEmpty ? null : _openCreateDialog,
                 ),
               )
+            else if (visibleUsers.isEmpty)
+              Card(
+                child: AdminEmptyState(
+                  icon: Icons.person_search_outlined,
+                  title: 'همکاری با این مشخصات پیدا نشد',
+                  detail: 'نام، ایمیل یا فیلتر نقش و وضعیت را بررسی کنید.',
+                  actionLabel: 'پاک‌کردن فیلترها',
+                  onAction: _clearFilters,
+                ),
+              )
             else
-              _UsersList(users: users, changingUserId: changingUserId, onToggle: _toggleStatus, onEditPermissions: _editPermissions),
+              _UsersList(users: visibleUsers, changingUserId: changingUserId, onToggle: _toggleStatus, onEditPermissions: _editPermissions),
           ],
         ),
       ),
     );
+  }
+
+  List<AdminUser> _filteredUsers() {
+    final query = searchController.text.trim().toLowerCase();
+    return users.where((user) {
+      final matchesQuery = query.isEmpty ||
+          user.displayName.toLowerCase().contains(query) ||
+          user.email.toLowerCase().contains(query);
+      final matchesRole = roleFilter == null || user.role == roleFilter;
+      final matchesStatus = switch (statusFilter) {
+        AdminUserStatusFilter.all => true,
+        AdminUserStatusFilter.active => user.isActive && user.hasPassword,
+        AdminUserStatusFilter.invited => user.isActive && !user.hasPassword,
+        AdminUserStatusFilter.inactive => !user.isActive,
+      };
+      return matchesQuery && matchesRole && matchesStatus;
+    }).toList(growable: false);
+  }
+
+  void _clearFilters() {
+    setState(() {
+      searchController.clear();
+      statusFilter = AdminUserStatusFilter.all;
+      roleFilter = null;
+    });
   }
 
   Future<void> _openCreateDialog() async {
