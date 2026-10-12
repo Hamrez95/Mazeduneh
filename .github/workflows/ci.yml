@@ -227,7 +227,7 @@ jobs:
           stop_api
           start_api
           echo "Checking paid checkout order after API restart."
-          PAID_ORDER_STATUS=$(curl --disable -sS -o /tmp/order-paid-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}")
+          PAID_ORDER_STATUS=$(curl --disable -sS -o /tmp/order-paid-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" || true)
           if [[ "${PAID_ORDER_STATUS}" != "200" ]]; then
             echo "Paid order lookup after restart returned HTTP ${PAID_ORDER_STATUS}."
             psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
@@ -641,7 +641,7 @@ jobs:
           stop_role_api
           start_api
           echo "Checking delivered checkout order after role API shutdown."
-          ORDER_STATUS=$(curl --disable -sS -o /tmp/order-delivered-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}")
+          ORDER_STATUS=$(curl --disable -sS -o /tmp/order-delivered-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" || true)
           if [[ "${ORDER_STATUS}" != "200" ]]; then
             echo "Delivered order lookup after restart returned HTTP ${ORDER_STATUS}."
             psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
