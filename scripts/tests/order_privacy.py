@@ -105,6 +105,8 @@ with tempfile.TemporaryFile() as log:
         assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
         status, processing_orders = request('/api/v1/admin/orders?state=Processing&q=' + order_id, token=token)
         assert status == 200 and len(processing_orders) == 1 and processing_orders[0]['state'] == 'Paid'
+        status, sku_orders = request('/api/v1/admin/orders?q=' + SKU, token=token)
+        assert status == 200 and any(row['id'] == order_id for row in sku_orders), (status, sku_orders)
         path = '/api/v1/admin/orders/' + order_id
         assert request(path + '/notes', 'POST', {'note': MOBILE + ' ' + ADDRESS}, token)[0] == 201
         assert request(path + '/shipping', 'PATCH', {'carrier': 'PrivacyFixtureCarrier',
