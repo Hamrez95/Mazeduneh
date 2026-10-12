@@ -60,11 +60,18 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
+_STEP_UP_TOKENS = {}
+
+
 def step_up_headers(owner_token):
-    status, result = request("/api/v1/admin/auth/step-up", "POST",
-                             {"password": OWNER_PASSWORD}, owner_token)
-    assert status == 200 and result["stepUpToken"], (status, result)
-    return {"X-Admin-Step-Up": result["stepUpToken"]}
+    step_up_token = _STEP_UP_TOKENS.get(owner_token)
+    if step_up_token is None:
+        status, result = request("/api/v1/admin/auth/step-up", "POST",
+                                 {"password": OWNER_PASSWORD}, owner_token)
+        assert status == 200 and result["stepUpToken"], (status, result)
+        step_up_token = result["stepUpToken"]
+        _STEP_UP_TOKENS[owner_token] = step_up_token
+    return {"X-Admin-Step-Up": step_up_token}
 
 
 def invite(owner_token, email, name, permissions=None, store_id=None):
