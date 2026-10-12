@@ -266,6 +266,21 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         return updated;
     }
 
+    public async Task<bool> CanManageAsync(Guid id, string? storeId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return false;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select exists (
+                select 1 from admin_users
+                where id=@id and store_id=@store_id and lower(role) <> 'owner'
+            );
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
     public async Task<AdminUserSummary?> SetPermissionsAsync(Guid id, IReadOnlyList<string> permissions, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return null;

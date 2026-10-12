@@ -11,6 +11,7 @@ public static class AdminSecurityExtensions
     {
         services.AddSingleton<AdminTokenService>();
         services.AddSingleton<OwnerAuthorizationFilter>();
+        services.AddSingleton<UserMutationTargetAuthorizationFilter>();
         services.AddSingleton<StepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
@@ -193,6 +194,7 @@ public static class AdminSecurityExtensions
             }
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
         .AddEndpointFilter<StepUpAuthorizationFilter>()
         .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
@@ -210,6 +212,7 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
         .AddEndpointFilter<StepUpAuthorizationFilter>()
         .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
@@ -229,6 +232,7 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
         .AddEndpointFilter<StepUpAuthorizationFilter>()
         .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
@@ -609,6 +613,29 @@ public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpo
                 new { message = "برای این عملیات، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
         return next(context);
+    }
+}
+
+public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase users) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        if (!context.HttpContext.Request.RouteValues.TryGetValue("id", out var routeId) ||
+            !Guid.TryParse(routeId?.ToString(), out var userId))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null)
+            return Results.Unauthorized();
+
+        var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
+        var storeId = principal.UserId is not null
+            ? principal.StoreId
+            : string.IsNullOrWhiteSpace(requestedStore) ? null : requestedStore.Trim();
+        if (!await users.CanManageAsync(userId, storeId, context.HttpContext.RequestAborted))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        return await next(context);
     }
 }
 
