@@ -168,7 +168,7 @@ with tempfile.TemporaryFile() as log:
                                {'X-Admin-Step-Up': proof['stepUpToken']})[0] == 403
         finally:
             stop_api(api)
-    for permissions, expected_status in [('pricing.read', 403), ('pricing.read,pricing.write', 428)]:
+    for permissions, expected_status in [('settings.read', 403), ('settings.read,settings.write', 428)]:
         api, token = start_api(permissions)
         try:
             _, settings = request('/api/v1/admin/commerce/settings', token=token)
