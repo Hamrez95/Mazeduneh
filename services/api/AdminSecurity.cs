@@ -610,6 +610,11 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
             if (!configuredOwnerSession && !string.IsNullOrWhiteSpace(requestedStore) &&
                 !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
                 return Results.Json(new { message = "به این فروشگاه دسترسی ندارید." }, statusCode: StatusCodes.Status403Forbidden);
+            if (!configuredOwnerSession && !string.Equals(principal.StoreId, "default", StringComparison.Ordinal) &&
+                !context.HttpContext.Request.Path.StartsWithSegments("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase))
+                return Results.Json(
+                    new { message = "دسترسی عملیاتی این فروشگاه تا فعال‌شدن داده‌های تفکیک‌شده محدود است." },
+                    statusCode: StatusCodes.Status403Forbidden);
         }
         else
         {
