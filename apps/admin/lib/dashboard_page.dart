@@ -9,6 +9,15 @@ import 'formatters.dart';
 import 'notification_tile.dart';
 import 'order_api.dart';
 
+List<String> _healthRecommendations(AdminDashboardHealth health) => [
+  if (health.database == 'unhealthy' || health.database == 'not-configured') 'اتصال پایگاه داده را بررسی کنید؛ آمار و عملیات فروشگاه به آن وابسته است.',
+  if (health.migrations == 'empty' || health.migrations == 'unavailable') 'وضعیت مهاجرت‌های پایگاه داده را بررسی کنید.',
+  if (health.adminAuthentication == 'not-configured') 'ورود امن مدیر در تنظیمات محیط راه‌اندازی نشده است.',
+  if (health.payment == 'disabled') 'درگاه پرداخت غیرفعال است؛ پرداخت اینترنتی سفارش‌ها انجام نمی‌شود.',
+  if (health.payment == 'sandbox-enabled') 'پرداخت آزمایشی فعال است؛ پیش از فروش واقعی، درگاه عملیاتی را تنظیم کنید.',
+  if (health.mediaStorage == 'not-configured') 'ذخیره‌سازی رسانه راه‌اندازی نشده است؛ تنظیمات سرویس فایل را بررسی کنید.',
+];
+
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
@@ -251,6 +260,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final health = systemHealth!;
+    final recommendations = _healthRecommendations(health);
     final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
     String label(String value) => switch (value) {
           'healthy' || 'ready' || 'tracked' => 'سالم',
@@ -293,6 +303,15 @@ class _DashboardPageState extends State<DashboardPage> {
               padding: const EdgeInsets.only(top: 3),
               child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
             ),
+          if (recommendations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('اقدام پیشنهادی', style: TextStyle(fontWeight: FontWeight.w900)),
+            for (final recommendation in recommendations)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(top: 6, start: 4),
+                child: Text('• $recommendation', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
+              ),
+          ],
           const SizedBox(height: 6),
           const Text(
             'وضعیت پرداخت و رسانه از روی پیکربندی است؛ اتصال بیرونی آن‌ها اینجا آزموده نمی‌شود.',
