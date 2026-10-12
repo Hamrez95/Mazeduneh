@@ -194,7 +194,6 @@ public static class AdminSecurityExtensions
             }
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
-        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
         .AddEndpointFilter<StepUpAuthorizationFilter>()
         .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");

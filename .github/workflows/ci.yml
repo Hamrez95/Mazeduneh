@@ -203,8 +203,6 @@ jobs:
           start_api
           ORDER_ID=$(cat /tmp/order-id)
           RECEIPT_TOKEN=$(cat /tmp/receipt-token)
-          export ORDER_ID RECEIPT_TOKEN
-          echo "Checking checkout order after initial API restart."
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
 
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/orders/${ORDER_ID}/intent" \
@@ -226,38 +224,11 @@ jobs:
 
           stop_api
           start_api
-          echo "Checking paid checkout order after API restart."
-          python3 - <<'PY'
-          import os
-          import urllib.error
-          import urllib.request
-          url = f"http://127.0.0.1:5099/api/v1/checkout/orders/{os.environ['ORDER_ID']}?receiptToken={os.environ['RECEIPT_TOKEN']}"
-          try:
-              with urllib.request.urlopen(url) as response:
-                  status, body = response.status, response.read()
-          except urllib.error.HTTPError as error:
-              status, body = error.code, error.read()
-          open('/tmp/order-paid-after-restart.json', 'wb').write(body)
-          open('/tmp/order-paid-after-restart.status', 'w').write(str(status))
-          PY
-          PAID_ORDER_STATUS=$(cat /tmp/order-paid-after-restart.status)
-          if [[ "${PAID_ORDER_STATUS}" != "200" ]]; then
-            echo "Paid order lookup after restart returned HTTP ${PAID_ORDER_STATUS}."
-            psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
-              --command "select state || ':' || (receipt_token='${RECEIPT_TOKEN}') from checkout_orders where id='${ORDER_ID}';"
-            cat /tmp/order-paid-after-restart.json
-            exit 1
-          fi
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
 
-          echo "Checking owner login after paid order persistence."
-          OWNER_LOGIN_STATUS=$(curl --disable -sS -o /tmp/login.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
-            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' || true)
-          if [[ "${OWNER_LOGIN_STATUS}" != "200" ]]; then
-            echo "Owner login after paid order persistence returned HTTP ${OWNER_LOGIN_STATUS}."
-            cat /tmp/login.json
-            exit 1
-          fi
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
           python3 - <<'PY'
           import json
           login = json.load(open('/tmp/login.json', encoding='utf-8'))
@@ -268,14 +239,8 @@ jobs:
           assert 'products.write' in login['permissions']
           PY
           TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/login.json'))['accessToken'])")
-          echo "Checking owner session after paid order persistence."
-          SESSION_STATUS=$(curl --disable -sS -o /tmp/session.json -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/auth/session \
-            -H "Authorization: Bearer ${TOKEN}" || true)
-          if [[ "${SESSION_STATUS}" != "200" ]]; then
-            echo "Owner session after paid order persistence returned HTTP ${SESSION_STATUS}."
-            cat /tmp/session.json
-            exit 1
-          fi
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/auth/session \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/session.json
           python3 - <<'PY'
           import json
           session = json.load(open('/tmp/session.json', encoding='utf-8'))
@@ -307,14 +272,8 @@ jobs:
           assert owner['isActive'] is True
           assert 'inventory.write' in owner['permissions']
           PY
-          echo "Checking admin role catalog after owner session validation."
-          ROLE_CATALOG_STATUS=$(curl --disable -sS -o /tmp/admin-roles.json -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/users/roles \
-            -H "Authorization: Bearer ${TOKEN}" || true)
-          if [[ "${ROLE_CATALOG_STATUS}" != "200" ]]; then
-            echo "Admin role catalog returned HTTP ${ROLE_CATALOG_STATUS}."
-            cat /tmp/admin-roles.json
-            exit 1
-          fi
+          curl -fsS http://127.0.0.1:5099/api/v1/admin/users/roles \
+            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-roles.json
           python3 - <<'PY'
           import json
           roles = json.load(open('/tmp/admin-roles.json', encoding='utf-8'))
@@ -322,16 +281,9 @@ jobs:
           assert warehouse['titleFa'] == 'اپراتور انبار'
           assert 'inventory.write' in warehouse['permissions']
           PY
-          echo "Checking owner step-up endpoint after role catalog validation."
-          STEP_UP_STATUS=$(curl --disable -sS -o /tmp/step-up-response.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
+          STEP_UP_TOKEN=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' || true)
-          if [[ "${STEP_UP_STATUS}" != "200" ]]; then
-            echo "Owner step-up endpoint returned HTTP ${STEP_UP_STATUS}."
-            cat /tmp/step-up-response.json
-            exit 1
-          fi
-          STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/step-up-response.json'))['stepUpToken'])")
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['stepUpToken'])")
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
@@ -678,28 +630,7 @@ jobs:
           test "${ANALYTICS_STATUS}" = "403"
           stop_role_api
           start_api
-          echo "Checking delivered checkout order after role API shutdown."
-          python3 - <<'PY'
-          import os
-          import urllib.error
-          import urllib.request
-          url = f"http://127.0.0.1:5099/api/v1/checkout/orders/{os.environ['ORDER_ID']}?receiptToken={os.environ['RECEIPT_TOKEN']}"
-          try:
-              with urllib.request.urlopen(url) as response:
-                  status, body = response.status, response.read()
-          except urllib.error.HTTPError as error:
-              status, body = error.code, error.read()
-          open('/tmp/order-delivered-after-restart.json', 'wb').write(body)
-          open('/tmp/order-delivered-after-restart.status', 'w').write(str(status))
-          PY
-          ORDER_STATUS=$(cat /tmp/order-delivered-after-restart.status)
-          if [[ "${ORDER_STATUS}" != "200" ]]; then
-            echo "Delivered order lookup after restart returned HTTP ${ORDER_STATUS}."
-            psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
-              --command "select state || ':' || (receipt_token='${RECEIPT_TOKEN}') from checkout_orders where id='${ORDER_ID}';"
-            cat /tmp/order-delivered-after-restart.json
-            exit 1
-          fi
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
           import json
           order = json.load(open('/tmp/order-delivered-after-restart.json', encoding='utf-8'))
