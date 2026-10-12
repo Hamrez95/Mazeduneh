@@ -10,6 +10,7 @@
 | API → S3 | Media__Provider=S3 و Media__S3__Endpoint/Bucket/Region/AccessKey/SecretKey/ForcePathStyle | زمان اجرای API؛ فقط سرور |
 | آدرس عمومی تصاویر API | Media__PublicBaseUrl | زمان اجرای API |
 | ورود مدیر | Admin__Email/PasswordHash/TokenSigningKey | زمان اجرای API؛ secret manager |
+| تأیید حساس Owner | Admin__Mfa__OwnerTotpSecret | زمان اجرای API؛ secret manager، Base32 تصادفی حداقل ۲۰ بایت |
 | مبداهای مجاز مرورگر | Cors__AllowedOrigins__0 و __1 | آدرس دقیق HTTPS فروشگاه و پنل |
 | فروشگاه → API | NEXT_PUBLIC_MAZEDUNEH_API_URL | هنگام build فروشگاه؛ عمومی |
 | پنل → API | MAZEDUNEH_API_BASE_URL | هنگام build پنل با dart-define؛ عمومی |
@@ -19,6 +20,10 @@
 نمونهٔ بدون اطلاعات واقعی در services/api/.env.example و apps/storefront/.env.example است. API دات‌نت فایل .env را خودکار نمی‌خواند؛ مقادیر باید در Environment یا secret manager میزبان تنظیم شوند. Dockerfile هر سرویس از پوشهٔ خود ساخته می‌شود. پنل اکنون lib/secure_main.dart را می‌سازد؛ همان entry point امن فعال و تست‌شده در CI.
 
 `MAZEDUNEH_ADMIN_STORE_ID` فقط مشخص می‌کند پنل هنگام ورود کدام عضویت فروشگاه را درخواست کند؛ مجوز دسترسی محسوب نمی‌شود. API عضویت فعالِ همان ایمیل/رمز را در همان فروشگاه بررسی می‌کند و شناسهٔ فروشگاه نشست را از توکن امضاشده می‌خواند. کلاینت پس از ورود نمی‌تواند زمینهٔ نشست را با query string عوض کند.
+
+### تأیید عملیات حساس Owner
+
+`Admin__Mfa__OwnerTotpSecret` را در Secret Manager میزبان با یک secret تصادفی Base32 حداقل ۲۰ بایتی تنظیم کنید؛ مقدار secret را در مخزن یا مرورگر قرار ندهید. همان secret را با اپلیکیشن سازگار با TOTP در authenticator Owner ثبت کنید (۶ رقم، فاصلهٔ ۳۰ ثانیه، SHA-1). API هنگام تأیید دوبارهٔ هویت برای Owner هم رمز عبور و هم کد برنامه را می‌خواهد؛ کد هر بازه فقط یک بار پذیرفته می‌شود. proof امضاشده حداکثر ۵ دقیقه معتبر است و در حافظهٔ همان نشست پنل نگه داشته می‌شود. این مرحله فقط هنگام اجرای عملیات حساس مدیریتی ظاهر می‌شود؛ ورود معمولی پنل و مسیر مشتری شامل MFA نیستند. نبودن secret باعث رد بستهٔ عملیات حساس می‌شود تا پیکربندی انجام شود.
 
 ## اطلاعاتی که پس از خرید سرویس وارد می‌شوند
 

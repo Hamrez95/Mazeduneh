@@ -38,13 +38,16 @@ void main() {
       final auth = AuthApiClient(baseUrl: 'https://api.test', client: MockClient((request) async {
         expect(request.url.path, '/api/v1/admin/auth/step-up');
         expect(request.headers['authorization'], 'Bearer pricing-test');
-        final password = (jsonDecode(request.body) as Map<String, dynamic>)['password'];
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        final password = body['password'];
+        expect(body['totpCode'], '123456');
         if (password == 'wrong-password') {
           return http.Response.bytes(utf8.encode(jsonEncode({'message': 'رمز عبور تأیید نشد.'})), 403,
             headers: {'content-type': 'application/json; charset=utf-8'});
         }
         expect(password, 'secret');
-        return http.Response(jsonEncode({'stepUpToken': 'short-lived-step-up'}), 200);
+        return http.Response(jsonEncode({'stepUpToken': 'short-lived-step-up',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String()}), 200);
       }));
       await tester.pumpWidget(app(client, auth: auth, scale: width == 360 ? 2 : 1));
       await tester.tap(find.text('باز کردن')); await tester.pumpAndSettle();
@@ -63,11 +66,13 @@ void main() {
       await tester.tap(find.text('تأیید اعمال قیمت')); await tester.pumpAndSettle();
       expect(find.text('تأیید دوبارهٔ هویت'), findsOneWidget);
       await tester.enterText(input('رمز عبور فعلی'), 'wrong-password');
+      await tester.enterText(input('کد شش‌رقمی برنامهٔ تأیید'), '۱۲۳۴۵۶');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
       expect(find.text('رمز عبور تأیید نشد.'), findsOneWidget);
       expect(find.textContaining('قیمت پیشنهادی: ۶۶۳ تومان'), findsOneWidget);
       await tester.enterText(input('رمز عبور فعلی'), 'secret');
+      await tester.enterText(input('کد شش‌رقمی برنامهٔ تأیید'), '۱۲۳۴۵۶');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
       expect(applied?['expectedPrice'],5000);

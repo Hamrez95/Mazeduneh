@@ -167,7 +167,7 @@ void main() {
     expect(products, isEmpty);
   });
 
-  test('step-up sends the current bearer and password without persisting the token', () async {
+  test('step-up sends owner TOTP and caches the short-lived token in memory', () async {
     OwnerSession.instance.establish(
       accessToken: 'admin-session',
       expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
@@ -177,16 +177,31 @@ void main() {
     final token = await AuthApiClient(
       client: MockClient((request) async {
         captured = request;
-        return http.Response(jsonEncode({'stepUpToken': 'one-use-window'}), 200);
+        return http.Response(jsonEncode({'stepUpToken': 'short-lived-window',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String()}), 200);
       }),
       baseUrl: 'https://api.example.com',
-    ).stepUp(password: 'fresh-password');
+    ).stepUp(password: 'fresh-password', totpCode: '123456');
 
     expect(captured.url.path, '/api/v1/admin/auth/step-up');
     expect(captured.headers['authorization'], 'Bearer admin-session');
-    expect(jsonDecode(captured.body), {'password': 'fresh-password'});
-    expect(token, 'one-use-window');
+    expect(jsonDecode(captured.body), {'password': 'fresh-password', 'totpCode': '123456'});
+    expect(token, 'short-lived-window');
+    expect(OwnerSession.instance.validStepUpToken, token);
     expect(OwnerSession.instance.bearerToken, 'admin-session');
+  });
+
+  test('non-owner step-up can remain password-only', () async {
+    OwnerSession.instance.establish(accessToken: 'staff-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'staff@example.com', role: 'StoreManager');
+    late http.Request captured;
+    await AuthApiClient(client: MockClient((request) async {
+      captured = request;
+      return http.Response(jsonEncode({'stepUpToken': 'staff-window',
+        'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String()}), 200);
+    }), baseUrl: 'https://api.example.com').stepUp(password: 'fresh-password');
+    expect(jsonDecode(captured.body), {'password': 'fresh-password'});
   });
 
   test('incorrect step-up password does not clear the authenticated session', () async {

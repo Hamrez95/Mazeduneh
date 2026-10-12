@@ -12,6 +12,7 @@ $SourceRoot = Split-Path -Parent $PSScriptRoot
 $StateDirectory = Join-Path $SourceRoot '.local-dev'
 $StateFile = Join-Path $StateDirectory 'processes.json'
 $AdminPasswordFile = Join-Path $StateDirectory 'admin-password.txt'
+$AdminTotpSecretFile = Join-Path $StateDirectory 'admin-totp-secret.txt'
 $ApiUrl = 'http://127.0.0.1:5080'
 $StorefrontUrl = 'http://127.0.0.1:3000'
 $AdminUrl = 'http://127.0.0.1:8080'
@@ -385,12 +386,25 @@ if ($startApi -and (Test-Path $StateFile)) { Stop-LocalServices }
 $services = [System.Collections.Generic.List[object]]::new()
 $adminEmail = if ($env:MAZEDUNEH_LOCAL_ADMIN_EMAIL) { $env:MAZEDUNEH_LOCAL_ADMIN_EMAIL } else { 'admin@mazeduneh.local' }
 $adminPassword = $null
+$ownerTotpSecret = $null
+$newOwnerTotpSecret = $false
 if ($startApi) {
   if (-not (Test-Path $AdminPasswordFile)) {
     $adminPassword = New-LocalAdminPassword
     Set-Content -Path $AdminPasswordFile -Value $adminPassword -NoNewline -Encoding utf8NoBOM
   } else {
     $adminPassword = (Get-Content $AdminPasswordFile -Raw).Trim()
+  }
+
+  if (-not (Test-Path $AdminTotpSecretFile)) {
+    $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+    $randomBytes = [byte[]]::new(32)
+    [Security.Cryptography.RandomNumberGenerator]::Fill($randomBytes)
+    $ownerTotpSecret = -join ($randomBytes | ForEach-Object { $alphabet[$_ -band 31] })
+    Set-Content -Path $AdminTotpSecretFile -Value $ownerTotpSecret -NoNewline -Encoding utf8NoBOM
+    $newOwnerTotpSecret = $true
+  } else {
+    $ownerTotpSecret = (Get-Content $AdminTotpSecretFile -Raw).Trim()
   }
 
   $passwordHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($adminPassword)))
@@ -403,6 +417,7 @@ if ($startApi) {
     Admin__Email = $adminEmail
     Admin__PasswordHash = $passwordHash
     Admin__TokenSigningKey = $signingKey
+    Admin__Mfa__OwnerTotpSecret = $ownerTotpSecret
     'Cors__AllowedOrigins__0' = 'http://127.0.0.1:3000'
     'Cors__AllowedOrigins__1' = 'http://localhost:3000'
     'Cors__AllowedOrigins__2' = 'http://127.0.0.1:8080'
@@ -413,6 +428,11 @@ if ($startApi) {
   $services.Add((Start-LocalService 'api' $dotnetExecutable @(
     'run', '--project', (Join-Path $RunRoot 'services/api/Mazeduneh.Api.csproj'), '--no-launch-profile', '--urls', $ApiUrl
   ) (Join-Path $RunRoot 'services/api') $apiEnvironment "$ApiUrl/health/ready" 'Mazeduneh.Api.csproj'))
+  if ($newOwnerTotpSecret) {
+    $account = [Uri]::EscapeDataString($adminEmail)
+    Write-Host "Add the local admin authenticator with this setup URI: otpauth://totp/Mazeduneh:$account?secret=$ownerTotpSecret&issuer=Mazeduneh&algorithm=SHA1&digits=6&period=30" -ForegroundColor Yellow
+    Write-Host "The local-only secret is also saved in $AdminTotpSecretFile." -ForegroundColor Yellow
+  }
 }
 
 if ($startStorefront) {

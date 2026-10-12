@@ -1,7 +1,11 @@
 """Real API regression for zero-stock creation, variant addition and receiving."""
 import json
+import base64
+import hashlib
+import hmac
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import time
@@ -13,6 +17,7 @@ BASE = "http://127.0.0.1:5107"
 RESTRICTED_BASE = "http://127.0.0.1:5108"
 SLUG = "price-calculator-fixture"
 ZERO, POSITIVE, ADDED = "CI-OPENING-ZERO", "CI-OPENING-POSITIVE", "CI-OPENING-ADDED"
+STEP_UP_PROOFS = {}
 
 
 def request(path, method="GET", body=None, token=None, extra_headers=None, base=BASE):
@@ -65,8 +70,24 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
+def owner_totp_code():
+    secret = base64.b32decode(os.environ["Admin__Mfa__OwnerTotpSecret"])
+    counter = int(time.time()) // 30
+    digest = hmac.new(secret, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
+    return f"{code:06d}"
+
+
 def step_up(token, password="Mazeduneh-CI-Owner-Password!"):
-    return request('/api/v1/admin/auth/step-up', 'POST', {'password': password}, token)
+    if password == "Mazeduneh-CI-Owner-Password!" and token in STEP_UP_PROOFS:
+        return 200, STEP_UP_PROOFS[token]
+    status, response = request(
+        '/api/v1/admin/auth/step-up', 'POST',
+        {'password': password, 'totpCode': owner_totp_code()}, token)
+    if status == 200 and password == "Mazeduneh-CI-Owner-Password!":
+        STEP_UP_PROOFS[token] = response
+    return status, response
 
 
 SKU = 'CI-PRICE-250'
@@ -107,8 +128,16 @@ with tempfile.TemporaryFile() as log:
         assert request(PATH+'/preview', 'POST', dict(recipe, batchId='00000000-0000-0000-0000-000000000001'), token)[0] == 409
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token)[0] == 428
         assert step_up(token, 'incorrect-password')[0] == 403
-        status, step_up_response = step_up(token)
+        totp_code = owner_totp_code()
+        status, step_up_response = request(
+            '/api/v1/admin/auth/step-up', 'POST',
+            {'password': 'Mazeduneh-CI-Owner-Password!', 'totpCode': totp_code}, token)
         assert status == 200 and step_up_response.get('stepUpToken')
+        replay_status, _ = request(
+            '/api/v1/admin/auth/step-up', 'POST',
+            {'password': 'Mazeduneh-CI-Owner-Password!', 'totpCode': totp_code}, token)
+        assert replay_status == 403, replay_status  # A TOTP time step is accepted only once.
+        STEP_UP_PROOFS[token] = step_up_response
         step_up_headers = {'X-Admin-Step-Up': step_up_response['stepUpToken']}
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 4999}, token, step_up_headers)[0] == 409
         assert request(PATH+'/apply', 'POST', {'recipe': recipe}, token, step_up_headers)[0] == 400

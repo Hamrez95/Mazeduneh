@@ -10,6 +10,7 @@ public static class AdminSecurityExtensions
     public static IServiceCollection AddAdminSecurity(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddSingleton<AdminTokenService>();
+        services.AddSingleton<AdminTotpAuthenticator>();
         services.AddSingleton<OwnerAuthorizationFilter>();
         services.AddSingleton<StepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
@@ -109,6 +110,7 @@ public static class AdminSecurityExtensions
         endpoints.MapPost("/api/v1/admin/auth/step-up", async Task<IResult> (
             AdminStepUpRequest request,
             AdminTokenService tokens,
+            AdminTotpAuthenticator totp,
             AdminUsersDatabase users,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -128,6 +130,20 @@ public static class AdminSecurityExtensions
             else if (!tokens.ValidateCredentials(principal.Email, request.Password))
             {
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            if (string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!totp.IsConfigured || !users.IsConfigured)
+                    return Results.Json(
+                        new { message = "تأیید دومرحله‌ای مدیر اصلی پیکربندی نشده است.", code = "mfa_not_configured" },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+                if (!totp.TryMatchCode(request.TotpCode, DateTimeOffset.UtcNow, out var matchedTimeStep) ||
+                    !await users.TryConsumeOwnerTotpStepAsync(matchedTimeStep, cancellationToken))
+                    return Results.Json(
+                        new { message = "کد برنامهٔ تأیید معتبر نیست یا قبلاً استفاده شده است.", code = "mfa_code_invalid" },
+                        statusCode: StatusCodes.Status403Forbidden);
             }
 
             var issued = tokens.IssueStepUp(principal);
@@ -232,7 +248,7 @@ public static class AdminSecurityExtensions
 
 public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
-public sealed record AdminStepUpRequest(string Password);
+public sealed record AdminStepUpRequest(string Password, string? TotpCode = null);
 public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
 public sealed record IssuedAdminStepUpToken(string Token, DateTimeOffset ExpiresAt);
 public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId);

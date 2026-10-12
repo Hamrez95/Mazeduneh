@@ -51,6 +51,13 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "003-member-permissions", """
             alter table admin_users add column if not exists permissions_json jsonb null;
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "004-owner-totp-replay", """
+            create table if not exists admin_totp_replay_guard (
+                replay_key varchar(80) primary key,
+                last_accepted_step bigint not null,
+                updated_at timestamptz not null default now()
+            );
+            """, cancellationToken);
         await using var seed = new NpgsqlCommand("""
             insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
             values(@id,@store_id,@email,@display_name,'Owner',true,'system',now())
@@ -205,6 +212,23 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         command.Parameters.AddWithValue("user_id", userId);
         command.Parameters.AddWithValue("store_id", storeId);
         return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
+    public async Task<bool> TryConsumeOwnerTotpStepAsync(long timeStep, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured || timeStep < 0) return false;
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_totp_replay_guard(replay_key,last_accepted_step)
+            values('owner',@time_step)
+            on conflict(replay_key) do update
+                set last_accepted_step=excluded.last_accepted_step, updated_at=now()
+                where admin_totp_replay_guard.last_accepted_step < excluded.last_accepted_step
+            returning last_accepted_step;
+            """, connection);
+        command.Parameters.AddWithValue("time_step", timeStep);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     public async Task RevokeSessionAsync(Guid userId, string storeId, Guid sessionId, CancellationToken cancellationToken)

@@ -174,7 +174,20 @@ var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new D
     ["Admin:Email"] = "owner@example.test",
     ["Admin:PasswordHash"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("owner-secret"u8)),
     ["Admin:TokenSigningKey"] = new string('s', 64),
+    ["Admin:Mfa:OwnerTotpSecret"] = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
 }).Build();
+var ownerTotp = new AdminTotpAuthenticator(stepUpConfiguration);
+Check(ownerTotp.IsConfigured, "Valid owner TOTP secret was rejected");
+Check(ownerTotp.TryMatchCode("287082", DateTimeOffset.FromUnixTimeSeconds(59), out var matchedTotpStep) && matchedTotpStep == 1,
+    "RFC 6238 TOTP vector was rejected");
+Check(!ownerTotp.TryMatchCode("28708x", DateTimeOffset.FromUnixTimeSeconds(59), out _), "Non-digit TOTP code was accepted");
+Check(!ownerTotp.TryMatchCode("287082", DateTimeOffset.FromUnixTimeSeconds(180), out _), "Expired TOTP code was accepted");
+var invalidTotpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:OwnerTotpSecret"] = "too-short",
+}).Build();
+Check(!new AdminTotpAuthenticator(invalidTotpConfiguration).IsConfigured, "Short TOTP secret was accepted");
+Console.WriteLine("Owner TOTP RFC vector, syntax, expiry, and secret-length checks passed");
 var stepUpTokens = new AdminTokenService(stepUpConfiguration);
 var ownerAccess = stepUpTokens.Issue("owner@example.test");
 Check(stepUpTokens.TryValidate(ownerAccess.Token, out var stepUpPrincipal), "Issued admin access token rejected");

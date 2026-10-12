@@ -90,7 +90,7 @@ class AuthApiClient {
     );
   }
 
-  Future<String> stepUp({required String password}) async {
+  Future<String> stepUp({required String password, String? totpCode}) async {
     final token = OwnerSession.instance.bearerToken;
     if (token == null) {
       throw AuthApiException('نشست شما منقضی شده است.', statusCode: 401);
@@ -101,7 +101,10 @@ class AuthApiClient {
         'authorization': 'Bearer $token',
         'content-type': 'application/json; charset=utf-8',
       },
-      body: jsonEncode({'password': password}),
+      body: jsonEncode({
+        'password': password,
+        if (totpCode != null && totpCode.isNotEmpty) 'totpCode': totpCode,
+      }),
     );
     if (response.statusCode == 401) OwnerSession.instance.clear();
     if (response.statusCode != 200) {
@@ -113,9 +116,17 @@ class AuthApiClient {
     final body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final stepUpToken = body['stepUpToken'] as String?;
-    if (stepUpToken == null || stepUpToken.isEmpty) {
+    final expiresAt = DateTime.tryParse(body['expiresAt'] as String? ?? '');
+    if (stepUpToken == null ||
+        stepUpToken.isEmpty ||
+        expiresAt == null ||
+        !expiresAt.isAfter(DateTime.now().toUtc()) ||
+        expiresAt.isAfter(
+          DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        )) {
       throw AuthApiException('پاسخ تأیید هویت از سرور کامل نیست.');
     }
+    OwnerSession.instance.rememberStepUpToken(stepUpToken, expiresAt);
     return stepUpToken;
   }
 
