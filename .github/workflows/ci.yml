@@ -249,9 +249,15 @@ jobs:
             exit 1
           fi
 
-          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
+          echo "Checking owner login after paid order persistence."
+          OWNER_LOGIN_STATUS=$(curl --disable -sS -o /tmp/login.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
-            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/login.json
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' || true)
+          if [[ "${OWNER_LOGIN_STATUS}" != "200" ]]; then
+            echo "Owner login after paid order persistence returned HTTP ${OWNER_LOGIN_STATUS}."
+            cat /tmp/login.json
+            exit 1
+          fi
           python3 - <<'PY'
           import json
           login = json.load(open('/tmp/login.json', encoding='utf-8'))
