@@ -68,8 +68,8 @@ class _AdminShellState extends State<AdminShell> {
     final selectedPrimary = primaryIndexes.indexOf(index);
     final pages = [
       AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate)),
-      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter)),
-      AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
+      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter, initialQuery: navigation.query ?? '')),
+      AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey, onNavigate: _navigate)),
       AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
       const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
       AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: _navigate)),

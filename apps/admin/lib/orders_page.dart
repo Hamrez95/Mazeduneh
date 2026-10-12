@@ -26,9 +26,10 @@ String _paymentProviderLabel(String provider) => switch (provider) {
     };
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all});
+  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all, this.initialQuery = ''});
   final OrderApiClient? api;
   final AdminOrderFilter initialFilter;
+  final String initialQuery;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -65,12 +66,19 @@ class _OrdersPageState extends State<OrdersPage> {
   @override
   void initState() {
     super.initState();
+    searchController.text = widget.initialQuery;
+    searchQuery = widget.initialQuery;
     load();
   }
 
   @override
   void didUpdateWidget(covariant OrdersPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQuery != widget.initialQuery && searchQuery != widget.initialQuery) {
+      searchController.text = widget.initialQuery;
+      searchQuery = widget.initialQuery;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) load(); });
+    }
     if (oldWidget.initialFilter != widget.initialFilter && selectedState != widget.initialFilter.apiValue) {
       selectedState = widget.initialFilter.apiValue;
       overdueOnly = false;
