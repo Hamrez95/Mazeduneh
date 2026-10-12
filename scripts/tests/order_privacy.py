@@ -65,6 +65,13 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
+def step_up_token(token):
+    status, response = request('/api/v1/admin/auth/step-up', 'POST',
+                               {'password': 'Mazeduneh-CI-Owner-Password!'}, token)
+    assert status == 200, response
+    return response['stepUpToken']
+
+
 def assert_private(payload):
     text = json.dumps(payload, ensure_ascii=False)
     for marker in [NAME, MOBILE, ADDRESS, '1234567890', 'PrivacyFixtureCarrier', 'PrivacyFixtureTracking']:
@@ -118,7 +125,8 @@ with tempfile.TemporaryFile() as log:
                 assert ADDRESS in html
             # Existing invoice/slip renderers do not print the mobile number.
         assert request(path, token=token)[1]['customerName'] == NAME
-        assert request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token)[0] == 200
+        assert request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token,
+                       headers={'X-Admin-Step-Up': step_up_token(token)})[0] == 200
         for endpoint in ['/api/v1/admin/orders', path, path + '/invoice', path + '/packing-slip', '/api/v1/admin/orders/export.csv']:
             assert request(endpoint)[0] == 401
         status, order_audit = request('/api/v1/admin/audit-log?entityType=Order&entityId=' + order_id, token=token)
@@ -158,9 +166,15 @@ with tempfile.TemporaryFile() as log:
                 assert request('/api/v1/admin/orders/' + '00000000-0000-0000-0000-000000000001', token=token)[0] == 404
             for suffix in ['/invoice', '/packing-slip', '/invoice/', '/packing-slip/']:
                 assert request(path + suffix, token=token)[0] == 403
-            assert request('/api/v1/admin/orders/export.csv/?q=' + order_id, token=token)[0] == (200 if can_read and 'orders.export' in permissions.split(',') else 403)
+            export_allowed = can_read and 'orders.export' in permissions.split(',')
+            expected_export_status = 428 if export_allowed else 403
+            assert request('/api/v1/admin/orders/export.csv/?q=' + order_id, token=token)[0] == expected_export_status
             status, csv = request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token)
-            assert status == (200 if can_read and 'orders.export' in permissions.split(',') else 403)
+            assert status == expected_export_status
+            if export_allowed:
+                status, csv = request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token,
+                                      headers={'X-Admin-Step-Up': step_up_token(token)})
+                assert status == 200
             if status == 200 and not can_pii:
                 assert_private(csv)
                 assert 'مخفی بر اساس نقش' in csv
