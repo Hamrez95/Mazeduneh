@@ -108,6 +108,12 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
 with tempfile.TemporaryFile() as log:
     api, owner_token = start_api(log)
     try:
+        original_owner_token = owner_token
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        stop_api(api)
+        api, owner_token = start_api(log)
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 401
+
         status, denied = request("/api/v1/admin/users", "POST", {
             "email": "missing-proof@example.test", "displayName": "Missing proof",
             "role": "WarehouseOperator"}, owner_token)
@@ -216,6 +222,8 @@ with tempfile.TemporaryFile() as log:
         assert status == 200 and disabled["isActive"] is False
         assert request("/api/v1/admin/auth/session", token=second_token)[0] == 401
         assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=second_token)[0] == 401
+        assert request("/api/v1/admin/auth/logout", "POST", token=owner_token)[0] == 204
+        assert request("/api/v1/admin/auth/session", token=owner_token)[0] == 401
     finally:
         stop_api(api)
 

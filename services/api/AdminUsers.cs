@@ -187,7 +187,8 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await using var command = new NpgsqlCommand("""
             insert into admin_user_sessions(session_id,user_id,store_id,created_at,expires_at)
             select @session_id,id,store_id,now(),@expires_at
-            from admin_users where id=@user_id and store_id=@store_id and is_active=true and password_hash is not null;
+            from admin_users where id=@user_id and store_id=@store_id and is_active=true
+              and (password_hash is not null or role='Owner');
             """, connection);
         command.Parameters.AddWithValue("session_id", sessionId);
         command.Parameters.AddWithValue("user_id", userId);
@@ -195,6 +196,21 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         command.Parameters.AddWithValue("expires_at", expiresAt);
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
             throw new InvalidOperationException("عضویت مدیر دیگر فعال نیست.");
+    }
+
+    public async Task<Guid?> FindOwnerMembershipIdAsync(string email, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id from admin_users
+            where store_id=@store_id and email=@email and role='Owner' and is_active=true
+            limit 1;
+            """, connection);
+        command.Parameters.AddWithValue("store_id", DefaultStoreId);
+        command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid userId ? userId : null;
     }
 
     public async Task<bool> IsSessionActiveAsync(Guid userId, string storeId, Guid sessionId, CancellationToken cancellationToken)

@@ -48,7 +48,10 @@ public static class AdminSecurityExtensions
             if (tokens.ValidateCredentials(request.Email, request.Password) &&
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
-                var owner = tokens.Issue(request.Email);
+                var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
+                var owner = tokens.Issue(request.Email, ownerUserId);
+                if (ownerUserId is Guid userId)
+                    await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
                 return Results.Ok(new
                 {
                     accessToken = owner.Token,
@@ -129,9 +132,17 @@ public static class AdminSecurityExtensions
             {
                 if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                     return Results.Unauthorized();
-                var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
-                if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
-                    return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                if (string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!tokens.ValidateCredentials(principal.Email, request.Password))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+                else
+                {
+                    var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
+                    if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
             }
             else if (!tokens.ValidateCredentials(principal.Email, request.Password))
             {
@@ -441,6 +452,9 @@ public sealed class AdminTokenService
 
     public IssuedAdminToken Issue(string email) =>
         Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default");
+
+    public IssuedAdminToken Issue(string email, Guid? userId) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), userId, "default");
 
     public IssuedAdminToken Issue(AdminUserSummary member) =>
         Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
