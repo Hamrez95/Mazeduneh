@@ -367,16 +367,14 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
   String? error;
 
   Future<void> save() async {
+    if (saving) return;
     setState(() {
-      saving = true;
       error = null;
     });
     final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
     if (!mounted) return;
-    if (stepUpToken == null) {
-      setState(() => saving = false);
-      return;
-    }
+    if (stepUpToken == null) return;
+    setState(() => saving = true);
     final message = await widget.onSave(permissions.toList(), stepUpToken);
     if (!mounted) return;
     if (message == null) {
