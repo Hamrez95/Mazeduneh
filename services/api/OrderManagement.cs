@@ -58,7 +58,9 @@ public static class OrderManagementModule
                     Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
             }
             return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-orders.csv");
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<StepUpAuthorizationFilter>()
+          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.OrdersExport));
 
         admin.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,

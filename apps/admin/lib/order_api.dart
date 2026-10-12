@@ -45,9 +45,9 @@ class OrderApiClient {
     return decoded.map((item) => AdminOverdueShipment.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<List<int>> exportOrdersCsv({String? state, String? query, int limit = 1000}) async {
+  Future<List<int>> exportOrdersCsv({required String stepUpToken, String? state, String? query, int limit = 1000}) async {
     final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/export.csv').replace(queryParameters: params), headers: _headers());
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/export.csv').replace(queryParameters: params), headers: {..._headers(), 'x-admin-step-up': stepUpToken});
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return response.bodyBytes;

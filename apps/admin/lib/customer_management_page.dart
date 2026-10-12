@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'admin_permissions.dart';
 import 'admin_state.dart';
 import 'auth_session.dart';
+import 'admin_step_up_dialog.dart';
 import 'customer_api.dart';
 import 'formatters.dart';
 
@@ -65,9 +66,12 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
   }
 
   Future<void> exportCsv() async {
+    final stepUpToken = await showAdminStepUpDialog(context);
+    if (stepUpToken == null || !mounted) return;
     setState(() => exporting = true);
     try {
       final bytes = await api.exportCustomersCsv(
+        stepUpToken: stepUpToken,
         query: searchController.text.trim(),
         marketingConsent: marketingConsentFilter,
       );

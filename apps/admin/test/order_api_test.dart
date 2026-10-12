@@ -112,12 +112,13 @@ void main() {
       captured = request;
       return http.Response.bytes([0xEF, 0xBB, 0xBF, 0xD8, 0xB3], 200, headers: {'content-type': 'text/csv; charset=utf-8'});
     });
-    final bytes = await OrderApiClient(client: client, baseUrl: 'https://api.test').exportOrdersCsv(state: 'Paid', query: 'Mina', limit: 500);
+    final bytes = await OrderApiClient(client: client, baseUrl: 'https://api.test').exportOrdersCsv(stepUpToken: 'fresh-proof', state: 'Paid', query: 'Mina', limit: 500);
     expect(captured.url.path, '/api/v1/admin/orders/export.csv');
     expect(captured.url.queryParameters['state'], 'Paid');
     expect(captured.url.queryParameters['q'], 'Mina');
     expect(captured.url.queryParameters['limit'], '500');
     expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(captured.headers['x-admin-step-up'], 'fresh-proof');
     expect(bytes.take(3), [0xEF, 0xBB, 0xBF]);
   });
 

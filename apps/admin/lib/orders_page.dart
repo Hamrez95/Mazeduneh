@@ -7,6 +7,7 @@ import 'admin_permissions.dart';
 import 'admin_navigation.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_step_up_dialog.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
@@ -156,9 +157,11 @@ class _OrdersPageState extends State<OrdersPage> {
       );
 
   Future<void> exportCsv() async {
+    final stepUpToken = await showAdminStepUpDialog(context);
+    if (stepUpToken == null || !mounted) return;
     setState(() => exporting = true);
     try {
-      final bytes = await api.exportOrdersCsv(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+      final bytes = await api.exportOrdersCsv(stepUpToken: stepUpToken, state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
       final opened = await launchUrl(
         Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: {'charset': 'utf-8'}),
         webOnlyWindowName: '_blank',

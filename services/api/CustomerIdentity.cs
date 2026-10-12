@@ -62,7 +62,9 @@ public static class CustomerIdentityModule
 
             return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-customers.csv");
         })
-            .AddEndpointFilter<OwnerAuthorizationFilter>();
+            .AddEndpointFilter<OwnerAuthorizationFilter>()
+            .AddEndpointFilter<StepUpAuthorizationFilter>()
+            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.CustomersExport));
         customers.MapGet("/{customerId:guid}", async (
                 Guid customerId,
                 CustomerIdentityDatabase database,
