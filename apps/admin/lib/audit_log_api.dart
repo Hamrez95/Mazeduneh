@@ -17,58 +17,36 @@ class AuditLogApiException implements Exception {
 
 class AuditLogApiClient {
   AuditLogApiClient({http.Client? client, String? baseUrl})
-    : _client = client ?? http.Client(),
-      baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), '');
+      : _client = client ?? http.Client(),
+        baseUrl = (baseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), '');
 
   final http.Client _client;
   final String baseUrl;
 
-  Future<List<AdminAuditLogEntry>> fetchLogs({
-    String? entityType,
-    String? entityId,
-    int limit = 100,
-  }) async {
+  Future<List<AdminAuditLogEntry>> fetchLogs({String? entityType, String? entityId, int limit = 100}) async {
     final token = OwnerSession.instance.bearerToken;
-    if (token == null)
-      throw AuditLogApiException('نشست شما منقضی شده است.', statusCode: 401);
+    if (token == null) throw AuditLogApiException('نشست شما منقضی شده است.', statusCode: 401);
     final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/admin/audit-log').replace(
-        queryParameters: {
-          if (entityType != null && entityType.trim().isNotEmpty)
-            'entityType': entityType.trim(),
-          if (entityId != null && entityId.trim().isNotEmpty)
-            'entityId': entityId.trim(),
-          'limit': '$limit',
-        },
-      ),
+      Uri.parse('$baseUrl/api/v1/admin/audit-log').replace(queryParameters: {
+        if (entityType != null && entityType.trim().isNotEmpty) 'entityType': entityType.trim(),
+        if (entityId != null && entityId.trim().isNotEmpty) 'entityId': entityId.trim(),
+        'limit': '$limit',
+      }),
       headers: {'authorization': 'Bearer $token'},
     );
     if (response.statusCode == 401) {
       OwnerSession.instance.clear();
-      throw AuditLogApiException(
-        'نشست شما منقضی شده است؛ دوباره وارد شوید.',
-        statusCode: 401,
-      );
+      throw AuditLogApiException('نشست شما منقضی شده است؛ دوباره وارد شوید.', statusCode: 401);
     }
-    if (response.statusCode != 200)
-      throw AuditLogApiException(
-        _message(response),
-        statusCode: response.statusCode,
-      );
-    final decoded =
-        jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
-    return decoded
-        .map(
-          (item) => AdminAuditLogEntry.fromJson(item as Map<String, dynamic>),
-        )
-        .toList();
+    if (response.statusCode != 200) throw AuditLogApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => AdminAuditLogEntry.fromJson(item as Map<String, dynamic>)).toList();
   }
 
   String _message(http.Response response) {
     try {
       final body = jsonDecode(utf8.decode(response.bodyBytes));
-      if (body is Map<String, dynamic> && body['message'] is String)
-        return body['message'] as String;
+      if (body is Map<String, dynamic> && body['message'] is String) return body['message'] as String;
     } catch (_) {}
     return 'ارتباط با سرویس گزارش فعالیت برقرار نشد (${response.statusCode}).';
   }
@@ -99,8 +77,7 @@ class AdminAuditLogEntry {
   final String requestId;
   final DateTime occurredAt;
 
-  factory AdminAuditLogEntry.fromJson(Map<String, dynamic> json) =>
-      AdminAuditLogEntry(
+  factory AdminAuditLogEntry.fromJson(Map<String, dynamic> json) => AdminAuditLogEntry(
         id: json['id'].toString(),
         actor: json['actor'] as String? ?? 'نامشخص',
         action: json['action'] as String? ?? 'unknown',
@@ -114,29 +91,29 @@ class AdminAuditLogEntry {
       );
 
   String get actionLabel => switch (action) {
-    'inventory.adjustment' => 'اصلاح موجودی',
-    'product.publication' => 'تغییر انتشار محصول',
-    'admin-user.created' => 'افزودن مدیر',
-    'admin-user.invited' => 'دعوت مدیر',
-    'admin-user.invitation-accepted' => 'پذیرش دعوت عضویت',
-    'admin-user.permissions-changed' => 'تغییر دسترسی‌های مدیر',
-    'admin-user.status-changed' => 'تغییر وضعیت کاربر مدیریتی',
-    'order.state-changed' => 'تغییر وضعیت سفارش',
-    'inventory.purchase.received' => 'ثبت رسید خرید انبار',
-    'inventory.price.applied' => 'به‌روزرسانی قیمت انبار',
-    'commerce-settings.update' => 'تغییر تنظیمات فروشگاه',
-    _ => action,
-  };
+        'inventory.adjustment' => 'اصلاح موجودی',
+        'product.publication' => 'تغییر انتشار محصول',
+        'admin-user.created' => 'افزودن مدیر',
+        'admin-user.invited' => 'دعوت مدیر',
+        'admin-user.invitation-accepted' => 'پذیرش دعوت عضویت',
+        'admin-user.permissions-changed' => 'تغییر دسترسی‌های مدیر',
+        'admin-user.status-changed' => 'تغییر وضعیت کاربر مدیریتی',
+        'order.state-changed' => 'تغییر وضعیت سفارش',
+        'inventory.purchase.received' => 'ثبت رسید خرید انبار',
+        'inventory.price.applied' => 'به‌روزرسانی قیمت انبار',
+        'commerce-settings.update' => 'تغییر تنظیمات فروشگاه',
+        _ => action,
+      };
 
   String get entityLabel => switch (entityType) {
-    'ProductVariant' => 'SKU محصول',
-    'Product' => 'محصول',
-    'AdminUser' => 'کاربر مدیریتی',
-    'Order' => 'سفارش',
-    'InventoryBatch' => 'بچ انبار',
-    'commerce_settings' => 'تنظیمات فروشگاه',
-    _ => entityType,
-  };
+        'ProductVariant' => 'SKU محصول',
+        'Product' => 'محصول',
+        'AdminUser' => 'کاربر مدیریتی',
+        'Order' => 'سفارش',
+        'InventoryBatch' => 'بچ انبار',
+        'commerce_settings' => 'تنظیمات فروشگاه',
+        _ => entityType,
+      };
 
   static String? _snapshot(Object? value) {
     if (value == null) return null;
