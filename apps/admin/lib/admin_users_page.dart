@@ -5,13 +5,16 @@ import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'admin_users_api.dart';
 import 'auth_session.dart';
+import 'auth_api.dart';
 import 'formatters.dart';
 import 'admin_theme.dart';
+import 'admin_step_up_dialog.dart';
 
 class AdminUsersPage extends StatefulWidget {
-  const AdminUsersPage({super.key, this.api});
+  const AdminUsersPage({super.key, this.api, this.auth});
 
   final AdminUsersApiClient? api;
+  final AuthApiClient? auth;
 
   @override
   State<AdminUsersPage> createState() => _AdminUsersPageState();
@@ -93,8 +96,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       builder: (_) => _CreateUserDialog(roles: roles.where((role) => role.role != 'Owner').toList()),
     );
     if (draft == null || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
     try {
-      final invitation = await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role, permissions: draft.permissions);
+      final invitation = await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role, permissions: draft.permissions, stepUpToken: stepUpToken);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -133,9 +138,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       context: context,
       builder: (_) => _PermissionsDialog(
         initialPermissions: user.permissions,
-        onSave: (permissions) async {
+        auth: widget.auth,
+        onSave: (permissions, stepUpToken) async {
           try {
-            await api.setPermissions(user.id, permissions);
+            await api.setPermissions(user.id, permissions, stepUpToken: stepUpToken);
             await load();
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسترسی‌های کاربر به‌روزرسانی شد.')));
             return null;
@@ -167,9 +173,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
     setState(() => changingUserId = user.id);
     try {
-      await api.setStatus(user.id, nextStatus);
+      await api.setStatus(user.id, nextStatus, stepUpToken: stepUpToken);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(nextStatus ? 'دسترسی کاربر فعال شد.' : 'دسترسی کاربر غیرفعال شد.')));
       await load();
     } on AdminUsersApiException catch (exception) {
@@ -345,9 +353,10 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
 }
 
 class _PermissionsDialog extends StatefulWidget {
-  const _PermissionsDialog({required this.initialPermissions, required this.onSave});
+  const _PermissionsDialog({required this.initialPermissions, required this.onSave, this.auth});
   final List<String> initialPermissions;
-  final Future<String?> Function(List<String> permissions) onSave;
+  final Future<String?> Function(List<String> permissions, String stepUpToken) onSave;
+  final AuthApiClient? auth;
   @override
   State<_PermissionsDialog> createState() => _PermissionsDialogState();
 }
@@ -358,11 +367,15 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
   String? error;
 
   Future<void> save() async {
+    if (saving) return;
     setState(() {
-      saving = true;
       error = null;
     });
-    final message = await widget.onSave(permissions.toList());
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (!mounted) return;
+    if (stepUpToken == null) return;
+    setState(() => saving = true);
+    final message = await widget.onSave(permissions.toList(), stepUpToken);
     if (!mounted) return;
     if (message == null) {
       Navigator.pop(context);

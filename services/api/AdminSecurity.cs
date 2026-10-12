@@ -11,11 +11,19 @@ public static class AdminSecurityExtensions
     {
         services.AddSingleton<AdminTokenService>();
         services.AddSingleton<OwnerAuthorizationFilter>();
+        services.AddSingleton<UserMutationTargetAuthorizationFilter>();
         services.AddSingleton<StepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddFixedWindowLimiter("admin-login", limiter =>
+            {
+                limiter.PermitLimit = 5;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+                limiter.AutoReplenishment = true;
+            });
+            options.AddFixedWindowLimiter("admin-step-up", limiter =>
             {
                 limiter.PermitLimit = 5;
                 limiter.Window = TimeSpan.FromMinutes(1);
@@ -133,7 +141,7 @@ public static class AdminSecurityExtensions
             var issued = tokens.IssueStepUp(principal);
             return Results.Ok(new { stepUpToken = issued.Token, expiresAt = issued.ExpiresAt });
         })
-        .RequireRateLimiting("admin-login")
+        .RequireRateLimiting("admin-step-up")
         .WithTags("Admin Auth");
 
         endpoints.MapGet("/api/v1/admin/audit-log", async (
@@ -186,6 +194,8 @@ public static class AdminSecurityExtensions
             }
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/permissions", async (
@@ -201,6 +211,9 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/status", async (
@@ -218,6 +231,9 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         return endpoints;
@@ -596,6 +612,29 @@ public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpo
                 new { message = "برای این عملیات، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
         return next(context);
+    }
+}
+
+public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase users) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        if (!context.HttpContext.Request.RouteValues.TryGetValue("id", out var routeId) ||
+            !Guid.TryParse(routeId?.ToString(), out var userId))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null)
+            return Results.Unauthorized();
+
+        var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
+        var storeId = principal.UserId is not null
+            ? principal.StoreId
+            : string.IsNullOrWhiteSpace(requestedStore) ? null : requestedStore.Trim();
+        if (!await users.CanManageAsync(userId, storeId, context.HttpContext.RequestAborted))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        return await next(context);
     }
 }
 

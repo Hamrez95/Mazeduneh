@@ -54,6 +54,44 @@ void main() {
     expect(find.text('هنوز فعالیت حساسی ثبت نشده است'), findsOneWidget);
   });
 
+  testWidgets('filters and explains membership access changes', (tester) async {
+    Uri? filteredRequest;
+    final api = AuditLogApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        filteredRequest = request.url;
+        return http.Response(jsonEncode([
+          {
+            'id': 'membership-event', 'actor': 'owner@example.com',
+            'action': 'admin-user.permissions-changed', 'entityType': 'AdminUser',
+            'entityId': 'member-1', 'beforeJson': '{"permissions":[]}',
+            'afterJson': '{"permissions":["orders.read"]}',
+            'reason': 'تغییر دسترسی', 'requestId': 'trace-2',
+            'occurredAt': '2026-08-02T08:00:00Z',
+          }
+        ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }),
+    );
+
+    await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byType(DropdownButtonFormField<String>), 300, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('کاربران مدیریتی').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('نمایش گزارش'));
+    await tester.tap(find.text('نمایش گزارش'));
+    await tester.pumpAndSettle();
+
+    expect(filteredRequest?.queryParameters['entityType'], 'AdminUser');
+    expect(find.text('تغییر دسترسی‌های مدیر'), findsOneWidget);
+    await tester.tap(find.text('تغییر دسترسی‌های مدیر'));
+    await tester.pumpAndSettle();
+    expect(find.text('قبل از تغییر'), findsOneWidget);
+    expect(find.text('بعد از تغییر'), findsOneWidget);
+  });
+
   testWidgets('keeps filters available when unfiltered audit access is denied', (tester) async {
     Uri? filteredRequest;
     final api = AuditLogApiClient(
@@ -77,6 +115,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.byType(DropdownButtonFormField<String>), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('نوع مورد'), findsOneWidget);
     expect(find.text('شناسه یا SKU'), findsOneWidget);
 

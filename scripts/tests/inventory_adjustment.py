@@ -15,8 +15,9 @@ LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED = (
     'CI-ADJUST-LEGACY', 'CI-ADJUST-BATCH', 'CI-ADJUST-UPGRADE', 'CI-ADJUST-ACTOR')
 
 
-def request(path, method='GET', body=None, token=None, key=None):
+def request(path, method='GET', body=None, token=None, key=None, extra_headers=None):
     headers = {'Content-Type': 'application/json'} if body is not None else {}
+    headers.update(extra_headers or {})
     if token:
         headers['Authorization'] = 'Bearer ' + token
     if key:
@@ -67,6 +68,13 @@ def adjust(sku, delta, key, auth_token=None):
     return request('/api/v1/admin/inventory/adjust', 'POST', {'sku': sku, 'quantityDelta': delta, 'reason': 'CI invariant'}, auth_token or token, key)
 
 
+def step_up_headers(auth_token):
+    status, result = request('/api/v1/admin/auth/step-up', 'POST',
+                             {'password': 'Mazeduneh-CI-Owner-Password!'}, auth_token)
+    assert status == 200 and result['stepUpToken'], (status, result)
+    return {'X-Admin-Step-Up': result['stepUpToken']}
+
+
 def balances(sku):
     _, product = request('/api/v1/products/ci-adjustment-invariant')
     available = next(v['availablePackages'] for v in product['variants'] if v['sku'] == sku)
@@ -115,7 +123,7 @@ with tempfile.TemporaryFile() as log:
 
         invitation_status, invitation = request('/api/v1/admin/users', 'POST', {
             'email': 'ci-inventory-operator@mazeduneh.test', 'displayName': 'CI inventory operator',
-            'role': 'WarehouseOperator'}, token)
+            'role': 'WarehouseOperator'}, token, extra_headers=step_up_headers(token))
         assert invitation_status == 201, (invitation_status, invitation)
         assert request('/api/v1/admin/auth/accept-invite', 'POST', {
             'token': invitation['invitationToken'], 'password': 'Mazeduneh-CI-Operator-Password!'} )[0] == 204
