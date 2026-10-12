@@ -10,7 +10,7 @@ enum AdminModule {
   reports('reports', AdminPermissions.reportsRead),
   notifications('notifications', AdminPermissions.dashboardRead),
   customers('customers', AdminPermissions.customersRead),
-  pricing('pricing', AdminPermissions.pricingRead),
+  pricing('pricing', AdminPermissions.settingsRead),
   corporate('corporate', AdminPermissions.corporateRead),
   audit('audit', AdminPermissions.auditRead),
   users('users', AdminPermissions.usersRead);

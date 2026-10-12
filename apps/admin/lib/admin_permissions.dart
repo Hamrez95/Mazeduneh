@@ -13,6 +13,8 @@ abstract final class AdminPermissions {
   static const customersExport = 'customers.export';
   static const pricingRead = 'pricing.read';
   static const pricingWrite = 'pricing.write';
+  static const settingsRead = 'settings.read';
+  static const settingsWrite = 'settings.write';
   static const corporateRead = 'corporate.read';
   static const auditRead = 'audit.read';
   static const usersRead = 'users.read';
@@ -137,10 +139,17 @@ abstract final class AdminPermissions {
         'گزارش امنیتی',
         'مشاهده رویدادهای ثبت‌شده مدیریتی.',
       ),
+    ],
+    'تنظیمات فروشگاه': [
       AdminPermissionOption(
-        'settings.write',
-        'تنظیمات فروشگاه',
-        'تغییر تنظیمات تجاری فروشگاه.',
+        settingsRead,
+        'مشاهده تنظیمات فروشگاه',
+        'مشاهده نرخ مالیات و روش‌های ارسال.',
+      ),
+      AdminPermissionOption(
+        settingsWrite,
+        'تغییر تنظیمات فروشگاه',
+        'تغییر نرخ مالیات و روش‌های ارسال با تأیید دوباره هویت.',
       ),
     ],
   };

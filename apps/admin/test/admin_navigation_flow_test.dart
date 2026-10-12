@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/admin_navigation.dart';
+import 'package:mazeduneh_admin/admin_permissions.dart';
 import 'package:mazeduneh_admin/admin_shell.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
@@ -21,6 +22,11 @@ void main() {
     ),
   );
   tearDown(OwnerSession.instance.clear);
+
+  test('commerce settings navigation uses its separate read permission', () {
+    expect(AdminModule.pricing.permission, AdminPermissions.settingsRead);
+    expect(AdminPermissions.settingsRead, isNot(AdminPermissions.pricingRead));
+  });
 
   testWidgets('orders page applies the SKU sent by a product navigation intent', (tester) async {
     Uri? orderRequest;

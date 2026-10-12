@@ -219,7 +219,7 @@ public static class CommercePricingModule
             var principal = (AdminPrincipal)context.Items["AdminPrincipal"]!;
             return Results.Ok(await database.UpdateAsync(request, principal.Email, context.TraceIdentifier, audit, cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>().AddEndpointFilter<StepUpAuthorizationFilter>()
-            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.PricingWrite));
+            .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.SettingsWrite));
 
         return endpoints;
     }
