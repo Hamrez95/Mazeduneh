@@ -250,6 +250,18 @@ jobs:
           assert 'orders.read' in session['permissions']
           assert 'products.write' in session['permissions']
           PY
+          for export_path in \
+            /api/v1/admin/orders/export.csv \
+            /api/v1/admin/customers/export.csv; do
+            export_status=$(curl -s -o /tmp/sensitive-export-response.json -w '%{http_code}' \
+              "http://127.0.0.1:5099${export_path}" -H "Authorization: Bearer ${TOKEN}")
+            test "${export_status}" = "428"
+            python3 - <<'PY'
+          import json
+          response = json.load(open('/tmp/sensitive-export-response.json', encoding='utf-8'))
+          assert response['code'] == 'step_up_required'
+          PY
+          done
           curl -fsS http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-users.json
           python3 - <<'PY'

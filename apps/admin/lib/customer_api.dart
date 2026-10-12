@@ -49,13 +49,13 @@ class CustomerApiClient {
         .toList();
   }
 
-  Future<List<int>> exportCustomersCsv({String? query, bool? marketingConsent, int limit = 1000}) async {
+  Future<List<int>> exportCustomersCsv({required String stepUpToken, String? query, bool? marketingConsent, int limit = 1000}) async {
     final queryParameters = <String, String>{'limit': '$limit'};
     if (query != null && query.trim().isNotEmpty) queryParameters['q'] = query.trim();
     if (marketingConsent != null) queryParameters['marketingConsent'] = '$marketingConsent';
     final response = await _client.get(
       Uri.parse('$baseUrl/api/v1/admin/customers/export.csv').replace(queryParameters: queryParameters),
-      headers: _headers(),
+      headers: {..._headers(), 'x-admin-step-up': stepUpToken},
     );
     _guard(response);
     if (response.statusCode != 200) {

@@ -60,12 +60,13 @@ void main() {
     });
 
     final bytes = await CustomerApiClient(client: client, baseUrl: 'https://api.test')
-        .exportCustomersCsv(query: '0912', marketingConsent: false, limit: 500);
+        .exportCustomersCsv(stepUpToken: 'fresh-proof', query: '0912', marketingConsent: false, limit: 500);
     expect(captured.url.path, '/api/v1/admin/customers/export.csv');
     expect(captured.url.queryParameters['q'], '0912');
     expect(captured.url.queryParameters['marketingConsent'], 'false');
     expect(captured.url.queryParameters['limit'], '500');
     expect(captured.headers['authorization'], 'Bearer customer-test-token');
+    expect(captured.headers['x-admin-step-up'], 'fresh-proof');
     expect(bytes.take(3), [0xEF, 0xBB, 0xBF]);
   });
 }
