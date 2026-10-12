@@ -307,8 +307,14 @@ jobs:
           assert owner['isActive'] is True
           assert 'inventory.write' in owner['permissions']
           PY
-          curl -fsS http://127.0.0.1:5099/api/v1/admin/users/roles \
-            -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-roles.json
+          echo "Checking admin role catalog after owner session validation."
+          ROLE_CATALOG_STATUS=$(curl --disable -sS -o /tmp/admin-roles.json -w '%{http_code}' http://127.0.0.1:5099/api/v1/admin/users/roles \
+            -H "Authorization: Bearer ${TOKEN}" || true)
+          if [[ "${ROLE_CATALOG_STATUS}" != "200" ]]; then
+            echo "Admin role catalog returned HTTP ${ROLE_CATALOG_STATUS}."
+            cat /tmp/admin-roles.json
+            exit 1
+          fi
           python3 - <<'PY'
           import json
           roles = json.load(open('/tmp/admin-roles.json', encoding='utf-8'))
