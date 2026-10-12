@@ -78,7 +78,9 @@ liara deploy --path apps/admin --app $adminApp --platform docker --port 8080 --b
 ## بررسی‌های لازم پیش از انتشار واقعی
 
 - چک‌لیست محیط مستقل، smoke، بازیابی، rollback و تصمیم GO/NO-GO در [RELEASE_READINESS.md](RELEASE_READINESS.md) است؛ تنظیم فایل‌های لیارا به‌تنهایی مدرک آماده‌بودن انتشار نیست.
-- API هنگام شروع، migrationهای PostgreSQL را اجرا می‌کند؛ اجرای اول روی دیتابیس خالی چند محصول نمونه هم درج می‌کند. پیش از اتصال دیتابیس production، seed و migrationها باید بازبینی شوند.
+- پیش از شروع یا ارتقای API، یک job یک‌باره با همان تنظیمات دیتابیس مقصد `dotnet Mazeduneh.Api.dll --migrate` را اجرا کند و فقط در صورت موفقیت API را بالا بیاورد. API عادی schema را تغییر نمی‌دهد و تا ثبت migrationها در readiness مقدار 503 می‌دهد.
+- `--seed-admin` فقط برای ساخت membership اولیهٔ مدیر در راه‌اندازی کنترل‌شده است. `--seed-demo` فقط برای دیتابیس محلی/demo است و نباید روی staging یا production اجرا شود. راه کامل در [DATABASE_MIGRATIONS.md](DATABASE_MIGRATIONS.md) است.
+- Local، staging و production باید connection string و secret store مستقل داشته باشند. قبل از promotion، dump واقعی staging را به دیتابیس staging جداگانه restore و readiness و migration ledger را بررسی کنید؛ CI هم یک restore drill روی PostgreSQL دورریختنی اجرا می‌کند.
 - نام دامنه‌های نهایی را به CORS API اضافه می‌کنیم.
 - رمز مدیر و `Admin__TokenSigningKey` مستقل و تصادفی تولید می‌شوند.
 - اتصال API به دیتابیس و آپلود/دریافت فایل در Object Storage را روی محیط staging بررسی می‌کنیم.

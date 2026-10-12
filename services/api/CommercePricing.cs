@@ -47,7 +47,6 @@ public sealed record CommerceSettingsRequest(decimal TaxRatePercent, IReadOnlyCo
         return errors;
     }
 }
-
 public sealed record CommerceQuote(string ShippingMethod, decimal Shipping, decimal ShippingExpense, decimal TaxRatePercent, decimal Tax, decimal Payable);
 
 public sealed class CommercePricingDatabase(IConfiguration configuration, ILogger<CommercePricingDatabase> logger)
@@ -58,7 +57,7 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -180,7 +179,6 @@ public sealed class CommercePricingDatabase(IConfiguration configuration, ILogge
             ];
     }
 }
-
 public sealed class CommerceSettingsValidationException(Dictionary<string, string[]> errors) : Exception("تنظیمات قیمت‌گذاری معتبر نیست.")
 {
     public Dictionary<string, string[]> Errors { get; } = errors;
@@ -191,7 +189,6 @@ public static class CommercePricingModule
     public static IServiceCollection AddCommercePricing(this IServiceCollection services)
     {
         services.AddSingleton<CommercePricingDatabase>();
-        services.AddHostedService<CommercePricingSchemaInitializer>();
         return services;
     }
 
@@ -226,10 +223,4 @@ public static class CommercePricingModule
 
         return endpoints;
     }
-}
-
-public sealed class CommercePricingSchemaInitializer(CommercePricingDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

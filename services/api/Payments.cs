@@ -12,7 +12,6 @@ public static class PaymentModule
             client.BaseAddress = new Uri("https://gateway.zibal.ir");
             client.Timeout = TimeSpan.FromSeconds(15);
         });
-        services.AddHostedService<PaymentSchemaInitializer>();
         return services;
     }
 
@@ -88,7 +87,7 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
     public bool SandboxEnabled => _sandboxEnabled && IsConfigured;
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -530,12 +529,6 @@ public sealed class PaymentDatabase(IConfiguration configuration, ILogger<Paymen
 
     private readonly record struct OrderPaymentSnapshot(Guid Id, string ReceiptToken, string Mobile, decimal Payable, string Currency,
         OrderState State, DateTimeOffset ReservationExpiresAt);
-}
-
-public sealed class PaymentSchemaInitializer(PaymentDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record PaymentIntentRequest(string ReceiptToken);

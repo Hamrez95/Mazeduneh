@@ -8,7 +8,6 @@ public static class OrderManagementModule
     public static IServiceCollection AddOrderManagement(this IServiceCollection services)
     {
         services.AddSingleton<OrderManagementDatabase>();
-        services.AddHostedService<OrderManagementSchemaInitializer>();
         return services;
     }
 
@@ -341,7 +340,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -1100,12 +1099,6 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     };
 
     private static string? EmptyToNull(string value) => string.IsNullOrEmpty(value) ? null : value;
-}
-
-public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record SetOrderStateRequest(string State, string? Reason);

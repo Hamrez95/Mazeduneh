@@ -103,6 +103,12 @@ public static class DatabaseMigrationRunner
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using (var ledgerExists = new NpgsqlCommand(
+            "select to_regclass('public.schema_migrations') is not null;", connection))
+        {
+            if (!Convert.ToBoolean(await ledgerExists.ExecuteScalarAsync(cancellationToken)))
+                return Array.Empty<DatabaseMigrationInfo>();
+        }
         await using var command = new NpgsqlCommand(
             """
             select component, version, applied_at

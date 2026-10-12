@@ -41,6 +41,6 @@
 ۴. فروشگاه و پنل را با آدرس API مقصد دوباره build کنید؛ آدرس API در مرورگر داخل artifact است و فقط تغییر env زمان اجرا کافی نیست.
 ۵. بعد از آزمون سفارش/انبار/قیمت/دسترسی، DNS را تغییر دهید و نسخهٔ قبلی را برای rollback حفظ کنید.
 
-آزمون عملی مهاجرت، backup/restore، DNS و پرداخت واقعی هنوز انجام نشده و #100/#76 باز می‌مانند. اولین شروع روی دیتابیس خالی در کد فعلی seed دمو دارد؛ جداسازی seed از production همچنان #76 است. Sandbox پرداخت برای production فعال نشود. Docker محلی موجود نیست؛ CI entry point وب را build می‌کند، اما ادعای build یا انتشار Docker image واقعی نداریم.
+آزمون واقعی migration و backup/restore روی سرویس staging، DNS و پرداخت واقعی باید پیش از لانچ انجام شوند (#76/#100). migration دیگر در startup عادی API اجرا نمی‌شود؛ آن را با job کنترل‌شدهٔ `--migrate` پیش از ارتقا اجرا کنید. `--seed-demo` فقط برای local/demo است و CI جلوی اجرای ضمنی آن را می‌گیرد. Sandbox پرداخت برای production فعال نشود.
 
 Skills: deployments-cicd، lifecycle-architecture-review، Supabase guidance. Graphify version/query/update در executor موجود نیست و fallback ثبت شد. هیچ حساب، سرویس پولی، DNS یا secret تغییر نکرد.

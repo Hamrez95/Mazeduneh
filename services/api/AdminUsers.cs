@@ -11,7 +11,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -51,17 +51,25 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "003-member-permissions", """
             alter table admin_users add column if not exists permissions_json jsonb null;
             """, cancellationToken);
-        await using var seed = new NpgsqlCommand("""
-            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
-            values(@id,@store_id,@email,@display_name,'Owner',true,'system',now())
-            on conflict(store_id,email) do update set role='Owner', is_active=true, deactivated_at=null;
-            """, connection);
-        seed.Parameters.AddWithValue("id", Guid.NewGuid());
-        seed.Parameters.AddWithValue("store_id", DefaultStoreId);
-        seed.Parameters.AddWithValue("email", tokens.OwnerEmail);
-        seed.Parameters.AddWithValue("display_name", "مدیر اصلی");
-        await seed.ExecuteNonQueryAsync(cancellationToken);
         logger.LogInformation("Admin user membership schema is ready.");
+    }
+
+    public async Task SeedOwnerMembershipAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) throw new InvalidOperationException("ConnectionStrings:Catalog must be configured to seed an admin membership.");
+        if (string.IsNullOrWhiteSpace(tokens.OwnerEmail)) throw new InvalidOperationException("Admin:Email must be configured to seed an admin membership.");
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
+            values(@id,@store_id,@email,@display_name,'Owner',true,'deployment-seed',now())
+            on conflict(store_id,email) do nothing;
+            """, connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("store_id", DefaultStoreId);
+        command.Parameters.AddWithValue("email", tokens.OwnerEmail);
+        command.Parameters.AddWithValue("display_name", "مدیر اصلی");
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<AdminUserSummary>> ListAsync(string? storeId, CancellationToken cancellationToken)
@@ -340,12 +348,6 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         json is null ? AdminPermissionCatalog.Resolve(role) : JsonSerializer.Deserialize<string[]>(json) ?? [];
 
     private static string NormalizeStoreId(string? storeId) => string.IsNullOrWhiteSpace(storeId) ? DefaultStoreId : storeId.Trim();
-}
-
-public sealed class AdminUserSchemaInitializer(AdminUsersDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record AdminUserSummary(Guid Id, string StoreId, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt, bool HasPassword);

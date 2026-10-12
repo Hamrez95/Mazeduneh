@@ -8,7 +8,7 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
     private readonly List<Category> _fallbackCategories = DefaultCategories().ToList();
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -266,6 +266,43 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             await RecordInitialStockAsync(connection, transaction, variant, "catalog-initial-stock", cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<bool> SeedDemoCatalogIfEmptyAsync(
+        IReadOnlyCollection<Product> demoProducts,
+        CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) throw new InvalidOperationException("ConnectionStrings:Catalog must be configured before seeding demo products.");
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var lockCommand = new NpgsqlCommand(
+            "select pg_advisory_xact_lock(hashtextextended('mazeduneh.demo-catalog-seed', 0));",
+            connection, transaction))
+            await lockCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        await using (var countCommand = new NpgsqlCommand("select count(*) from products;", connection, transaction))
+        {
+            if (Convert.ToInt64(await countCommand.ExecuteScalarAsync(cancellationToken)) > 0)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return false;
+            }
+        }
+
+        foreach (var product in demoProducts)
+        {
+            await InsertProductRowAsync(connection, transaction, product, cancellationToken);
+            foreach (var variant in product.Variants)
+            {
+                await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
+                await RecordInitialStockAsync(connection, transaction, variant, "catalog-demo-seed", cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task<Product> UpdateAsync(Product product, bool canWriteCosts, CancellationToken cancellationToken)
