@@ -409,6 +409,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 or (lower(@state) = 'problem' and o.state in ('Cancelled','Expired'))
                 or lower(o.state)=lower(@state))
               and (@query = '' or o.id::text ilike '%' || @query || '%'
+                   or exists (select 1 from checkout_order_lines searched_line
+                              where searched_line.order_id = o.id
+                                and searched_line.sku ilike '%' || @query || '%')
                    or (@contact_search and (o.customer_name ilike '%' || @query || '%'
                    or o.mobile ilike '%' || @query || '%'
                    or o.city ilike '%' || @query || '%')))

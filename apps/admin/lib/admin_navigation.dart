@@ -74,12 +74,14 @@ class AdminNavigationIntent {
     this.orderFilter = AdminOrderFilter.all,
     this.sku,
     this.batchCode,
+    this.query,
   });
 
   final AdminModule module;
   final AdminOrderFilter orderFilter;
   final String? sku;
   final String? batchCode;
+  final String? query;
 
   @override
   bool operator ==(Object other) =>
@@ -87,8 +89,9 @@ class AdminNavigationIntent {
       other.module == module &&
       other.orderFilter == orderFilter &&
       other.sku == sku &&
-      other.batchCode == batchCode;
+      other.batchCode == batchCode &&
+      other.query == query;
 
   @override
-  int get hashCode => Object.hash(module, orderFilter, sku, batchCode);
+  int get hashCode => Object.hash(module, orderFilter, sku, batchCode, query);
 }

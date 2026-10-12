@@ -10,6 +10,7 @@ import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/inventory_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
+import 'package:mazeduneh_admin/orders_page.dart';
 
 void main() {
   setUp(
@@ -20,6 +21,28 @@ void main() {
     ),
   );
   tearDown(OwnerSession.instance.clear);
+
+  testWidgets('orders page applies the SKU sent by a product navigation intent', (tester) async {
+    Uri? orderRequest;
+    final api = OrderApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        orderRequest = request.url;
+        return _json([]);
+      }),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(body: OrdersPage(api: api, initialQuery: 'PI-AKB-250')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(orderRequest?.queryParameters['q'], 'PI-AKB-250');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'inventory navigation intent filters purchase history by exact SKU and batch',

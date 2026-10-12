@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/catalog_page.dart';
+import 'package:mazeduneh_admin/admin_navigation.dart';
 
 void main() {
   setUp(() {
@@ -57,6 +58,29 @@ void main() {
       home: Scaffold(body: ProductDialog(canWriteCosts: true)),
     ));
     expect(find.text('قیمت تمام‌شده ریال'), findsOneWidget);
+  });
+
+  testWidgets('opens related orders for the selected product variant', (tester) async {
+    AdminNavigationIntent? destination;
+    final api = CatalogApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async => http.Response(
+        jsonEncode(request.url.path == '/api/v1/products/admin' ? [productJson()] : []),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      )),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(body: CatalogPage(api: api, onNavigate: (intent) => destination = intent)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('نمایش سفارش‌های ۲۵۰ گرم'));
+
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, query: 'AK-250'));
   });
 
   testWidgets('edits a published product and keeps its stock and publication state', (tester) async {
