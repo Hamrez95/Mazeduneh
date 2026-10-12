@@ -22,6 +22,13 @@ public static class AdminSecurityExtensions
                 limiter.QueueLimit = 0;
                 limiter.AutoReplenishment = true;
             });
+            options.AddFixedWindowLimiter("admin-step-up", limiter =>
+            {
+                limiter.PermitLimit = 5;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+                limiter.AutoReplenishment = true;
+            });
         });
         return services;
     }
@@ -133,7 +140,7 @@ public static class AdminSecurityExtensions
             var issued = tokens.IssueStepUp(principal);
             return Results.Ok(new { stepUpToken = issued.Token, expiresAt = issued.ExpiresAt });
         })
-        .RequireRateLimiting("admin-login")
+        .RequireRateLimiting("admin-step-up")
         .WithTags("Admin Auth");
 
         endpoints.MapGet("/api/v1/admin/audit-log", async (
