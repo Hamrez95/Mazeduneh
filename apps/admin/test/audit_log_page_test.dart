@@ -18,109 +18,266 @@ void main() {
   });
   tearDown(OwnerSession.instance.clear);
 
-  testWidgets('shows an expandable audit event with before and after snapshots', (tester) async {
+  testWidgets(
+    'shows an expandable audit event with before and after snapshots',
+    (tester) async {
+      final api = AuditLogApiClient(
+        baseUrl: 'https://api.test',
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode([
+              {
+                'id': 'event-1',
+                'actor': 'owner@example.com',
+                'action': 'product.publication',
+                'entityType': 'Product',
+                'entityId': 'pistachio-akbari-premium',
+                'beforeJson': '{"isPublished":false}',
+                'afterJson': '{"isPublished":true}',
+                'reason': 'انتشار محصول',
+                'requestId': 'trace-1',
+                'occurredAt': '2026-08-01T08:00:00Z',
+              },
+            ]),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          ),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: AuditLogPage(api: api),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.text('گزارش فعالیت‌های حساس'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('تغییر انتشار محصول'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('تغییر انتشار محصول'), findsOneWidget);
+      await tester.tap(find.text('تغییر انتشار محصول'));
+      await tester.pumpAndSettle();
+      expect(find.text('قبل از تغییر'), findsOneWidget);
+      expect(find.text('بعد از تغییر'), findsOneWidget);
+    },
+  );
+
+  testWidgets('renders the educational empty state', (tester) async {
     final api = AuditLogApiClient(
       baseUrl: 'https://api.test',
-      client: MockClient((_) async => http.Response(jsonEncode([
-        {
-          'id': 'event-1', 'actor': 'owner@example.com', 'action': 'product.publication',
-          'entityType': 'Product', 'entityId': 'pistachio-akbari-premium',
-          'beforeJson': '{"isPublished":false}', 'afterJson': '{"isPublished":true}',
-          'reason': 'انتشار محصول', 'requestId': 'trace-1', 'occurredAt': '2026-08-01T08:00:00Z',
-        }
-      ]), 200, headers: {'content-type': 'application/json; charset=utf-8'})),
+      client: MockClient(
+        (_) async => http.Response(
+          '[]',
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
     );
-    await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
-    await tester.pump();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: AuditLogPage(api: api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('هنوز فعالیت حساسی ثبت نشده است'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('هنوز فعالیت حساسی ثبت نشده است'), findsOneWidget);
+  });
+
+  testWidgets('filters and explains membership access changes', (tester) async {
+    Uri? filteredRequest;
+    final api = AuditLogApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        filteredRequest = request.url;
+        return http.Response(
+          jsonEncode([
+            {
+              'id': 'membership-event',
+              'actor': 'owner@example.com',
+              'action': 'admin-user.permissions-changed',
+              'entityType': 'AdminUser',
+              'entityId': 'member-1',
+              'beforeJson': '{"permissions":[]}',
+              'afterJson': '{"permissions":["orders.read"]}',
+              'reason': 'تغییر دسترسی',
+              'requestId': 'trace-2',
+              'occurredAt': '2026-08-02T08:00:00Z',
+            },
+          ]),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: AuditLogPage(api: api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byType(DropdownButtonFormField<String>),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('کاربران مدیریتی').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('نمایش گزارش'));
+    await tester.tap(find.text('نمایش گزارش'));
     await tester.pumpAndSettle();
 
-    expect(find.text('گزارش فعالیت‌های حساس'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('تغییر انتشار محصول'), 400, scrollable: find.byType(Scrollable).first);
-    expect(find.text('تغییر انتشار محصول'), findsOneWidget);
-    await tester.tap(find.text('تغییر انتشار محصول'));
+    expect(filteredRequest?.queryParameters['entityType'], 'AdminUser');
+    expect(find.text('تغییر دسترسی‌های مدیر'), findsOneWidget);
+    await tester.tap(find.text('تغییر دسترسی‌های مدیر'));
     await tester.pumpAndSettle();
     expect(find.text('قبل از تغییر'), findsOneWidget);
     expect(find.text('بعد از تغییر'), findsOneWidget);
   });
 
-  testWidgets('renders the educational empty state', (tester) async {
-    final api = AuditLogApiClient(
-      baseUrl: 'https://api.test',
-      client: MockClient((_) async => http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'})),
-    );
-    await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('هنوز فعالیت حساسی ثبت نشده است'), 400, scrollable: find.byType(Scrollable).first);
-    expect(find.text('هنوز فعالیت حساسی ثبت نشده است'), findsOneWidget);
-  });
+  testWidgets(
+    'keeps filters available when unfiltered audit access is denied',
+    (tester) async {
+      Uri? filteredRequest;
+      final api = AuditLogApiClient(
+        baseUrl: 'https://api.test',
+        client: MockClient((request) async {
+          if (request.url.queryParameters['entityType'] == 'ProductVariant') {
+            filteredRequest = request.url;
+            return http.Response(
+              jsonEncode([
+                {
+                  'id': 'event-2',
+                  'actor': 'auditor@example.com',
+                  'action': 'inventory.adjustment',
+                  'entityType': 'ProductVariant',
+                  'entityId': 'SKU-1',
+                  'beforeJson': '{"stock":1}',
+                  'afterJson': '{"stock":2}',
+                  'reason': 'اصلاح موجودی',
+                  'requestId': 'trace-2',
+                  'occurredAt': '2026-08-02T08:00:00Z',
+                },
+              ]),
+              200,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'message':
+                  'برای مشاهده گزارش سفارش، دسترسی اطلاعات مشتری لازم است.',
+            }),
+            403,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.rtl,
+            child: AuditLogPage(api: api),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-  testWidgets('keeps filters available when unfiltered audit access is denied', (tester) async {
-    Uri? filteredRequest;
-    final api = AuditLogApiClient(
-      baseUrl: 'https://api.test',
-      client: MockClient((request) async {
-        if (request.url.queryParameters['entityType'] == 'ProductVariant') {
-          filteredRequest = request.url;
-          return http.Response(jsonEncode([
-            {
-              'id': 'event-2', 'actor': 'auditor@example.com', 'action': 'inventory.adjustment',
-              'entityType': 'ProductVariant', 'entityId': 'SKU-1',
-              'beforeJson': '{"stock":1}', 'afterJson': '{"stock":2}',
-              'reason': 'اصلاح موجودی', 'requestId': 'trace-2', 'occurredAt': '2026-08-02T08:00:00Z',
-            }
-          ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
-        }
-        return http.Response(jsonEncode({'message': 'برای مشاهده گزارش سفارش، دسترسی اطلاعات مشتری لازم است.'}), 403,
-            headers: {'content-type': 'application/json; charset=utf-8'});
-      }),
-    );
-    await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
-    await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byType(DropdownButtonFormField<String>),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('نوع مورد'), findsOneWidget);
+      expect(find.text('شناسه یا SKU'), findsOneWidget);
 
-    expect(find.text('نوع مورد'), findsOneWidget);
-    expect(find.text('شناسه یا SKU'), findsOneWidget);
+      await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('SKU محصول').last);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('نمایش گزارش'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('نمایش گزارش'));
+      await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('SKU محصول').last);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('نمایش گزارش'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('نمایش گزارش'));
-    await tester.pumpAndSettle();
+      expect(filteredRequest?.queryParameters['entityType'], 'ProductVariant');
+      expect(find.text('اصلاح موجودی'), findsOneWidget);
+    },
+  );
 
-    expect(filteredRequest?.queryParameters['entityType'], 'ProductVariant');
-    expect(find.text('اصلاح موجودی'), findsOneWidget);
-  });
-
-  testWidgets('keeps cached audit results visible when refresh fails', (tester) async {
+  testWidgets('keeps cached audit results visible when refresh fails', (
+    tester,
+  ) async {
     var requestCount = 0;
     final api = AuditLogApiClient(
       baseUrl: 'https://api.test',
       client: MockClient((_) async {
         requestCount++;
         if (requestCount == 1) {
-          return http.Response(jsonEncode([
-            {
-              'id': 'event-1', 'actor': 'owner@example.com', 'action': 'product.publication',
-              'entityType': 'Product', 'entityId': 'product-1',
-              'beforeJson': '{"isPublished":false}', 'afterJson': '{"isPublished":true}',
-              'reason': 'انتشار محصول', 'requestId': 'trace-1', 'occurredAt': '2026-08-01T08:00:00Z',
-            }
-          ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'event-1',
+                'actor': 'owner@example.com',
+                'action': 'product.publication',
+                'entityType': 'Product',
+                'entityId': 'product-1',
+                'beforeJson': '{"isPublished":false}',
+                'afterJson': '{"isPublished":true}',
+                'reason': 'انتشار محصول',
+                'requestId': 'trace-1',
+                'occurredAt': '2026-08-01T08:00:00Z',
+              },
+            ]),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
         }
-        return http.Response(jsonEncode({'message': 'سرویس موقتاً در دسترس نیست.'}), 503,
-            headers: {'content-type': 'application/json; charset=utf-8'});
+        return http.Response(
+          jsonEncode({'message': 'سرویس موقتاً در دسترس نیست.'}),
+          503,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
       }),
     );
-    await tester.pumpWidget(MaterialApp(home: Directionality(textDirection: TextDirection.rtl, child: AuditLogPage(api: api))));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: AuditLogPage(api: api),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('بارگذاری مجدد'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('تغییر انتشار محصول'), 400, scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.text('تغییر انتشار محصول'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.text('تغییر انتشار محصول'), findsOneWidget);
   });
