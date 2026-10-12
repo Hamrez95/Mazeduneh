@@ -49,6 +49,11 @@ public static class AdminSecurityExtensions
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
                 var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
+                if (users.IsConfigured && ownerUserId is null)
+                    return Results.Problem(
+                        title: "نشست مدیر اصلی آماده نیست.",
+                        detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
                 var owner = tokens.Issue(request.Email, ownerUserId);
                 if (ownerUserId is Guid userId)
                     await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);

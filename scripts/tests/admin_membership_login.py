@@ -105,6 +105,10 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     return login["accessToken"]
 
 
+subprocess.run(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
+                "--configuration", "Release", "--no-build", "--", "--seed-admin"],
+               cwd=ROOT, env=os.environ.copy(), check=True)
+
 with tempfile.TemporaryFile() as log:
     api, owner_token = start_api(log)
     try:
