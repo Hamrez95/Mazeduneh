@@ -272,12 +272,13 @@ public static class AdminPermissionCatalog
     public const string CategoriesWrite = "categories.write";
     public const string PricingRead = "pricing.read";
     public const string PricingWrite = "pricing.write";
+    public const string SettingsRead = "settings.read";
+    public const string SettingsWrite = "settings.write";
     public const string CorporateRead = "corporate.read";
     public const string CorporateWrite = "corporate.write";
     public const string ContentRead = "content.read";
     public const string ContentWrite = "content.write";
     public const string AuditRead = "audit.read";
-    public const string SettingsWrite = "settings.write";
     public const string UsersRead = "users.read";
     public const string UsersWrite = "users.write";
 
@@ -286,7 +287,7 @@ public static class AdminPermissionCatalog
         DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite,
         InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
-        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
 
     public static IReadOnlyList<string> AllPermissions { get; } =
@@ -295,7 +296,7 @@ public static class AdminPermissionCatalog
         ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead,
         CustomersPiiRead, CustomersExport, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
-        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
 
     public static bool AreValidPermissions(IEnumerable<string>? permissions) =>
@@ -305,7 +306,7 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsRead, SettingsWrite],
             ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead, CorporateRead],
             ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersPiiRead],
             ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, PricingRead],
@@ -364,7 +365,7 @@ public static class AdminPermissionCatalog
         if (path.StartsWith("/api/v1/admin/customers/export", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
         if (path.StartsWith("/api/v1/admin/customers", StringComparison.OrdinalIgnoreCase)) return CustomersRead;
         if (path.StartsWith("/api/v1/admin/corporate-requests", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
-        if (path.StartsWith("/api/v1/admin/commerce/settings", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? PricingRead : PricingWrite;
+        if (path.StartsWith("/api/v1/admin/commerce/settings", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? SettingsRead : SettingsWrite;
         if (path.StartsWith("/api/v1/admin/media/metadata", StringComparison.OrdinalIgnoreCase)) return ContentRead;
         if (path.StartsWith("/api/v1/admin/media", StringComparison.OrdinalIgnoreCase)) return ContentWrite;
         if (path.StartsWith("/api/v1/categories/admin", StringComparison.OrdinalIgnoreCase)) return CategoriesRead;

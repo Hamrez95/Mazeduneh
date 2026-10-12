@@ -629,6 +629,36 @@ jobs:
             -H "Authorization: Bearer ${SALES_TOKEN}")
           test "${ANALYTICS_STATUS}" = "403"
           stop_role_api
+
+          ADMIN_ROLE=MarketingManager start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/marketing-login.json
+          MARKETING_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/marketing-login.json'))['accessToken'])")
+          MARKETING_SETTINGS_READ=$(curl -s -o /tmp/marketing-settings-read.json -w '%{http_code}' \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${MARKETING_TOKEN}")
+          test "${MARKETING_SETTINGS_READ}" = "403"
+          MARKETING_SETTINGS_WRITE=$(curl -s -o /tmp/marketing-settings-write.json -w '%{http_code}' -X PUT \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${MARKETING_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
+          test "${MARKETING_SETTINGS_WRITE}" = "403"
+          stop_role_api
+
+          ADMIN_ROLE=StoreManager start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/store-manager-login.json
+          STORE_MANAGER_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/store-manager-login.json'))['accessToken'])")
+          STORE_MANAGER_SETTINGS_READ=$(curl -s -o /tmp/store-manager-settings.json -w '%{http_code}' \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${STORE_MANAGER_TOKEN}")
+          test "${STORE_MANAGER_SETTINGS_READ}" = "200"
+          STORE_MANAGER_SETTINGS_WRITE=$(curl -s -o /tmp/store-manager-settings-write.json -w '%{http_code}' -X PUT \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${STORE_MANAGER_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
+          test "${STORE_MANAGER_SETTINGS_WRITE}" = "428"
+          stop_role_api
           start_api
           curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'

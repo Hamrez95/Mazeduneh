@@ -50,6 +50,17 @@ Console.WriteLine("Purchase pagination cursor unit checks passed");
 Check(AdminPermissionCatalog.DefaultRoles.Values.All(AdminPermissionCatalog.AreValidPermissions), "A standard role contains a permission rejected by the membership editor");
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>()).Count == 0, "An explicit empty permission set fell back to role defaults");
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
+var settingsReadContext = new DefaultHttpContext();
+settingsReadContext.Request.Method = HttpMethods.Get;
+settingsReadContext.Request.Path = "/api/v1/admin/commerce/settings";
+Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsRead, "Commerce settings read did not use its dedicated permission");
+settingsReadContext.Request.Method = HttpMethods.Put;
+Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsWrite, "Commerce settings write did not use its dedicated permission");
+var marketingManager = new AdminPrincipal("marketing@example.test", now.AddHours(1), "MarketingManager", AdminPermissionCatalog.Resolve("MarketingManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
+var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager", AdminPermissionCatalog.Resolve("StoreManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
+Check(!AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsRead) && !AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsWrite), "Marketing manager can access tax or shipping settings");
+Check(AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsRead) && AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsWrite), "Store manager lost commerce settings access");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
 
 var costProduct = new Product(Guid.NewGuid(), "محصول آزمون", "test-product", "آجیل", "ایران", "IRR", ProductUnitType.Weight, false,
