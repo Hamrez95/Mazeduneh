@@ -322,9 +322,16 @@ jobs:
           assert warehouse['titleFa'] == 'اپراتور انبار'
           assert 'inventory.write' in warehouse['permissions']
           PY
-          STEP_UP_TOKEN=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
+          echo "Checking owner step-up endpoint after role catalog validation."
+          STEP_UP_STATUS=$(curl --disable -sS -o /tmp/step-up-response.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['stepUpToken'])")
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' || true)
+          if [[ "${STEP_UP_STATUS}" != "200" ]]; then
+            echo "Owner step-up endpoint returned HTTP ${STEP_UP_STATUS}."
+            cat /tmp/step-up-response.json
+            exit 1
+          fi
+          STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/step-up-response.json'))['stepUpToken'])")
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
