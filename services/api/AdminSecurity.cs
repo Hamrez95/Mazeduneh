@@ -137,7 +137,8 @@ public static class AdminSecurityExtensions
             {
                 if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                     return Results.Unauthorized();
-                if (string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
+                if (principal.StoreId == "default" &&
+                    string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
                 {
                     if (!tokens.ValidateCredentials(principal.Email, request.Password))
                         return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
@@ -258,7 +259,9 @@ public static class AdminSecurityExtensions
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
         var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
-        return principal?.UserId is not null ? principal.StoreId : requestedStoreId;
+        return principal?.UserId is not null && context.Items["ConfiguredOwnerSession"] is not true
+            ? principal.StoreId
+            : requestedStoreId;
     }
 }
 
@@ -600,9 +603,18 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         {
             if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, context.HttpContext.RequestAborted))
                 return Results.Unauthorized();
+            var configuredOwnerSession = principal.StoreId == "default" &&
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
+            context.HttpContext.Items["ConfiguredOwnerSession"] = configuredOwnerSession;
             var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
-            if (!string.IsNullOrWhiteSpace(requestedStore) && !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
+            if (!configuredOwnerSession && !string.IsNullOrWhiteSpace(requestedStore) &&
+                !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
                 return Results.Json(new { message = "به این فروشگاه دسترسی ندارید." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        else
+        {
+            context.HttpContext.Items["ConfiguredOwnerSession"] =
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
         }
 
         context.HttpContext.Items["AdminPrincipal"] = principal;
@@ -648,7 +660,7 @@ public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase use
             return Results.Unauthorized();
 
         var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
-        var storeId = principal.UserId is not null
+        var storeId = principal.UserId is not null && context.HttpContext.Items["ConfiguredOwnerSession"] is not true
             ? principal.StoreId
             : string.IsNullOrWhiteSpace(requestedStore) ? null : requestedStore.Trim();
         if (!await users.CanManageAsync(userId, storeId, context.HttpContext.RequestAborted))
