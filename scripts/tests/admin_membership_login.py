@@ -1,4 +1,5 @@
 """Membership invitation, store binding, revocation and authorization regression."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
+API_DLL = ROOT / "services/api/bin/Release/net10.0/Mazeduneh.Api.dll"
 BASE = "http://127.0.0.1:5107"
 OWNER_PASSWORD = "Mazeduneh-CI-Owner-Password!"
 
@@ -29,8 +31,7 @@ def request(path, method="GET", body=None, token=None, extra_headers=None):
 
 
 def start_api(log):
-    process = subprocess.Popen(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
-                                "--configuration", "Release", "--no-build", "--urls", BASE],
+    process = subprocess.Popen(["dotnet", str(API_DLL), "--urls", BASE],
                                cwd=ROOT, env=os.environ.copy(), stdout=log, stderr=subprocess.STDOUT)
     try:
         for _ in range(40):
@@ -105,9 +106,25 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     return login["accessToken"]
 
 
+subprocess.run(["dotnet", str(API_DLL), "--seed-admin"],
+               cwd=ROOT, env=os.environ.copy(), check=True)
+
 with tempfile.TemporaryFile() as log:
     api, owner_token = start_api(log)
     try:
+        original_owner_token = owner_token
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        stop_api(api)
+        api, owner_token = start_api(log)
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        assert request("/api/v1/admin/auth/logout", "POST", token=original_owner_token)[0] == 204
+        stop_api(api)
+        api, owner_token = start_api(log)
+        owner_payload = original_owner_token.split(".", 1)[0]
+        owner_fields = base64.urlsafe_b64decode(owner_payload + "=" * (-len(owner_payload) % 4)).decode().split("|")
+        stale_status, stale_response = request("/api/v1/admin/auth/session", token=original_owner_token)
+        assert stale_status == 401, (stale_status, owner_fields[5] if len(owner_fields) > 5 else "missing user id", stale_response)
+
         status, denied = request("/api/v1/admin/users", "POST", {
             "email": "missing-proof@example.test", "displayName": "Missing proof",
             "role": "WarehouseOperator"}, owner_token)
@@ -216,6 +233,8 @@ with tempfile.TemporaryFile() as log:
         assert status == 200 and disabled["isActive"] is False
         assert request("/api/v1/admin/auth/session", token=second_token)[0] == 401
         assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=second_token)[0] == 401
+        assert request("/api/v1/admin/auth/logout", "POST", token=owner_token)[0] == 204
+        assert request("/api/v1/admin/auth/session", token=owner_token)[0] == 401
     finally:
         stop_api(api)
 

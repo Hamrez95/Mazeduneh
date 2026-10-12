@@ -48,7 +48,15 @@ public static class AdminSecurityExtensions
             if (tokens.ValidateCredentials(request.Email, request.Password) &&
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
-                var owner = tokens.Issue(request.Email);
+                var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
+                if (users.IsConfigured && ownerUserId is null)
+                    return Results.Problem(
+                        title: "نشست مدیر اصلی آماده نیست.",
+                        detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                var owner = tokens.Issue(request.Email, ownerUserId);
+                if (ownerUserId is Guid userId)
+                    await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
                 return Results.Ok(new
                 {
                     accessToken = owner.Token,
@@ -129,9 +137,18 @@ public static class AdminSecurityExtensions
             {
                 if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                     return Results.Unauthorized();
-                var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
-                if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
-                    return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                if (principal.StoreId == "default" &&
+                    string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!tokens.ValidateCredentials(principal.Email, request.Password))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+                else
+                {
+                    var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
+                    if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
             }
             else if (!tokens.ValidateCredentials(principal.Email, request.Password))
             {
@@ -242,7 +259,9 @@ public static class AdminSecurityExtensions
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
         var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
-        return principal?.UserId is not null ? principal.StoreId : requestedStoreId;
+        return principal?.UserId is not null && context.Items["ConfiguredOwnerSession"] is not true
+            ? principal.StoreId
+            : requestedStoreId;
     }
 }
 
@@ -442,6 +461,9 @@ public sealed class AdminTokenService
     public IssuedAdminToken Issue(string email) =>
         Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default");
 
+    public IssuedAdminToken Issue(string email, Guid? userId) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), userId, "default");
+
     public IssuedAdminToken Issue(AdminUserSummary member) =>
         Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
 
@@ -581,9 +603,18 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         {
             if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, context.HttpContext.RequestAborted))
                 return Results.Unauthorized();
+            var configuredOwnerSession = principal.StoreId == "default" &&
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
+            context.HttpContext.Items["ConfiguredOwnerSession"] = configuredOwnerSession;
             var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
-            if (!string.IsNullOrWhiteSpace(requestedStore) && !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
+            if (!configuredOwnerSession && !string.IsNullOrWhiteSpace(requestedStore) &&
+                !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
                 return Results.Json(new { message = "به این فروشگاه دسترسی ندارید." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+        else
+        {
+            context.HttpContext.Items["ConfiguredOwnerSession"] =
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
         }
 
         context.HttpContext.Items["AdminPrincipal"] = principal;
@@ -629,7 +660,7 @@ public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase use
             return Results.Unauthorized();
 
         var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
-        var storeId = principal.UserId is not null
+        var storeId = principal.UserId is not null && context.HttpContext.Items["ConfiguredOwnerSession"] is not true
             ? principal.StoreId
             : string.IsNullOrWhiteSpace(requestedStore) ? null : requestedStore.Trim();
         if (!await users.CanManageAsync(userId, storeId, context.HttpContext.RequestAborted))
