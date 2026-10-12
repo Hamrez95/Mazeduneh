@@ -141,6 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'status=$?; echo "Durable checkout contract failed near line ${LINENO}."; exit "$status"' ERR
           start_api() {
             dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/mazeduneh-api.log 2>&1 &
             API_PID=$!
