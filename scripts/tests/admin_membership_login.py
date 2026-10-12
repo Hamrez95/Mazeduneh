@@ -1,4 +1,5 @@
 """Membership invitation, store binding, revocation and authorization regression."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -115,7 +116,10 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
         stop_api(api)
         api, owner_token = start_api(log)
-        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 401
+        owner_payload = original_owner_token.split(".", 1)[0]
+        owner_fields = base64.urlsafe_b64decode(owner_payload + "=" * (-len(owner_payload) % 4)).decode().split("|")
+        stale_status, stale_response = request("/api/v1/admin/auth/session", token=original_owner_token)
+        assert stale_status == 401, (stale_status, owner_fields[5] if len(owner_fields) > 5 else "missing user id", stale_response)
 
         status, denied = request("/api/v1/admin/users", "POST", {
             "email": "missing-proof@example.test", "displayName": "Missing proof",
