@@ -204,6 +204,16 @@ with tempfile.TemporaryFile() as log:
         status, tenant_users = request("/api/v1/admin/users", token=tenant_token)
         assert status == 200 and any(user["id"] == tenant_invitation["user"]["id"] for user in tenant_users)
         assert all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
+        for path in [
+            "/api/v1/admin/orders",
+            "/api/v1/admin/orders?storeId=tenant-a",
+            "/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=tenant-a",
+            "/api/v1/admin/customers?storeId=tenant-a",
+            "/api/v1/admin/audit-log?storeId=tenant-a",
+            "/api/v1/admin/commerce/settings",
+        ]:
+            status, denial = request(path, token=tenant_token)
+            assert status == 403, (path, status, denial)
         status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/permissions",
                                  "PATCH", {"permissions": []}, tenant_token)
         assert status == 404, (status, denied)
