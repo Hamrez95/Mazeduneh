@@ -116,6 +116,10 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
         stop_api(api)
         api, owner_token = start_api(log)
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        assert request("/api/v1/admin/auth/logout", "POST", token=original_owner_token)[0] == 204
+        stop_api(api)
+        api, owner_token = start_api(log)
         owner_payload = original_owner_token.split(".", 1)[0]
         owner_fields = base64.urlsafe_b64decode(owner_payload + "=" * (-len(owner_payload) % 4)).decode().split("|")
         stale_status, stale_response = request("/api/v1/admin/auth/session", token=original_owner_token)
