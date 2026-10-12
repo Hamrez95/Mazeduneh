@@ -2,7 +2,10 @@ using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 using Npgsql;
 
-var builder = WebApplication.CreateBuilder(args);
+var databaseCommands = args.Where(argument => argument is "--migrate" or "--seed-admin" or "--seed-demo")
+    .ToHashSet(StringComparer.Ordinal);
+var builderArguments = args.Where(argument => !databaseCommands.Contains(argument)).ToArray();
+var builder = WebApplication.CreateBuilder(builderArguments);
 builder.Logging.AddJsonConsole(options =>
 {
     // Framework request scopes contain raw paths; keep them out of console logs.
@@ -25,9 +28,8 @@ builder.Services.AddSingleton<ProductCatalog>();
 builder.Services.AddSingleton<CatalogDatabase>();
 builder.Services.AddSingleton<InventoryLedgerDatabase>();
 builder.Services.AddSingleton<AdminAuditLogDatabase>();
-builder.Services.AddHostedService<AdminAuditLogSchemaInitializer>();
 builder.Services.AddSingleton<AdminUsersDatabase>();
-builder.Services.AddHostedService<AdminUserSchemaInitializer>();
+builder.Services.AddSingleton<DatabaseDeploymentTasks>();
 builder.Services.AddAdminSecurity(builder.Configuration);
 builder.Services.AddCheckout();
 builder.Services.AddPayments();
@@ -57,23 +59,35 @@ app.MapCorporateSales();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
 var database = app.Services.GetRequiredService<CatalogDatabase>();
+if (databaseCommands.Count > 0)
+{
+    var deploymentTasks = app.Services.GetRequiredService<DatabaseDeploymentTasks>();
+    var cancellationToken = CancellationToken.None;
+    if (databaseCommands.Contains("--migrate"))
+        await deploymentTasks.MigrateAsync(cancellationToken);
+    if (databaseCommands.Contains("--seed-admin"))
+        await deploymentTasks.SeedAdminAsync(cancellationToken);
+    if (databaseCommands.Contains("--seed-demo"))
+        await deploymentTasks.SeedDemoCatalogAsync(cancellationToken);
+    return;
+}
+
 if (database.IsConfigured)
 {
-    await database.InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<InventoryBatchDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<CommercePricingDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<CorporateRequestDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
-    if (persistedProducts.Count == 0)
+    var migrations = await DatabaseMigrationRunner.ListAsync(builder.Configuration, app.Lifetime.ApplicationStopping);
+    if (migrations.Any(migration => migration.Component == "catalog" && migration.Version == "002-nutrition-costing"))
     {
-        foreach (var seededProduct in catalog.AllIncludingDrafts())
-            await database.InsertAsync(seededProduct, app.Lifetime.ApplicationStopping);
+        var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
+        catalog.ReplaceWith(persistedProducts);
     }
     else
     {
-        catalog.ReplaceWith(persistedProducts);
+        catalog.ReplaceWith([]);
     }
+}
+else if (!builder.Environment.IsDevelopment())
+{
+    catalog.ReplaceWith([]);
 }
 
 app.MapApiHealth();

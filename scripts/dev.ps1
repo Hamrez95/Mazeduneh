@@ -410,9 +410,15 @@ if ($startApi) {
     Payments__SandboxEnabled = 'true'
     ConnectionStrings__Catalog = 'Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_local_only'
   }
+  $apiProjectDirectory = Join-Path $RunRoot 'services/api'
+  Write-Host 'Applying local database migrations, then explicitly seeding the local admin and demo catalog...' -ForegroundColor Cyan
+  $databaseSetup = Start-Process -FilePath $dotnetExecutable `
+    -ArgumentList @('run', '--project', 'Mazeduneh.Api.csproj', '--no-launch-profile', '--', '--migrate', '--seed-admin', '--seed-demo') `
+    -WorkingDirectory $apiProjectDirectory -Environment $apiEnvironment -Wait -PassThru -NoNewWindow
+  if ($databaseSetup.ExitCode -ne 0) { throw "Local database setup failed with exit code $($databaseSetup.ExitCode)." }
   $services.Add((Start-LocalService 'api' $dotnetExecutable @(
-    'run', '--project', (Join-Path $RunRoot 'services/api/Mazeduneh.Api.csproj'), '--no-launch-profile', '--urls', $ApiUrl
-  ) (Join-Path $RunRoot 'services/api') $apiEnvironment "$ApiUrl/health/ready" 'Mazeduneh.Api.csproj'))
+    'run', '--project', 'Mazeduneh.Api.csproj', '--no-launch-profile', '--urls', $ApiUrl
+  ) $apiProjectDirectory $apiEnvironment "$ApiUrl/health/ready" 'Mazeduneh.Api.csproj'))
 }
 
 if ($startStorefront) {

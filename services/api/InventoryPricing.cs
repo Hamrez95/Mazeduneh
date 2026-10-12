@@ -42,7 +42,7 @@ public sealed class InventoryPricingDatabase(IConfiguration configuration, Admin
 {
     private readonly string? connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(connectionString);
-    public async Task InitializeAsync(CancellationToken ct)
+    public async Task ApplyMigrationsAsync(CancellationToken ct)
     {
         if (!IsConfigured) return;
         await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct);
@@ -112,7 +112,7 @@ public static class InventoryPricingModule
 {
     public static IServiceCollection AddInventoryPricing(this IServiceCollection services)
     {
-        services.AddSingleton<InventoryPricingDatabase>(); services.AddHostedService<InventoryPricingInitializer>(); return services;
+        services.AddSingleton<InventoryPricingDatabase>(); return services;
     }
     public static IEndpointRouteBuilder MapInventoryPricing(this IEndpointRouteBuilder endpoints)
     {
@@ -148,9 +148,4 @@ public static class InventoryPricingModule
             .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.PricingWrite));
         return endpoints;
     }
-}
-public sealed class InventoryPricingInitializer(InventoryPricingDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken ct) => database.InitializeAsync(ct);
-    public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 }

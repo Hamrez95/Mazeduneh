@@ -8,7 +8,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -620,20 +620,21 @@ public sealed record PersistedCheckoutResult(
         new(CheckoutStatus.OutOfStock, Message: message, UnavailableSkus: skus);
 }
 
-public sealed class CheckoutSchemaInitializer(CheckoutDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-}
-
 public sealed class ReservationExpiryWorker(
     CheckoutDatabase database,
     ProductCatalog catalog,
+    IConfiguration configuration,
     ILogger<ReservationExpiryWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!database.IsConfigured) return;
+        var migrations = await DatabaseMigrationRunner.ListAsync(configuration, stoppingToken);
+        if (!migrations.Any(migration => migration.Component == "checkout" && migration.Version == "001-bootstrap"))
+        {
+            logger.LogWarning("Reservation expiry worker is idle until checkout migrations are applied.");
+            return;
+        }
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         try
         {

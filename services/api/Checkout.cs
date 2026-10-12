@@ -10,7 +10,6 @@ public static class CheckoutModule
     {
         services.AddSingleton<CheckoutDatabase>();
         services.AddSingleton<CheckoutService>();
-        services.AddHostedService<CheckoutSchemaInitializer>();
         services.AddCustomerIdentity();
         services.AddHostedService<ReservationExpiryWorker>();
         return services;

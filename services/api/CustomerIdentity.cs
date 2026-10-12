@@ -7,7 +7,6 @@ public static class CustomerIdentityModule
     public static IServiceCollection AddCustomerIdentity(this IServiceCollection services)
     {
         services.AddSingleton<CustomerIdentityDatabase>();
-        services.AddHostedService<CustomerIdentitySchemaInitializer>();
         return services;
     }
 
@@ -92,7 +91,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
 
@@ -347,9 +346,3 @@ public sealed record CustomerSummary(
     decimal AverageOrderValue,
     DateTimeOffset? LastPurchaseAt,
     IReadOnlyCollection<CustomerAddressSummary> Addresses = null!);
-
-public sealed class CustomerIdentitySchemaInitializer(CustomerIdentityDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-}

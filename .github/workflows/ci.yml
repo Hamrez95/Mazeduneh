@@ -67,6 +67,76 @@ jobs:
         run: dotnet restore services/api/Mazeduneh.Api.csproj
       - name: Build
         run: dotnet build services/api/Mazeduneh.Api.csproj --configuration Release --no-restore
+      - name: Database migration, staging recovery, and seed-separation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=mazeduneh_ci
+          API_DLL=services/api/bin/Release/net10.0/Mazeduneh.Api.dll
+          MIGRATION_DATABASE=mazeduneh_migration_contract
+          RESTORE_DATABASE=mazeduneh_staging_restore
+          MIGRATION_CONNECTION="Host=127.0.0.1;Port=5432;Database=${MIGRATION_DATABASE};Username=mazeduneh;Password=mazeduneh_ci"
+          api_pid=""
+          cleanup() {
+            if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
+              kill "$api_pid" || true
+              wait "$api_pid" || true
+            fi
+          }
+          trap cleanup EXIT
+          sudo -u postgres createdb --owner=mazeduneh "$MIGRATION_DATABASE"
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --urls http://127.0.0.1:5098 > /tmp/mazeduneh-unmigrated-api.log 2>&1 &
+          api_pid=$!
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5098/health/live > /dev/null; then break; fi
+            sleep 1
+          done
+          test "$(curl -s -o /tmp/mazeduneh-unmigrated-ready.json -w '%{http_code}' http://127.0.0.1:5098/health/ready)" = 503
+          kill "$api_pid"
+          wait "$api_pid" || true
+          api_pid=""
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command "select to_regclass('public.schema_migrations') is null;")" = t
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate > /tmp/mazeduneh-migrate-a.log 2>&1 &
+          migration_a=$!
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate > /tmp/mazeduneh-migrate-b.log 2>&1 &
+          migration_b=$!
+          wait "$migration_a"
+          wait "$migration_b"
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate
+
+          migration_count=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align \
+            --command 'select count(*) from schema_migrations;')
+          test "$migration_count" -gt 0
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = 0
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = 0
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-admin
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-demo
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-admin
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-demo
+          products_before=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')
+          admins_before=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')
+          test "$products_before" -gt 0
+          test "$admins_before" = 1
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = "$products_before"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = "$admins_before"
+
+          pg_dump --host 127.0.0.1 --username mazeduneh --format=custom --file=/tmp/mazeduneh-staging.backup "$MIGRATION_DATABASE"
+          sudo -u postgres createdb --owner=mazeduneh "$RESTORE_DATABASE"
+          pg_restore --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --no-owner /tmp/mazeduneh-staging.backup
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from schema_migrations;')" = "$migration_count"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = "$products_before"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = "$admins_before"
+          sudo -u postgres dropdb "$RESTORE_DATABASE"
+          sudo -u postgres dropdb "$MIGRATION_DATABASE"
+
+          dotnet "$API_DLL" --migrate
+          dotnet "$API_DLL" --seed-admin
+          dotnet "$API_DLL" --seed-demo
       - name: Durable checkout payment and order operations contract
         shell: bash
         run: |
