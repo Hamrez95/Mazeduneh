@@ -205,4 +205,16 @@ with tempfile.TemporaryFile() as log:
         finally:
             stop_api(api)
 
-print('Direct HTTP order privacy, search, document/export role matrix passed')
+    for permissions, expected_matches in [('customers.read', 0), ('customers.read,customers.pii.read', 1)]:
+        api, token = start_api(permissions)
+        try:
+            status, customers = request('/api/v1/admin/customers/?q=' + MOBILE, token=token)
+            assert status == 200 and len(customers) == expected_matches, (status, customers)
+            if expected_matches:
+                assert customers[0]['mobile'] == MOBILE
+            status, customers = request('/api/v1/admin/customers/?q=' + quote(NAME), token=token)
+            assert status == 200 and len(customers) == expected_matches, (status, customers)
+        finally:
+            stop_api(api)
+
+print('Direct HTTP order and customer privacy, search, document/export role matrix passed')
