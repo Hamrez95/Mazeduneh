@@ -227,7 +227,9 @@ jobs:
           stop_api
           start_api
           echo "Checking paid checkout order after API restart."
+          trap - ERR
           PAID_ORDER_STATUS=$(curl --disable -sS -o /tmp/order-paid-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" || true)
+          trap 'status=$?; case "$BASH_COMMAND" in *"/api/v1/checkout/orders/"*) echo "Checkout order request failed.";; *"/api/v1/payments/"*) echo "Payment request failed.";; *"/api/v1/admin/auth/"*) echo "Admin authentication request failed.";; *"/api/v1/admin/orders/"*) echo "Admin order operation failed.";; *"/api/v1/admin/audit-log"*) echo "Audit log request failed.";; *) echo "Durable checkout contract failed near line ${LINENO}.";; esac; exit "$status"' ERR
           if [[ "${PAID_ORDER_STATUS}" != "200" ]]; then
             echo "Paid order lookup after restart returned HTTP ${PAID_ORDER_STATUS}."
             psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
@@ -641,7 +643,9 @@ jobs:
           stop_role_api
           start_api
           echo "Checking delivered checkout order after role API shutdown."
+          trap - ERR
           ORDER_STATUS=$(curl --disable -sS -o /tmp/order-delivered-after-restart.json -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" || true)
+          trap 'status=$?; case "$BASH_COMMAND" in *"/api/v1/checkout/orders/"*) echo "Checkout order request failed.";; *"/api/v1/payments/"*) echo "Payment request failed.";; *"/api/v1/admin/auth/"*) echo "Admin authentication request failed.";; *"/api/v1/admin/orders/"*) echo "Admin order operation failed.";; *"/api/v1/admin/audit-log"*) echo "Audit log request failed.";; *) echo "Durable checkout contract failed near line ${LINENO}.";; esac; exit "$status"' ERR
           if [[ "${ORDER_STATUS}" != "200" ]]; then
             echo "Delivered order lookup after restart returned HTTP ${ORDER_STATUS}."
             psql --host 127.0.0.1 --username mazeduneh --dbname mazeduneh --tuples-only --no-align \
