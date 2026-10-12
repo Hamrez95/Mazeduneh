@@ -87,6 +87,9 @@ void main() {
       baseUrl: 'https://api.test',
       client: MockClient((request) async {
         requests.add(request);
+        if (request.url.path.endsWith('/auth/step-up')) {
+          return http.Response(jsonEncode({'stepUpToken': 'fresh-proof'}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+        }
         if (request.url.path.endsWith('/roles')) {
           return http.Response(jsonEncode([
             {'role': 'WarehouseOperator', 'permissions': ['inventory.read', 'inventory.write'], 'titleFa': 'اپراتور انبار'},
@@ -120,6 +123,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ذخیره دسترسی‌ها'));
     await tester.pumpAndSettle();
+    await confirmStepUp(tester);
+    await tester.pumpAndSettle();
     expect(find.text('دسترسی‌های همکار'), findsOneWidget);
     expect(find.text('خطای آزمایشی'), findsOneWidget);
     expect(tester.widget<CheckboxListTile>(exportPermission).value, isTrue);
@@ -127,12 +132,22 @@ void main() {
     failPermissionUpdate = false;
     await tester.tap(find.text('ذخیره دسترسی‌ها'));
     await tester.pumpAndSettle();
+    await confirmStepUp(tester);
+    await tester.pumpAndSettle();
 
     final update = requests.lastWhere((request) => request.url.path.endsWith('/permissions'));
+    expect(update.headers['x-admin-step-up'], 'fresh-proof');
     expect((jsonDecode(update.body) as Map<String, dynamic>)['permissions'], ['inventory.read', 'orders.export']);
     expect(requests.where((request) => request.url.path.endsWith('/permissions')), hasLength(2));
     expect(find.text('دسترسی‌های کاربر به‌روزرسانی شد.'), findsOneWidget);
   });
+}
+
+Future<void> confirmStepUp(WidgetTester tester) async {
+  expect(find.text('تأیید دوبارهٔ هویت'), findsOneWidget);
+  await tester.enterText(find.byType(TextField).last, 'owner-password');
+  await tester.tap(find.text('تأیید هویت'));
+  await tester.pumpAndSettle();
 }
 
 Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions = const ['users.read']}) => {

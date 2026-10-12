@@ -186,6 +186,8 @@ public static class AdminSecurityExtensions
             }
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/permissions", async (
@@ -201,6 +203,8 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/status", async (
@@ -218,6 +222,8 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         return endpoints;
