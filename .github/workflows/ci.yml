@@ -281,8 +281,11 @@ jobs:
           assert warehouse['titleFa'] == 'اپراتور انبار'
           assert 'inventory.write' in warehouse['permissions']
           PY
-          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+          STEP_UP_TOKEN=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['stepUpToken'])")
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
           USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['user']['id'])")
           python3 - <<'PY'
@@ -295,7 +298,7 @@ jobs:
           assert 'inventory.write' in created['permissions']
           PY
           curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/users/${USER_ID}/status" \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"isActive":false}' > /tmp/admin-user-disabled.json
           python3 - <<'PY'
           import json

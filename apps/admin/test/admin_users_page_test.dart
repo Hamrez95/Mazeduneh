@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/admin_users_api.dart';
 import 'package:mazeduneh_admin/admin_users_page.dart';
+import 'package:mazeduneh_admin/auth_api.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
 
 void main() {
@@ -83,9 +84,7 @@ void main() {
     final requests = <http.Request>[];
     final permissions = <String>['inventory.read'];
     var failPermissionUpdate = true;
-    final api = AdminUsersApiClient(
-      baseUrl: 'https://api.test',
-      client: MockClient((request) async {
+    final client = MockClient((request) async {
         requests.add(request);
         if (request.url.path.endsWith('/auth/step-up')) {
           return http.Response(jsonEncode({'stepUpToken': 'fresh-proof'}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -109,10 +108,11 @@ void main() {
           return http.Response(jsonEncode([userJson(role: 'WarehouseOperator', permissions: permissions)]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
         }
         return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
-      }),
-    );
+      });
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: client);
+    final auth = AuthApiClient(baseUrl: 'https://api.test', client: client);
 
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api)))));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api, auth: auth)))));
     await tester.pumpAndSettle();
     await tester.tap(find.text('دسترسی‌ها'));
     await tester.pumpAndSettle();
