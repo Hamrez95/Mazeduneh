@@ -23,7 +23,7 @@ public static class CustomerIdentityModule
         {
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 200, 1, 500), cancellationToken);
+            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 200, 1, 500), CanReadPii(context), cancellationToken);
             return Results.Ok(CanReadPii(context) ? rows : rows.Select(MaskPii).ToArray());
         })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
@@ -37,7 +37,7 @@ public static class CustomerIdentityModule
         {
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken);
+            var rows = await database.ListAsync(q, marketingConsent, Math.Clamp(limit ?? 1_000, 1, 5_000), CanReadPii(context), cancellationToken);
             static string Csv(object? value)
             {
                 var text = value?.ToString() ?? string.Empty;
@@ -211,6 +211,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
         string? query,
         bool? marketingConsent,
         int limit,
+        bool canReadPii,
         CancellationToken cancellationToken)
     {
         if (!IsConfigured) return Array.Empty<CustomerSummary>();
@@ -223,7 +224,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
                    max(o.created_at) filter (where o.state not in ('Cancelled', 'Expired'))
             from customers c
             left join checkout_orders o on o.customer_id = c.id
-            where (@query = '' or c.full_name ilike '%' || @query || '%' or c.mobile ilike '%' || @query || '%' or c.mobile_normalized ilike '%' || @query || '%')
+            where (@query = '' or (@can_read_pii and (c.full_name ilike '%' || @query || '%' or c.mobile ilike '%' || @query || '%' or c.mobile_normalized ilike '%' || @query || '%')))
               and (cast(@marketing_consent as boolean) is null or c.marketing_consent = cast(@marketing_consent as boolean))
             group by c.id
             order by c.updated_at desc
@@ -234,6 +235,7 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("can_read_pii", canReadPii);
         command.Parameters.AddWithValue("marketing_consent", (object?)marketingConsent ?? DBNull.Value);
         command.Parameters.AddWithValue("limit", limit);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
