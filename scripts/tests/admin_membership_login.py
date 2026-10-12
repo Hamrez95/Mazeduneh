@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
+API_DLL = ROOT / "services/api/bin/Release/net10.0/Mazeduneh.Api.dll"
 BASE = "http://127.0.0.1:5107"
 OWNER_PASSWORD = "Mazeduneh-CI-Owner-Password!"
 
@@ -29,8 +30,7 @@ def request(path, method="GET", body=None, token=None, extra_headers=None):
 
 
 def start_api(log):
-    process = subprocess.Popen(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
-                                "--configuration", "Release", "--no-build", "--urls", BASE],
+    process = subprocess.Popen(["dotnet", str(API_DLL), "--urls", BASE],
                                cwd=ROOT, env=os.environ.copy(), stdout=log, stderr=subprocess.STDOUT)
     try:
         for _ in range(40):
@@ -105,8 +105,7 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     return login["accessToken"]
 
 
-subprocess.run(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
-                "--configuration", "Release", "--no-build", "--", "--seed-admin"],
+subprocess.run(["dotnet", str(API_DLL), "--seed-admin"],
                cwd=ROOT, env=os.environ.copy(), check=True)
 
 with tempfile.TemporaryFile() as log:
