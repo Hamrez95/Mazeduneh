@@ -360,9 +360,13 @@ public static class AdminPermissionCatalog
 
     public static IReadOnlyList<string> Resolve(string? role, IReadOnlyList<string>? overridePermissions = null)
     {
+        var normalizedRole = role?.Trim() ?? string.Empty;
+        if (!DefaultRoles.ContainsKey(normalizedRole))
+            return Array.Empty<string>();
+
         if (overridePermissions is not null)
             return overridePermissions.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        return DefaultRoles.TryGetValue(NormalizeRole(role), out var permissions) ? permissions : Owner;
+        return DefaultRoles[normalizedRole];
     }
 
     public static bool Allows(AdminPrincipal principal, string permission)
