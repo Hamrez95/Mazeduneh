@@ -71,6 +71,16 @@ public sealed record CorporateRequestDetail(
 
 public sealed record CorporateRequestEvent(Guid Id, string EventType, string? FromStatus, string? ToStatus, string Actor, string? Note, DateTimeOffset CreatedAt);
 public sealed record CorporateRequestMessage(Guid Id, string SenderType, string Body, string Channel, DateTimeOffset CreatedAt);
+public sealed record CorporateRequestMetrics(
+    int NewCount,
+    int UnfollowedCount,
+    int TotalCount,
+    int ActiveCount,
+    int FinalizedCount,
+    decimal ConversionRatePercent,
+    decimal ActivePipelineBudget,
+    decimal AverageHoursToFirstContact,
+    int FirstContactCount);
 
 public static class CorporateSalesModule
 {
@@ -254,11 +264,38 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
         var result = new List<CorporateRequestSummary>(); await using var reader = await command.ExecuteReaderAsync(ct); while (await reader.ReadAsync(ct)) result.Add(ReadSummary(reader)); return result;
     }
 
-    public async Task<object> SummaryAsync(CancellationToken ct)
+    public async Task<CorporateRequestMetrics> SummaryAsync(CancellationToken ct)
     {
-        if (!IsConfigured) return new { newCount = 0, unfollowedCount = 0 };
-        const string sql = "select count(*) filter(where status='New')::int,count(*) filter(where next_follow_up_at is not null and next_follow_up_at<=now() and status not in ('Finalized','Cancelled'))::int from corporate_requests;";
-        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); await using var reader = await command.ExecuteReaderAsync(ct); await reader.ReadAsync(ct); return new { newCount = reader.GetInt32(0), unfollowedCount = reader.GetInt32(1) };
+        if (!IsConfigured) return new(0, 0, 0, 0, 0, 0m, 0m, 0m, 0);
+        const string sql = """
+            with first_contact as (
+                select request_id, min(created_at) as contacted_at
+                from corporate_request_events
+                where event_type='status' and to_status='Contacted'
+                group by request_id
+            )
+            select count(*) filter(where r.status='New')::int,
+                   count(*) filter(where r.next_follow_up_at is not null and r.next_follow_up_at<=now()
+                       and r.status not in ('Finalized','Cancelled'))::int,
+                   count(*)::int,
+                   count(*) filter(where r.status not in ('Finalized','Cancelled'))::int,
+                   count(*) filter(where r.status='Finalized')::int,
+                   coalesce(count(*) filter(where r.status='Finalized') * 100.0 / nullif(count(*), 0), 0)::numeric,
+                   coalesce(sum(r.budget) filter(where r.status not in ('Finalized','Cancelled')), 0)::numeric,
+                   coalesce(avg(extract(epoch from (first_contact.contacted_at-r.created_at))/3600), 0)::numeric,
+                   count(first_contact.contacted_at)::int
+            from corporate_requests r
+            left join first_contact on first_contact.request_id=r.id;
+            """;
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        await reader.ReadAsync(ct);
+        return new(
+            reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3),
+            reader.GetInt32(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7),
+            reader.GetInt32(8));
     }
 
     public async Task<CorporateRequestDetail?> FindAsync(Guid id, CancellationToken ct) => await FindCoreAsync(id, null, ct);

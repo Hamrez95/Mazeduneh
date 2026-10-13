@@ -122,6 +122,8 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
           : Row(children: [Expanded(child: heading), const SizedBox(width: 16), controls]);
     }),
     const SizedBox(height: 18),
+    if (summary != null) _summaryMetrics(),
+    const SizedBox(height: 18),
     _filterFields(),
     const SizedBox(height: 18),
     if (items.isEmpty) Padding(
@@ -139,6 +141,48 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
     )
     else ...items.map((item) => Card(child: ListTile(onTap: () => open(item), leading: const CircleAvatar(backgroundColor: AdminColors.mintSoft, child: Icon(Icons.business_center_rounded, color: AdminColors.ink)), title: Text('${item.companyName} · ${item.customerName}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${item.city} · ${formatPersianInteger(item.orderQuantity)} سفارش · ${statuses[item.status] ?? item.status}'), trailing: const Icon(Icons.chevron_left_rounded)))),
   ]);
+
+  Widget _summaryMetrics() => LayoutBuilder(builder: (context, constraints) {
+    final metrics = summary!;
+    final firstContactValue = metrics.firstContactCount == 0
+        ? '—'
+        : '${formatPersianNumber(metrics.averageHoursToFirstContact, fractionDigits: 1)} ساعت';
+    final cards = [
+      _metricCard('نرخ تبدیل به سفارش نهایی', '${formatPersianNumber(metrics.conversionRatePercent, fractionDigits: 1)}٪', featured: true),
+      _metricCard('بودجهٔ پیگیری‌های فعال', '${formatToman(metrics.activePipelineBudget)} تومان'),
+      _metricCard('میانگین زمان تا اولین تماس', firstContactValue),
+      _metricCard('درخواست‌های فعال', formatPersianInteger(metrics.activeCount)),
+    ];
+    return GridView.count(
+      crossAxisCount: constraints.maxWidth < 620 ? 2 : 4,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      childAspectRatio: constraints.maxWidth < 620 ? 1.1 : 2.5,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: cards,
+    );
+  });
+
+  Widget _metricCard(String label, String value, {bool featured = false}) => Container(
+    decoration: BoxDecoration(
+      color: featured ? AdminColors.mintSoft : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: featured ? AdminColors.mintSoft : AdminColors.border),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: featured ? AdminColors.ink : AdminColors.muted, fontSize: 11)),
+          const SizedBox(height: 5),
+          Text(value, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AdminColors.inkDeep, fontWeight: FontWeight.w900, fontSize: 17)),
+        ],
+      ),
+  );
 }
 
 class _DetailPanel extends StatefulWidget {

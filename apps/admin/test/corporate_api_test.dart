@@ -66,4 +66,28 @@ void main() {
     expect(captured.url.queryParameters.containsKey('overdue'), isFalse);
   });
 
+  test('corporate metrics parse the conversion and first-contact funnel', () async {
+    final client = MockClient((_) async => http.Response(jsonEncode({
+      'newCount': 2,
+      'unfollowedCount': 1,
+      'totalCount': 10,
+      'activeCount': 6,
+      'finalizedCount': 4,
+      'conversionRatePercent': 40.0,
+      'activePipelineBudget': 1250000,
+      'averageHoursToFirstContact': 3.5,
+      'firstContactCount': 5,
+    }), 200));
+
+    final summary = await CorporateApiClient(client: client, baseUrl: 'https://api.test').fetchSummary();
+
+    expect(summary.totalCount, 10);
+    expect(summary.activeCount, 6);
+    expect(summary.finalizedCount, 4);
+    expect(summary.conversionRatePercent, 40.0);
+    expect(summary.activePipelineBudget, 1250000);
+    expect(summary.averageHoursToFirstContact, 3.5);
+    expect(summary.firstContactCount, 5);
+  });
+
 }
