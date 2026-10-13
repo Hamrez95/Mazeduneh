@@ -133,7 +133,7 @@ public static class OrderManagementModule
             var errors = new Dictionary<string, string[]>();
             if (input.Carrier is { Length: > 120 }) errors[nameof(input.Carrier)] = ["نام شرکت حمل نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
             if (input.TrackingCode is { Length: > 120 }) errors[nameof(input.TrackingCode)] = ["کد رهگیری نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
-            if (input.ActualShippingCost is < 0 or > 1_000_000_000) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
+            if (input.UpdateActualShippingCost && (input.ActualShippingCost is < 0 or > 1_000_000_000)) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
             if (string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Trim().Length > 500)
                 errors[nameof(input.Reason)] = ["دلیل ثبت یا اصلاح اطلاعات ارسال باید بین ۱ تا ۵۰۰ نویسه باشد."];
             if (errors.Count > 0) return Results.ValidationProblem(errors);
@@ -142,7 +142,8 @@ public static class OrderManagementModule
             var updated = await database.UpdateShippingAsync(
                 orderId, input, principal.Email, context.TraceIdentifier, audit, cancellationToken);
             return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(OrderPrivacy.Project(updated, context));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderShippingCostStepUpAuthorizationFilter>();
 
         admin.MapGet("/dashboard", async (
             int? days,
@@ -611,7 +612,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 
         const string sql = """
             update checkout_orders
-            set shipping_carrier=@carrier, tracking_code=@tracking_code, shipping_expense=@expense,
+            set shipping_carrier=@carrier, tracking_code=@tracking_code,
+                shipping_expense=case when @update_expense then @expense else shipping_expense end,
                 shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
             where id=@id
             returning shipped_at;
@@ -622,6 +624,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             command.Parameters.AddWithValue("carrier", (object?)input.Carrier?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("tracking_code", (object?)input.TrackingCode?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
+            command.Parameters.AddWithValue("update_expense", input.UpdateActualShippingCost);
             command.Parameters.AddWithValue("id", orderId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
@@ -632,7 +635,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var after = new AdminShippingAuditSnapshot(
             input.Carrier?.Trim(),
             input.TrackingCode?.Trim(),
-            input.ActualShippingCost ?? 0m,
+            input.UpdateActualShippingCost ? input.ActualShippingCost ?? 0m : before.actualShippingCost,
             shippedAt);
         await audit.RecordAsync(
             connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
@@ -1149,7 +1152,12 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
-public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost, string? Reason);
+public sealed record AdminShipmentUpdateInput(
+    string? Carrier,
+    string? TrackingCode,
+    decimal? ActualShippingCost,
+    string? Reason,
+    bool UpdateActualShippingCost = true);
 public sealed record AdminShippingAuditSnapshot(string? carrier, string? trackingCode, decimal actualShippingCost, DateTimeOffset? shippedAt);
 public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,

@@ -141,6 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'status=$?; printf "Contract command failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
           start_api() {
             dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/mazeduneh-api.log 2>&1 &
             API_PID=$!
@@ -513,10 +514,18 @@ jobs:
           
           SHIPPING_INVALID_STATUS=$(curl -s -o /tmp/order-shipping-invalid.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000}')
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","updateActualShippingCost":false}')
           test "${SHIPPING_INVALID_STATUS}" = "400"
-          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/shipping-step-up.json
+          SHIPPING_STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/shipping-step-up.json'))['stepUpToken'])")
+          SHIPPING_STEP_UP_STATUS=$(curl -s -o /tmp/order-shipping-step-up-required.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}')
+          test "${SHIPPING_STEP_UP_STATUS}" = "428"
+          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${SHIPPING_STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}' > /tmp/order-shipping.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/order-shipping-audit.json
@@ -662,15 +671,14 @@ jobs:
             -H 'Content-Type: application/json' \
             --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
           test "${STORE_MANAGER_SETTINGS_WRITE}" = "428"
-          stop_role_api
-          start_api
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
+          curl -fsS "http://127.0.0.1:5100/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
           import json
           order = json.load(open('/tmp/order-delivered-after-restart.json', encoding='utf-8'))
           assert order['state'] == 'Delivered'
           assert [item['state'] for item in order['transitions']] == ['AwaitingPayment','Paid','Preparing','Shipped','Delivered']
           PY
+          stop_role_api
 
       - name: API readiness failure and recovery contract
         env:
