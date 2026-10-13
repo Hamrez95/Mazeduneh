@@ -93,6 +93,13 @@ foreach (var (method, path, expectedPermission) in adminPermissionRoutes)
         $"Admin route {method} {path} did not require {expectedPermission}");
 }
 Console.WriteLine($"Admin permission route contract checks passed ({adminPermissionRoutes.Length} routes)");
+Check(CorporateRequestStatuses.CanTransition("New", "Reviewing"), "A new corporate request could not enter review");
+Check(CorporateRequestStatuses.CanTransition("Shipped", "Finalized"), "A shipped corporate request could not be finalized");
+Check(CorporateRequestStatuses.CanTransition("Contacted", "Contacted"), "An idempotent corporate status update was rejected");
+Check(!CorporateRequestStatuses.CanTransition("New", "Shipped"), "A new corporate request skipped directly to shipped");
+Check(!CorporateRequestStatuses.CanTransition("Finalized", "Reviewing"), "A finalized corporate request could be reopened");
+Check(!CorporateRequestStatuses.CanTransition("Cancelled", "Approved"), "A cancelled corporate request could be reopened");
+Console.WriteLine("Corporate sales status transition contract checks passed");
 var marketingManager = new AdminPrincipal("marketing@example.test", now.AddHours(1), "MarketingManager", AdminPermissionCatalog.Resolve("MarketingManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
 var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager", AdminPermissionCatalog.Resolve("StoreManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
 Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");

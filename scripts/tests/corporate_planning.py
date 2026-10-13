@@ -75,6 +75,10 @@ def ids(params=''):
     return {item['id'] for item in items}
 
 
+def change_status(id, status):
+    return request(ADMIN + '/' + id + '/status', 'PATCH', {'status': status, 'note': 'CI'}, token)
+
+
 with tempfile.TemporaryFile() as log:
     api, token = start_api(log)
     try:
@@ -92,7 +96,10 @@ with tempfile.TemporaryFile() as log:
         mutate(c, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
         mutate(d, '/assign', {'assignedTo': 'CI owner'})
         mutate(d, '/follow-up', {'nextFollowUpAt': '2000-01-01T00:00:00Z'})
-        mutate(e, '/status', {'status': 'Finalized', 'note': 'CI'}, 'PATCH')
+        assert change_status(e, 'Shipped')[0] == 409  # Cannot skip the sales and fulfillment stages.
+        for next_status in ['Reviewing', 'Contacted', 'ProformaSent', 'Negotiating', 'Approved', 'Preparing', 'Shipped', 'Finalized']:
+            assert change_status(e, next_status)[0] == 200, next_status
+        assert change_status(e, 'Reviewing')[0] == 409  # Terminal requests cannot be reopened.
         mutate(f, '/status', {'status': 'Cancelled', 'note': 'CI'}, 'PATCH')
         mutate(g, '/assign', {'assignedTo': '  '})
         mutate(g, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
