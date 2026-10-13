@@ -25,8 +25,16 @@ class OrderApiClient {
     return {'authorization': 'Bearer $token', if (json) 'content-type': 'application/json; charset=utf-8'};
   }
 
-  Future<List<AdminOrder>> fetchOrders({String? state, String? query, int limit = 100}) async {
-    final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
+  Future<List<AdminOrder>> fetchOrders({String? state, String? query, DateTime? createdFromUtc, DateTime? createdToUtcExclusive, int limit = 100}) async {
+    if ((createdFromUtc == null) != (createdToUtcExclusive == null)) {
+      throw ArgumentError('Both order date range boundaries are required.');
+    }
+    final params = <String, String>{
+      'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state,
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (createdFromUtc != null) 'from': createdFromUtc.toUtc().toIso8601String(),
+      if (createdToUtcExclusive != null) 'to': createdToUtcExclusive.toUtc().toIso8601String(),
+    };
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders').replace(queryParameters: params), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
@@ -45,8 +53,16 @@ class OrderApiClient {
     return decoded.map((item) => AdminOverdueShipment.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<List<int>> exportOrdersCsv({required String stepUpToken, String? state, String? query, int limit = 1000}) async {
-    final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
+  Future<List<int>> exportOrdersCsv({required String stepUpToken, String? state, String? query, DateTime? createdFromUtc, DateTime? createdToUtcExclusive, int limit = 1000}) async {
+    if ((createdFromUtc == null) != (createdToUtcExclusive == null)) {
+      throw ArgumentError('Both order date range boundaries are required.');
+    }
+    final params = <String, String>{
+      'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state,
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (createdFromUtc != null) 'from': createdFromUtc.toUtc().toIso8601String(),
+      if (createdToUtcExclusive != null) 'to': createdToUtcExclusive.toUtc().toIso8601String(),
+    };
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/export.csv').replace(queryParameters: params), headers: {..._headers(), 'x-admin-step-up': stepUpToken});
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);

@@ -19,6 +19,8 @@ public static class OrderManagementModule
             string? state,
             string? q,
             int? limit,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -27,7 +29,11 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var rows = await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken, CustomerPrivacy.CanReadPii(context));
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            var rows = await database.ListAsync(
+                state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken,
+                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
             return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -35,6 +41,8 @@ public static class OrderManagementModule
             string? state,
             string? q,
             int? limit,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -43,7 +51,11 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var orders = await database.ListAsync(state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken, CustomerPrivacy.CanReadPii(context));
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            var orders = await database.ListAsync(
+                state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken,
+                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
             static string Csv(object? value)
             {
                 var text = value?.ToString() ?? string.Empty;
@@ -396,7 +408,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         string? query,
         int limit,
         CancellationToken cancellationToken,
-        bool allowContactSearch = true)
+        bool allowContactSearch = true,
+        DateTimeOffset? createdFrom = null,
+        DateTimeOffset? createdTo = null)
     {
         if (!IsConfigured) return Array.Empty<AdminOrderSummary>();
         const string sql = """
@@ -417,6 +431,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                    or (@contact_search and (o.customer_name ilike '%' || @query || '%'
                    or o.mobile ilike '%' || @query || '%'
                    or o.city ilike '%' || @query || '%')))
+              and (@created_from is null or o.created_at >= @created_from)
+              and (@created_to is null or o.created_at < @created_to)
             group by o.id,p.reference,p.state
             order by o.created_at desc
             limit @limit;
@@ -428,6 +444,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("limit", limit);
         command.Parameters.AddWithValue("contact_search", allowContactSearch);
+        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_from", NpgsqlTypes.NpgsqlDbType.TimestampTz)
+        {
+            Value = createdFrom is null ? DBNull.Value : createdFrom.Value
+        });
+        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_to", NpgsqlTypes.NpgsqlDbType.TimestampTz)
+        {
+            Value = createdTo is null ? DBNull.Value : createdTo.Value
+        });
         var result = new List<AdminOrderSummary>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

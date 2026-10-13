@@ -26,10 +26,12 @@ String _paymentProviderLabel(String provider) => switch (provider) {
     };
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all, this.initialQuery = ''});
+  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all, this.initialQuery = '', this.initialCreatedFromUtc, this.initialCreatedToUtcExclusive});
   final OrderApiClient? api;
   final AdminOrderFilter initialFilter;
   final String initialQuery;
+  final DateTime? initialCreatedFromUtc;
+  final DateTime? initialCreatedToUtcExclusive;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -103,7 +105,11 @@ class _OrdersPageState extends State<OrdersPage> {
           });
         }
       } else {
-        final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+        final result = await api.fetchOrders(
+          state: selectedState.isEmpty ? null : selectedState, query: searchQuery,
+          createdFromUtc: widget.initialCreatedFromUtc,
+          createdToUtcExclusive: widget.initialCreatedToUtcExclusive,
+        );
         if (mounted) {
           setState(() {
             orders = result;
@@ -169,7 +175,11 @@ class _OrdersPageState extends State<OrdersPage> {
     if (stepUpToken == null || !mounted) return;
     setState(() => exporting = true);
     try {
-      final bytes = await api.exportOrdersCsv(stepUpToken: stepUpToken, state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+      final bytes = await api.exportOrdersCsv(
+        stepUpToken: stepUpToken, state: selectedState.isEmpty ? null : selectedState,
+        query: searchQuery, createdFromUtc: widget.initialCreatedFromUtc,
+        createdToUtcExclusive: widget.initialCreatedToUtcExclusive,
+      );
       final opened = await launchUrl(
         Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: {'charset': 'utf-8'}),
         webOnlyWindowName: '_blank',
@@ -227,6 +237,8 @@ class _OrdersPageState extends State<OrdersPage> {
             final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
               const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              if (widget.initialCreatedFromUtc != null && widget.initialCreatedToUtcExclusive != null)
+                const Text('فهرست بر اساس بازهٔ انتخاب‌شده در داشبورد فیلتر شده است.', style: TextStyle(color: Colors.grey, fontSize: 11)),
             ]);
             final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               FilterChip(
