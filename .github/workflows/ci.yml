@@ -414,8 +414,12 @@ jobs:
           assert any(item['movementType'] == 'Reserved' and item['quantityDelta'] == -1 for item in movements)
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/inventory-step-up.json
+          INVENTORY_STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/inventory-step-up.json'))['stepUpToken'])")
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/inventory/adjust" \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
             --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' -D /tmp/inventory-adjusted.headers > /tmp/inventory-adjusted.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-audit-log.json
@@ -438,15 +442,15 @@ jobs:
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
           WASTE_INVALID_STATUS=$(curl -s -o /tmp/inventory-waste-invalid.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
           test "${WASTE_INVALID_STATUS}" = "400"
           WASTE_OVERFLOW_STATUS=$(curl -s -o /tmp/inventory-waste-overflow.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
           test "${WASTE_OVERFLOW_STATUS}" = "409"
           curl -fsS -D /tmp/inventory-waste.headers -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=CI-WASTE-ONLY" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-movements.json

@@ -119,17 +119,17 @@ class OrderApiClient {
     return AdminNotifications.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<StockAdjustmentResult> adjustStock(String sku, int quantityDelta, String reason, {required String operationKey}) async {
-    final response = await _client.post(Uri.parse('$baseUrl/api/v1/admin/inventory/adjust'), headers: {..._headers(json: true), 'Idempotency-Key': operationKey}, body: jsonEncode({'sku': sku, 'quantityDelta': quantityDelta, 'reason': reason}));
+  Future<StockAdjustmentResult> adjustStock(String sku, int quantityDelta, String reason, {required String operationKey, required String stepUpToken}) async {
+    final response = await _client.post(Uri.parse('$baseUrl/api/v1/admin/inventory/adjust'), headers: {..._headers(json: true), 'Idempotency-Key': operationKey, 'x-admin-step-up': stepUpToken}, body: jsonEncode({'sku': sku, 'quantityDelta': quantityDelta, 'reason': reason}));
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return StockAdjustmentResult.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<StockAdjustmentResult> writeOffStock(String sku, String batchCode, int quantity, String reason, {required String operationKey}) async {
+  Future<StockAdjustmentResult> writeOffStock(String sku, String batchCode, int quantity, String reason, {required String operationKey, required String stepUpToken}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/inventory/waste'),
-      headers: {..._headers(json: true), 'Idempotency-Key': operationKey},
+      headers: {..._headers(json: true), 'Idempotency-Key': operationKey, 'x-admin-step-up': stepUpToken},
       body: jsonEncode({'sku': sku, 'batchCode': batchCode, 'quantity': quantity, 'reason': reason}),
     );
     _guard(response);
