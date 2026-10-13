@@ -94,6 +94,12 @@ with tempfile.TemporaryFile() as log:
 
         product["variants"].append(variant(ADDED, 0, 750))
         status, _ = request("/api/v1/products/" + SLUG, "PUT", product, token)
+        assert status == 428, status
+        status, step_up = request("/api/v1/admin/auth/step-up", "POST", {
+            "password": "Mazeduneh-CI-Owner-Password!"}, token)
+        assert status == 200 and step_up["stepUpToken"]
+        status, _ = request("/api/v1/products/" + SLUG, "PUT", product, token,
+                            {"X-Admin-Step-Up": step_up["stepUpToken"]})
         assert status == 200, status
         assert movements(ADDED) == []
         assert len(movements(POSITIVE)) == 1  # Editing does not duplicate opening stock.
@@ -115,7 +121,14 @@ with tempfile.TemporaryFile() as log:
         product['title'] = 'عنوان ویرایش‌شده در پنل'
         product['description'] = 'توضیح جدید پنل'
         product['variants'][0]['price'] = 43210
-        assert request('/api/v1/products/' + SLUG, 'PUT', product, token)[0] == 200
+        status, _ = request('/api/v1/products/' + SLUG, 'PUT', product, token)
+        assert status == 428, status
+        status, step_up = request('/api/v1/admin/auth/step-up', 'POST', {
+            'password': 'Mazeduneh-CI-Owner-Password!'}, token)
+        assert status == 200 and step_up['stepUpToken']
+        status, _ = request('/api/v1/products/' + SLUG, 'PUT', product, token,
+                            {'X-Admin-Step-Up': step_up['stepUpToken']})
+        assert status == 200, status
         status, public = request('/api/v1/products/' + SLUG)
         assert status == 200 and public['title'] == product['title'] and public['description'] == product['description']
         public_variants = {item['sku']: item for item in public['variants']}

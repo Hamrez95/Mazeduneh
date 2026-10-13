@@ -240,6 +240,10 @@ with tempfile.TemporaryFile() as log:
                 'costPrice': 999999, 'packagingCost': 999999, 'additionalCost': 999999,
             }],
         }
+        unauthorized_price_change = dict(update, variants=[dict(
+            update['variants'][0], price=stale_price + 1)])
+        assert request('/api/v1/products/'+SLUG, 'PUT', unauthorized_price_change,
+                       content_token, base=RESTRICTED_BASE)[0] == 403
         status, updated_product = request('/api/v1/products/'+SLUG, 'PUT', update,
                                           content_token, base=RESTRICTED_BASE)
         assert status == 200
