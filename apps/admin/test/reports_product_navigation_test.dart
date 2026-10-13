@@ -77,8 +77,6 @@ void main() {
     await tester.pumpAndSettle();
 
     final inventoryAction = find.text('مشاهده در انبار');
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1200));
-    await tester.pumpAndSettle();
     await tester.ensureVisible(inventoryAction);
     await tester.pumpAndSettle();
     await tester.tap(inventoryAction);
