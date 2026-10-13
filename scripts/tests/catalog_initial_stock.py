@@ -103,6 +103,14 @@ with tempfile.TemporaryFile() as log:
         assert status == 200, status
         assert movements(ADDED) == []
         assert len(movements(POSITIVE)) == 1  # Editing does not duplicate opening stock.
+        status, price_audit = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId=' + ADDED,
+                                      token=token)
+        assert status == 200
+        price_event = next(item for item in price_audit if item['action'] == 'product.variant-added')
+        assert price_event['actor'] == os.environ['Admin__Email']
+        assert price_event['beforeJson'] is None and price_event['afterJson']
+        assert json.loads(price_event['afterJson'])['Price'] == 1000
+        assert price_event['reason'] == 'ثبت گونهٔ تازه با قیمت اولیه'
 
         status, step_up = request("/api/v1/admin/auth/step-up", "POST", {
             "password": "Mazeduneh-CI-Owner-Password!"}, token)
