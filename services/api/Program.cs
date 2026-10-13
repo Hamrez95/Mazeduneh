@@ -238,7 +238,7 @@ products.MapPut("/{slug}", async (
         var publicationErrors = productCatalog.ValidateForPublication(updated);
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
-    var persisted = await db.UpdateAsync(updated, canWriteCosts, cancellationToken);
+    var persisted = await db.UpdateAsync(updated, canWriteCosts, principal.Email, context.TraceIdentifier, cancellationToken);
     productCatalog.Add(persisted);
     return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
 })

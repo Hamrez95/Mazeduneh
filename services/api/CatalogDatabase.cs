@@ -2,7 +2,11 @@ using System.Text.Json;
 using Npgsql;
 using NpgsqlTypes;
 
-public sealed class CatalogDatabase(IConfiguration configuration, ILogger<CatalogDatabase> logger, InventoryLedgerDatabase ledger)
+public sealed class CatalogDatabase(
+    IConfiguration configuration,
+    ILogger<CatalogDatabase> logger,
+    InventoryLedgerDatabase ledger,
+    AdminAuditLogDatabase audit)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     private readonly List<Category> _fallbackCategories = DefaultCategories().ToList();
@@ -305,7 +309,12 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
         return true;
     }
 
-    public async Task<Product> UpdateAsync(Product product, bool canWriteCosts, CancellationToken cancellationToken)
+    public async Task<Product> UpdateAsync(
+        Product product,
+        bool canWriteCosts,
+        string actor,
+        string requestId,
+        CancellationToken cancellationToken)
     {
         if (!IsConfigured) return product;
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -337,6 +346,9 @@ public sealed class CatalogDatabase(IConfiguration configuration, ILogger<Catalo
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
                 await RecordInitialStockAsync(connection, transaction, variant, "catalog-variant-added", cancellationToken);
+                await audit.RecordAsync(connection, transaction, actor, "product.variant-added", "ProductVariant",
+                    variant.Sku, null, new { variant.Sku, variant.Price, product.Currency },
+                    "ثبت گونهٔ تازه با قیمت اولیه", requestId, cancellationToken);
             }
         }
         await transaction.CommitAsync(cancellationToken);
