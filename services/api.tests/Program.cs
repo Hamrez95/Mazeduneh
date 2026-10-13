@@ -102,6 +102,14 @@ Check(!CorporateRequestStatuses.CanTransition("Cancelled", "Approved"), "A cance
 Console.WriteLine("Corporate sales status transition contract checks passed");
 var marketingManager = new AdminPrincipal("marketing@example.test", now.AddHours(1), "MarketingManager", AdminPermissionCatalog.Resolve("MarketingManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
 var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager", AdminPermissionCatalog.Resolve("StoreManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
+var unknownRolePermissions = AdminPermissionCatalog.Resolve("StoreManageer");
+Check(unknownRolePermissions.Count == 0, "An unknown Admin role inherited Owner permissions");
+var unknownRolePrincipal = new AdminPrincipal("unknown-role@example.test", now.AddHours(1), "StoreManageer",
+    AdminPermissionCatalog.Resolve("StoreManageer", [AdminPermissionCatalog.DashboardRead, AdminPermissionCatalog.OrdersWrite]),
+    Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(!AdminPermissionCatalog.Allows(unknownRolePrincipal, AdminPermissionCatalog.DashboardRead) &&
+      !AdminPermissionCatalog.Allows(unknownRolePrincipal, AdminPermissionCatalog.OrdersWrite),
+    "Explicit permission overrides elevated an unknown Admin role");
 Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
 Check(!AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsRead) && !AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsWrite), "Marketing manager can access tax or shipping settings");
 Check(AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsRead) && AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsWrite), "Store manager lost commerce settings access");
