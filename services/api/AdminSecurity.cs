@@ -652,6 +652,35 @@ public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpo
     }
 }
 
+public sealed class OrderCancellationStepUpAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var isCancellation = context.Arguments.Any(argument => argument switch
+        {
+            SetOrderStateRequest request => string.Equals(request.State, "Cancelled", StringComparison.OrdinalIgnoreCase),
+            BulkOrderStateRequest request => string.Equals(request.State, "Cancelled", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        });
+        if (!isCancellation)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "این عملیات برای نقش فعلی مجاز نیست." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای لغو سفارش و آزادسازی موجودی، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
 public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase users) : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)

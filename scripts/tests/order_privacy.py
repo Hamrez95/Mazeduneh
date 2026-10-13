@@ -196,7 +196,11 @@ with tempfile.TemporaryFile() as log:
                 status, changed = request(path + '/state', 'PATCH', {'state': 'Delivered', 'reason': MOBILE}, token)
                 assert status == 200
                 assert_private(changed)
-                status, bulk = request('/api/v1/admin/orders/bulk-state', 'POST', {'orderIds': [second['id']], 'state': 'Cancelled', 'reason': ADDRESS}, token)
+                bulk_request = {'orderIds': [second['id']], 'state': 'Cancelled', 'reason': ADDRESS}
+                status, _ = request('/api/v1/admin/orders/bulk-state', 'POST', bulk_request, token)
+                assert status == 428, (status, _)
+                status, bulk = request('/api/v1/admin/orders/bulk-state', 'POST', bulk_request, token,
+                                       headers={'X-Admin-Step-Up': step_up_token(token)})
                 assert status == 200 and len(bulk['updated']) == 1
                 assert_private(bulk)
                 status, problem_orders = request('/api/v1/admin/orders?state=Problem&q=' + second['id'], token=token)

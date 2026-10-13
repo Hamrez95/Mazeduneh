@@ -290,7 +290,8 @@ public static class OrderManagementModule
                 OrderOperationStatus.NotFound => Results.NotFound(new { message = result.Message }),
                 _ => Results.Conflict(new { message = result.Message })
             };
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
 
         admin.MapPost("/orders/bulk-state", async (
             BulkOrderStateRequest request,
@@ -325,7 +326,8 @@ public static class OrderManagementModule
             }
 
             return Results.Ok(new { updated, failed });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
 
         return endpoints;
     }
