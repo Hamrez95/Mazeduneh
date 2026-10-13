@@ -35,9 +35,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     AdminNavigationIntent? destination;
+    final requestPaths = <String>[];
     final api = OrderApiClient(
       baseUrl: 'https://api.test',
       client: MockClient((request) async {
+        requestPaths.add(request.url.path);
         if (request.url.path.endsWith('/analytics/products')) {
           return _json([
             {
@@ -76,6 +78,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    expect(requestPaths, contains('/api/v1/admin/analytics/products'));
     expect(find.text('پسته اکبری'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
     await tester.ensureVisible(inventoryAction);
