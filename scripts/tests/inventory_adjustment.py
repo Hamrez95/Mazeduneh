@@ -109,7 +109,11 @@ def reserve(key, quantity=1, sku=BATCHED):
 
 
 def cancel(order):
-    return request('/api/v1/admin/orders/' + order['id'] + '/state', 'PATCH', {'state': 'Cancelled', 'reason': 'CI release'}, token)
+    path = '/api/v1/admin/orders/' + order['id'] + '/state'
+    body = {'state': 'Cancelled', 'reason': 'CI release'}
+    status, response = request(path, 'PATCH', body, token)
+    assert status == 428, (status, response)
+    return request(path, 'PATCH', body, token, extra_headers=step_up_headers(token))
 
 
 def expire_fixture_reservation(order_id):
