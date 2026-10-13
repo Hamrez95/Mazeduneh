@@ -79,9 +79,16 @@ def change_status(id, status):
     return request(ADMIN + '/' + id + '/status', 'PATCH', {'status': status, 'note': 'CI'}, token)
 
 
+def metrics():
+    status, value = request(ADMIN + '/summary', token=token)
+    assert status == 200
+    return value
+
+
 with tempfile.TemporaryFile() as log:
     api, token = start_api(log)
     try:
+        baseline = metrics()
         fixtures = []
         for index in range(7):
             status, created = request('/api/v1/corporate-requests', 'POST', {
@@ -115,6 +122,15 @@ with tempfile.TemporaryFile() as log:
         assert a in ids('&needsPlanning=true')  # Still missing its follow-up date.
         mutate(a, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
         assert ids('&needsPlanning=true') == {b, c, g}
+        updated_metrics = metrics()
+        assert updated_metrics['totalCount'] == baseline['totalCount'] + len(fixtures)
+        assert updated_metrics['newCount'] == baseline['newCount'] + 5
+        assert updated_metrics['activeCount'] == baseline['activeCount'] + 5
+        assert updated_metrics['finalizedCount'] == baseline['finalizedCount'] + 1
+        assert updated_metrics['firstContactCount'] == baseline['firstContactCount'] + 1
+        expected_rate = updated_metrics['finalizedCount'] * 100 / updated_metrics['totalCount']
+        assert abs(updated_metrics['conversionRatePercent'] - expected_rate) < 0.01
+        assert updated_metrics['averageHoursToFirstContact'] >= 0
     finally:
         stop_api(api)
     api, token = start_api(log)
