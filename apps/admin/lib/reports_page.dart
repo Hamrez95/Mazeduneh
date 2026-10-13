@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_navigation.dart';
+import 'admin_permissions.dart';
+import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key, this.api, this.initialFromUtc, this.initialToUtcExclusive});
+  const ReportsPage({super.key, this.api, this.initialFromUtc, this.initialToUtcExclusive, this.onNavigate});
   final OrderApiClient? api;
   final DateTime? initialFromUtc;
   final DateTime? initialToUtcExclusive;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
   @override
   State<ReportsPage> createState() => _ReportsPageState();
 }
@@ -106,7 +110,7 @@ class _ReportsPageState extends State<ReportsPage> {
       return ListView(children: [
         GridView.count(
           crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
+          childAspectRatio: columns == 1 ? 2.6 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
             _ReportMetric(title: 'درآمد شامل ارسال', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
@@ -162,6 +166,15 @@ class _ReportsPageState extends State<ReportsPage> {
                             Text('${formatPersianInteger(item.unitsSold)} واحد', style: const TextStyle(color: AdminColors.muted)),
                             Text('فروش ${formatPersianNumber(item.revenue)} ریال', style: const TextStyle(fontSize: 12)),
                             Text('سود ${formatPersianNumber(item.grossProfit)} ریال', style: TextStyle(fontWeight: FontWeight.w900, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.ink)),
+                            if (!OwnerSession.instance.isAuthenticated ||
+                                OwnerSession.instance.can(AdminPermissions.inventoryRead))
+                              OutlinedButton.icon(
+                                onPressed: widget.onNavigate == null ? null : () => widget.onNavigate!(
+                                  AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku),
+                                ),
+                                icon: const Icon(Icons.warehouse_outlined, size: 18),
+                                label: const Text('مشاهده در انبار'),
+                              ),
                           ],
                         ),
                       ),

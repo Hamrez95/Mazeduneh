@@ -77,7 +77,7 @@ class _AdminShellState extends State<AdminShell> {
       AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
       AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage(
         key: ValueKey(navigation), initialFromUtc: navigation.createdFromUtc,
-        initialToUtcExclusive: navigation.createdToUtcExclusive,
+        initialToUtcExclusive: navigation.createdToUtcExclusive, onNavigate: _navigate,
       )),
       AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: _navigate)),
       const AdminPermissionGate(permission: AdminPermissions.customersRead, child: CustomerManagementPage()),
