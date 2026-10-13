@@ -6,8 +6,10 @@ import 'formatters.dart';
 import 'order_api.dart';
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key, this.api});
+  const ReportsPage({super.key, this.api, this.initialFromUtc, this.initialToUtcExclusive});
   final OrderApiClient? api;
+  final DateTime? initialFromUtc;
+  final DateTime? initialToUtcExclusive;
   @override
   State<ReportsPage> createState() => _ReportsPageState();
 }
@@ -17,18 +19,38 @@ class _ReportsPageState extends State<ReportsPage> {
   AdminAnalytics? analytics;
   List<AdminProductProfitability> profitability = const [];
   int days = 30;
+  DateTimeRange? selectedRange;
   bool loading = true;
   Object? error;
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    if (widget.initialFromUtc != null && widget.initialToUtcExclusive != null) {
+      final localStart = widget.initialFromUtc!.toLocal();
+      final localEndExclusive = widget.initialToUtcExclusive!.toLocal();
+      selectedRange = DateTimeRange(
+        start: DateTime(localStart.year, localStart.month, localStart.day),
+        end: DateTime(localEndExclusive.year, localEndExclusive.month, localEndExclusive.day - 1),
+      );
+    }
+    load();
+  }
+
+  DateTime? get _fromUtc => selectedRange == null
+      ? null
+      : DateTime(selectedRange!.start.year, selectedRange!.start.month, selectedRange!.start.day).toUtc();
+
+  DateTime? get _toUtcExclusive => selectedRange == null
+      ? null
+      : DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day + 1).toUtc();
 
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
       final result = await Future.wait([
-        api.fetchAnalytics(days: days),
-        api.fetchProductProfitability(days: days),
+        api.fetchAnalytics(days: days, fromUtc: _fromUtc, toUtcExclusive: _toUtcExclusive),
+        api.fetchProductProfitability(days: days, fromUtc: _fromUtc, toUtcExclusive: _toUtcExclusive),
       ]);
       if (mounted) setState(() {
         analytics = result[0] as AdminAnalytics;
@@ -54,7 +76,7 @@ class _ReportsPageState extends State<ReportsPage> {
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
       ]),
       const SizedBox(height: 20),
-      SegmentedButton<int>(
+      if (selectedRange == null) SegmentedButton<int>(
         segments: const [
           ButtonSegment(value: 7, label: Text('۷ روز')),
           ButtonSegment(value: 30, label: Text('۳۰ روز')),
@@ -65,7 +87,10 @@ class _ReportsPageState extends State<ReportsPage> {
           setState(() => days = value.first);
           load();
         },
-      ),
+      ) else Row(children: [
+        Expanded(child: Text('بازهٔ داشبورد: ${formatPersianDate(selectedRange!.start)} تا ${formatPersianDate(selectedRange!.end)}')),
+        TextButton(onPressed: () { setState(() { selectedRange = null; days = 30; }); load(); }, child: const Text('۳۰ روز اخیر')),
+      ]),
       const SizedBox(height: 20),
       Expanded(child: _body()),
     ]),

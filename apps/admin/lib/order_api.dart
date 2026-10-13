@@ -110,16 +110,32 @@ class OrderApiClient {
     return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminAnalytics> fetchAnalytics({int days = 30}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: {'days': '$days'}), headers: _headers());
+  Future<AdminAnalytics> fetchAnalytics({int days = 30, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both analytics range boundaries are required.');
+    }
+    final query = <String, String>{
+      if (fromUtc == null) 'days': '$days',
+      if (fromUtc != null) 'from': fromUtc.toUtc().toIso8601String(),
+      if (toUtcExclusive != null) 'to': toUtcExclusive.toUtc().toIso8601String(),
+    };
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminAnalytics.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<List<AdminProductProfitability>> fetchProductProfitability({int days = 30}) async {
+  Future<List<AdminProductProfitability>> fetchProductProfitability({int days = 30, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both product analytics range boundaries are required.');
+    }
+    final query = <String, String>{
+      if (fromUtc == null) 'days': '$days',
+      if (fromUtc != null) 'from': fromUtc.toUtc().toIso8601String(),
+      if (toUtcExclusive != null) 'to': toUtcExclusive.toUtc().toIso8601String(),
+    };
     final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/admin/analytics/products').replace(queryParameters: {'days': '$days'}),
+      Uri.parse('$baseUrl/api/v1/admin/analytics/products').replace(queryParameters: query),
       headers: _headers(),
     );
     _guard(response);

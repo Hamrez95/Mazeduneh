@@ -101,6 +101,15 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  AdminNavigationIntent _periodReportsIntent() {
+    final orderIntent = _periodOrdersIntent();
+    return AdminNavigationIntent(
+      module: AdminModule.reports,
+      createdFromUtc: orderIntent.createdFromUtc,
+      createdToUtcExclusive: orderIntent.createdToUtcExclusive,
+    );
+  }
+
   Future<void> customizeDashboard() async {
     final updated = await showDialog<DashboardPreferences>(
       context: context,
@@ -209,10 +218,10 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
         if (can(AdminPermissions.ordersRead)) ...[
           MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
-          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
           MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
           MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
           MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
