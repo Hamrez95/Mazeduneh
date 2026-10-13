@@ -16,7 +16,34 @@ public static class CorporateRequestStatuses
         "Negotiating" => "در حال مذاکره", "Approved" => "تأیید شد", "Preparing" => "در حال آماده‌سازی",
         "Shipped" => "ارسال شد", "Finalized" => "نهایی شد", "Cancelled" => "لغو شد", _ => status
     };
+
+    private static readonly IReadOnlyDictionary<string, HashSet<string>> AllowedTransitions =
+        new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["New"] = Set("Reviewing", "Contacted", "Cancelled"),
+            ["Reviewing"] = Set("Contacted", "NeedsInformation", "Cancelled"),
+            ["Contacted"] = Set("NeedsInformation", "ProformaSent", "Negotiating", "Cancelled"),
+            ["NeedsInformation"] = Set("Reviewing", "Contacted", "Cancelled"),
+            ["ProformaSent"] = Set("Negotiating", "Approved", "Cancelled"),
+            ["Negotiating"] = Set("ProformaSent", "Approved", "Cancelled"),
+            ["Approved"] = Set("Preparing", "Cancelled"),
+            ["Preparing"] = Set("Shipped", "Cancelled"),
+            ["Shipped"] = Set("Finalized"),
+            ["Finalized"] = Set(),
+            ["Cancelled"] = Set()
+        };
+
+    public static bool CanTransition(string? current, string? next) =>
+        !string.IsNullOrWhiteSpace(current) &&
+        !string.IsNullOrWhiteSpace(next) &&
+        (string.Equals(current, next, StringComparison.OrdinalIgnoreCase) ||
+            AllowedTransitions.TryGetValue(current, out var allowed) && allowed.Contains(next));
+
+    private static HashSet<string> Set(params string[] statuses) => new(statuses, StringComparer.OrdinalIgnoreCase);
 }
+
+public enum CorporateRequestStatusChangeKind { Updated, NotFound, InvalidTransition }
+public sealed record CorporateRequestStatusChangeResult(CorporateRequestStatusChangeKind Kind, CorporateRequestDetail? Request = null);
 
 public sealed record CorporateRequestCreate(
     string CustomerName, string CompanyName, string Mobile, string? Email, string City,
@@ -105,7 +132,13 @@ public static class CorporateSalesModule
         {
             if (!CorporateRequestStatuses.All.Contains(input.Status, StringComparer.OrdinalIgnoreCase)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = ["وضعیت درخواست معتبر نیست."] });
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            return await database.ChangeStatusAsync(id, input.Status, input.Note, actor, cancellationToken) is { } request ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." });
+            var result = await database.ChangeStatusAsync(id, input.Status, input.Note, actor, cancellationToken);
+            return result.Kind switch
+            {
+                CorporateRequestStatusChangeKind.Updated => Results.Ok(result.Request),
+                CorporateRequestStatusChangeKind.InvalidTransition => Results.Conflict(new { message = "این تغییر وضعیت با روند پیگیری درخواست سازگار نیست." }),
+                _ => Results.NotFound(new { message = "درخواست پیدا نشد." })
+            };
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapPost("/{id:guid}/assign", async (Guid id, CorporateRequestAssignment input, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
             await database.AssignAsync(id, input.AssignedTo, cancellationToken) is { } request ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." })).AddEndpointFilter<OwnerAuthorizationFilter>();
@@ -240,12 +273,26 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
         detail = detail with { Events = await EventsAsync(connection, id, ct), Messages = await MessagesAsync(connection, id, ct) }; return detail;
     }
 
-    public async Task<CorporateRequestDetail?> ChangeStatusAsync(Guid id, string status, string? note, string actor, CancellationToken ct)
+    public async Task<CorporateRequestStatusChangeResult> ChangeStatusAsync(Guid id, string status, string? note, string actor, CancellationToken ct)
     {
+        if (!IsConfigured) return new(CorporateRequestStatusChangeKind.NotFound);
         await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var transaction = await connection.BeginTransactionAsync(ct);
-        var previous = await ScalarStringAsync(connection, transaction, "select status from corporate_requests where id=@id", id, ct); if (previous is null) return null;
+        var previous = await ScalarStringAsync(connection, transaction, "select status from corporate_requests where id=@id for update", id, ct);
+        if (previous is null)
+        {
+            await transaction.RollbackAsync(ct);
+            return new(CorporateRequestStatusChangeKind.NotFound);
+        }
+        if (!CorporateRequestStatuses.CanTransition(previous, status))
+        {
+            await transaction.RollbackAsync(ct);
+            return new(CorporateRequestStatusChangeKind.InvalidTransition);
+        }
         await ExecuteAsync(connection, transaction, "update corporate_requests set status=@status,updated_at=now() where id=@id", ct, new("status",status), new("id",id));
-        await ExecuteAsync(connection, transaction, "insert into corporate_request_events(request_id,event_type,from_status,to_status,actor,note) values(@id,'status',@from,@to,@actor,@note)", ct, new("id",id), new("from",previous), new("to",status), new("actor",actor), new("note",(object?)note??DBNull.Value)); await transaction.CommitAsync(ct); return await FindAsync(id, ct);
+        if (!string.Equals(previous, status, StringComparison.OrdinalIgnoreCase))
+            await ExecuteAsync(connection, transaction, "insert into corporate_request_events(request_id,event_type,from_status,to_status,actor,note) values(@id,'status',@from,@to,@actor,@note)", ct, new("id",id), new("from",previous), new("to",status), new("actor",actor), new("note",(object?)note??DBNull.Value));
+        await transaction.CommitAsync(ct);
+        return new(CorporateRequestStatusChangeKind.Updated, await FindAsync(id, ct));
     }
     public Task<CorporateRequestDetail?> AssignAsync(Guid id, string? assignee, CancellationToken ct) => UpdateAndFindAsync(id, "update corporate_requests set assigned_to=@value,updated_at=now() where id=@id", new("value",(object?)assignee??DBNull.Value), ct);
     public Task<CorporateRequestDetail?> FollowUpAsync(Guid id, DateTimeOffset? value, CancellationToken ct) => UpdateAndFindAsync(id, "update corporate_requests set next_follow_up_at=@value,updated_at=now() where id=@id", new("value",(object?)value??DBNull.Value), ct);
