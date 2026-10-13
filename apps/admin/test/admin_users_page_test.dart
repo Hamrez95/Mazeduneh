@@ -231,5 +231,6 @@ Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions =
 
 class _FakeAuthApiClient extends AuthApiClient {
   @override
-  Future<String> stepUp({required String password}) async => 'fresh-proof';
+  Future<String> stepUp({required String password, String? mfaCode}) async =>
+      'fresh-proof';
 }
