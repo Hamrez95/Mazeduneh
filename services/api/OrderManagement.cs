@@ -238,20 +238,28 @@ public static class OrderManagementModule
 
         admin.MapGet("/analytics", async (
             int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken)))
+        {
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            return Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken, period));
+        })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/analytics/products", async (
             int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
         {
             var windowDays = days ?? 30;
-            if (windowDays is < 1 or > 365)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["بازه گزارش باید بین ۱ تا ۳۶۵ روز باشد."] });
-            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken));
+            if ((from is null && (windowDays is < 1 or > 365)) || !DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ انتخابی نامعتبر است؛ تاریخ‌ها باید معتبر و حداکثر یک‌سال باشند."] });
+            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken, period));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/notifications", async (
@@ -772,16 +780,18 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return preferences;
     }
 
-    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
+    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
     {
         if (!IsConfigured) return new AdminAnalytics(days, 0, 0, 0, 0, 0, 0);
-        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        var to = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? to.AddDays(-days);
+        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((to - from).TotalDays), 1, 366);
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
             select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0), coalesce(sum(shipping_expense),0)
             from checkout_orders
-            where created_at >= @from and state in ('Paid','Preparing','Shipped','Delivered');
+            where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int orderCount;
         decimal revenue;
@@ -790,6 +800,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             orderCount = reader.GetInt32(0);
@@ -801,7 +812,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         const string lineSql = """
             select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*(l.cost_price+l.packaging_cost+l.additional_cost)),0), coalesce(sum(l.line_total),0)
             from checkout_order_lines l join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from and o.state in ('Paid','Preparing','Shipped','Delivered');
+            where o.created_at >= @from and o.created_at < @to and o.state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int units;
         decimal cost;
@@ -809,6 +820,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using (var command = new NpgsqlCommand(lineSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             units = reader.GetInt32(0);
@@ -819,13 +831,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var profit = revenue - cost;
         var netProfit = profit - shippingExpense - tax;
         var margin = revenue <= 0 ? 0 : profit / revenue * 100;
-        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
+        return new AdminAnalytics(periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
     }
 
-    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
     {
         if (!IsConfigured) return Array.Empty<AdminProductProfitability>();
-        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        var to = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? to.AddDays(-days);
         const string sql = """
             select l.product_title,l.sku,l.variant_label,
                    sum(l.quantity)::int,
@@ -833,7 +846,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                    coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)
             from checkout_order_lines l
             join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from
+            where o.created_at >= @from and o.created_at < @to
               and o.state in ('Paid','Preparing','Shipped','Delivered')
             group by l.product_title,l.sku,l.variant_label
             order by (coalesce(sum(l.line_total),0) -
@@ -847,6 +860,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", to);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

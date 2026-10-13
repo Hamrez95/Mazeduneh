@@ -135,6 +135,33 @@ void main() {
     expect(captured.url.queryParameters.containsKey('days'), isFalse);
   });
 
+  test('analytics and product profitability accept the same explicit UTC period', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      if (request.url.path.endsWith('/analytics/products')) {
+        return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(jsonEncode({
+        'days': 1, 'orderCount': 0, 'unitsSold': 0, 'revenue': 0, 'cost': 0,
+        'grossProfit': 0, 'grossMarginPercent': 0, 'tax': 0, 'netProfit': 0, 'shippingExpense': 0,
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 8);
+
+    await api.fetchAnalytics(fromUtc: from, toUtcExclusive: to);
+    await api.fetchProductProfitability(fromUtc: from, toUtcExclusive: to);
+
+    expect(captured, hasLength(2));
+    for (final request in captured) {
+      expect(request.url.queryParameters['from'], from.toIso8601String());
+      expect(request.url.queryParameters['to'], to.toIso8601String());
+      expect(request.url.queryParameters.containsKey('days'), isFalse);
+    }
+  });
+
   test('exportOrdersCsv preserves active filters and authenticated download contract', () async {
     late http.Request captured;
     final client = MockClient((request) async {

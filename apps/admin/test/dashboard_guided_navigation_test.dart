@@ -132,6 +132,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
     expect(destination?.module, AdminModule.reports);
+    final today = DateUtils.dateOnly(DateTime.now());
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);

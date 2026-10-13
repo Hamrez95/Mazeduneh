@@ -113,6 +113,11 @@ with tempfile.TemporaryFile() as log:
             headers={'Idempotency-Key': 'ci-order-privacy-0002'})
         _, intent = request('/api/v1/payments/orders/' + order_id + '/intent', 'POST', {'receiptToken': created['receiptToken']})
         assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
+        status, ranged_analytics = request('/api/v1/admin/analytics?from=' + range_start + '&to=' + range_end, token=token)
+        assert status == 200 and ranged_analytics['orderCount'] == 1 and ranged_analytics['revenue'] > 0, (status, ranged_analytics)
+        status, ranged_products = request('/api/v1/admin/analytics/products?from=' + range_start + '&to=' + range_end, token=token)
+        assert status == 200 and any(row['sku'] == SKU for row in ranged_products), (status, ranged_products)
+        assert request('/api/v1/admin/analytics?from=' + range_start, token=token)[0] == 400
         status, processing_orders = request('/api/v1/admin/orders?state=Processing&q=' + order_id, token=token)
         assert status == 200 and len(processing_orders) == 1 and processing_orders[0]['state'] == 'Paid'
         status, sku_orders = request('/api/v1/admin/orders?q=' + SKU, token=token)
