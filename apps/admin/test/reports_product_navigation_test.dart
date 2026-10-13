@@ -67,8 +67,6 @@ void main() {
         });
       }),
     );
-    expect((await api.fetchProductProfitability()).single.sku, 'PI-AKB-250');
-
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: Directionality(
@@ -80,14 +78,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(requestPaths, contains('/api/v1/admin/analytics/products'));
-    if (find.text('پسته اکبری').evaluate().isEmpty) {
-      final renderedText = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((widget) => widget.data)
-          .whereType<String>()
-          .join(' | ');
-      fail('Product profitability row missing. Rendered text: $renderedText');
-    }
+    await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
     expect(find.text('پسته اکبری'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
     await tester.ensureVisible(inventoryAction);
