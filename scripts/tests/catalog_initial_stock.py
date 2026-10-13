@@ -98,8 +98,12 @@ with tempfile.TemporaryFile() as log:
         assert movements(ADDED) == []
         assert len(movements(POSITIVE)) == 1  # Editing does not duplicate opening stock.
 
+        status, step_up = request("/api/v1/admin/auth/step-up", "POST", {
+            "password": "Mazeduneh-CI-Owner-Password!"}, token)
+        assert status == 200 and step_up["stepUpToken"]
         status, adjusted = request("/api/v1/admin/inventory/adjust", "POST", {
-            "sku": ZERO, "quantityDelta": 5, "reason": "ci-receiving-zero-opening"}, token, {"Idempotency-Key": "ci-initial-stock-adjust-01"})
+            "sku": ZERO, "quantityDelta": 5, "reason": "ci-receiving-zero-opening"}, token,
+            {"Idempotency-Key": "ci-initial-stock-adjust-01", "X-Admin-Step-Up": step_up["stepUpToken"]})
         assert status == 200 and adjusted["balanceAfter"] == 5
         received = movements(ZERO)
         assert len(received) == 1 and received[0]["quantityDelta"] == 5
