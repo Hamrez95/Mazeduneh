@@ -80,6 +80,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(requestPaths, contains('/api/v1/admin/analytics/products'));
+    if (find.text('پسته اکبری').evaluate().isEmpty) {
+      final renderedText = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((widget) => widget.data)
+          .whereType<String>()
+          .join(' | ');
+      fail('Product profitability row missing. Rendered text: $renderedText');
+    }
     expect(find.text('پسته اکبری'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
     await tester.ensureVisible(inventoryAction);
