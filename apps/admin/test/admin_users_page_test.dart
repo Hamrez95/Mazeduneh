@@ -20,7 +20,7 @@ void main() {
   tearDown(OwnerSession.instance.clear);
 
   testWidgets('shows responsive user cards and protects the owner account', (tester) async {
-    tester.view.physicalSize = const Size(360, 1600);
+    tester.view.physicalSize = const Size(360, 2600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -75,6 +75,68 @@ void main() {
     expect(find.text('ایمیل کاری'), findsOneWidget);
   });
 
+  testWidgets('filters users by status, role, and name or email', (tester) async {
+    tester.view.physicalSize = const Size(1100, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = AdminUsersApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async => http.Response(
+            jsonEncode(request.url.path.endsWith('/roles')
+                ? [
+                    {'role': 'WarehouseOperator', 'permissions': ['inventory.read'], 'titleFa': 'اپراتور انبار'},
+                    {'role': 'Accountant', 'permissions': ['reports.read'], 'titleFa': 'حسابدار'},
+                  ]
+                : [
+                    userJson(role: 'WarehouseOperator', hasPassword: true),
+                    userJson(role: 'Accountant'),
+                  ]),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          )),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('کارمند انبار'), findsOneWidget);
+    expect(find.text('حسابدار فروشگاه'), findsOneWidget);
+    expect(find.text('همه (۲)'), findsOneWidget);
+    expect(find.text('فعال (۱)'), findsOneWidget);
+    expect(find.text('دعوت‌شده (۱)'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'فعال (۱)'));
+    await tester.pumpAndSettle();
+    expect(find.text('کارمند انبار'), findsOneWidget);
+    expect(find.text('حسابدار فروشگاه'), findsNothing);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'همه (۲)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('admin-users-search')), 'warehouse@example.com');
+    await tester.pumpAndSettle();
+    expect(find.text('کارمند انبار'), findsOneWidget);
+    expect(find.text('حسابدار فروشگاه'), findsNothing);
+
+    await tester.enterText(find.byKey(const ValueKey('admin-users-search')), 'no-match');
+    await tester.pumpAndSettle();
+    expect(find.text('همکاری با این مشخصات پیدا نشد'), findsOneWidget);
+    await tester.tap(find.text('پاک‌کردن فیلترها'));
+    await tester.pumpAndSettle();
+    expect(find.text('کارمند انبار'), findsOneWidget);
+    expect(find.text('حسابدار فروشگاه'), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حسابدار').last);
+    await tester.pumpAndSettle();
+    expect(find.text('کارمند انبار'), findsNothing);
+    expect(find.text('حسابدار فروشگاه'), findsOneWidget);
+  });
+
   testWidgets('lets the owner edit a member permission and submits the selected set', (tester) async {
     tester.view.physicalSize = const Size(900, 1600);
     tester.view.devicePixelRatio = 1;
@@ -123,7 +185,7 @@ void main() {
     await confirmStepUp(tester);
     await tester.pumpAndSettle();
     expect(find.text('تأیید دوبارهٔ هویت'), findsNothing);
-    expect(requests.map((request) => request.url.path), contains('/api/v1/admin/users/member-1/permissions'));
+    expect(requests.map((request) => request.url.path), contains('/api/v1/admin/users/WarehouseOperator-user/permissions'));
 
     final update = requests.lastWhere((request) => request.url.path.endsWith('/permissions'));
     expect(update.headers['x-admin-step-up'], 'fresh-proof');
@@ -147,12 +209,21 @@ Future<void> confirmStepUp(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions = const ['users.read']}) => {
-      'id': role == 'Owner' ? 'owner-1' : 'member-1',
-      'email': role == 'Owner' ? 'owner@example.com' : 'warehouse@example.com',
-      'displayName': role == 'Owner' ? 'مدیر اصلی' : 'اپراتور انبار',
+Map<String, dynamic> userJson({String role = 'Owner', List<String> permissions = const ['users.read'], bool hasPassword = false}) => {
+      'id': role == 'Owner' ? 'owner-1' : '$role-user',
+      'email': switch (role) {
+        'Owner' => 'owner@example.com',
+        'Accountant' => 'accountant@example.com',
+        _ => 'warehouse@example.com',
+      },
+      'displayName': switch (role) {
+        'Owner' => 'مدیر اصلی',
+        'Accountant' => 'حسابدار فروشگاه',
+        _ => 'کارمند انبار',
+      },
       'role': role,
       'isActive': true,
+      'hasPassword': hasPassword,
       'permissions': permissions,
       'createdAt': '2026-10-03T12:00:00Z',
       'deactivatedAt': null,
