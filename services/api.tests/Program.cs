@@ -56,6 +56,43 @@ settingsReadContext.Request.Path = "/api/v1/admin/commerce/settings";
 Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsRead, "Commerce settings read did not use its dedicated permission");
 settingsReadContext.Request.Method = HttpMethods.Put;
 Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsWrite, "Commerce settings write did not use its dedicated permission");
+var adminPermissionRoutes = new (string Method, string Path, string Permission)[]
+{
+    (HttpMethods.Get, "/api/v1/admin/users", AdminPermissionCatalog.UsersRead),
+    (HttpMethods.Patch, "/api/v1/admin/users/00000000-0000-0000-0000-000000000001/permissions", AdminPermissionCatalog.UsersWrite),
+    (HttpMethods.Get, "/api/v1/admin/audit-log", AdminPermissionCatalog.AuditRead),
+    (HttpMethods.Get, "/api/v1/admin/orders", AdminPermissionCatalog.OrdersRead),
+    (HttpMethods.Patch, "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/state", AdminPermissionCatalog.OrdersWrite),
+    (HttpMethods.Get, "/api/v1/admin/orders/export.csv", AdminPermissionCatalog.OrdersExport),
+    (HttpMethods.Get, "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/invoice", AdminPermissionCatalog.OrdersDocumentsRead),
+    (HttpMethods.Get, "/api/v1/admin/dashboard", AdminPermissionCatalog.DashboardRead),
+    (HttpMethods.Get, "/api/v1/admin/analytics/products", AdminPermissionCatalog.ReportsRead),
+    (HttpMethods.Get, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryRead),
+    (HttpMethods.Post, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryWrite),
+    (HttpMethods.Get, "/api/v1/admin/inventory/pricing/SKU", AdminPermissionCatalog.PricingRead),
+    (HttpMethods.Post, "/api/v1/admin/inventory/pricing/SKU/apply", AdminPermissionCatalog.PricingWrite),
+    (HttpMethods.Get, "/api/v1/admin/customers", AdminPermissionCatalog.CustomersRead),
+    (HttpMethods.Get, "/api/v1/admin/customers/export.csv", AdminPermissionCatalog.CustomersExport),
+    (HttpMethods.Get, "/api/v1/admin/corporate-requests", AdminPermissionCatalog.CorporateRead),
+    (HttpMethods.Post, "/api/v1/admin/corporate-requests/00000000-0000-0000-0000-000000000001/notes", AdminPermissionCatalog.CorporateWrite),
+    (HttpMethods.Get, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsRead),
+    (HttpMethods.Put, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsWrite),
+    (HttpMethods.Get, "/api/v1/admin/media/metadata/image.png", AdminPermissionCatalog.ContentRead),
+    (HttpMethods.Post, "/api/v1/admin/media", AdminPermissionCatalog.ContentWrite),
+    (HttpMethods.Get, "/api/v1/categories/admin", AdminPermissionCatalog.CategoriesRead),
+    (HttpMethods.Post, "/api/v1/categories", AdminPermissionCatalog.CategoriesWrite),
+    (HttpMethods.Get, "/api/v1/products/admin", AdminPermissionCatalog.ProductsRead),
+    (HttpMethods.Put, "/api/v1/products/almond", AdminPermissionCatalog.ProductsWrite),
+};
+foreach (var (method, path, expectedPermission) in adminPermissionRoutes)
+{
+    var routeContext = new DefaultHttpContext();
+    routeContext.Request.Method = method;
+    routeContext.Request.Path = path;
+    Check(AdminPermissionCatalog.RequiredPermission(routeContext) == expectedPermission,
+        $"Admin route {method} {path} did not require {expectedPermission}");
+}
+Console.WriteLine($"Admin permission route contract checks passed ({adminPermissionRoutes.Length} routes)");
 var marketingManager = new AdminPrincipal("marketing@example.test", now.AddHours(1), "MarketingManager", AdminPermissionCatalog.Resolve("MarketingManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
 var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager", AdminPermissionCatalog.Resolve("StoreManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
 Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
