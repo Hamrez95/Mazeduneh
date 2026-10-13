@@ -98,6 +98,26 @@ var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "
 Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
 Check(!AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsRead) && !AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsWrite), "Marketing manager can access tax or shipping settings");
 Check(AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsRead) && AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsWrite), "Store manager lost commerce settings access");
+var unknownAdminContext = new DefaultHttpContext();
+unknownAdminContext.Request.Method = HttpMethods.Get;
+unknownAdminContext.Request.Path = "/api/v1/admin/unknown-sensitive-operation";
+var unknownAdminPermission = AdminPermissionCatalog.RequiredPermission(unknownAdminContext);
+Check(unknownAdminPermission == AdminPermissionCatalog.UnmappedAdminRoute, "An unmapped Admin endpoint did not fail closed to the Owner");
+unknownAdminContext.Request.Path = "/api/v1/admin/users-private";
+Check(AdminPermissionCatalog.RequiredPermission(unknownAdminContext) == AdminPermissionCatalog.UnmappedAdminRoute,
+    "An unrelated path sharing an Admin prefix inherited the users permission");
+var ownerPrincipal = new AdminPrincipal("owner@example.test", now.AddHours(1), "Owner", AdminPermissionCatalog.Owner, Guid.NewGuid(), null, "default");
+Check(AdminPermissionCatalog.Allows(ownerPrincipal, unknownAdminPermission!), "Owner lost access to an unmapped Admin endpoint");
+Check(!AdminPermissionCatalog.Allows(storeManager, unknownAdminPermission!), "Store Manager can access an unmapped Admin endpoint");
+Check(!AdminPermissionCatalog.AreValidPermissions([AdminPermissionCatalog.UnmappedAdminRoute]), "The Owner-only fallback can be assigned as a membership permission");
+var forgedFallbackPermission = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager",
+    [AdminPermissionCatalog.UnmappedAdminRoute], Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(!AdminPermissionCatalog.Allows(forgedFallbackPermission, AdminPermissionCatalog.UnmappedAdminRoute),
+    "A forged fallback permission granted a member access to an unmapped Admin endpoint");
+var unknownPublicContext = new DefaultHttpContext();
+unknownPublicContext.Request.Method = HttpMethods.Get;
+unknownPublicContext.Request.Path = "/api/v1/public/unmapped";
+Check(AdminPermissionCatalog.RequiredPermission(unknownPublicContext) is null, "An unmapped public endpoint received an Admin permission");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
 
 var costProduct = new Product(Guid.NewGuid(), "محصول آزمون", "test-product", "آجیل", "ایران", "IRR", ProductUnitType.Weight, false,

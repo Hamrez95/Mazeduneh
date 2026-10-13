@@ -277,6 +277,7 @@ public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, stri
 
 public static class AdminPermissionCatalog
 {
+    public const string UnmappedAdminRoute = "admin.unmapped.owner-only";
     public const string DashboardRead = "dashboard.read";
     public const string OrdersRead = "orders.read";
     public const string OrdersExport = "orders.export";
@@ -364,37 +365,52 @@ public static class AdminPermissionCatalog
         return DefaultRoles.TryGetValue(NormalizeRole(role), out var permissions) ? permissions : Owner;
     }
 
-    public static bool Allows(AdminPrincipal principal, string permission) =>
-        string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase) ||
-        principal.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+    public static bool Allows(AdminPrincipal principal, string permission)
+    {
+        if (string.Equals(permission, UnmappedAdminRoute, StringComparison.OrdinalIgnoreCase))
+            return string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+        return string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase) ||
+            principal.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+    }
 
     public static string? RequiredPermission(HttpContext context)
     {
         var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
         var method = context.Request.Method;
-        if (path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
-        if (path.StartsWith("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase)) return AuditRead;
+        if (IsUnderPath(context, "/api/v1/admin/users")) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
+        if (IsUnderPath(context, "/api/v1/admin/audit-log")) return AuditRead;
         if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase)) return OrdersExport;
         if (IsOrderDocument(context)) return OrdersDocumentsRead;
-        if (path.StartsWith("/api/v1/admin/shipping/overdue", StringComparison.OrdinalIgnoreCase)) return OrdersRead;
-        if (path.StartsWith("/api/v1/admin/orders", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
-        if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/api/v1/admin/notifications", StringComparison.OrdinalIgnoreCase)) return DashboardRead;
-        if (path.StartsWith("/api/v1/admin/analytics", StringComparison.OrdinalIgnoreCase)) return ReportsRead;
-        if (path.StartsWith("/api/v1/admin/inventory/pricing", StringComparison.OrdinalIgnoreCase))
+        if (IsUnderPath(context, "/api/v1/admin/shipping/overdue")) return OrdersRead;
+        if (IsUnderPath(context, "/api/v1/admin/orders")) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
+        if (IsUnderPath(context, "/api/v1/admin/dashboard") || IsUnderPath(context, "/api/v1/admin/notifications")) return DashboardRead;
+        if (IsUnderPath(context, "/api/v1/admin/analytics")) return ReportsRead;
+        if (IsUnderPath(context, "/api/v1/admin/inventory/pricing"))
             return path.EndsWith("/apply", StringComparison.OrdinalIgnoreCase) ? PricingWrite : PricingRead;
-        if (path.StartsWith("/api/v1/admin/inventory", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
-        if (path.StartsWith("/api/v1/admin/customers/export", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
-        if (path.StartsWith("/api/v1/admin/customers", StringComparison.OrdinalIgnoreCase)) return CustomersRead;
-        if (path.StartsWith("/api/v1/admin/corporate-requests", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
-        if (path.StartsWith("/api/v1/admin/commerce/settings", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? SettingsRead : SettingsWrite;
-        if (path.StartsWith("/api/v1/admin/media/metadata", StringComparison.OrdinalIgnoreCase)) return ContentRead;
-        if (path.StartsWith("/api/v1/admin/media", StringComparison.OrdinalIgnoreCase)) return ContentWrite;
-        if (path.StartsWith("/api/v1/categories/admin", StringComparison.OrdinalIgnoreCase)) return CategoriesRead;
-        if (path.StartsWith("/api/v1/categories", StringComparison.OrdinalIgnoreCase)) return CategoriesWrite;
-        if (path.StartsWith("/api/v1/products/admin", StringComparison.OrdinalIgnoreCase)) return ProductsRead;
-        if (path.StartsWith("/api/v1/products", StringComparison.OrdinalIgnoreCase)) return ProductsWrite;
-        return null;
+        if (IsUnderPath(context, "/api/v1/admin/inventory")) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
+        if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/customers/export.csv", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
+        if (IsUnderPath(context, "/api/v1/admin/customers")) return CustomersRead;
+        if (IsUnderPath(context, "/api/v1/admin/corporate-requests")) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
+        if (IsUnderPath(context, "/api/v1/admin/commerce/settings")) return HttpMethods.IsGet(method) ? SettingsRead : SettingsWrite;
+        if (IsUnderPath(context, "/api/v1/admin/media/metadata")) return ContentRead;
+        if (IsUnderPath(context, "/api/v1/admin/media")) return ContentWrite;
+        if (IsUnderPath(context, "/api/v1/categories/admin")) return CategoriesRead;
+        if (IsUnderPath(context, "/api/v1/categories")) return CategoriesWrite;
+        if (IsUnderPath(context, "/api/v1/products/admin")) return ProductsRead;
+        if (IsUnderPath(context, "/api/v1/products")) return ProductsWrite;
+        return context.Request.Path.StartsWithSegments(
+            new PathString("/api/v1/admin"),
+            StringComparison.OrdinalIgnoreCase)
+            ? UnmappedAdminRoute
+            : null;
+    }
+
+    private static bool IsUnderPath(HttpContext context, string path)
+    {
+        var requestPath = context.Request.Path.Value ?? string.Empty;
+        return requestPath.StartsWith(path, StringComparison.OrdinalIgnoreCase) &&
+            (requestPath.Length == path.Length || requestPath[path.Length] == '/');
     }
     public static bool IsOrderDocument(HttpContext context)
     {
