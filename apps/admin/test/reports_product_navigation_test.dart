@@ -67,6 +67,7 @@ void main() {
         });
       }),
     );
+    expect((await api.fetchProductProfitability()).single.sku, 'PI-AKB-250');
 
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
