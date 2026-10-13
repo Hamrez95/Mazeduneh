@@ -124,8 +124,13 @@ with tempfile.TemporaryFile() as log:
         assert status == 200 and any(row['id'] == order_id for row in sku_orders), (status, sku_orders)
         path = '/api/v1/admin/orders/' + order_id
         assert request(path + '/notes', 'POST', {'note': MOBILE + ' ' + ADDRESS}, token)[0] == 201
-        assert request(path + '/shipping', 'PATCH', {'carrier': 'PrivacyFixtureCarrier',
-            'trackingCode': 'PrivacyFixtureTracking', 'actualShippingCost': 100, 'reason': MOBILE}, token)[0] == 200
+        shipping_request = {'carrier': 'PrivacyFixtureCarrier', 'trackingCode': 'PrivacyFixtureTracking',
+                            'actualShippingCost': 100, 'reason': MOBILE}
+        assert request(path + '/shipping', 'PATCH', shipping_request, token)[0] == 428
+        shipping_proof = step_up_token(token)
+        status, shipping_detail = request(path + '/shipping', 'PATCH', shipping_request, token,
+                                          headers={'X-Admin-Step-Up': shipping_proof})
+        assert status == 200 and shipping_detail['shippingExpense'] == 100
         for state in ['Preparing', 'Shipped']:
             assert request(path + '/state', 'PATCH', {'state': state, 'reason': MOBILE}, token)[0] == 200
             if state == 'Preparing':
@@ -209,8 +214,9 @@ with tempfile.TemporaryFile() as log:
                 status, note = request(path + '/notes', 'POST', {'note': ADDRESS}, token)
                 assert status == 201
                 assert_private(note)
-                status, shipping = request(path + '/shipping', 'PATCH', {'carrier': NAME, 'trackingCode': MOBILE, 'reason': ADDRESS}, token)
-                assert status == 200
+                status, shipping = request(path + '/shipping', 'PATCH', {'carrier': NAME, 'trackingCode': MOBILE,
+                    'updateActualShippingCost': False, 'reason': ADDRESS}, token)
+                assert status == 200 and shipping['shippingExpense'] == 100
                 assert_private(shipping)
                 status, changed = request(path + '/state', 'PATCH', {'state': 'Delivered', 'reason': MOBILE}, token)
                 assert status == 200

@@ -308,10 +308,10 @@ void main() {
     expect(batches.single.isExpiringSoon, isTrue);
   });
 
-  test('updateShipping sends tracking and actual expense', () async {
-    late http.Request captured;
+  test('updateShipping requires step-up only when actual expense changes', () async {
+    final captured = <http.Request>[];
     final client = MockClient((request) async {
-      captured = request;
+      captured.add(request);
       return http.Response(jsonEncode({
         'id': '11111111-1111-1111-1111-111111111111', 'customerName': 'Mina', 'mobile': '09120000000', 'province': 'Tehran', 'city': 'Tehran',
         'payable': 2450000, 'currency': 'IRR', 'state': 'Shipped', 'createdAt': '2026-07-31T08:00:00Z', 'reservationExpiresAt': '2026-07-31T08:20:00Z',
@@ -320,10 +320,25 @@ void main() {
         'trackingCode': 'TR-2', 'shippedAt': '2026-07-31T08:03:00Z', 'lines': [], 'transitions': [], 'notes': [], 'payment': null,
       }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
-    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').updateShipping('11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2', actualShippingCost: 45000, reason: 'اصلاح کد رهگیری');
-    expect(captured.method, 'PATCH');
-    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
-    expect(jsonDecode(captured.body), {'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000, 'reason': 'اصلاح کد رهگیری'});
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    final detail = await api.updateShipping(
+      '11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2',
+      actualShippingCost: 45000, stepUpToken: 'fresh-token', reason: 'اصلاح هزینه ارسال');
+    await api.updateShipping(
+      '11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-3',
+      updateActualShippingCost: false, reason: 'ثبت کد رهگیری');
+    expect(captured.first.method, 'PATCH');
+    expect(captured.first.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
+    expect(jsonDecode(captured.first.body), {
+      'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000,
+      'updateActualShippingCost': true, 'reason': 'اصلاح هزینه ارسال',
+    });
+    expect(captured.first.headers['x-admin-step-up'], 'fresh-token');
+    expect(jsonDecode(captured.last.body), {
+      'carrier': 'پست', 'trackingCode': 'TR-3', 'actualShippingCost': null,
+      'updateActualShippingCost': false, 'reason': 'ثبت کد رهگیری',
+    });
+    expect(captured.last.headers.containsKey('x-admin-step-up'), isFalse);
     expect(detail.trackingCode, 'TR-2');
   });
 

@@ -13,6 +13,8 @@ public static class AdminSecurityExtensions
         services.AddSingleton<OwnerAuthorizationFilter>();
         services.AddSingleton<UserMutationTargetAuthorizationFilter>();
         services.AddSingleton<StepUpAuthorizationFilter>();
+        services.AddSingleton<OrderCancellationStepUpAuthorizationFilter>();
+        services.AddSingleton<OrderShippingCostStepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -675,6 +677,31 @@ public sealed class OrderCancellationStepUpAuthorizationFilter(AdminTokenService
         if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
             return ValueTask.FromResult<object?>(Results.Json(
                 new { message = "برای لغو سفارش و آزادسازی موجودی، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class OrderShippingCostStepUpAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var updatesShippingCost = context.Arguments.OfType<AdminShipmentUpdateInput>()
+            .Any(input => input.UpdateActualShippingCost);
+        if (!updatesShippingCost)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "این عملیات برای نقش فعلی مجاز نیست." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر هزینهٔ واقعی ارسال، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
 
         return next(context);

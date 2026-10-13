@@ -565,9 +565,24 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دلیل ثبت یا اصلاح اطلاعات ارسال را وارد کنید.')));
       return;
     }
+    final currentExpense = detail?.shippingExpense ?? 0;
+    final nextExpense = expense ?? 0;
+    final updateActualShippingCost = nextExpense != currentExpense;
+    final stepUpToken = updateActualShippingCost
+        ? await showAdminStepUpDialog(context)
+        : null;
+    if (updateActualShippingCost && (stepUpToken == null || !mounted)) return;
     setState(() => savingShipping = true);
     try {
-      final result = await widget.api.updateShipping(widget.order.id, carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(), trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(), actualShippingCost: expense, reason: reason);
+      final result = await widget.api.updateShipping(
+        widget.order.id,
+        carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(),
+        trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(),
+        actualShippingCost: expense,
+        updateActualShippingCost: updateActualShippingCost,
+        stepUpToken: stepUpToken,
+        reason: reason,
+      );
       if (mounted) {
         setState(() => detail = result);
         shippingReasonController.clear();
