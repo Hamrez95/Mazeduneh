@@ -76,6 +76,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
+    expect(find.text('پسته اکبری'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
     await tester.ensureVisible(inventoryAction);
     await tester.pumpAndSettle();

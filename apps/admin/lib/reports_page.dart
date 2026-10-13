@@ -110,7 +110,7 @@ class _ReportsPageState extends State<ReportsPage> {
       return ListView(children: [
         GridView.count(
           crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
+          childAspectRatio: columns == 1 ? 2.6 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
             _ReportMetric(title: 'درآمد شامل ارسال', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
