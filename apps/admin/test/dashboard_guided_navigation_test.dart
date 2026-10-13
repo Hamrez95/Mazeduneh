@@ -142,6 +142,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('period order KPI carries the selected local day into the orders route', (tester) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('تعداد سفارش بازه'), 350, maxScrolls: 20);
+    await tester.ensureVisible(find.text('تعداد سفارش بازه'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تعداد سفارش بازه'));
+
+    expect(destination?.module, AdminModule.orders);
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+  });
+
   testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
     tester.view.physicalSize = const Size(360, 900);
     tester.view.devicePixelRatio = 1;

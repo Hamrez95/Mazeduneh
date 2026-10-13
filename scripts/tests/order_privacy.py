@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -97,6 +98,15 @@ with tempfile.TemporaryFile() as log:
             headers={'Idempotency-Key': 'ci-order-privacy-0001'})
         assert status == 201, (status, created)
         order_id = created['id']
+        order_created_at = datetime.fromisoformat(created['createdAt'].replace('Z', '+00:00'))
+        range_start = quote((order_created_at - timedelta(seconds=1)).isoformat())
+        range_end = quote((order_created_at + timedelta(seconds=1)).isoformat())
+        status, range_orders = request('/api/v1/admin/orders?from=' + range_start + '&to=' + range_end, token=token)
+        assert status == 200 and [row['id'] for row in range_orders] == [order_id], (status, range_orders)
+        assert request('/api/v1/admin/orders?from=' + range_start, token=token)[0] == 400
+        too_long_start = quote('2024-01-01T00:00:00+00:00')
+        too_long_end = quote('2025-02-01T00:00:00+00:00')
+        assert request('/api/v1/admin/orders?from=' + too_long_start + '&to=' + too_long_end, token=token)[0] == 400
         _, second = request('/api/v1/checkout/orders', 'POST', {
             'customerName': NAME, 'mobile': MOBILE, 'province': 'تهران', 'city': 'تهران',
             'address': ADDRESS, 'postalCode': '1234567890', 'lines': [{'sku': SKU, 'quantity': 1}]},
@@ -127,8 +137,12 @@ with tempfile.TemporaryFile() as log:
                 assert ADDRESS in html
             # Existing invoice/slip renderers do not print the mobile number.
         assert request(path, token=token)[1]['customerName'] == NAME
+        export_proof = step_up_token(token)
         assert request('/api/v1/admin/orders/export.csv?q=' + order_id, token=token,
-                       headers={'X-Admin-Step-Up': step_up_token(token)})[0] == 200
+                       headers={'X-Admin-Step-Up': export_proof})[0] == 200
+        status, ranged_csv = request('/api/v1/admin/orders/export.csv?from=' + range_start + '&to=' + range_end,
+                                     token=token, headers={'X-Admin-Step-Up': export_proof})
+        assert status == 200 and order_id in ranged_csv, (status, ranged_csv)
         for endpoint in ['/api/v1/admin/orders', path, path + '/invoice', path + '/packing-slip', '/api/v1/admin/orders/export.csv']:
             assert request(endpoint)[0] == 401
         status, order_audit = request('/api/v1/admin/audit-log?entityType=Order&entityId=' + order_id, token=token)

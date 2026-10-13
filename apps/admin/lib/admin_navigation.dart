@@ -75,6 +75,8 @@ class AdminNavigationIntent {
     this.sku,
     this.batchCode,
     this.query,
+    this.createdFromUtc,
+    this.createdToUtcExclusive,
   });
 
   final AdminModule module;
@@ -82,6 +84,8 @@ class AdminNavigationIntent {
   final String? sku;
   final String? batchCode;
   final String? query;
+  final DateTime? createdFromUtc;
+  final DateTime? createdToUtcExclusive;
 
   @override
   bool operator ==(Object other) =>
@@ -90,8 +94,10 @@ class AdminNavigationIntent {
       other.orderFilter == orderFilter &&
       other.sku == sku &&
       other.batchCode == batchCode &&
-      other.query == query;
+      other.query == query &&
+      other.createdFromUtc == createdFromUtc &&
+      other.createdToUtcExclusive == createdToUtcExclusive;
 
   @override
-  int get hashCode => Object.hash(module, orderFilter, sku, batchCode, query);
+  int get hashCode => Object.hash(module, orderFilter, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
 }

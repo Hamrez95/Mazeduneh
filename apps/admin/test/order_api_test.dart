@@ -82,6 +82,33 @@ void main() {
     expect(orders.single.paymentReference, 'SANDBOX-1');
   });
 
+  test('order list and export preserve explicit UTC creation range boundaries', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 2);
+
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    await api.fetchOrders(
+      createdFromUtc: from,
+      createdToUtcExclusive: to,
+    );
+    await api.exportOrdersCsv(
+      stepUpToken: 'fresh-token',
+      createdFromUtc: from,
+      createdToUtcExclusive: to,
+    );
+
+    for (final request in captured) {
+      expect(request.url.queryParameters['from'], from.toIso8601String());
+      expect(request.url.queryParameters['to'], to.toIso8601String());
+    }
+    expect(captured[1].headers['x-admin-step-up'], 'fresh-token');
+  });
+
   test('custom dashboard period sends explicit UTC boundaries', () async {
     late http.Request captured;
     final client = MockClient((request) async {
