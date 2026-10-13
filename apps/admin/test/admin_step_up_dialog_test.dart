@@ -45,6 +45,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'current-password');
     await tester.tap(find.text('تأیید هویت'));
     await tester.pumpAndSettle();
+    expect(requests, hasLength(1), reason: 'The password-only step-up request should reach the API first.');
     expect(find.text('کد تأیید دومرحله‌ای'), findsOneWidget);
     expect(requests.single, {'password': 'current-password'});
 
