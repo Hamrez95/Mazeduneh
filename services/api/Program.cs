@@ -242,7 +242,8 @@ products.MapPut("/{slug}", async (
     productCatalog.Add(persisted);
     return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
 })
-.AddEndpointFilter<OwnerAuthorizationFilter>();
+.AddEndpointFilter<OwnerAuthorizationFilter>()
+.AddEndpointFilter<ProductPriceStepUpAuthorizationFilter>();
 
 products.MapPatch("/{slug}/publication", async (
     string slug,

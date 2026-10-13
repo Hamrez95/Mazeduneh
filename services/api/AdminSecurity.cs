@@ -15,6 +15,7 @@ public static class AdminSecurityExtensions
         services.AddSingleton<StepUpAuthorizationFilter>();
         services.AddSingleton<OrderCancellationStepUpAuthorizationFilter>();
         services.AddSingleton<OrderShippingCostStepUpAuthorizationFilter>();
+        services.AddSingleton<ProductPriceStepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -702,6 +703,39 @@ public sealed class OrderShippingCostStepUpAuthorizationFilter(AdminTokenService
         if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
             return ValueTask.FromResult<object?>(Results.Json(
                 new { message = "برای تغییر هزینهٔ واقعی ارسال، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class ProductPriceStepUpAuthorizationFilter(ProductCatalog catalog, AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.Arguments.OfType<UpdateProductRequest>().FirstOrDefault();
+        if (request is null ||
+            !context.HttpContext.Request.RouteValues.TryGetValue("slug", out var routeSlug) ||
+            catalog.FindBySlug(routeSlug?.ToString() ?? string.Empty) is not { } existing)
+            return next(context);
+
+        var existingPrices = existing.Variants.ToDictionary(variant => variant.Sku, variant => variant.Price,
+            StringComparer.OrdinalIgnoreCase);
+        var changesSellingPrice = request.Variants.Any(variant =>
+            !existingPrices.TryGetValue(variant.Sku, out var currentPrice) || currentPrice != variant.Price);
+        if (!changesSellingPrice)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر قیمت فروش، دسترسی قیمت‌گذاری لازم است." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر قیمت فروش، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
 
         return next(context);
