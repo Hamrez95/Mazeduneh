@@ -257,6 +257,8 @@ Check(AdminTotpAuthenticator.IsValidSecret(rfcTotpSecret), "Valid Base32 TOTP se
 Check(!AdminTotpAuthenticator.IsValidSecret("not-a-secret"), "Invalid Base32 TOTP secret accepted");
 Check(AdminTotpAuthenticator.Verify(rfcTotpSecret, "287082", DateTimeOffset.FromUnixTimeSeconds(59)),
     "RFC 6238 SHA-1 TOTP vector rejected");
+Check(AdminTotpAuthenticator.GetMatchingTimeStep(rfcTotpSecret, "287082", DateTimeOffset.FromUnixTimeSeconds(59)) == 1,
+    "RFC 6238 TOTP matched the wrong time step");
 Check(!AdminTotpAuthenticator.Verify(rfcTotpSecret, "287083", DateTimeOffset.FromUnixTimeSeconds(59)),
     "Incorrect TOTP code accepted");
 var mfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -279,6 +281,37 @@ var invalidMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(n
 }).Build();
 Check(new AdminTokenService(invalidMfaConfiguration).ValidateMfaCode("Owner", null) == AdminMfaValidationResult.NotConfigured,
     "Required MFA accepted invalid/missing server configuration");
+var replayTestConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Catalog");
+if (!string.IsNullOrWhiteSpace(replayTestConnectionString))
+{
+    var replayConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["ConnectionStrings:Catalog"] = replayTestConnectionString
+    }).Build();
+    var replayAudit = new AdminAuditLogDatabase(replayConfiguration, NullLogger<AdminAuditLogDatabase>.Instance);
+    var replayDatabase = new AdminUsersDatabase(replayConfiguration, NullLogger<AdminUsersDatabase>.Instance, mfaTokens, replayAudit);
+    await replayDatabase.ApplyMigrationsAsync(CancellationToken.None);
+    var replayCredentialId = $"test-{Guid.NewGuid():N}";
+    try
+    {
+        Check(await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 100, CancellationToken.None),
+            "First TOTP use was not recorded");
+        Check(!await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 100, CancellationToken.None),
+            "The same TOTP time step was accepted twice");
+        Check(!await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 99, CancellationToken.None),
+            "An older TOTP time step was accepted after a newer one");
+        Check(await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 101, CancellationToken.None),
+            "A new TOTP time step was rejected");
+    }
+    finally
+    {
+        await using var connection = new NpgsqlConnection(replayTestConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("delete from admin_totp_replay_guard where credential_id=@credential_id", connection);
+        command.Parameters.AddWithValue("credential_id", replayCredentialId);
+        await command.ExecuteNonQueryAsync();
+    }
+}
 Console.WriteLine("Admin TOTP RFC vector, role policy, fail-closed configuration, and signed MFA claim checks passed");
 
 var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>

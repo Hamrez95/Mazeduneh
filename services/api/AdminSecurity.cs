@@ -51,14 +51,16 @@ public static class AdminSecurityExtensions
             if (tokens.ValidateCredentials(request.Email, request.Password) &&
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
-                var mfaFailure = GetMfaFailure(tokens, tokens.ConfiguredRole, request.MfaCode);
-                if (mfaFailure is not null) return mfaFailure;
+                if (tokens.IsMfaRequiredForRole(tokens.ConfiguredRole) && !users.IsConfigured)
+                    return TotpReplayPersistenceUnavailable();
                 var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
                 if (users.IsConfigured && ownerUserId is null)
                     return Results.Problem(
                         title: "نشست مدیر اصلی آماده نیست.",
                         detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
                         statusCode: StatusCodes.Status503ServiceUnavailable);
+                var mfaFailure = await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
+                if (mfaFailure is not null) return mfaFailure;
                 var mfaVerified = tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
                 var owner = tokens.Issue(request.Email, ownerUserId, mfaVerified);
                 if (ownerUserId is Guid userId)
@@ -78,7 +80,7 @@ public static class AdminSecurityExtensions
 
             var member = await users.AuthenticateAsync(request.Email, request.Password, request.StoreId, cancellationToken);
             if (member is null) return Results.Unauthorized();
-            var memberMfaFailure = GetMfaFailure(tokens, member.Role, request.MfaCode);
+            var memberMfaFailure = await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
             if (memberMfaFailure is not null) return memberMfaFailure;
             var memberMfaVerified = tokens.IsMfaRequiredForRole(member.Role);
             var issued = tokens.Issue(member, memberMfaVerified);
@@ -168,7 +170,7 @@ public static class AdminSecurityExtensions
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
             }
 
-            var mfaFailure = GetMfaFailure(tokens, principal.Role, request.MfaCode);
+            var mfaFailure = await GetMfaFailureAsync(tokens, users, principal.Role, request.MfaCode, cancellationToken);
             if (mfaFailure is not null) return mfaFailure;
 
             var issued = tokens.IssueStepUp(principal);
@@ -272,21 +274,50 @@ public static class AdminSecurityExtensions
         return endpoints;
     }
 
-    private static IResult? GetMfaFailure(AdminTokenService tokens, string role, string? code) =>
-        tokens.ValidateMfaCode(role, code) switch
+    private static async Task<IResult?> GetMfaFailureAsync(
+        AdminTokenService tokens,
+        AdminUsersDatabase users,
+        string role,
+        string? code,
+        CancellationToken cancellationToken)
+    {
+        var validation = tokens.ValidateMfaCode(role, code, out var timeStep);
+        switch (validation)
         {
-            AdminMfaValidationResult.NotRequired or AdminMfaValidationResult.Valid => null,
-            AdminMfaValidationResult.NotConfigured => Results.Problem(
-                title: "تأیید دومرحله‌ای پیکربندی نشده است.",
-                detail: "برای حساب مدیر اصلی، Admin__Mfa__TotpSecret را در secret manager ثبت کنید.",
-                statusCode: StatusCodes.Status503ServiceUnavailable),
-            AdminMfaValidationResult.Missing => MfaRequiredResult(),
-            _ => Results.Json(new { message = "کد تأیید دومرحله‌ای معتبر نیست.", code = "mfa_invalid" }, statusCode: StatusCodes.Status403Forbidden)
-        };
+            case AdminMfaValidationResult.NotRequired:
+                return null;
+            case AdminMfaValidationResult.NotConfigured:
+                return Results.Problem(
+                    title: "تأیید دومرحله‌ای پیکربندی نشده است.",
+                    detail: "برای حساب مدیر اصلی، Admin__Mfa__TotpSecret را در secret manager ثبت کنید.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            case AdminMfaValidationResult.Missing:
+                return MfaRequiredResult();
+            case AdminMfaValidationResult.Invalid:
+                return InvalidMfaResult();
+            case AdminMfaValidationResult.Valid:
+                if (!users.IsConfigured) return TotpReplayPersistenceUnavailable();
+                if (timeStep is not long acceptedStep) return InvalidMfaResult();
+                return await users.TryConsumeTotpTimeStepAsync("configured-owner", acceptedStep, cancellationToken)
+                    ? null
+                    : InvalidMfaResult();
+            default:
+                return InvalidMfaResult();
+        }
+    }
 
     internal static IResult MfaRequiredResult() => Results.Json(
         new { message = "کد تأیید دومرحله‌ای لازم است.", code = "mfa_required" },
         statusCode: StatusCodes.Status428PreconditionRequired);
+
+    private static IResult InvalidMfaResult() => Results.Json(
+        new { message = "کد تأیید دومرحله‌ای معتبر نیست.", code = "mfa_invalid" },
+        statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult TotpReplayPersistenceUnavailable() => Results.Problem(
+        title: "ذخیره‌سازی امن کد تأیید آماده نیست.",
+        detail: "برای جلوگیری از استفادهٔ دوبارهٔ کد، اتصال دیتابیس مدیران و migrationهای آن لازم است.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
 
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
@@ -523,13 +554,16 @@ public sealed class AdminTokenService
         _mfaRequired && string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase);
 
     public AdminMfaValidationResult ValidateMfaCode(string role, string? code)
+        => ValidateMfaCode(role, code, out _);
+
+    public AdminMfaValidationResult ValidateMfaCode(string role, string? code, out long? timeStep)
     {
+        timeStep = null;
         if (!IsMfaRequiredForRole(role)) return AdminMfaValidationResult.NotRequired;
         if (!_mfaSecretIsValid) return AdminMfaValidationResult.NotConfigured;
         if (string.IsNullOrWhiteSpace(code)) return AdminMfaValidationResult.Missing;
-        return AdminTotpAuthenticator.Verify(_mfaTotpSecret, code, DateTimeOffset.UtcNow)
-            ? AdminMfaValidationResult.Valid
-            : AdminMfaValidationResult.Invalid;
+        timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(_mfaTotpSecret, code, DateTimeOffset.UtcNow);
+        return timeStep is not null ? AdminMfaValidationResult.Valid : AdminMfaValidationResult.Invalid;
     }
 
     public IssuedAdminToken Issue(string email) =>

@@ -13,22 +13,27 @@ public static class AdminTotpAuthenticator
     public static bool IsValidSecret(string? base32Secret) => TryDecodeSecret(base32Secret, out _);
 
     public static bool Verify(string? base32Secret, string? code, DateTimeOffset utcNow)
+        => GetMatchingTimeStep(base32Secret, code, utcNow) is not null;
+
+    public static long? GetMatchingTimeStep(string? base32Secret, string? code, DateTimeOffset utcNow)
     {
         if (!TryDecodeSecret(base32Secret, out var secret) ||
             code is not { Length: CodeDigits } ||
             !code.All(char.IsAsciiDigit))
-            return false;
+            return null;
 
         var currentStep = utcNow.ToUnixTimeSeconds() / TimeStepSeconds;
         var suppliedCode = Encoding.ASCII.GetBytes(code);
+        long? matchingStep = null;
         for (var offset = -AllowedClockDriftSteps; offset <= AllowedClockDriftSteps; offset++)
         {
-            var expectedCode = Encoding.ASCII.GetBytes(ComputeCode(secret, currentStep + offset));
+            var candidateStep = currentStep + offset;
+            var expectedCode = Encoding.ASCII.GetBytes(ComputeCode(secret, candidateStep));
             if (CryptographicOperations.FixedTimeEquals(suppliedCode, expectedCode))
-                return true;
+                matchingStep = matchingStep is long previous ? Math.Max(previous, candidateStep) : candidateStep;
         }
 
-        return false;
+        return matchingStep;
     }
 
     private static string ComputeCode(byte[] secret, long timeStep)
