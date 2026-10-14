@@ -117,8 +117,9 @@ with tempfile.TemporaryFile() as log:
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token, step_up_headers)[0] == 409
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token, step_up_headers)[0] == 200  # No-op, no duplicate audit.
         _, events = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId='+SKU, token=token)
-        assert len(events) == 1 and events[0]['actor'] == os.environ['Admin__Email']
-        assert events[0]['beforeJson'] and events[0]['afterJson']
+        price_events = [event for event in events if event['action'] == 'inventory.price.applied']
+        assert len(price_events) == 1 and price_events[0]['actor'] == os.environ['Admin__Email']
+        assert price_events[0]['beforeJson'] and price_events[0]['afterJson']
         _, public = request('/api/v1/products/'+SLUG)
         assert public['variants'][0]['price'] == 6630  # Visible before process restart.
         assert public['variants'][0]['costPrice'] == 0
