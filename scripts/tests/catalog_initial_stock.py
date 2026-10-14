@@ -92,7 +92,13 @@ with tempfile.TemporaryFile() as log:
             status, body = request("/api/v1/products/", "POST", invalid, token)
             assert status == 400, (invalid_slug, status, body)
 
-        status, created = request("/api/v1/products/", "POST", product, token)
+        status, _ = request("/api/v1/products/", "POST", product, token)
+        assert status == 428, status
+        status, create_proof = request("/api/v1/admin/auth/step-up", "POST", {
+            "password": "Mazeduneh-CI-Owner-Password!"}, token)
+        assert status == 200 and create_proof["stepUpToken"]
+        status, created = request("/api/v1/products/", "POST", product, token,
+                                  {"X-Admin-Step-Up": create_proof["stepUpToken"]})
         assert status == 201, status
         product_events = audit("Product", created["id"])
         product_created = next(item for item in product_events if item["action"] == "product.created")

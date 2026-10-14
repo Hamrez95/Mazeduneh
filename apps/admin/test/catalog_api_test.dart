@@ -143,6 +143,6 @@ void main() {
       variants: [CreateVariantCommand(sku: 'CK-1', quantity: 1, displayLabel: '۱ عدد', price: 1000, availablePackages: 2)],
     );
 
-    expect(() => api.createProduct(command), throwsA(isA<CatalogApiException>().having((e) => e.message, 'message', 'SKU تکراری است.')));
+    expect(() => api.createProduct(command, stepUpToken: 'test-step-up-token'), throwsA(isA<CatalogApiException>().having((e) => e.message, 'message', 'SKU تکراری است.')));
   });
 }

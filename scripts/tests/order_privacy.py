@@ -85,7 +85,8 @@ with tempfile.TemporaryFile() as log:
         status, _ = request('/api/v1/products/', 'POST', {
             'title': 'CI privacy', 'slug': 'ci-order-privacy', 'category': 'CI', 'origin': 'IR',
             'currency': 'IRR', 'unitType': 'Weight', 'isPublished': True,
-            'variants': [{'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]}, token)
+            'variants': [{'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]},
+            token, headers={'X-Admin-Step-Up': step_up_token(token)})
         assert status == 201, status
         assert request('/api/v1/admin/inventory/batches', 'POST', {
             'sku': SKU, 'batchCode': 'CI-PRIVACY-LOT', 'receivedPackages': 10,

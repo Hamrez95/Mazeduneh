@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
+import 'admin_step_up_dialog.dart';
 import 'admin_theme.dart';
 import 'admin_permissions.dart';
 import 'admin_navigation.dart';
@@ -57,14 +58,24 @@ class CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> openCreateDialog() async {
+    final session = OwnerSession.instance;
+    if (!session.can(AdminPermissions.productsWrite)) return;
+    if (!session.can(AdminPermissions.pricingWrite)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('برای ثبت محصول و قیمت اولیه، دسترسی قیمت‌گذاری لازم است.'),
+      ));
+      return;
+    }
     final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(
       mediaApi: MediaApiClient(),
       categories: categories,
       canWriteCosts: OwnerSession.instance.can(AdminPermissions.pricingWrite),
     ));
-    if (command == null) return;
+    if (command == null || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context);
+    if (stepUpToken == null || !mounted) return;
     try {
-      await api.createProduct(command);
+      await api.createProduct(command, stepUpToken: stepUpToken);
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌صورت پیش‌نویس ثبت شد.')));

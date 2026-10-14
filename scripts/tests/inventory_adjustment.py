@@ -133,7 +133,8 @@ with tempfile.TemporaryFile() as log:
             'title': 'CI invariant', 'slug': 'ci-adjustment-invariant', 'category': 'CI', 'origin': 'IR',
             'currency': 'IRR', 'unitType': 'Weight', 'isPublished': True, 'variants': [
                 {'sku': sku, 'quantity': 250, 'displayLabel': sku, 'price': 5000, 'availablePackages': 0}
-                for sku in [LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED]]}, token)
+                for sku in [LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED]]}, token,
+            extra_headers=step_up_headers(token))
         assert status == 201, status
         assert request('/api/v1/admin/inventory/adjust', 'POST', {'sku': LEGACY, 'quantityDelta': 1, 'reason': 'missing key'}, token)[0] == 428
         assert request('/api/v1/admin/inventory/adjust', 'POST', {'sku': LEGACY, 'quantityDelta': 1, 'reason': 'missing key'},
