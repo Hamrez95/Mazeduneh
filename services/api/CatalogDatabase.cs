@@ -104,7 +104,7 @@ public sealed class CatalogDatabase(
         return categories;
     }
 
-    public async Task<Category> InsertCategoryAsync(CreateCategoryRequest request, CancellationToken cancellationToken)
+    public async Task<Category> InsertCategoryAsync(CreateCategoryRequest request, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured)
         {
@@ -119,7 +119,8 @@ public sealed class CatalogDatabase(
             """;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
         var category = new Category(Guid.NewGuid(), request.Name.Trim(), request.Slug.Trim().ToLowerInvariant(), request.Description?.Trim() ?? "", request.SeoTitle?.Trim() ?? request.Name.Trim(), request.SeoDescription?.Trim() ?? "", request.SortOrder, request.IsActive, DateTimeOffset.UtcNow);
         command.Parameters.AddWithValue("id", category.Id);
         command.Parameters.AddWithValue("name", category.Name);
@@ -130,12 +131,19 @@ public sealed class CatalogDatabase(
         command.Parameters.AddWithValue("sort_order", category.SortOrder);
         command.Parameters.AddWithValue("is_active", category.IsActive);
         command.Parameters.AddWithValue("created_at", category.CreatedAt);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        await reader.ReadAsync(cancellationToken);
-        return new Category(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6), reader.GetBoolean(7), reader.GetFieldValue<DateTimeOffset>(8));
+        Category inserted;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            await reader.ReadAsync(cancellationToken);
+            inserted = new Category(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6), reader.GetBoolean(7), reader.GetFieldValue<DateTimeOffset>(8));
+        }
+        await audit.RecordAsync(connection, transaction, actor, "category.created", "Category", inserted.Id.ToString(),
+            null, inserted, "ایجاد دسته‌بندی", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return inserted;
     }
 
-    public async Task<Category?> UpdateCategoryAsync(string slug, UpdateCategoryRequest request, CancellationToken cancellationToken)
+    public async Task<Category?> UpdateCategoryAsync(string slug, UpdateCategoryRequest request, string actor, string requestId, CancellationToken cancellationToken)
     {
         var normalizedSlug = slug.Trim().ToLowerInvariant();
         var name = request.Name.Trim();
@@ -147,19 +155,27 @@ public sealed class CatalogDatabase(
         {
             var index = _fallbackCategories.FindIndex(item => item.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase));
             if (index < 0) return null;
-            var updated = _fallbackCategories[index] with { Name = name, Slug = newSlug, Description = description, SeoTitle = seoTitle, SeoDescription = seoDescription, SortOrder = request.SortOrder, IsActive = request.IsActive };
-            _fallbackCategories[index] = updated;
-            return updated;
+            var fallbackUpdated = _fallbackCategories[index] with { Name = name, Slug = newSlug, Description = description, SeoTitle = seoTitle, SeoDescription = seoDescription, SortOrder = request.SortOrder, IsActive = request.IsActive };
+            _fallbackCategories[index] = fallbackUpdated;
+            return fallbackUpdated;
         }
 
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        var oldName = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase))?.Name;
-        if (oldName is null) return null;
+        Category? before;
+        await using (var find = new NpgsqlCommand("select id,name,slug,description,seo_title,seo_description,sort_order,is_active,created_at from categories where slug=@slug for update;", connection, transaction))
+        {
+            find.Parameters.AddWithValue("slug", normalizedSlug);
+            await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+            before = await reader.ReadAsync(cancellationToken)
+                ? new Category(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6), reader.GetBoolean(7), reader.GetFieldValue<DateTimeOffset>(8))
+                : null;
+        }
+        if (before is null) return null;
         await using (var productCommand = new NpgsqlCommand("update products set category=@new_name where category=@old_name", connection, transaction))
         {
-            productCommand.Parameters.AddWithValue("new_name", name); productCommand.Parameters.AddWithValue("old_name", oldName);
+            productCommand.Parameters.AddWithValue("new_name", name); productCommand.Parameters.AddWithValue("old_name", before.Name);
             await productCommand.ExecuteNonQueryAsync(cancellationToken);
         }
         const string sql = "update categories set name=@name,slug=@new_slug,description=@description,seo_title=@seo_title,seo_description=@seo_description,sort_order=@sort_order,is_active=@is_active where slug=@slug returning id,created_at;";
@@ -167,19 +183,26 @@ public sealed class CatalogDatabase(
         command.Parameters.AddWithValue("name", name); command.Parameters.AddWithValue("new_slug", newSlug); command.Parameters.AddWithValue("description", description);
         command.Parameters.AddWithValue("seo_title", seoTitle); command.Parameters.AddWithValue("seo_description", seoDescription); command.Parameters.AddWithValue("sort_order", request.SortOrder);
         command.Parameters.AddWithValue("is_active", request.IsActive); command.Parameters.AddWithValue("slug", normalizedSlug);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return null;
-        var id = reader.GetGuid(0); var createdAt = reader.GetFieldValue<DateTimeOffset>(1);
-        await reader.DisposeAsync();
+        Guid id;
+        DateTimeOffset createdAt;
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            if (!await reader.ReadAsync(cancellationToken)) return null;
+            id = reader.GetGuid(0);
+            createdAt = reader.GetFieldValue<DateTimeOffset>(1);
+        }
+        var updated = new Category(id, name, newSlug, description, seoTitle, seoDescription, request.SortOrder, request.IsActive, createdAt);
+        await audit.RecordAsync(connection, transaction, actor, "category.updated", "Category", id.ToString(),
+            before, updated, "به‌روزرسانی دسته‌بندی", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new Category(id, name, newSlug, description, seoTitle, seoDescription, request.SortOrder, request.IsActive, createdAt);
+        return updated;
     }
 
-    public async Task<Category?> SetCategoryActiveAsync(string slug, bool isActive, CancellationToken cancellationToken)
+    public async Task<Category?> SetCategoryActiveAsync(string slug, bool isActive, string actor, string requestId, CancellationToken cancellationToken)
     {
         var current = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug.Trim(), StringComparison.OrdinalIgnoreCase));
         if (current is null) return null;
-        return await UpdateCategoryAsync(current.Slug, new UpdateCategoryRequest(current.Name, current.Slug, current.Description, current.SeoTitle, current.SeoDescription, current.SortOrder, isActive), cancellationToken);
+        return await UpdateCategoryAsync(current.Slug, new UpdateCategoryRequest(current.Name, current.Slug, current.Description, current.SeoTitle, current.SeoDescription, current.SortOrder, isActive), actor, requestId, cancellationToken);
     }
 
     public async Task<int> CountProductsInCategoryAsync(string categoryName, CancellationToken cancellationToken)
@@ -191,16 +214,48 @@ public sealed class CatalogDatabase(
         return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
     }
 
-    public async Task<(bool Deleted, int ProductCount)> DeleteCategoryAsync(string slug, CancellationToken cancellationToken)
+    public async Task<(bool Deleted, int ProductCount)> DeleteCategoryAsync(string slug, string actor, string requestId, CancellationToken cancellationToken)
     {
-        var current = (await LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug.Trim(), StringComparison.OrdinalIgnoreCase));
-        if (current is null) return (false, -1);
-        var productCount = await CountProductsInCategoryAsync(current.Name, cancellationToken);
+        var normalizedSlug = slug.Trim().ToLowerInvariant();
+        if (!IsConfigured)
+        {
+            var current = _fallbackCategories.FirstOrDefault(item => item.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase));
+            if (current is null) return (false, -1);
+            _fallbackCategories.RemoveAll(item => item.Id == current.Id);
+            return (true, 0);
+        }
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        Category? before;
+        await using (var find = new NpgsqlCommand("select id,name,slug,description,seo_title,seo_description,sort_order,is_active,created_at from categories where slug=@slug for update;", connection, transaction))
+        {
+            find.Parameters.AddWithValue("slug", normalizedSlug);
+            await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+            before = await reader.ReadAsync(cancellationToken)
+                ? new Category(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetInt32(6), reader.GetBoolean(7), reader.GetFieldValue<DateTimeOffset>(8))
+                : null;
+        }
+        if (before is null) return (false, -1);
+
+        int productCount;
+        await using (var count = new NpgsqlCommand("select count(*) from products where category=@category;", connection, transaction))
+        {
+            count.Parameters.AddWithValue("category", before.Name);
+            productCount = Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken));
+        }
         if (productCount > 0) return (false, productCount);
-        if (!IsConfigured) { _fallbackCategories.RemoveAll(item => item.Id == current.Id); return (true, 0); }
-        await using var connection = new NpgsqlConnection(_connectionString); await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("delete from categories where id=@id", connection); command.Parameters.AddWithValue("id", current.Id);
-        await command.ExecuteNonQueryAsync(cancellationToken); return (true, 0);
+
+        await using (var delete = new NpgsqlCommand("delete from categories where id=@id;", connection, transaction))
+        {
+            delete.Parameters.AddWithValue("id", before.Id);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await audit.RecordAsync(connection, transaction, actor, "category.deleted", "Category", before.Id.ToString(),
+            before, null, "حذف دسته‌بندی", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (true, 0);
     }
 
     public async Task<IReadOnlyCollection<Product>> LoadAsync(CancellationToken cancellationToken)
@@ -257,7 +312,7 @@ public sealed class CatalogDatabase(
         return products.Values.Select(item => item.ToProduct()).ToArray();
     }
 
-    public async Task InsertAsync(Product product, CancellationToken cancellationToken)
+    public async Task InsertAsync(Product product, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         await using var connection = new NpgsqlConnection(_connectionString);
@@ -268,7 +323,12 @@ public sealed class CatalogDatabase(
         {
             await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
             await RecordInitialStockAsync(connection, transaction, variant, "catalog-initial-stock", cancellationToken);
+            await audit.RecordAsync(connection, transaction, actor, "product.variant-added", "ProductVariant",
+                variant.Sku, null, new { variant.Sku, variant.Price, product.Currency },
+                "ثبت گونهٔ اولیهٔ محصول با قیمت", requestId, cancellationToken);
         }
+        await audit.RecordAsync(connection, transaction, actor, "product.created", "Product", product.Id.ToString(),
+            null, ProductAuditSnapshot(product), "ایجاد محصول", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
@@ -311,6 +371,7 @@ public sealed class CatalogDatabase(
 
     public async Task<Product> UpdateAsync(
         Product product,
+        Product before,
         bool canWriteCosts,
         string actor,
         string requestId,
@@ -351,19 +412,28 @@ public sealed class CatalogDatabase(
                     "ثبت گونهٔ تازه با قیمت اولیه", requestId, cancellationToken);
             }
         }
+        await audit.RecordAsync(connection, transaction, actor, "product.updated", "Product", product.Id.ToString(),
+            ProductAuditSnapshot(before), ProductAuditSnapshot(product), "ویرایش اطلاعات محصول", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return (await LoadAsync(cancellationToken)).Single(item => item.Id == product.Id);
     }
 
-    public async Task SetPublicationAsync(Guid productId, bool isPublished, CancellationToken cancellationToken)
+    public async Task SetPublicationAsync(Guid productId, bool wasPublished, bool isPublished, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("update products set is_published=@published where id=@id", connection);
-        command.Parameters.AddWithValue("id", productId);
-        command.Parameters.AddWithValue("published", isPublished);
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using (var command = new NpgsqlCommand("update products set is_published=@published where id=@id", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", productId);
+            command.Parameters.AddWithValue("published", isPublished);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        await audit.RecordAsync(connection, transaction, actor, "product.publication", "Product", productId.ToString(),
+            new { IsPublished = wasPublished }, new { IsPublished = isPublished },
+            isPublished ? "انتشار محصول" : "خارج کردن محصول از انتشار", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<bool> CanConnectAsync(CancellationToken cancellationToken)
@@ -400,6 +470,41 @@ public sealed class CatalogDatabase(
         AddProductParameters(command, product);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static object ProductAuditSnapshot(Product product) => new
+    {
+        product.Id,
+        product.Title,
+        product.Slug,
+        product.Category,
+        product.Origin,
+        product.Currency,
+        product.UnitType,
+        product.IsPublished,
+        product.ShortDescription,
+        product.Description,
+        product.SeoTitle,
+        product.SeoDescription,
+        product.SeoKeywords,
+        product.PrimaryImage,
+        product.GalleryImages,
+        product.Specifications,
+        product.Ingredients,
+        product.Allergens,
+        product.NutritionFacts,
+        product.StorageInstructions,
+        product.ShelfLifeDays,
+        product.NetWeight,
+        product.NetWeightUnit,
+        product.ExpiryLabel,
+        Variants = product.Variants.Select(variant => new
+        {
+            variant.Sku,
+            variant.Quantity,
+            variant.BaseUnit,
+            variant.DisplayLabel
+        }).ToArray()
+    };
 
     private static async Task InsertVariantAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid productId, ProductVariant variant, CancellationToken cancellationToken)
     {
@@ -476,3 +581,4 @@ public sealed class CatalogDatabase(
         new(Guid.NewGuid(), "کوکی و کیک سالم", "healthy-bakery", "کوکی و خوراکی‌های سالم", "کوکی و کیک سالم مزه‌دونه", "خرید کوکی و خوراکی سالم", 30, true, DateTimeOffset.UtcNow)
     ];
 }
+
