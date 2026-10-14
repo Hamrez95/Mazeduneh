@@ -15,8 +15,9 @@ SLUG = "purchase-history-fixture"
 ZERO, POSITIVE, ADDED = "CI-OPENING-ZERO", "CI-OPENING-POSITIVE", "CI-OPENING-ADDED"
 
 
-def request(path, method="GET", body=None, token=None):
+def request(path, method="GET", body=None, token=None, extra_headers=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
+    headers.update(extra_headers or {})
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
@@ -27,6 +28,13 @@ def request(path, method="GET", body=None, token=None):
     with response:
         content = response.read()
         return response.status, json.loads(content) if content else None
+
+
+def step_up_headers(token):
+    status, result = request('/api/v1/admin/auth/step-up', 'POST',
+                             {'password': 'Mazeduneh-CI-Owner-Password!'}, token)
+    assert status == 200 and result['stepUpToken'], (status, result)
+    return {'X-Admin-Step-Up': result['stepUpToken']}
 
 
 def start_api():
@@ -67,7 +75,8 @@ with tempfile.TemporaryFile() as log:
         status, _ = request('/api/v1/products/', 'POST', {
             'title': 'CI purchase', 'slug': SLUG, 'category': 'CI', 'origin': 'IR', 'currency': 'IRR',
             'unitType': 'Weight', 'isPublished': True, 'variants': [
-                {'sku': 'CI-PURCHASE-250', 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0, 'costPrice': 2222, 'packagingCost': 333, 'additionalCost': 44}]}, token)
+                {'sku': 'CI-PURCHASE-250', 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0, 'costPrice': 2222, 'packagingCost': 333, 'additionalCost': 44}]},
+            token, extra_headers=step_up_headers(token))
         assert status == 201
         payload = {'sku': 'CI-PURCHASE-250', 'batchCode': 'CI-PURCHASE-ONE', 'receivedPackages': 12,
                    'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),

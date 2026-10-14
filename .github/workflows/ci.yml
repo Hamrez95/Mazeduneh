@@ -437,7 +437,7 @@ jobs:
           PY
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/products/ \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"title":"CI waste fixture","slug":"ci-waste-fixture","category":"CI","origin":"IR","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"CI-WASTE-ONLY","quantity":250,"displayLabel":"CI waste fixture","price":5000,"availablePackages":0}]}' > /tmp/ci-waste-product.json
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/inventory/batches \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \

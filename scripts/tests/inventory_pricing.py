@@ -83,10 +83,13 @@ def checkout(key):
 with tempfile.TemporaryFile() as log:
     api, token = start_api()
     try:
+        status, create_proof = step_up(token)
+        assert status == 200 and create_proof.get('stepUpToken')
         status, _ = request('/api/v1/products/', 'POST', {
             'title': 'CI price', 'slug': SLUG, 'category': 'CI', 'origin': 'IR', 'currency': 'IRR',
             'unitType': 'Weight', 'isPublished': True, 'variants': [
-                {'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]}, token)
+                {'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]},
+            token, {'X-Admin-Step-Up': create_proof['stepUpToken']})
         assert status == 201
         receipt = {'sku': SKU, 'batchCode': 'CI-PRICE-ONE', 'receivedPackages': 12,
                    'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
@@ -194,6 +197,13 @@ with tempfile.TemporaryFile() as log:
         _, state = request(PATH, token=owner_token)
         status, products = request('/api/v1/products/admin', token=content_token, base=RESTRICTED_BASE)
         assert status == 200
+        create_status, _ = request('/api/v1/products/', 'POST', {
+            'title': 'Content-only create', 'slug': 'content-only-create-fixture', 'category': 'CI',
+            'origin': 'IR', 'currency': 'IRR', 'unitType': 'Weight', 'isPublished': False,
+            'variants': [{'sku': 'CI-CONTENT-ONLY-CREATE', 'quantity': 250,
+                          'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}],
+        }, content_token, base=RESTRICTED_BASE)
+        assert create_status == 403, create_status
         product = next(item for item in products if item['slug'] == SLUG)
         variant = product['variants'][0]
         stale_price = variant['price']

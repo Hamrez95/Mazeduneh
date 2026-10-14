@@ -53,10 +53,11 @@ void main() {
       ],
     );
 
-    final product = await CatalogApiClient(client: client, baseUrl: 'https://api.test').createProduct(command);
+    final product = await CatalogApiClient(client: client, baseUrl: 'https://api.test').createProduct(command, stepUpToken: 'catalog-test-step-up');
     final body = jsonDecode(captured.body) as Map<String, dynamic>;
 
     expect(captured.headers['authorization'], 'Bearer catalog-test-token');
+    expect(captured.headers['X-Admin-Step-Up'], 'catalog-test-step-up');
     expect(body['isPublished'], isFalse);
     expect((body['variants'] as List<dynamic>).length, 3);
     expect(product.variants.length, 3);

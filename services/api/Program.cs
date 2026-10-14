@@ -213,7 +213,8 @@ products.MapPost("/", async (
         return Results.Conflict(new { message = "شناسه آدرس یا SKU تکراری است." });
     }
 })
-.AddEndpointFilter<OwnerAuthorizationFilter>();
+.AddEndpointFilter<OwnerAuthorizationFilter>()
+.AddEndpointFilter<ProductCreatePriceStepUpAuthorizationFilter>();
 
 products.MapPut("/{slug}", async (
     string slug,

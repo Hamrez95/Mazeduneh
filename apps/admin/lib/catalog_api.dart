@@ -85,10 +85,10 @@ class CatalogApiClient {
     if (response.statusCode != 200) throw CatalogApiException(_message(response), statusCode: response.statusCode);
   }
 
-  Future<Product> createProduct(CreateProductCommand command) async {
+  Future<Product> createProduct(CreateProductCommand command, {required String stepUpToken}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/products/'),
-      headers: _headers(json: true),
+      headers: {..._headers(json: true), 'X-Admin-Step-Up': stepUpToken},
       body: jsonEncode(command.toJson()),
     );
     _guardUnauthorized(response);

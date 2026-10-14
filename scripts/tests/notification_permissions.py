@@ -68,12 +68,15 @@ with tempfile.TemporaryFile() as log:
     api, token = start_api()
     try:
         # One low-stock draft ensures an always-empty implementation cannot pass.
+        status, create_proof = request("/api/v1/admin/auth/step-up", "POST",
+                                      {"password": "Mazeduneh-CI-Owner-Password!"}, token)
+        assert status == 200 and create_proof["stepUpToken"]
         status, _ = request("/api/v1/products/", "POST", {
             "title": "کالای تست مجوز اعلان", "slug": "notification-permission-fixture", "category": "آزمایشی",
             "origin": "ایران", "currency": "IRR", "unitType": "Weight", "isPublished": False,
             "variants": [{"sku": INVENTORY_MARKER, "quantity": 250, "displayLabel": "۲۵۰ گرم",
                           "price": 1000, "availablePackages": 3}],
-        }, token)
+        }, token, {"X-Admin-Step-Up": create_proof["stepUpToken"]})
         assert status == 201, status
         status, _ = request("/api/v1/checkout/orders", "POST", {
             "customerName": "تست اعلان", "mobile": "09120000001", "province": "تهران", "city": "تهران",
