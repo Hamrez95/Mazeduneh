@@ -6,6 +6,8 @@
 - `apps/admin`: Flutter responsive admin targeting Android and web/PWA.
 - `services/api`: ASP.NET Core modular monolith.
 
+Admin modules are declared in `apps/admin/lib/admin_navigation.dart`; each entry owns its API value, permission, Persian navigation label, and icon. `AdminShell` derives role-filtered navigation from that list and maps every module to a page with an exhaustive switch, so navigation metadata and the rendered page order cannot drift independently.
+
 ## Backend modules
 
 - Identity and access
@@ -47,3 +49,4 @@ Modules share one deployable process in MVP but own their domain rules and persi
 - Production: separate secrets, database, object storage, and monitoring.
 
 `main` contains only release-ready code. `dev` is the integration branch. Features enter `dev` through reviewed pull requests.
+
