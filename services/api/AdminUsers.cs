@@ -51,7 +51,29 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "003-member-permissions", """
             alter table admin_users add column if not exists permissions_json jsonb null;
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "004-totp-replay-guard", """
+            create table if not exists admin_totp_replay_guard (
+                credential_id varchar(120) primary key,
+                last_time_step bigint not null
+            );
+            """, cancellationToken);
         logger.LogInformation("Admin user membership schema is ready.");
+    }
+
+    public async Task<bool> TryConsumeTotpTimeStepAsync(string credentialId, long timeStep, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_totp_replay_guard(credential_id,last_time_step)
+            values(@credential_id,@time_step)
+            on conflict(credential_id) do update
+                set last_time_step=excluded.last_time_step
+                where admin_totp_replay_guard.last_time_step<excluded.last_time_step
+            returning 1;
+            """, connection);
+        command.Parameters.AddWithValue("credential_id", credentialId);
+        command.Parameters.AddWithValue("time_step", timeStep);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     public async Task SeedOwnerMembershipAsync(CancellationToken cancellationToken)

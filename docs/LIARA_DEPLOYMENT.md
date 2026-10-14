@@ -29,6 +29,9 @@ ConnectionStrings__Catalog=<connection string دیتابیس لیارا>
 Admin__Email=<ایمیل مدیر>
 Admin__PasswordHash=<هش SHA-256 رمز مدیر به‌صورت hex>
 Admin__TokenSigningKey=<کلید تصادفی حداقل ۳۲ بایتی>
+# فقط اگر MFA مدیر اصلی را فعال می‌کنید:
+Admin__Mfa__Required=true
+Admin__Mfa__TotpSecret=<seed تصادفی Base32؛ در secret manager نگهداری شود>
 Cors__AllowedOrigins__0=https://<دامنه فروشگاه>
 Cors__AllowedOrigins__1=https://<دامنه پنل>
 Media__Provider=S3

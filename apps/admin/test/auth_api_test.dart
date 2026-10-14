@@ -63,6 +63,38 @@ void main() {
     expect(OwnerSession.instance.storeId, 'tenant-north');
   });
 
+  test('login includes the MFA code only after the server challenges', () async {
+    late http.Request captured;
+    final api = AuthApiClient(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response('{}', 428);
+      }),
+      baseUrl: 'https://api.example.com',
+    );
+    await expectLater(
+      api.login(email: 'owner@example.com', password: 'secret'),
+      throwsA(isA<AuthApiException>().having((error) => error.statusCode, 'statusCode', 428)),
+    );
+    expect(jsonDecode(captured.body), {
+      'email': 'owner@example.com',
+      'password': 'secret',
+      'storeId': 'default',
+    });
+
+    await expectLater(
+      AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response('{}', 401);
+        }),
+        baseUrl: 'https://api.example.com',
+      ).login(email: 'owner@example.com', password: 'secret', mfaCode: '123456'),
+      throwsA(isA<AuthApiException>()),
+    );
+    expect(jsonDecode(captured.body)['mfaCode'], '123456');
+  });
+
   test('login rejects a server session bound to another store', () async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/session')) {
@@ -187,6 +219,35 @@ void main() {
     expect(jsonDecode(captured.body), {'password': 'fresh-password'});
     expect(token, 'one-use-window');
     expect(OwnerSession.instance.bearerToken, 'admin-session');
+  });
+
+  test('step-up includes an MFA code only when one was requested', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'admin-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+    late http.Request captured;
+    await expectLater(
+      AuthApiClient(
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response('{}', 428);
+        }),
+        baseUrl: 'https://api.example.com',
+      ).stepUp(password: 'fresh-password'),
+      throwsA(isA<AuthApiException>().having((error) => error.statusCode, 'statusCode', 428)),
+    );
+    expect(jsonDecode(captured.body), {'password': 'fresh-password'});
+
+    await AuthApiClient(
+      client: MockClient((request) async {
+        captured = request;
+        return http.Response(jsonEncode({'stepUpToken': 'one-use-window'}), 200);
+      }),
+      baseUrl: 'https://api.example.com',
+    ).stepUp(password: 'fresh-password', mfaCode: '123456');
+    expect(jsonDecode(captured.body), {'password': 'fresh-password', 'mfaCode': '123456'});
   });
 
   test('incorrect step-up password does not clear the authenticated session', () async {

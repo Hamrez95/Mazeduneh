@@ -51,13 +51,18 @@ public static class AdminSecurityExtensions
             if (tokens.ValidateCredentials(request.Email, request.Password) &&
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
+                if (tokens.IsMfaRequiredForRole(tokens.ConfiguredRole) && !users.IsConfigured)
+                    return TotpReplayPersistenceUnavailable();
                 var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
                 if (users.IsConfigured && ownerUserId is null)
                     return Results.Problem(
                         title: "نشست مدیر اصلی آماده نیست.",
                         detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
                         statusCode: StatusCodes.Status503ServiceUnavailable);
-                var owner = tokens.Issue(request.Email, ownerUserId);
+                var mfaFailure = await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
+                if (mfaFailure is not null) return mfaFailure;
+                var mfaVerified = tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
+                var owner = tokens.Issue(request.Email, ownerUserId, mfaVerified);
                 if (ownerUserId is Guid userId)
                     await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
                 return Results.Ok(new
@@ -68,13 +73,17 @@ public static class AdminSecurityExtensions
                     role = owner.Role,
                     permissions = owner.Permissions,
                     email = tokens.OwnerEmail,
-                    storeId = "default"
+                    storeId = "default",
+                    mfaVerified
                 });
             }
 
             var member = await users.AuthenticateAsync(request.Email, request.Password, request.StoreId, cancellationToken);
             if (member is null) return Results.Unauthorized();
-            var issued = tokens.Issue(member);
+            var memberMfaFailure = await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
+            if (memberMfaFailure is not null) return memberMfaFailure;
+            var memberMfaVerified = tokens.IsMfaRequiredForRole(member.Role);
+            var issued = tokens.Issue(member, memberMfaVerified);
             await users.CreateSessionAsync(member.Id, member.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
             return Results.Ok(new
             {
@@ -84,7 +93,8 @@ public static class AdminSecurityExtensions
                 role = issued.Role,
                 permissions = issued.Permissions,
                 email = member.Email,
-                storeId = member.StoreId
+                storeId = member.StoreId,
+                mfaVerified = memberMfaVerified
             });
         })
         .RequireRateLimiting("admin-login")
@@ -106,6 +116,8 @@ public static class AdminSecurityExtensions
         {
             var token = AdminTokenService.ReadBearerToken(context.Request);
             if (token is null || !tokens.TryValidate(token, out var principal)) return Results.Unauthorized();
+            if (tokens.IsMfaRequiredForRole(principal.Role) && !principal.MfaVerified)
+                return MfaRequiredResult();
             if (principal.UserId is Guid userId &&
                 !await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                 return Results.Unauthorized();
@@ -157,6 +169,9 @@ public static class AdminSecurityExtensions
             {
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
             }
+
+            var mfaFailure = await GetMfaFailureAsync(tokens, users, principal.Role, request.MfaCode, cancellationToken);
+            if (mfaFailure is not null) return mfaFailure;
 
             var issued = tokens.IssueStepUp(principal);
             return Results.Ok(new { stepUpToken = issued.Token, expiresAt = issued.ExpiresAt });
@@ -259,6 +274,51 @@ public static class AdminSecurityExtensions
         return endpoints;
     }
 
+    private static async Task<IResult?> GetMfaFailureAsync(
+        AdminTokenService tokens,
+        AdminUsersDatabase users,
+        string role,
+        string? code,
+        CancellationToken cancellationToken)
+    {
+        var validation = tokens.ValidateMfaCode(role, code, out var timeStep);
+        switch (validation)
+        {
+            case AdminMfaValidationResult.NotRequired:
+                return null;
+            case AdminMfaValidationResult.NotConfigured:
+                return Results.Problem(
+                    title: "تأیید دومرحله‌ای پیکربندی نشده است.",
+                    detail: "برای حساب مدیر اصلی، Admin__Mfa__TotpSecret را در secret manager ثبت کنید.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            case AdminMfaValidationResult.Missing:
+                return MfaRequiredResult();
+            case AdminMfaValidationResult.Invalid:
+                return InvalidMfaResult();
+            case AdminMfaValidationResult.Valid:
+                if (!users.IsConfigured) return TotpReplayPersistenceUnavailable();
+                if (timeStep is not long acceptedStep) return InvalidMfaResult();
+                return await users.TryConsumeTotpTimeStepAsync("configured-owner", acceptedStep, cancellationToken)
+                    ? null
+                    : InvalidMfaResult();
+            default:
+                return InvalidMfaResult();
+        }
+    }
+
+    internal static IResult MfaRequiredResult() => Results.Json(
+        new { message = "کد تأیید دومرحله‌ای لازم است.", code = "mfa_required" },
+        statusCode: StatusCodes.Status428PreconditionRequired);
+
+    private static IResult InvalidMfaResult() => Results.Json(
+        new { message = "کد تأیید دومرحله‌ای معتبر نیست.", code = "mfa_invalid" },
+        statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult TotpReplayPersistenceUnavailable() => Results.Problem(
+        title: "ذخیره‌سازی امن کد تأیید آماده نیست.",
+        detail: "برای جلوگیری از استفادهٔ دوبارهٔ کد، اتصال دیتابیس مدیران و migrationهای آن لازم است.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
         var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
@@ -268,12 +328,12 @@ public static class AdminSecurityExtensions
     }
 }
 
-public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null);
+public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null, string? MfaCode = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
-public sealed record AdminStepUpRequest(string Password);
+public sealed record AdminStepUpRequest(string Password, string? MfaCode = null);
 public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
 public sealed record IssuedAdminStepUpToken(string Token, DateTimeOffset ExpiresAt);
-public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId);
+public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId, bool MfaVerified = false);
 
 public static class AdminPermissionCatalog
 {
@@ -447,6 +507,8 @@ public static class AdminPermissionCatalog
 
 }
 
+public enum AdminMfaValidationResult { NotRequired, NotConfigured, Missing, Invalid, Valid }
+
 public sealed class AdminTokenService
 {
     private readonly byte[] _signingKey;
@@ -454,6 +516,9 @@ public sealed class AdminTokenService
     private readonly TimeSpan _lifetime;
     private readonly string _configuredRole;
     private readonly IReadOnlyList<string> _configuredPermissions;
+    private readonly bool _mfaRequired;
+    private readonly string? _mfaTotpSecret;
+    private readonly bool _mfaSecretIsValid;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new(StringComparer.Ordinal);
 
     public AdminTokenService(IConfiguration configuration)
@@ -464,9 +529,13 @@ public sealed class AdminTokenService
         _lifetime = TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Admin:AccessTokenMinutes", 15), 5, 60));
         _configuredRole = AdminPermissionCatalog.NormalizeRole(configuration["Admin:Role"]);
         _configuredPermissions = ParsePermissions(configuration["Admin:Permissions"]);
+        _mfaRequired = configuration.GetValue("Admin:Mfa:Required", false);
+        _mfaTotpSecret = configuration["Admin:Mfa:TotpSecret"]?.Trim();
+        _mfaSecretIsValid = AdminTotpAuthenticator.IsValidSecret(_mfaTotpSecret);
     }
 
     public string OwnerEmail { get; }
+    public string ConfiguredRole => _configuredRole;
     public bool CanIssueTokens => _signingKey.Length >= 32;
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(OwnerEmail) &&
@@ -481,14 +550,30 @@ public sealed class AdminTokenService
         return CryptographicOperations.FixedTimeEquals(suppliedHash, _configuredPasswordHash);
     }
 
+    public bool IsMfaRequiredForRole(string role) =>
+        _mfaRequired && string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+    public AdminMfaValidationResult ValidateMfaCode(string role, string? code)
+        => ValidateMfaCode(role, code, out _);
+
+    public AdminMfaValidationResult ValidateMfaCode(string role, string? code, out long? timeStep)
+    {
+        timeStep = null;
+        if (!IsMfaRequiredForRole(role)) return AdminMfaValidationResult.NotRequired;
+        if (!_mfaSecretIsValid) return AdminMfaValidationResult.NotConfigured;
+        if (string.IsNullOrWhiteSpace(code)) return AdminMfaValidationResult.Missing;
+        timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(_mfaTotpSecret, code, DateTimeOffset.UtcNow);
+        return timeStep is not null ? AdminMfaValidationResult.Valid : AdminMfaValidationResult.Invalid;
+    }
+
     public IssuedAdminToken Issue(string email) =>
-        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default");
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default", false);
 
-    public IssuedAdminToken Issue(string email, Guid? userId) =>
-        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), userId, "default");
+    public IssuedAdminToken Issue(string email, Guid? userId, bool mfaVerified = false) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), userId, "default", mfaVerified);
 
-    public IssuedAdminToken Issue(AdminUserSummary member) =>
-        Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
+    public IssuedAdminToken Issue(AdminUserSummary member, bool mfaVerified = false) =>
+        Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId, mfaVerified);
 
     public IssuedAdminStepUpToken IssueStepUp(AdminPrincipal principal)
     {
@@ -524,12 +609,12 @@ public sealed class AdminTokenService
             expiresAt <= principal.ExpiresAt;
     }
 
-    private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId)
+    private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId, bool mfaVerified)
     {
         if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
         var expiresAt = DateTimeOffset.UtcNow.Add(_lifetime);
         var sessionId = Guid.NewGuid();
-        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{sessionId:N}|{role}|{string.Join(',', permissions)}|{userId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(storeId))}";
+        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{sessionId:N}|{role}|{string.Join(',', permissions)}|{userId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(storeId))}|{(mfaVerified ? '1' : '0')}";
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
         var token = $"{Base64Url(payloadBytes)}.{Base64Url(signature)}";
@@ -571,7 +656,9 @@ public sealed class AdminTokenService
             storeId = Encoding.UTF8.GetString(storeBytes);
             if (string.IsNullOrWhiteSpace(storeId) || storeId.Length > 120) return false;
         }
-        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions, sessionId, userId, storeId);
+        var mfaVerified = fields.Length > 7 && fields[7] == "1";
+        if (fields.Length > 7 && fields[7] is not ("0" or "1")) return false;
+        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions, sessionId, userId, storeId, mfaVerified);
         return true;
     }
 
@@ -621,6 +708,8 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         var token = AdminTokenService.ReadBearerToken(context.HttpContext.Request);
         if (token is null || !tokens.TryValidate(token, out var principal))
             return Results.Unauthorized();
+        if (tokens.IsMfaRequiredForRole(principal.Role) && !principal.MfaVerified)
+            return AdminSecurityExtensions.MfaRequiredResult();
 
         if (principal.UserId is Guid userId)
         {

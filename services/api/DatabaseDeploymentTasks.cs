@@ -85,6 +85,7 @@ public static class DatabaseMigrationCatalog
         new("admin-audit", "001-bootstrap"),
         new("admin-users", "001-memberships"),
         new("admin-users", "002-member-login"),
-        new("admin-users", "003-member-permissions")
+        new("admin-users", "003-member-permissions"),
+        new("admin-users", "004-totp-replay-guard")
     ];
 }
