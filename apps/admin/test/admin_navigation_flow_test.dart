@@ -28,6 +28,16 @@ void main() {
     expect(AdminPermissions.settingsRead, isNot(AdminPermissions.pricingRead));
   });
 
+  test('module navigation metadata is unique and round-trips from API targets', () {
+    final modules = AdminModule.values;
+    expect(modules.map((module) => module.apiValue).toSet(), hasLength(modules.length));
+    expect(modules.map((module) => module.label).toSet(), hasLength(modules.length));
+    for (final module in modules) {
+      expect(AdminModule.fromApiValue(module.apiValue), module);
+      expect(module.permission, isNotEmpty);
+    }
+  });
+
   testWidgets('orders page applies the SKU sent by a product navigation intent', (tester) async {
     Uri? orderRequest;
     final api = OrderApiClient(
@@ -234,3 +244,4 @@ http.Response _json(Object body) => http.Response(
   200,
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
+

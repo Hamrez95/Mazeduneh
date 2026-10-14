@@ -1,24 +1,26 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
 
 enum AdminModule {
-  dashboard('dashboard', AdminPermissions.dashboardRead),
-  orders('orders', AdminPermissions.ordersRead),
-  products('products', AdminPermissions.productsRead),
-  inventory('inventory', AdminPermissions.inventoryRead),
-  reports('reports', AdminPermissions.reportsRead),
-  notifications('notifications', AdminPermissions.dashboardRead),
-  customers('customers', AdminPermissions.customersRead),
-  pricing('pricing', AdminPermissions.settingsRead),
-  corporate('corporate', AdminPermissions.corporateRead),
-  audit('audit', AdminPermissions.auditRead),
-  users('users', AdminPermissions.usersRead);
+  dashboard('dashboard', AdminPermissions.dashboardRead, 'داشبورد', Icons.space_dashboard_rounded),
+  orders('orders', AdminPermissions.ordersRead, 'سفارش‌ها', Icons.receipt_long_rounded),
+  products('products', AdminPermissions.productsRead, 'محصولات', Icons.inventory_2_rounded),
+  inventory('inventory', AdminPermissions.inventoryRead, 'انبار', Icons.warehouse_rounded),
+  reports('reports', AdminPermissions.reportsRead, 'گزارش‌ها', Icons.query_stats_rounded),
+  notifications('notifications', AdminPermissions.dashboardRead, 'اعلان‌ها', Icons.notifications_active_rounded),
+  customers('customers', AdminPermissions.customersRead, 'مشتری‌ها', Icons.people_alt_rounded),
+  pricing('pricing', AdminPermissions.settingsRead, 'قیمت و ارسال', Icons.percent_rounded),
+  corporate('corporate', AdminPermissions.corporateRead, 'فروش سازمانی', Icons.business_center_rounded),
+  audit('audit', AdminPermissions.auditRead, 'امنیت', Icons.shield_outlined),
+  users('users', AdminPermissions.usersRead, 'کاربران', Icons.manage_accounts_outlined);
 
-  const AdminModule(this.apiValue, this.permission);
+  const AdminModule(this.apiValue, this.permission, this.label, this.icon);
 
   final String apiValue;
   final String permission;
+  final String label;
+  final IconData icon;
 
   static AdminModule? fromApiValue(String? value) => switch (value) {
         'dashboard' => dashboard,
@@ -101,3 +103,4 @@ class AdminNavigationIntent {
   @override
   int get hashCode => Object.hash(module, orderFilter, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
 }
+
