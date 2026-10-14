@@ -95,7 +95,8 @@ def balances(sku):
     _, batches = request('/api/v1/admin/inventory/batches?sku=' + sku, token=token)
     _, movements = request('/api/v1/admin/inventory/movements?sku=' + sku, token=token)
     _, audit = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId=' + sku, token=token)
-    return available, sum(b['remainingPackages'] for b in batches), len(movements), len(audit)
+    inventory_audit = [item for item in audit if item['action'].startswith('inventory.')]
+    return available, sum(b['remainingPackages'] for b in batches), len(movements), len(inventory_audit)
 
 
 def reserve_lines(key, lines):
@@ -297,3 +298,4 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 print('Inventory legacy/batch policy, reservations/releases/waste, atomic failure, concurrent and durable retry checks passed')
+
