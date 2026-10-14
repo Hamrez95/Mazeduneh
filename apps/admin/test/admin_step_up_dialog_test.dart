@@ -42,17 +42,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('کد تأیید دومرحله‌ای'), findsNothing);
 
-    await tester.enterText(find.byType(TextField).first, 'current-password');
-    await tester.tap(find.text('تأیید هویت'));
+    final passwordField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == 'رمز عبور فعلی',
+    );
+    await tester.enterText(passwordField, 'current-password');
+    await tester.pump();
+    expect(tester.widget<TextField>(passwordField).controller!.text, 'current-password');
+
+    final confirmButton = find.text('تأیید هویت');
+    await tester.ensureVisible(confirmButton);
+    await tester.tap(confirmButton);
     await tester.pumpAndSettle();
     expect(requests, hasLength(1), reason: 'The password-only step-up request should reach the API first.');
     expect(find.text('کد تأیید دومرحله‌ای'), findsOneWidget);
     expect(requests.single, {'password': 'current-password'});
 
-    await tester.enterText(find.byType(TextField).last, '123456');
-    await tester.tap(find.text('تأیید هویت'));
+    final mfaField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == 'کد تأیید دومرحله‌ای',
+    );
+    await tester.enterText(mfaField, '123456');
+    await tester.pump();
+    await tester.ensureVisible(confirmButton);
+    await tester.tap(confirmButton);
     await tester.pumpAndSettle();
     expect(requests.last, {'password': 'current-password', 'mfaCode': '123456'});
     expect(stepUpToken, 'fresh-step-up');
   });
 }
+
