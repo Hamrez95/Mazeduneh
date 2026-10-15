@@ -133,7 +133,7 @@ with tempfile.TemporaryFile() as log:
         assert history[0]['costPrice'] == 4000 and history[0]['packagingCost'] == 500  # Original purchase immutable.
         new_order = checkout('ci-price-after')
         assert new_order['lines'][0]['unitPrice'] == 6630
-        _, original = request('/api/v1/admin/orders/'+old_order['id'], token=token)
+        _, original = request('/api/v1/checkout/orders/'+old_order['id'], extra_headers={'X-Order-Receipt-Token': old_order['receiptToken']})
         assert original['lines'][0]['unitPrice'] == 5000
         assert request(PATH)[0] == 401
     finally:
