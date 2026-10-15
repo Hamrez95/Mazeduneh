@@ -27,6 +27,53 @@ class CorporateApiClient {
         .map((item) => CorporateRequestSummary.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<CorporatePackage>> fetchPackages() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/packages'),
+      headers: _headers,
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>)
+        .map((item) => CorporatePackage.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CorporatePackage> savePackage({
+    required String code,
+    required String name,
+    required String description,
+    required bool isActive,
+    required List<CorporatePackageItem> items,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/packages/$code'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'description': description.isEmpty ? null : description,
+        'isActive': isActive,
+        'items': items
+            .map((item) => {
+                  'name': item.name,
+                  'quantity': item.quantity,
+                  'unit': item.unit,
+                  'unitPrice': item.unitPrice,
+                })
+            .toList(),
+      }),
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return CorporatePackage.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
+  }
+
   Future<CorporateSummary> fetchSummary() async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/summary'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateSummary.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<CorporateRequestDetail> fetchDetail(String id) async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/$id'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateRequestDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<void> changeStatus(String id,String status,{String? note}) => _send('PATCH','/api/v1/admin/corporate-requests/$id/status',{'status':status,'note':note});
@@ -41,6 +88,58 @@ class CorporateApiClient {
 }
 
 class CorporateRequestSummary { const CorporateRequestSummary({required this.id,required this.customerName,required this.companyName,required this.mobile,required this.city,required this.occasion,required this.orderQuantity,required this.packageType,required this.status,required this.assignedTo,required this.nextFollowUpAt,required this.createdAt}); final String id,customerName,companyName,mobile,city,occasion,packageType,status; final int orderQuantity; final String? assignedTo; final DateTime? nextFollowUpAt; final DateTime createdAt; factory CorporateRequestSummary.fromJson(Map<String,dynamic> j)=>CorporateRequestSummary(id:j['id'].toString(),customerName:j['customerName'] as String,companyName:j['companyName'] as String,mobile:j['mobile'] as String,city:j['city'] as String,occasion:j['occasion'] as String,orderQuantity:j['orderQuantity'] as int,packageType:j['packageType'] as String,status:j['status'] as String,assignedTo:j['assignedTo'] as String?,nextFollowUpAt:j['nextFollowUpAt']==null?null:DateTime.parse(j['nextFollowUpAt'] as String),createdAt:DateTime.parse(j['createdAt'] as String)); }
+class CorporatePackageItem {
+  const CorporatePackageItem({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+  });
+
+  final String name;
+  final num quantity;
+  final String unit;
+  final num unitPrice;
+
+  factory CorporatePackageItem.fromJson(Map<String, dynamic> json) =>
+      CorporatePackageItem(
+        name: json['name'] as String,
+        quantity: json['quantity'] as num,
+        unit: json['unit'] as String,
+        unitPrice: json['unitPrice'] as num,
+      );
+}
+
+class CorporatePackage {
+  const CorporatePackage({
+    required this.code,
+    required this.name,
+    required this.description,
+    required this.isActive,
+    required this.unitPrice,
+    required this.items,
+  });
+
+  final String code;
+  final String name;
+  final String? description;
+  final bool isActive;
+  final num unitPrice;
+  final List<CorporatePackageItem> items;
+
+  factory CorporatePackage.fromJson(Map<String, dynamic> json) =>
+      CorporatePackage(
+        code: json['code'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String?,
+        isActive: json['isActive'] as bool,
+        unitPrice: json['unitPrice'] as num,
+        items: (json['items'] as List<dynamic>)
+            .map((item) => CorporatePackageItem.fromJson(item as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 class CorporateSummary {
   const CorporateSummary({
     required this.newCount,

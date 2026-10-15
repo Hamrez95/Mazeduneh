@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'admin_state.dart';
+import 'auth_session.dart';
 import 'corporate_api.dart';
+import 'corporate_packages_dialog.dart';
 import 'formatters.dart';
 import 'admin_theme.dart';
 
@@ -42,6 +44,13 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
       if (mounted) setState(() { items = values[0] as List<CorporateRequestSummary>; summary = values[1] as CorporateSummary; });
     } catch (exception) { if (mounted) setState(() => error = exception); }
     finally { if (mounted) setState(() => loading = false); }
+  }
+
+  Future<void> managePackages() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => CorporatePackagesDialog(api: api),
+    );
   }
 
   Future<void> open(CorporateRequestSummary item) async {
@@ -115,9 +124,15 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
           selected: needsPlanningOnly,
           onSelected: (value) { setState(() { needsPlanningOnly = value; if (value) overdueOnly = false; }); load(); },
         ),
+        if (OwnerSession.instance.can('corporate.write'))
+          OutlinedButton.icon(
+            onPressed: managePackages,
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('مدیریت بسته‌ها'),
+          ),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد درخواست‌ها'),
       ]);
-      return constraints.maxWidth < 720
+      return constraints.maxWidth < 1100
           ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, const SizedBox(height: 12), controls])
           : Row(children: [Expanded(child: heading), const SizedBox(width: 16), controls]);
     }),

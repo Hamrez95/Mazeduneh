@@ -39,9 +39,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('۱۲ جدید'), findsOneWidget);
       expect(find.text('نرخ تبدیل به سفارش نهایی'), findsOneWidget);
+      final mainScrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text('وضعیت درخواست'), 300, scrollable: mainScrollable);
       expect(find.text('وضعیت درخواست'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      final mainScrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
       await tester.scrollUntilVisible(find.byType(TextField).first, 300, scrollable: mainScrollable);
       await tester.enterText(find.byType(TextField).first, 'شرکت');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -58,6 +59,20 @@ void main() {
       await tester.pumpAndSettle();
       final planning = captured.where((uri) => uri.queryParameters['needsPlanning'] == 'true').last;
       expect(planning.queryParameters.containsKey('overdue'), isFalse);
+      await tester.ensureVisible(find.text('مدیریت بسته‌ها'));
+      await tester.tap(find.text('مدیریت بسته‌ها'));
+      await tester.pumpAndSettle();
+      expect(find.text('مدیریت بسته‌های فروش سازمانی'), findsOneWidget);
+      final packageScrollable = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(Scrollable),
+      ).first;
+      await tester.scrollUntilVisible(
+        find.text('افزودن قلم'),
+        120,
+        scrollable: packageScrollable,
+      );
+      expect(find.text('افزودن قلم'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
