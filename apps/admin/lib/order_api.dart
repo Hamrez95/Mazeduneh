@@ -646,6 +646,7 @@ class AdminProductProfitability {
     required this.revenue,
     required this.cost,
     required this.grossProfit,
+    this.discount = 0,
   });
 
   final String productTitle;
@@ -655,6 +656,7 @@ class AdminProductProfitability {
   final num revenue;
   final num cost;
   final num grossProfit;
+  final num discount;
 
   factory AdminProductProfitability.fromJson(Map<String, dynamic> json) => AdminProductProfitability(
         productTitle: json['productTitle'] as String,
@@ -664,11 +666,29 @@ class AdminProductProfitability {
         revenue: json['revenue'] as num,
         cost: json['cost'] as num,
         grossProfit: json['grossProfit'] as num,
+        discount: (json['discount'] as num?) ?? 0,
       );
 }
 
 class AdminAnalytics {
-  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent, required this.tax, required this.netProfit, required this.shippingExpense});
+  const AdminAnalytics({
+    required this.days,
+    required this.orderCount,
+    required this.unitsSold,
+    required this.revenue,
+    required this.cost,
+    required this.grossProfit,
+    required this.grossMarginPercent,
+    required this.tax,
+    required this.netProfit,
+    required this.shippingExpense,
+    this.merchandiseRevenue = 0,
+    this.discount = 0,
+    this.shippingRevenue = 0,
+    this.productCost = 0,
+    this.packagingCost = 0,
+    this.additionalCost = 0,
+  });
   final int days;
   final int orderCount;
   final int unitsSold;
@@ -679,6 +699,12 @@ class AdminAnalytics {
   final num tax;
   final num netProfit;
   final num shippingExpense;
+  final num merchandiseRevenue;
+  final num discount;
+  final num shippingRevenue;
+  final num productCost;
+  final num packagingCost;
+  final num additionalCost;
   factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
     days: json['days'] as int,
     orderCount: json['orderCount'] as int,
@@ -690,6 +716,12 @@ class AdminAnalytics {
     tax: (json['tax'] as num?) ?? 0,
     netProfit: (json['netProfit'] as num?) ?? ((json['grossProfit'] as num) - ((json['tax'] as num?) ?? 0)),
     shippingExpense: (json['shippingExpense'] as num?) ?? 0,
+    merchandiseRevenue: (json['merchandiseRevenue'] as num?) ?? 0,
+    discount: (json['discount'] as num?) ?? 0,
+    shippingRevenue: (json['shippingRevenue'] as num?) ?? 0,
+    productCost: (json['productCost'] as num?) ?? (json['cost'] as num),
+    packagingCost: (json['packagingCost'] as num?) ?? 0,
+    additionalCost: (json['additionalCost'] as num?) ?? 0,
   );
 }
 
