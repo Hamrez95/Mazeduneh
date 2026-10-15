@@ -204,7 +204,13 @@ jobs:
           start_api
           ORDER_ID=$(cat /tmp/order-id)
           RECEIPT_TOKEN=$(cat /tmp/receipt-token)
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
+          MISSING_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}")
+          test "${MISSING_RECEIPT_TOKEN_STATUS}" = "404"
+          QUERY_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=invalid-receipt-token")
+          test "${QUERY_RECEIPT_TOKEN_STATUS}" = "404"
+          INVALID_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H 'X-Order-Receipt-Token: invalid-receipt-token')
+          test "${INVALID_RECEIPT_TOKEN_STATUS}" = "404"
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
 
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/orders/${ORDER_ID}/intent" \
             -H 'Content-Type: application/json' --data "{\"receiptToken\":\"${RECEIPT_TOKEN}\"}" > /tmp/payment-intent.json
@@ -225,7 +231,7 @@ jobs:
 
           stop_api
           start_api
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
@@ -671,7 +677,7 @@ jobs:
             -H 'Content-Type: application/json' \
             --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
           test "${STORE_MANAGER_SETTINGS_WRITE}" = "428"
-          curl -fsS "http://127.0.0.1:5100/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
+          curl -fsS "http://127.0.0.1:5100/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
           import json
           order = json.load(open('/tmp/order-delivered-after-restart.json', encoding='utf-8'))

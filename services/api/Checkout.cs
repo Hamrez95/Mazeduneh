@@ -56,20 +56,24 @@ public static class CheckoutModule
 
         checkout.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
-            string receiptToken,
+            HttpRequest httpRequest,
             CheckoutService service,
             CancellationToken cancellationToken) =>
-            await service.FindAsync(orderId, receiptToken, cancellationToken) is { } order
+        {
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
+            return await service.FindAsync(orderId, receiptToken, cancellationToken) is { } order
                 ? Results.Ok(order)
-                : Results.NotFound(new { message = "سفارش پیدا نشد." }));
+                : Results.NotFound(new { message = "سفارش پیدا نشد." });
+        });
 
         checkout.MapGet("/orders/{orderId:guid}/invoice", async (
             Guid orderId,
-            string receiptToken,
+            HttpRequest httpRequest,
             CheckoutService service,
             HttpResponse response,
             CancellationToken cancellationToken) =>
         {
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
             var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
             if (order is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
             response.Headers.ContentDisposition = $"attachment; filename=\"mazeduneh-invoice-{orderId:N}.html\"";

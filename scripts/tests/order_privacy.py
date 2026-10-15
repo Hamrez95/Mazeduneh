@@ -102,6 +102,18 @@ with tempfile.TemporaryFile() as log:
                                   headers={'Idempotency-Key': 'ci-order-privacy-0001'})
         assert status == 201, (status, created)
         order_id = created['id']
+        receipt_token = created['receiptToken']
+        public_order_path = '/api/v1/checkout/orders/' + order_id
+        assert request(public_order_path)[0] == 404
+        assert request(public_order_path + '?receiptToken=invalid-receipt-token')[0] == 404
+        assert request(public_order_path, headers={'X-Order-Receipt-Token': 'invalid-receipt-token'})[0] == 404
+        status, public_order = request(public_order_path, headers={'X-Order-Receipt-Token': receipt_token})
+        assert status == 200 and public_order['id'] == order_id
+        public_invoice_path = public_order_path + '/invoice'
+        assert request(public_invoice_path)[0] == 404
+        assert request(public_invoice_path + '?receiptToken=invalid-receipt-token')[0] == 404
+        invoice_status, invoice_html = request(public_invoice_path, headers={'X-Order-Receipt-Token': receipt_token})
+        assert invoice_status == 200 and NAME in invoice_html and MOBILE not in invoice_html
 
         replay_status, replayed = request('/api/v1/checkout/orders', 'POST', checkout_payload,
                                           headers={'Idempotency-Key': 'ci-order-privacy-0001'})
