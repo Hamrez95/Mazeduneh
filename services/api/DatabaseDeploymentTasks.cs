@@ -11,6 +11,7 @@ public sealed class DatabaseDeploymentTasks(
     CommercePricingDatabase commerce,
     CorporateRequestDatabase corporateSales,
     CorporatePackageDatabase corporatePackages,
+    CorporateResponseTemplateDatabase corporateTemplates,
     AdminAuditLogDatabase audit,
     AdminUsersDatabase adminUsers,
     ProductCatalog products)
@@ -27,6 +28,7 @@ public sealed class DatabaseDeploymentTasks(
         await commerce.ApplyMigrationsAsync(cancellationToken);
         await corporateSales.ApplyMigrationsAsync(cancellationToken);
         await corporatePackages.ApplyMigrationsAsync(cancellationToken);
+        await corporateTemplates.ApplyMigrationsAsync(cancellationToken);
         await checkout.ApplyMigrationsAsync(cancellationToken);
         await customers.ApplyMigrationsAsync(cancellationToken);
         await orders.ApplyMigrationsAsync(cancellationToken);
@@ -76,6 +78,7 @@ public static class DatabaseMigrationCatalog
         new("commerce", "001-pricing-settings"),
         new("corporate-sales", "001-bootstrap"),
         new("corporate-sales", "002-package-catalog-snapshots"),
+        new("corporate-sales", "003-response-templates"),
         new("checkout", "001-bootstrap"),
         new("checkout", "002-shipping-expense"),
         new("customers", "001-bootstrap"),

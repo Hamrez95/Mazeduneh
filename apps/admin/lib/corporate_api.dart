@@ -74,6 +74,41 @@ class CorporateApiClient {
     );
   }
 
+
+  Future<List<CorporateResponseTemplate>> fetchResponseTemplates() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/templates'),
+      headers: _headers,
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>)
+        .map((item) => CorporateResponseTemplate.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CorporateResponseTemplate> saveResponseTemplate({
+    required String code,
+    required String title,
+    required String body,
+    required bool isActive,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/templates/$code'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'title': title, 'body': body, 'isActive': isActive}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return CorporateResponseTemplate.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
+  }
+
   Future<CorporateSummary> fetchSummary() async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/summary'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateSummary.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<CorporateRequestDetail> fetchDetail(String id) async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/$id'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateRequestDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<void> changeStatus(String id,String status,{String? note}) => _send('PATCH','/api/v1/admin/corporate-requests/$id/status',{'status':status,'note':note});
@@ -137,6 +172,35 @@ class CorporatePackage {
         items: (json['items'] as List<dynamic>)
             .map((item) => CorporatePackageItem.fromJson(item as Map<String, dynamic>))
             .toList(),
+      );
+}
+
+
+class CorporateResponseTemplate {
+  const CorporateResponseTemplate({
+    required this.code,
+    required this.title,
+    required this.body,
+    required this.isActive,
+    required this.updatedAt,
+    required this.updatedBy,
+  });
+
+  final String code;
+  final String title;
+  final String body;
+  final bool isActive;
+  final DateTime updatedAt;
+  final String updatedBy;
+
+  factory CorporateResponseTemplate.fromJson(Map<String, dynamic> json) =>
+      CorporateResponseTemplate(
+        code: json['code'] as String,
+        title: json['title'] as String,
+        body: json['body'] as String,
+        isActive: json['isActive'] as bool,
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        updatedBy: json['updatedBy'] as String,
       );
 }
 
