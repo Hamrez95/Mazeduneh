@@ -58,12 +58,15 @@ public static class CheckoutModule
             Guid orderId,
             HttpRequest httpRequest,
             CheckoutService service,
+            HttpResponse response,
             CancellationToken cancellationToken) =>
         {
+            response.Headers.CacheControl = "no-store";
             var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
-            return await service.FindAsync(orderId, receiptToken, cancellationToken) is { } order
-                ? Results.Ok(order)
-                : Results.NotFound(new { message = "سفارش پیدا نشد." });
+            var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
+            return order is null
+                ? Results.NotFound(new { message = "سفارش پیدا نشد." })
+                : Results.Ok(new { order.Id, order.State, order.ReservationExpiresAt });
         });
 
         checkout.MapGet("/orders/{orderId:guid}/invoice", async (
@@ -73,6 +76,7 @@ public static class CheckoutModule
             HttpResponse response,
             CancellationToken cancellationToken) =>
         {
+            response.Headers.CacheControl = "no-store";
             var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
             var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
             if (order is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
