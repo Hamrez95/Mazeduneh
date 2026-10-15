@@ -272,6 +272,7 @@ public static class OrderManagementModule
             return Results.Ok(await database.NotificationsAsync(
                 AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead),
                 AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead),
+                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CorporateRead),
                 cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -876,9 +877,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return rows;
     }
 
-    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, CancellationToken cancellationToken)
+    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, bool includeCorporate, CancellationToken cancellationToken)
     {
-        if (!IsConfigured || (!includeOrders && !includeInventory))
+        if (!IsConfigured || (!includeOrders && !includeInventory && !includeCorporate))
             return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -889,6 +890,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             """;
         var awaitingPayment = 0;
         var recentOrders = 0;
+        var corporateOverdueFollowUps = 0;
         if (includeOrders)
         {
             await using (var command = new NpgsqlCommand(orderSql, connection))
@@ -914,6 +916,41 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                         new AdminNavigationTarget("inventory", Sku: reader.GetString(1))));
         }
 
+        if (includeCorporate)
+        {
+            const string countSql = """
+                select count(*)::int
+                from corporate_requests
+                where status not in ('Finalized','Cancelled')
+                  and next_follow_up_at is not null and next_follow_up_at<=now();
+                """;
+            await using (var command = new NpgsqlCommand(countSql, connection))
+                corporateOverdueFollowUps = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+
+            const string remindersSql = """
+                select company_name,assigned_to,next_follow_up_at
+                from corporate_requests
+                where status not in ('Finalized','Cancelled')
+                  and next_follow_up_at is not null and next_follow_up_at<=now()
+                order by next_follow_up_at asc
+                limit 10;
+                """;
+            await using var reminders = new NpgsqlCommand(remindersSql, connection);
+            await using var reminderReader = await reminders.ExecuteReaderAsync(cancellationToken);
+            while (await reminderReader.ReadAsync(cancellationToken))
+            {
+                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(2);
+                var assignedTo = reminderReader.IsDBNull(1) || string.IsNullOrWhiteSpace(reminderReader.GetString(1))
+                    ? "بدون مسئول"
+                    : reminderReader.GetString(1);
+                items.Add(new AdminNotification(
+                    "corporate-follow-up",
+                    "موعد پیگیری فروش سازمانی گذشته است.",
+                    $"{reminderReader.GetString(0)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
+                    new AdminNavigationTarget("corporate")));
+            }
+        }
+
         if (awaitingPayment > 0)
             items.Insert(0, new AdminNotification(
                 "awaiting-payment",
@@ -926,7 +963,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.",
                 "مرور سفارش‌ها و وضعیت ارسال",
                 new AdminNavigationTarget("orders")));
-        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items);
+        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items, corporateOverdueFollowUps);
     }
 
     public async Task<IReadOnlyCollection<AdminOverdueShipment>> ListOverdueShipmentsAsync(int days, CancellationToken cancellationToken)
@@ -1258,7 +1295,7 @@ public sealed record AdminNotification(
     string Title,
     string Detail,
     AdminNavigationTarget? Target = null);
-public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
+public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items, int CorporateOverdueFollowUps = 0);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }
 public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrderSummary? Order = null,
     string? Message = null, IReadOnlyCollection<StockLevelChange>? StockLevels = null)

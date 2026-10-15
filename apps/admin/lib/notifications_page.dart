@@ -46,7 +46,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('مرکز اعلان‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
           const SizedBox(height: 6),
-          const Text('هشدارهای سفارش، موجودی و کارهای مهم را در یک صف واضح دنبال کنید.', style: TextStyle(color: AdminColors.muted)),
+          const Text('هشدارهای سفارش، موجودی و پیگیری‌های فروش سازمانی را در یک صف واضح دنبال کنید.', style: TextStyle(color: AdminColors.muted)),
         ])),
         IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
       ]),

@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "http://127.0.0.1:5103"
 INVENTORY_MARKER = "NOTIFICATION-ONLY-INVENTORY"
+CORPORATE_MARKER = "NOTIFICATION-ONLY-CORPORATE"
 
 
 def request(path, method="GET", body=None, token=None, extra_headers=None):
@@ -83,6 +84,17 @@ with tempfile.TemporaryFile() as log:
             "address": "نشانی تست مجوز", "postalCode": "1234567890", "lines": [{"sku": "PI-AKB-250", "quantity": 1}],
         }, extra_headers={"Idempotency-Key": "ci-notification-projection-0001"})
         assert status == 201, status
+        status, corporate_request = request("/api/v1/corporate-requests", "POST", {
+            "customerName": "تست اعلان سازمانی", "companyName": CORPORATE_MARKER,
+            "mobile": "09120000002", "email": None, "city": "تهران", "occasion": "آزمایشی",
+            "orderQuantity": 10, "packageType": "آزمایشی", "budget": None, "deliveryDate": None,
+            "customPackaging": False, "description": None, "logoKey": None,
+        })
+        assert status == 201, status
+        due_at = "2000-01-01T00:00:00Z"
+        status, _ = request(f"/api/v1/admin/corporate-requests/{corporate_request['id']}/follow-up",
+                            "POST", {"nextFollowUpAt": due_at}, token)
+        assert status == 200, status
         status, owner = request("/api/v1/admin/notifications", token=token)
         assert status == 200 and owner["awaitingPayment"] > 0 and owner["lowStockItems"] > 0
         assert INVENTORY_MARKER in json.dumps(owner)
@@ -97,6 +109,12 @@ with tempfile.TemporaryFile() as log:
         assert awaiting_notice["target"]["filter"] == "AwaitingPayment"
         recent_notice = next(item for item in owner["items"] if item["type"] == "new-orders")
         assert recent_notice["target"]["module"] == "orders"
+        corporate_notice = next(
+            item for item in owner["items"]
+            if item["type"] == "corporate-follow-up" and CORPORATE_MARKER in item["detail"]
+        )
+        assert corporate_notice["target"]["module"] == "corporate"
+        assert owner["corporateOverdueFollowUps"] >= 1
         assert request("/api/v1/admin/notifications")[0] == 401
     finally:
         stop_api(api)
@@ -105,6 +123,11 @@ with tempfile.TemporaryFile() as log:
         ("dashboard.read", set()),
         ("dashboard.read,orders.read", {"awaiting-payment", "new-orders"}),
         ("dashboard.read,inventory.read", {"low-stock"}),
+        ("dashboard.read,corporate.read", {"corporate-follow-up"}),
+        ("dashboard.read,orders.read,corporate.read", {"awaiting-payment", "new-orders", "corporate-follow-up"}),
+        ("dashboard.read,inventory.read,corporate.read", {"low-stock", "corporate-follow-up"}),
+        ("dashboard.read,orders.read,inventory.read,corporate.read",
+         {"awaiting-payment", "new-orders", "low-stock", "corporate-follow-up"}),
         ("dashboard.read,orders.read,inventory.read", {"awaiting-payment", "new-orders", "low-stock"}),
     ]:
         api, token = start_api(permissions)
@@ -113,10 +136,17 @@ with tempfile.TemporaryFile() as log:
             assert status == 200
             types = {item["type"] for item in payload["items"]}
             assert types == allowed_types, (permissions, types)
-            assert set(payload) == {"awaitingPayment", "lowStockItems", "items"}
+            assert set(payload) == {
+                "awaitingPayment", "lowStockItems", "corporateOverdueFollowUps", "items"
+            }
             assert payload["awaitingPayment"] == (owner["awaitingPayment"] if "orders.read" in permissions else 0)
             assert payload["lowStockItems"] == (owner["lowStockItems"] if "inventory.read" in permissions else 0)
-            assert (INVENTORY_MARKER in json.dumps(payload)) == ("inventory.read" in permissions)
+            assert payload["corporateOverdueFollowUps"] == (
+                owner["corporateOverdueFollowUps"] if "corporate.read" in permissions else 0
+            )
+            projected = json.dumps(payload)
+            assert (INVENTORY_MARKER in projected) == ("inventory.read" in permissions)
+            assert (CORPORATE_MARKER in projected) == ("corporate.read" in permissions)
         finally:
             stop_api(api)
 

@@ -75,6 +75,55 @@ void main() {
     expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'SKU-1', batchCode: 'B-1'));
   });
 
+
+  test('corporate follow-up notification count and destination are parsed', () async {
+    final client = MockClient((_) async => http.Response(jsonEncode({
+      'awaitingPayment': 0,
+      'lowStockItems': 0,
+      'corporateOverdueFollowUps': 2,
+      'items': [
+        {
+          'type': 'corporate-follow-up',
+          'title': 'موعد پیگیری فروش سازمانی گذشته است.',
+          'detail': 'شرکت نمونه · مسئول فروش · 2026-10-15 08:00 UTC',
+          'target': {'module': 'corporate'},
+        },
+      ],
+    }), 200, headers: {'content-type': 'application/json; charset=utf-8'}));
+    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test')
+        .fetchNotifications();
+
+    expect(result.corporateOverdueFollowUps, 2);
+    expect(
+      result.items.single.target?.toIntent(),
+      const AdminNavigationIntent(
+        module: AdminModule.corporate,
+        orderFilter: AdminOrderFilter.all,
+      ),
+    );
+  });
+
+  testWidgets('corporate follow-up notice opens the corporate queue', (tester) async {
+    AdminNavigationIntent? destination;
+    const corporate = AdminNotification(
+      type: 'corporate-follow-up',
+      title: 'موعد پیگیری فروش سازمانی گذشته است.',
+      detail: 'شرکت نمونه · مسئول فروش · 2026-10-15 08:00 UTC',
+      target: AdminNavigationTarget(module: 'corporate'),
+    );
+    await tester.pumpWidget(harness(
+      AdminNotificationTile(item: corporate, onNavigate: (value) => destination = value),
+    ));
+    await tester.tap(find.text('مشاهده فروش سازمانی'));
+    expect(
+      destination,
+      const AdminNavigationIntent(
+        module: AdminModule.corporate,
+        orderFilter: AdminOrderFilter.all,
+      ),
+    );
+  });
+
   testWidgets('notification center retains stale notices after a failed refresh and recovers', (tester) async {
     var calls = 0;
     final client = MockClient((_) async => ++calls == 2 ? notices(status: 503) : notices());
