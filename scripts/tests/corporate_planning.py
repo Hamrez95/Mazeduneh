@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,10 +15,12 @@ PREFIX = 'ci-planning-fixture'
 ADMIN = '/api/v1/admin/corporate-requests'
 
 
-def request(path, method='GET', body=None, token=None):
+def request(path, method='GET', body=None, token=None, extra_headers=None, include_headers=False):
     headers = {'Content-Type': 'application/json'} if body is not None else {}
     if token:
         headers['Authorization'] = 'Bearer ' + token
+    if extra_headers:
+        headers.update(extra_headers)
     try:
         response = urlopen(Request(BASE + path, method=method, headers=headers,
                                    data=json.dumps(body).encode() if body is not None else None), timeout=8)
@@ -25,7 +28,8 @@ def request(path, method='GET', body=None, token=None):
         response = error
     with response:
         content = response.read()
-        return response.status, json.loads(content) if content else None
+        result = (response.status, json.loads(content) if content else None)
+        return (*result, response.headers) if include_headers else result
 
 
 def start_api(log, restricted=False):
@@ -91,12 +95,23 @@ with tempfile.TemporaryFile() as log:
         baseline = metrics()
         fixtures = []
         for index in range(7):
-            status, created = request('/api/v1/corporate-requests', 'POST', {
+            status, created, response_headers = request('/api/v1/corporate-requests', 'POST', {
                 'customerName': 'CI customer', 'companyName': PREFIX + '-' + str(index),
                 'mobile': '09123456789', 'email': None, 'city': 'CI-city', 'occasion': 'CI',
                 'orderQuantity': 50, 'packageType': 'CI', 'budget': None, 'deliveryDate': None,
-                'customPackaging': False, 'description': None, 'logoKey': None})
+                'customPackaging': False, 'description': None, 'logoKey': None}, include_headers=True)
             assert status == 201, status
+            access_token = created['accessToken']
+            assert access_token and access_token not in (response_headers.get('Location') or '')
+            public_path = '/api/v1/corporate-requests/' + created['id']
+            assert request(public_path)[0] == 404
+            assert request(public_path + '?accessToken=')[0] == 404
+            assert request(public_path + '?accessToken=' + quote(access_token))[0] == 404
+            assert request(public_path, extra_headers={'X-Corporate-Request-Token': 'invalid'})[0] == 404
+            public_status, public_summary = request(public_path, extra_headers={
+                'X-Corporate-Request-Token': access_token})
+            assert public_status == 200 and public_summary['id'] == created['id']
+            assert 'mobile' not in public_summary and 'email' not in public_summary
             fixtures.append(created['id'])
         a, b, c, d, e, f, g = fixtures
         mutate(b, '/assign', {'assignedTo': 'CI owner'})

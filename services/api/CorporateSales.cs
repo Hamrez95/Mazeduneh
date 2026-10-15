@@ -115,16 +115,19 @@ public static class CorporateSalesModule
             var errors = Validate(request);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var created = await database.CreateAsync(request, cancellationToken);
-            return Results.Created($"/api/v1/corporate-requests/{created.Id}?accessToken={created.AccessToken}", new
+            return Results.Created($"/api/v1/corporate-requests/{created.Id}", new
             {
                 id = created.Id, accessToken = created.AccessToken,
                 message = "درخواست شما با موفقیت ثبت شد. کارشناسان مزه‌دونه به‌زودی با شما تماس می‌گیرند."
             });
         });
 
-        publicApi.MapGet("/{id:guid}", async (Guid id, string? accessToken, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
-            await database.FindPublicAsync(id, accessToken, cancellationToken) is { } request
-                ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." }));
+        publicApi.MapGet("/{id:guid}", async (Guid id, HttpRequest httpRequest, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
+        {
+            var accessToken = httpRequest.Headers["X-Corporate-Request-Token"].ToString();
+            return await database.FindPublicAsync(id, accessToken, cancellationToken) is { } request
+                ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." });
+        });
 
         var admin = endpoints.MapGroup("/api/v1/admin/corporate-requests").WithTags("Admin Corporate Sales");
         admin.MapGet("", async (string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, bool? overdue, bool? needsPlanning, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
@@ -303,9 +306,9 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
 
     private async Task<CorporateRequestDetail?> FindCoreAsync(Guid id, string? token, CancellationToken ct)
     {
-        if (!IsConfigured) return null;
-        const string sql = "select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at from corporate_requests where id=@id and (@token='' or public_access_token=@token);";
-        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"id",id); Add(command,"token",token??"");
+        if (!IsConfigured || string.IsNullOrWhiteSpace(token)) return null;
+        const string sql = "select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at from corporate_requests where id=@id and public_access_token=@token;";
+        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"id",id); Add(command,"token",token!);
         await using var reader = await command.ExecuteReaderAsync(ct); if (!await reader.ReadAsync(ct)) return null; var detail = ReadDetail(reader); await reader.CloseAsync();
         detail = detail with { Events = await EventsAsync(connection, id, ct), Messages = await MessagesAsync(connection, id, ct) }; return detail;
     }

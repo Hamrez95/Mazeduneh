@@ -3,7 +3,7 @@
 ماژول فروش سازمانی از سه بخش مستقل تشکیل شده است:
 
 - فروشگاه: بنر homepage و landing page در مسیر `/corporate-sales`.
-- API: ثبت عمومی درخواست، مشاهدهٔ عمومی با access token، و عملیات محافظت‌شدهٔ ادمین در `/api/v1/admin/corporate-requests`.
+- API: ثبت عمومی درخواست، مشاهدهٔ محدود با توکن در header، و عملیات محافظت‌شدهٔ ادمین در `/api/v1/admin/corporate-requests`.
 - پنل فعال Flutter: گزینهٔ «فروش سازمانی» در `apps/admin/lib/main.dart`.
 
 ## تنظیمات محیطی
@@ -44,7 +44,7 @@
 
 - `POST /api/v1/corporate-requests` ثبت درخواست عمومی
 - `POST /api/v1/corporate-requests/upload` آپلود لوگو
-- `GET /api/v1/corporate-requests/{id}?accessToken=...` مشاهدهٔ محدود مشتری
+- `GET /api/v1/corporate-requests/{id}` مشاهدهٔ محدود مشتری با header `X-Corporate-Request-Token`؛ توکن در query string یا `Location` قرار نمی‌گیرد.
 - `GET /api/v1/admin/corporate-requests` فهرست با فیلتر
 - `GET /api/v1/admin/corporate-requests/{id}` جزئیات
 - `PATCH /api/v1/admin/corporate-requests/{id}/status` تغییر وضعیت و تاریخچه
