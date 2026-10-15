@@ -1,21 +1,99 @@
+name: mazeduneh
+
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: mazeduneh-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mazeduneh
-      POSTGRES_USER: mazeduneh
-      POSTGRES_PASSWORD: mazeduneh_local_only
+      POSTGRES_DB: ${MAZEDUNEH_DB_NAME:-mazeduneh}
+      POSTGRES_USER: ${MAZEDUNEH_DB_USER:-mazeduneh}
+      POSTGRES_PASSWORD: ${MAZEDUNEH_DB_PASSWORD:-mazeduneh_local_only}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${MAZEDUNEH_POSTGRES_PORT:-5432}:5432"
     volumes:
       - mazeduneh_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mazeduneh -d mazeduneh"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 15
+
+  api-init:
+    profiles: [full]
+    build:
+      context: ./services/api
+    command: ["--migrate", "--seed-admin", "--seed-demo"]
+    environment: &api-environment
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_HTTP_PORTS: 8080
+      ConnectionStrings__Catalog: Host=postgres;Port=5432;Database=${MAZEDUNEH_DB_NAME:-mazeduneh};Username=${MAZEDUNEH_DB_USER:-mazeduneh};Password=${MAZEDUNEH_DB_PASSWORD:-mazeduneh_local_only}
+      Admin__Email: ${MAZEDUNEH_ADMIN_EMAIL:-admin@mazeduneh.local}
+      Admin__PasswordHash: ${MAZEDUNEH_ADMIN_PASSWORD_HASH:-}
+      Admin__TokenSigningKey: ${MAZEDUNEH_ADMIN_TOKEN_SIGNING_KEY:-}
+      Cors__AllowedOrigins__0: http://127.0.0.1:${MAZEDUNEH_STOREFRONT_PORT:-3000}
+      Cors__AllowedOrigins__1: http://localhost:${MAZEDUNEH_STOREFRONT_PORT:-3000}
+      Cors__AllowedOrigins__2: http://127.0.0.1:${MAZEDUNEH_ADMIN_PORT:-8080}
+      Cors__AllowedOrigins__3: http://localhost:${MAZEDUNEH_ADMIN_PORT:-8080}
+      Payments__SandboxEnabled: "true"
+      Media__RootPath: /app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    profiles: [full]
+    build:
+      context: ./services/api
+    restart: unless-stopped
+    environment: *api-environment
+    ports:
+      - "127.0.0.1:${MAZEDUNEH_API_PORT:-5080}:8080"
+    volumes:
+      - mazeduneh_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api-init:
+        condition: service_completed_successfully
+
+  storefront:
+    profiles: [full]
+    build:
+      context: ./apps/storefront
+      args:
+        NEXT_PUBLIC_MAZEDUNEH_API_URL: http://127.0.0.1:${MAZEDUNEH_API_PORT:-5080}
+        NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: "false"
+        NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL: http://127.0.0.1:${MAZEDUNEH_ADMIN_PORT:-8080}
+        NEXT_PUBLIC_SITE_URL: http://127.0.0.1:${MAZEDUNEH_STOREFRONT_PORT:-3000}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_MAZEDUNEH_API_URL: http://127.0.0.1:${MAZEDUNEH_API_PORT:-5080}
+      NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: "false"
+      NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL: http://127.0.0.1:${MAZEDUNEH_ADMIN_PORT:-8080}
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:${MAZEDUNEH_STOREFRONT_PORT:-3000}
+      MAZEDUNEH_API_INTERNAL_URL: http://api:8080
+    ports:
+      - "127.0.0.1:${MAZEDUNEH_STOREFRONT_PORT:-3000}:8080"
+    depends_on:
+      api:
+        condition: service_started
+
+  admin:
+    profiles: [full]
+    build:
+      context: ./apps/admin
+      args:
+        MAZEDUNEH_API_BASE_URL: http://127.0.0.1:${MAZEDUNEH_API_PORT:-5080}
+        MAZEDUNEH_ADMIN_STORE_ID: default
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MAZEDUNEH_ADMIN_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_started
 
 volumes:
   mazeduneh_postgres_data:
+  mazeduneh_media:

@@ -1,7 +1,10 @@
-.git
-bin
-obj
-media
+bin/
+obj/
+.vs/
 *.user
 *.log
-appsettings.Development.json
+.env
+.env.*
+!.env.example
+media/
+.git/
