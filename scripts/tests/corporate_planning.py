@@ -93,13 +93,25 @@ with tempfile.TemporaryFile() as log:
     api, token = start_api(log)
     try:
         baseline = metrics()
+        package_body = {
+            'name': 'CI package snapshot', 'description': 'Snapshot contract fixture', 'isActive': True,
+            'items': [{'name': 'CI item', 'quantity': 2, 'unit': 'بسته', 'unitPrice': 120000}],
+        }
+        package_status, package = request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)
+        assert package_status == 200, package
+        assert package['unitPrice'] == 240000 and package['items'][0]['quantity'] == 2
+        assert request(ADMIN + '/packages', token=token)[0] == 200
+        assert request(ADMIN + '/packages')[0] == 401
+        public_status, public_packages = request('/api/v1/corporate-packages')
+        assert public_status == 200 and any(item['code'] == 'ci-corp-kit' for item in public_packages)
         fixtures = []
         for index in range(7):
             status, created, response_headers = request('/api/v1/corporate-requests', 'POST', {
                 'customerName': 'CI customer', 'companyName': PREFIX + '-' + str(index),
                 'mobile': '09123456789', 'email': None, 'city': 'CI-city', 'occasion': 'CI',
-                'orderQuantity': 50, 'packageType': 'CI', 'budget': None, 'deliveryDate': None,
-                'customPackaging': False, 'description': None, 'logoKey': None}, include_headers=True)
+                'orderQuantity': 50, 'packageType': 'CI', 'packageCode': 'ci-corp-kit' if index == 0 else None,
+                'budget': None, 'deliveryDate': None, 'customPackaging': False,
+                'description': None, 'logoKey': None}, include_headers=True)
             assert status == 201, status
             access_token = created['accessToken']
             assert access_token and access_token not in (response_headers.get('Location') or '')
@@ -114,6 +126,17 @@ with tempfile.TemporaryFile() as log:
             assert 'mobile' not in public_summary and 'email' not in public_summary
             fixtures.append(created['id'])
         a, b, c, d, e, f, g = fixtures
+        detail_status, saved_request = request(ADMIN + '/' + a, token=token)
+        assert detail_status == 200 and saved_request['packageCode'] == 'ci-corp-kit'
+        snapshot = saved_request['packageSnapshot']
+        assert snapshot['unitPrice'] == 240000 and snapshot['orderQuantity'] == 50
+        assert snapshot['estimatedTotal'] == 12000000
+        repriced = dict(package_body, items=[{'name': 'CI item', 'quantity': 2, 'unit': 'بسته', 'unitPrice': 150000}])
+        updated_status, updated_package = request(ADMIN + '/packages/ci-corp-kit', 'PUT', repriced, token)
+        assert updated_status == 200 and updated_package['unitPrice'] == 300000
+        _, historical = request(ADMIN + '/' + a, token=token)
+        assert historical['packageSnapshot']['unitPrice'] == 240000
+        assert historical['packageSnapshot']['estimatedTotal'] == 12000000
         assigned = mutate(b, '/assign', {'assignedTo': 'CI owner'})
         assert assigned['assignedTo'] == 'CI owner'
         mutate(c, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
@@ -158,6 +181,8 @@ with tempfile.TemporaryFile() as log:
     api, token = start_api(log, restricted=True)
     try:
         assert request(ADMIN + '?needsPlanning=true', token=token)[0] == 403
+        assert request(ADMIN + '/packages', token=token)[0] == 403
+        assert request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)[0] == 403
     finally:
         stop_api(api)
 

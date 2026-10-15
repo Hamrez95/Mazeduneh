@@ -1,6 +1,7 @@
 using Npgsql;
 using NpgsqlTypes;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 public static class CorporateRequestStatuses
 {
@@ -48,7 +49,8 @@ public sealed record CorporateRequestStatusChangeResult(CorporateRequestStatusCh
 public sealed record CorporateRequestCreate(
     string CustomerName, string CompanyName, string Mobile, string? Email, string City,
     string Occasion, int OrderQuantity, string PackageType, decimal? Budget,
-    DateOnly? DeliveryDate, bool CustomPackaging, string? Description, string? LogoKey);
+    DateOnly? DeliveryDate, bool CustomPackaging, string? Description, string? LogoKey,
+    string? PackageCode = null);
 
 public sealed record CorporateRequestStatusChange(string Status, string? Note);
 public sealed record CorporateRequestAssignment(string? AssignedTo);
@@ -67,7 +69,8 @@ public sealed record CorporateRequestDetail(
     bool CustomPackaging, string? Description, string? LogoUrl, string? ProformaUrl, string Status,
     string? AssignedTo, DateTimeOffset? NextFollowUpAt, string? InternalNote,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyCollection<CorporateRequestEvent> Events,
-    IReadOnlyCollection<CorporateRequestMessage> Messages);
+    IReadOnlyCollection<CorporateRequestMessage> Messages, string? PackageCode = null,
+    CorporatePackageSnapshot? PackageSnapshot = null);
 
 public sealed record CorporateRequestEvent(Guid Id, string EventType, string? FromStatus, string? ToStatus, string Actor, string? Note, DateTimeOffset CreatedAt);
 public sealed record CorporateRequestMessage(Guid Id, string SenderType, string Body, string Channel, DateTimeOffset CreatedAt);
@@ -86,12 +89,17 @@ public static class CorporateSalesModule
 {
     public static IServiceCollection AddCorporateSales(this IServiceCollection services)
     {
+        services.AddSingleton<CorporatePackageDatabase>();
         services.AddSingleton<CorporateRequestDatabase>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapCorporateSales(this IEndpointRouteBuilder endpoints)
     {
+        var packageApi = endpoints.MapGroup("/api/v1/corporate-packages").WithTags("Corporate Packages");
+        packageApi.MapGet("", async (CorporatePackageDatabase database, CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(activeOnly: true, cancellationToken)));
+
         var publicApi = endpoints.MapGroup("/api/v1/corporate-requests").WithTags("Corporate Sales");
         publicApi.MapPost("/upload", async (HttpRequest request, MediaStorage storage, CancellationToken cancellationToken) =>
         {
@@ -115,6 +123,8 @@ public static class CorporateSalesModule
             var errors = Validate(request);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var created = await database.CreateAsync(request, cancellationToken);
+            if (created.Error is not null)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["packageCode"] = [created.Error] });
             return Results.Created($"/api/v1/corporate-requests/{created.Id}", new
             {
                 id = created.Id, accessToken = created.AccessToken,
@@ -130,6 +140,22 @@ public static class CorporateSalesModule
         });
 
         var admin = endpoints.MapGroup("/api/v1/admin/corporate-requests").WithTags("Admin Corporate Sales");
+        admin.MapGet("/packages", async (CorporatePackageDatabase database, CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListAsync(activeOnly: false, cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        admin.MapPut("/packages/{code}", async (
+            string code, CorporatePackageUpsert input, CorporatePackageDatabase database,
+            AdminAuditLogDatabase audit, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var errors = CorporatePackageValidation.Validate(code, input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            if (!database.IsConfigured)
+                return Results.Problem(title: "کاتالوگ بسته‌ها پیکربندی نشده است.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var saved = await database.SaveAsync(code.Trim().ToLowerInvariant(), input, actor,
+                context.TraceIdentifier, audit, cancellationToken);
+            return Results.Ok(saved);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapGet("", async (string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, bool? overdue, bool? needsPlanning, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
         {
             if (overdue == true && needsPlanning == true)
@@ -186,13 +212,16 @@ public static class CorporateSalesModule
         if (string.IsNullOrWhiteSpace(input.City)) errors[nameof(input.City)] = ["شهر الزامی است."];
         if (string.IsNullOrWhiteSpace(input.Occasion)) errors[nameof(input.Occasion)] = ["نوع مناسبت را انتخاب کنید."];
         if (input.OrderQuantity is < 1 or > 1_000_000) errors[nameof(input.OrderQuantity)] = ["تعداد سفارش باید معتبر باشد."];
-        if (string.IsNullOrWhiteSpace(input.PackageType)) errors[nameof(input.PackageType)] = ["نوع بسته را انتخاب کنید."];
+        if (string.IsNullOrWhiteSpace(input.PackageCode) && string.IsNullOrWhiteSpace(input.PackageType))
+            errors[nameof(input.PackageType)] = ["نوع بسته را انتخاب کنید."];
+        if (input.PackageCode is { Length: > 80 }) errors[nameof(input.PackageCode)] = ["کد بسته معتبر نیست."];
         if (input.Email is { Length: > 0 } && !input.Email.Contains('@')) errors[nameof(input.Email)] = ["ایمیل معتبر وارد کنید."];
         return errors;
     }
 }
 
-public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogger<CorporateRequestDatabase> logger)
+public sealed class CorporateRequestDatabase(
+    IConfiguration configuration, ILogger<CorporateRequestDatabase> logger, CorporatePackageDatabase packages)
 {
     private readonly string? connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(connectionString);
@@ -228,14 +257,55 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
         logger.LogInformation("Corporate-sales schema is ready.");
     }
 
-    public async Task<(Guid Id, string AccessToken)> CreateAsync(CorporateRequestCreate input, CancellationToken ct)
+    public async Task<CorporateRequestCreateResult> CreateAsync(CorporateRequestCreate input, CancellationToken ct)
     {
-        if (!IsConfigured) return (Guid.NewGuid(), Convert.ToHexString(Guid.NewGuid().ToByteArray()));
-        var id = Guid.NewGuid(); var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        const string sql = """insert into corporate_requests(id,public_access_token,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key) values (@id,@token,@customer,@company,@mobile,@email,@city,@occasion,@quantity,@package,@budget,@delivery,@custom,@description,@logo);""";
-        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection);
-        Add(command, "id", id); Add(command, "token", token); Add(command, "customer", input.CustomerName.Trim()); Add(command, "company", input.CompanyName.Trim()); Add(command, "mobile", input.Mobile.Trim()); Add(command, "email", (object?)input.Email?.Trim() ?? DBNull.Value); Add(command, "city", input.City.Trim()); Add(command, "occasion", input.Occasion.Trim()); Add(command, "quantity", input.OrderQuantity); Add(command, "package", input.PackageType.Trim()); Add(command, "budget", (object?)input.Budget ?? DBNull.Value); Add(command, "delivery", (object?)input.DeliveryDate ?? DBNull.Value); Add(command, "custom", input.CustomPackaging); Add(command, "description", (object?)input.Description?.Trim() ?? DBNull.Value); Add(command, "logo", (object?)input.LogoKey ?? DBNull.Value);
-        await command.ExecuteNonQueryAsync(ct); return (id, token);
+        if (!IsConfigured)
+        {
+            if (!string.IsNullOrWhiteSpace(input.PackageCode)) return new(null, null, "کاتالوگ بسته‌ها در دسترس نیست.");
+            return new(Guid.NewGuid(), Convert.ToHexString(Guid.NewGuid().ToByteArray()));
+        }
+        var id = Guid.NewGuid();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        var packageCode = string.IsNullOrWhiteSpace(input.PackageCode) ? null : input.PackageCode.Trim().ToLowerInvariant();
+        var packageType = input.PackageType?.Trim() ?? string.Empty;
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+        CorporatePackageSnapshot? snapshot = null;
+        if (packageCode is not null)
+        {
+            var package = await packages.FindAsync(connection, transaction, packageCode, true, true, ct);
+            if (package is null)
+            {
+                await transaction.RollbackAsync(ct);
+                return new(null, null, "بسته انتخاب‌شده دیگر در دسترس نیست؛ فهرست بسته‌ها را تازه کنید.");
+            }
+            packageType = package.Name;
+            snapshot = new(package.Code, package.Name, package.Description, package.UnitPrice, input.OrderQuantity,
+                decimal.Round(package.UnitPrice * input.OrderQuantity, 2, MidpointRounding.AwayFromZero), package.Items);
+        }
+        const string sql = """
+            insert into corporate_requests(
+                id,public_access_token,customer_name,company_name,mobile,email,city,occasion,order_quantity,
+                package_type,budget,delivery_date,custom_packaging,description,logo_key,package_code,package_snapshot)
+            values (@id,@token,@customer,@company,@mobile,@email,@city,@occasion,@quantity,
+                @package,@budget,@delivery,@custom,@description,@logo,@package_code,@package_snapshot);
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        Add(command,"id",id); Add(command,"token",token); Add(command,"customer",input.CustomerName.Trim());
+        Add(command,"company",input.CompanyName.Trim()); Add(command,"mobile",input.Mobile.Trim());
+        Add(command,"email",(object?)input.Email?.Trim()??DBNull.Value); Add(command,"city",input.City.Trim());
+        Add(command,"occasion",input.Occasion.Trim()); Add(command,"quantity",input.OrderQuantity);
+        Add(command,"package",packageType); Add(command,"budget",(object?)input.Budget??DBNull.Value);
+        Add(command,"delivery",(object?)input.DeliveryDate??DBNull.Value); Add(command,"custom",input.CustomPackaging);
+        Add(command,"description",(object?)input.Description?.Trim()??DBNull.Value);
+        Add(command,"logo",(object?)input.LogoKey??DBNull.Value);
+        Add(command,"package_code",(object?)packageCode??DBNull.Value);
+        command.Parameters.Add(new NpgsqlParameter("package_snapshot", NpgsqlDbType.Jsonb)
+        { Value = snapshot is null ? DBNull.Value : JsonSerializer.Serialize(snapshot) });
+        await command.ExecuteNonQueryAsync(ct);
+        await transaction.CommitAsync(ct);
+        return new(id, token);
     }
 
     public async Task<IReadOnlyCollection<CorporateRequestSummary>> ListAsync(string? status, string? city, string? query, DateTimeOffset? from, DateTimeOffset? to, int? minQuantity, int? maxQuantity, bool overdueOnly, bool needsPlanningOnly, CancellationToken ct)
@@ -313,7 +383,7 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
     {
         if (!IsConfigured || (requireAccessToken && string.IsNullOrWhiteSpace(token))) return null;
         const string selectSql = """
-            select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at
+            select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at,package_code,package_snapshot
             from corporate_requests
             where id=@id
             """;
@@ -358,7 +428,7 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
     private static void Add(NpgsqlCommand command,string name,object value) => command.Parameters.AddWithValue(name,value);
     private static void AddTyped<T>(NpgsqlCommand command, string name, NpgsqlDbType type, T? value) where T : struct { var parameter = command.Parameters.Add(name, type); parameter.Value = value.HasValue ? value.Value : DBNull.Value; }
     private static CorporateRequestSummary ReadSummary(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetString(5),r.GetInt32(6),r.GetString(7),r.GetString(8),r.IsDBNull(9)?null:r.GetString(9),r.IsDBNull(10)?null:r.GetFieldValue<DateTimeOffset>(10),r.GetFieldValue<DateTimeOffset>(11),r.GetFieldValue<DateTimeOffset>(12));
-    private static CorporateRequestDetail ReadDetail(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),r.GetString(5),r.GetString(6),r.GetInt32(7),r.GetString(8),r.IsDBNull(9)?null:r.GetDecimal(9),r.IsDBNull(10)?null:r.GetFieldValue<DateOnly>(10),r.GetBoolean(11),r.IsDBNull(12)?null:r.GetString(12),MediaPath(r.IsDBNull(13)?null:r.GetString(13)),MediaPath(r.IsDBNull(14)?null:r.GetString(14)),r.GetString(15),r.IsDBNull(16)?null:r.GetString(16),r.IsDBNull(17)?null:r.GetFieldValue<DateTimeOffset>(17),r.IsDBNull(18)?null:r.GetString(18),r.GetFieldValue<DateTimeOffset>(19),r.GetFieldValue<DateTimeOffset>(20),[],[]);
+    private static CorporateRequestDetail ReadDetail(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),r.GetString(5),r.GetString(6),r.GetInt32(7),r.GetString(8),r.IsDBNull(9)?null:r.GetDecimal(9),r.IsDBNull(10)?null:r.GetFieldValue<DateOnly>(10),r.GetBoolean(11),r.IsDBNull(12)?null:r.GetString(12),MediaPath(r.IsDBNull(13)?null:r.GetString(13)),MediaPath(r.IsDBNull(14)?null:r.GetString(14)),r.GetString(15),r.IsDBNull(16)?null:r.GetString(16),r.IsDBNull(17)?null:r.GetFieldValue<DateTimeOffset>(17),r.IsDBNull(18)?null:r.GetString(18),r.GetFieldValue<DateTimeOffset>(19),r.GetFieldValue<DateTimeOffset>(20),[],[],r.IsDBNull(21)?null:r.GetString(21),r.IsDBNull(22)?null:JsonSerializer.Deserialize<CorporatePackageSnapshot>(r.GetString(22)));
     private static string? MediaPath(string? key) => string.IsNullOrWhiteSpace(key) ? null : "/media/" + string.Join("/", key.Split('/').Select(Uri.EscapeDataString));
     private static async Task<IReadOnlyCollection<CorporateRequestEvent>> EventsAsync(NpgsqlConnection c,Guid id,CancellationToken ct) { const string sql="select id,event_type,from_status,to_status,actor,note,created_at from corporate_request_events where request_id=@id order by created_at desc"; await using var command=new NpgsqlCommand(sql,c); command.Parameters.AddWithValue("id",id); await using var r=await command.ExecuteReaderAsync(ct); var result=new List<CorporateRequestEvent>(); while(await r.ReadAsync(ct)) result.Add(new(r.GetGuid(0),r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),r.IsDBNull(3)?null:r.GetString(3),r.GetString(4),r.IsDBNull(5)?null:r.GetString(5),r.GetFieldValue<DateTimeOffset>(6))); return result; }
     private static async Task<IReadOnlyCollection<CorporateRequestMessage>> MessagesAsync(NpgsqlConnection c,Guid id,CancellationToken ct) { const string sql="select id,sender_type,body,channel,created_at from corporate_request_messages where request_id=@id order by created_at desc"; await using var command=new NpgsqlCommand(sql,c); command.Parameters.AddWithValue("id",id); await using var r=await command.ExecuteReaderAsync(ct); var result=new List<CorporateRequestMessage>(); while(await r.ReadAsync(ct)) result.Add(new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetFieldValue<DateTimeOffset>(4))); return result; }
