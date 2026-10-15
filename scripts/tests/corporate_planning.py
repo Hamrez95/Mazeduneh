@@ -104,6 +104,20 @@ with tempfile.TemporaryFile() as log:
         assert request(ADMIN + '/packages')[0] == 401
         public_status, public_packages = request('/api/v1/corporate-packages')
         assert public_status == 200 and any(item['code'] == 'ci-corp-kit' for item in public_packages)
+        template_body = {
+            'title': 'CI greeting', 'body': 'Hello company', 'isActive': True,
+        }
+        template_status, template = request(
+            ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)
+        assert template_status == 200 and template['code'] == 'ci-greeting'
+        assert template['title'] == 'CI greeting' and template['isActive'] is True
+        template_list_status, templates = request(ADMIN + '/templates', token=token)
+        assert template_list_status == 200 and any(item['code'] == 'ci-greeting' for item in templates)
+        assert request(ADMIN + '/templates')[0] == 401
+        disabled_body = dict(template_body, isActive=False)
+        disabled_status, disabled = request(
+            ADMIN + '/templates/ci-greeting', 'PUT', disabled_body, token)
+        assert disabled_status == 200 and disabled['isActive'] is False
         fixtures = []
         for index in range(7):
             status, created, response_headers = request('/api/v1/corporate-requests', 'POST', {
@@ -176,6 +190,10 @@ with tempfile.TemporaryFile() as log:
     api, token = start_api(log)
     try:
         assert ids('&needsPlanning=true') == {b, c, g}
+        persisted_templates = request(ADMIN + '/templates', token=token)
+        assert persisted_templates[0] == 200 and any(
+            item['code'] == 'ci-greeting' and item['isActive'] is False
+            for item in persisted_templates[1])
     finally:
         stop_api(api)
     api, token = start_api(log, restricted=True)
@@ -183,6 +201,8 @@ with tempfile.TemporaryFile() as log:
         assert request(ADMIN + '?needsPlanning=true', token=token)[0] == 403
         assert request(ADMIN + '/packages', token=token)[0] == 403
         assert request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)[0] == 403
+        assert request(ADMIN + '/templates', token=token)[0] == 403
+        assert request(ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)[0] == 403
     finally:
         stop_api(api)
 

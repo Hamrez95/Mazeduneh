@@ -90,6 +90,7 @@ public static class CorporateSalesModule
     public static IServiceCollection AddCorporateSales(this IServiceCollection services)
     {
         services.AddSingleton<CorporatePackageDatabase>();
+        services.AddSingleton<CorporateResponseTemplateDatabase>();
         services.AddSingleton<CorporateRequestDatabase>();
         return services;
     }
@@ -140,6 +141,23 @@ public static class CorporateSalesModule
         });
 
         var admin = endpoints.MapGroup("/api/v1/admin/corporate-requests").WithTags("Admin Corporate Sales");
+        admin.MapGet("/templates", async (CorporateResponseTemplateDatabase database, CancellationToken cancellationToken) =>
+            database.IsConfigured
+                ? Results.Ok(await database.ListAsync(activeOnly: false, cancellationToken))
+                : Results.Problem(title: "پاسخ‌های آماده پیکربندی نشده‌اند.", statusCode: StatusCodes.Status503ServiceUnavailable))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+        admin.MapPut("/templates/{code}", async (
+            string code, CorporateResponseTemplateUpsert input, CorporateResponseTemplateDatabase database,
+            AdminAuditLogDatabase audit, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var errors = CorporateResponseTemplateValidation.Validate(code, input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            if (!database.IsConfigured)
+                return Results.Problem(title: "پاسخ‌های آماده پیکربندی نشده‌اند.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            return Results.Ok(await database.SaveAsync(code.Trim().ToLowerInvariant(), input, actor,
+                context.TraceIdentifier, audit, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapGet("/packages", async (CorporatePackageDatabase database, CancellationToken cancellationToken) =>
             Results.Ok(await database.ListAsync(activeOnly: false, cancellationToken)))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
