@@ -212,9 +212,9 @@ with tempfile.TemporaryFile() as log:
         assert request(ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)[0] == 403
         notification_status, restricted_notifications = request('/api/v1/admin/notifications', token=token)
         assert notification_status == 200
-        assert restricted_notifications['corporateOverdueFollowUps'] >= 1
-        assert all(item['type'] == 'corporate-follow-up'
-                   for item in restricted_notifications['items'])
+        assert restricted_notifications['corporateOverdueFollowUps'] == 0
+        assert not any(item['type'] == 'corporate-follow-up'
+                       for item in restricted_notifications['items'])
     finally:
         stop_api(api)
 
