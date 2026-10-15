@@ -258,7 +258,9 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
       builder: (_) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: _CustomerDetails(customer: customer),
+          child: SingleChildScrollView(
+            child: _CustomerDetails(customer: customer),
+          ),
         ),
       ),
     );
