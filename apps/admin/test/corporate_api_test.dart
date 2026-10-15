@@ -82,7 +82,7 @@ void main() {
               {'name': 'پسته', 'quantity': 1, 'unit': 'بسته', 'unitPrice': 250000}
             ],
           }
-        ]), 200);
+        ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
       }
       return http.Response(jsonEncode({
         'code': 'premium',
@@ -93,7 +93,7 @@ void main() {
         'items': [
           {'name': 'پسته', 'quantity': 1, 'unit': 'بسته', 'unitPrice': 250000}
         ],
-      }), 200);
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
     final api = CorporateApiClient(client: client, baseUrl: 'https://api.test');
 

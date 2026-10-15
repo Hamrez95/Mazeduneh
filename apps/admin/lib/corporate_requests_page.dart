@@ -132,7 +132,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
           ),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد درخواست‌ها'),
       ]);
-      return constraints.maxWidth < 720
+      return constraints.maxWidth < 1100
           ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, const SizedBox(height: 12), controls])
           : Row(children: [Expanded(child: heading), const SizedBox(width: 16), controls]);
     }),
