@@ -16,7 +16,7 @@ NAME, MOBILE, ADDRESS = 'PrivacyFixtureCustomer', '09120000199', 'PrivacyFixture
 SKU = 'CI-ORDER-PRIVACY'
 
 
-def request(path, method='GET', body=None, token=None, headers=None):
+def request(path, method='GET', body=None, token=None, headers=None, include_response_headers=False):
     headers = dict(headers or {})
     if body is not None:
         headers['Content-Type'] = 'application/json'
@@ -29,7 +29,8 @@ def request(path, method='GET', body=None, token=None, headers=None):
         response = error
     with response:
         raw = response.read().decode('utf-8-sig')
-        return response.status, json.loads(raw) if raw and 'json' in response.headers.get('Content-Type', '') else raw
+        result = json.loads(raw) if raw and 'json' in response.headers.get('Content-Type', '') else raw
+        return (response.status, result, response.headers) if include_response_headers else (response.status, result)
 
 
 def start_api(permissions=None):
@@ -102,6 +103,23 @@ with tempfile.TemporaryFile() as log:
                                   headers={'Idempotency-Key': 'ci-order-privacy-0001'})
         assert status == 201, (status, created)
         order_id = created['id']
+        receipt_token = created['receiptToken']
+        public_order_path = '/api/v1/checkout/orders/' + order_id
+        assert request(public_order_path)[0] == 404
+        assert request(public_order_path + '?receiptToken=invalid-receipt-token')[0] == 404
+        assert request(public_order_path, headers={'X-Order-Receipt-Token': 'invalid-receipt-token'})[0] == 404
+        status, public_order, public_headers = request(
+            public_order_path, headers={'X-Order-Receipt-Token': receipt_token}, include_response_headers=True)
+        assert status == 200 and public_order['id'] == order_id
+        assert public_order.get('receiptToken') == ''
+        assert public_headers.get('Cache-Control') == 'no-store'
+        public_invoice_path = public_order_path + '/invoice'
+        assert request(public_invoice_path)[0] == 404
+        assert request(public_invoice_path + '?receiptToken=invalid-receipt-token')[0] == 404
+        invoice_status, invoice_html, invoice_headers = request(
+            public_invoice_path, headers={'X-Order-Receipt-Token': receipt_token}, include_response_headers=True)
+        assert invoice_status == 200 and NAME in invoice_html and MOBILE not in invoice_html
+        assert invoice_headers.get('Cache-Control') == 'no-store'
 
         replay_status, replayed = request('/api/v1/checkout/orders', 'POST', checkout_payload,
                                           headers={'Idempotency-Key': 'ci-order-privacy-0001'})

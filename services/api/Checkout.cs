@@ -56,20 +56,28 @@ public static class CheckoutModule
 
         checkout.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
-            string receiptToken,
-            CheckoutService service,
-            CancellationToken cancellationToken) =>
-            await service.FindAsync(orderId, receiptToken, cancellationToken) is { } order
-                ? Results.Ok(order)
-                : Results.NotFound(new { message = "سفارش پیدا نشد." }));
-
-        checkout.MapGet("/orders/{orderId:guid}/invoice", async (
-            Guid orderId,
-            string receiptToken,
+            HttpRequest httpRequest,
             CheckoutService service,
             HttpResponse response,
             CancellationToken cancellationToken) =>
         {
+            response.Headers.CacheControl = "no-store";
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
+            var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
+            return order is null
+                ? Results.NotFound(new { message = "سفارش پیدا نشد." })
+                : Results.Ok(order with { ReceiptToken = string.Empty });
+        });
+
+        checkout.MapGet("/orders/{orderId:guid}/invoice", async (
+            Guid orderId,
+            HttpRequest httpRequest,
+            CheckoutService service,
+            HttpResponse response,
+            CancellationToken cancellationToken) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
             var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
             if (order is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
             response.Headers.ContentDisposition = $"attachment; filename=\"mazeduneh-invoice-{orderId:N}.html\"";
