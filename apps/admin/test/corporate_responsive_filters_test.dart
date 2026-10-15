@@ -58,6 +58,11 @@ void main() {
       await tester.pumpAndSettle();
       final planning = captured.where((uri) => uri.queryParameters['needsPlanning'] == 'true').last;
       expect(planning.queryParameters.containsKey('overdue'), isFalse);
+      await tester.ensureVisible(find.text('مدیریت بسته‌ها'));
+      await tester.tap(find.text('مدیریت بسته‌ها'));
+      await tester.pumpAndSettle();
+      expect(find.text('مدیریت بسته‌های فروش سازمانی'), findsOneWidget);
+      expect(find.text('افزودن قلم'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
