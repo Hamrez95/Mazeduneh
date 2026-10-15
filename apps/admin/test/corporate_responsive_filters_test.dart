@@ -63,6 +63,15 @@ void main() {
       await tester.tap(find.text('مدیریت بسته‌ها'));
       await tester.pumpAndSettle();
       expect(find.text('مدیریت بسته‌های فروش سازمانی'), findsOneWidget);
+      final packageScrollable = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(Scrollable),
+      ).first;
+      await tester.scrollUntilVisible(
+        find.text('افزودن قلم'),
+        120,
+        scrollable: packageScrollable,
+      );
       expect(find.text('افزودن قلم'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
