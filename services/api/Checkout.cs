@@ -39,6 +39,21 @@ public static class CheckoutModule
             };
         });
 
+        checkout.MapPost("/orders/{orderId:guid}/marketing-consent/revoke", async (
+            Guid orderId,
+            RevokeMarketingConsentRequest request,
+            CheckoutService service,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.ReceiptToken) || request.ReceiptToken.Length > 200)
+                return Results.BadRequest(new { message = "توکن رسید معتبر نیست." });
+
+            var revoked = await service.RevokeMarketingConsentAsync(orderId, request.ReceiptToken, cancellationToken);
+            return revoked
+                ? Results.NoContent()
+                : Results.NotFound(new { message = "سفارش پیدا نشد." });
+        });
+
         checkout.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
             string receiptToken,
@@ -115,6 +130,9 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
             : null;
         return Task.FromResult(found);
     }
+
+    public Task<bool> RevokeMarketingConsentAsync(Guid orderId, string receiptToken, CancellationToken cancellationToken) =>
+        database.RevokeMarketingConsentAsync(orderId, receiptToken, cancellationToken);
 
     private CheckoutResult CreateInMemory(string idempotencyKey, string fingerprint, CheckoutRequest request)
     {
@@ -193,7 +211,8 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 }
 
 public sealed record CheckoutRequest(string CustomerName, string Mobile, string Province, string City,
-    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post")
+    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post",
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool MarketingConsent = false)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -223,6 +242,7 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
 }
 
 public sealed record CheckoutItemRequest(string Sku, int Quantity);
+public sealed record RevokeMarketingConsentRequest(string ReceiptToken);
 public sealed record CheckoutBatchAllocation(string BatchCode, DateTimeOffset ExpiresAt, int Quantity, decimal CostPrice, decimal PackagingCost, decimal AdditionalCost);
 public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal,
     decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,

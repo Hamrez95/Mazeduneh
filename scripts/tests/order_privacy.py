@@ -93,12 +93,44 @@ with tempfile.TemporaryFile() as log:
             'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
             'costPrice': 2000, 'packagingCost': 0, 'additionalCost': 0,
             'purchasedAt': '2026-01-01T00:00:00Z', 'supplier': 'CI supplier'}, token)[0] == 201
-        status, created = request('/api/v1/checkout/orders', 'POST', {
+        checkout_payload = {
             'customerName': NAME, 'mobile': MOBILE, 'province': 'تهران', 'city': 'تهران',
-            'address': ADDRESS, 'postalCode': '1234567890', 'lines': [{'sku': SKU, 'quantity': 1}]},
-            headers={'Idempotency-Key': 'ci-order-privacy-0001'})
+            'address': ADDRESS, 'postalCode': '1234567890', 'lines': [{'sku': SKU, 'quantity': 1}],
+            'marketingConsent': True,
+        }
+        status, created = request('/api/v1/checkout/orders', 'POST', checkout_payload,
+                                  headers={'Idempotency-Key': 'ci-order-privacy-0001'})
         assert status == 201, (status, created)
         order_id = created['id']
+
+        replay_status, replayed = request('/api/v1/checkout/orders', 'POST', checkout_payload,
+                                          headers={'Idempotency-Key': 'ci-order-privacy-0001'})
+        assert replay_status == 200 and replayed['id'] == order_id
+        customer_status, customers = request('/api/v1/admin/customers/?q=' + quote(MOBILE), token=token)
+        assert customer_status == 200 and len(customers) == 1, (customer_status, customers)
+        customer_id = customers[0]['id']
+        assert customers[0]['marketingConsent'] is True
+
+        profile_path = '/api/v1/admin/customers/' + customer_id
+        profile_status, customer = request(profile_path, token=token)
+        assert profile_status == 200 and customer['marketingConsent'] is True, (profile_status, customer)
+        consent_events = customer['consentHistory']
+        assert len(consent_events) == 1
+        assert consent_events[0]['granted'] is True
+        assert consent_events[0]['source'] == 'guest_checkout'
+        assert consent_events[0]['policyVersion'] == 'marketing-v1'
+
+        revoke_path = '/api/v1/checkout/orders/' + order_id + '/marketing-consent/revoke'
+        assert request(revoke_path, 'POST', {'receiptToken': 'invalid-receipt-token'})[0] == 404
+        assert request(revoke_path, 'POST', {'receiptToken': created['receiptToken']})[0] == 204
+        assert request(revoke_path, 'POST', {'receiptToken': created['receiptToken']})[0] == 204
+        profile_status, customer = request(profile_path, token=token)
+        assert profile_status == 200 and customer['marketingConsent'] is False
+        consent_events = customer['consentHistory']
+        assert len(consent_events) == 2
+        assert {event['granted'] for event in consent_events} == {True, False}
+        assert any(event['source'] == 'receipt_self_service' and not event['granted'] for event in consent_events)
+
         order_created_at = datetime.fromisoformat(created['createdAt'].replace('Z', '+00:00'))
         range_start = quote((order_created_at - timedelta(seconds=1)).isoformat())
         range_end = quote((order_created_at + timedelta(seconds=1)).isoformat())
@@ -112,6 +144,8 @@ with tempfile.TemporaryFile() as log:
             'customerName': NAME, 'mobile': MOBILE, 'province': 'تهران', 'city': 'تهران',
             'address': ADDRESS, 'postalCode': '1234567890', 'lines': [{'sku': SKU, 'quantity': 1}]},
             headers={'Idempotency-Key': 'ci-order-privacy-0002'})
+        assert request(profile_path, token=token)[1]['marketingConsent'] is False
+        assert len(request(profile_path, token=token)[1]['consentHistory']) == 2
         _, intent = request('/api/v1/payments/orders/' + order_id + '/intent', 'POST', {'receiptToken': created['receiptToken']})
         assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
         status, ranged_analytics = request('/api/v1/admin/analytics?from=' + range_start + '&to=' + range_end, token=token)
