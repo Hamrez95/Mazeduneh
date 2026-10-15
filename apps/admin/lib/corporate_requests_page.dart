@@ -217,7 +217,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
 }
 
 class _DetailPanel extends StatefulWidget {
-  const _DetailPanel({required this.item, required this.api, required this.onChanged});
+  const _DetailPanel({super.key, required this.item, required this.api, required this.onChanged});
   final CorporateRequestDetail item;
   final CorporateApiClient api;
   final VoidCallback onChanged;
