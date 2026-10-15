@@ -169,6 +169,13 @@ with tempfile.TemporaryFile() as log:
         assert ids('&needsPlanning=true') == {a, b, c, g}
         assert ids('&needsPlanning=true&status=New&city=CI-city&minQuantity=50&maxQuantity=50') == {a, b, c, g}
         assert ids('&overdue=true') == {d}
+        notification_status, notifications = request('/api/v1/admin/notifications', token=token)
+        assert notification_status == 200
+        assert notifications['corporateOverdueFollowUps'] >= 1
+        assert any(item['type'] == 'corporate-follow-up'
+                   and 'ci-planning-fixture-3' in item['detail']
+                   and item['target']['module'] == 'corporate'
+                   for item in notifications['items'])
         assert request(ADMIN + '?needsPlanning=true&overdue=true', token=token)[0] == 400
         assert request(ADMIN + '?needsPlanning=invalid', token=token)[0] == 400
         assert request(ADMIN + '?needsPlanning=true')[0] == 401
@@ -203,6 +210,11 @@ with tempfile.TemporaryFile() as log:
         assert request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)[0] == 403
         assert request(ADMIN + '/templates', token=token)[0] == 403
         assert request(ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)[0] == 403
+        notification_status, restricted_notifications = request('/api/v1/admin/notifications', token=token)
+        assert notification_status == 200
+        assert restricted_notifications['corporateOverdueFollowUps'] >= 1
+        assert all(item['type'] == 'corporate-follow-up'
+                   for item in restricted_notifications['items'])
     finally:
         stop_api(api)
 

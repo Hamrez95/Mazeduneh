@@ -757,12 +757,23 @@ class AdminNotification {
 }
 
 class AdminNotifications {
-  const AdminNotifications({required this.awaitingPayment, required this.lowStockItems, required this.items});
+  const AdminNotifications({
+    required this.awaitingPayment,
+    required this.lowStockItems,
+    required this.items,
+    this.corporateOverdueFollowUps = 0,
+  });
   final int awaitingPayment;
   final int lowStockItems;
+  final int corporateOverdueFollowUps;
   final List<AdminNotification> items;
   int get count => items.length;
-  factory AdminNotifications.fromJson(Map<String, dynamic> json) => AdminNotifications(awaitingPayment: json['awaitingPayment'] as int, lowStockItems: json['lowStockItems'] as int, items: (json['items'] as List<dynamic>).map((item) => AdminNotification.fromJson(item as Map<String, dynamic>)).toList());
+  factory AdminNotifications.fromJson(Map<String, dynamic> json) => AdminNotifications(
+    awaitingPayment: json['awaitingPayment'] as int,
+    lowStockItems: json['lowStockItems'] as int,
+    corporateOverdueFollowUps: (json['corporateOverdueFollowUps'] as num?)?.toInt() ?? 0,
+    items: (json['items'] as List<dynamic>).map((item) => AdminNotification.fromJson(item as Map<String, dynamic>)).toList(),
+  );
 }
 
 class StockAdjustmentResult {
