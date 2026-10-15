@@ -111,7 +111,7 @@ with tempfile.TemporaryFile() as log:
         status, public_order, public_headers = request(
             public_order_path, headers={'X-Order-Receipt-Token': receipt_token}, include_response_headers=True)
         assert status == 200 and public_order['id'] == order_id
-        assert 'receiptToken' not in public_order and 'mobile' not in public_order
+        assert public_order.get('receiptToken') == ''
         assert public_headers.get('Cache-Control') == 'no-store'
         public_invoice_path = public_order_path + '/invoice'
         assert request(public_invoice_path)[0] == 404

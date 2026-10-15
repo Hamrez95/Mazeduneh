@@ -66,7 +66,7 @@ public static class CheckoutModule
             var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
             return order is null
                 ? Results.NotFound(new { message = "سفارش پیدا نشد." })
-                : Results.Ok(new { order.Id, order.State, order.ReservationExpiresAt });
+                : Results.Ok(order with { ReceiptToken = string.Empty });
         });
 
         checkout.MapGet("/orders/{orderId:guid}/invoice", async (
