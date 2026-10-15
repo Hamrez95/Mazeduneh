@@ -13,7 +13,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const fallback = demoProducts.find((item) => item.id === slug);
-  const apiBase = (process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim() || "").replace(/\/$/, "");
+  const apiBase = (process.env.MAZEDUNEH_API_INTERNAL_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim() || "").replace(/\/$/, "");
   if (apiBase) {
     try {
       const response = await fetch(apiBase + "/api/v1/products/" + encodeURIComponent(slug), { cache: "no-store" });
@@ -33,6 +33,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function ProductRoute({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = demoProducts.find((item) => item.id === slug);
-  if (!product && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL) notFound();
+  if (!product && !process.env.MAZEDUNEH_API_INTERNAL_URL && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL) notFound();
   return <LiveProductPage slug={slug} />;
 }

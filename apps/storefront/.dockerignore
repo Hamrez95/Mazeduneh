@@ -1,9 +1,10 @@
-.git
-.next
-node_modules
-out
-coverage
+node_modules/
+.next/
+.test-build/
+.test-results/
+coverage/
 *.log
 .env
 .env.*
 !.env.example
+.git/

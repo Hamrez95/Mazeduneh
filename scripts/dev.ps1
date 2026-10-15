@@ -16,10 +16,43 @@ $ApiUrl = 'http://127.0.0.1:5080'
 $StorefrontUrl = 'http://127.0.0.1:3000'
 $AdminUrl = 'http://127.0.0.1:8080'
 
+# Docker Desktop is not always added to PATH in shells launched by desktop apps.
+if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+  $dockerCandidates = @(@(
+    (Join-Path $env:ProgramFiles 'Docker/Docker/resources/bin'),
+    (Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/resources/bin')
+  ) | Where-Object { $_ -and (Test-Path (Join-Path $_ 'docker.exe')) })
+  if ($dockerCandidates.Count -gt 0) { $env:PATH = "$($dockerCandidates[0])$([IO.Path]::PathSeparator)$env:PATH" }
+}
+
 function Get-GitText([string[]]$Arguments, [string]$WorkingDirectory = $SourceRoot) {
   $result = & git @Arguments 2>&1
   if ($LASTEXITCODE -ne 0) { throw "git $($Arguments -join ' ') failed: $result" }
   return ($result | Out-String).Trim()
+}
+
+function Test-DockerEngine([string]$DockerPath) {
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $DockerPath
+  $startInfo.UseShellExecute = $false
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  [void]$startInfo.ArgumentList.Add('info')
+  [void]$startInfo.ArgumentList.Add('--format')
+  [void]$startInfo.ArgumentList.Add('{{.OSType}}')
+  $process = [Diagnostics.Process]::Start($startInfo)
+  $stdout = $process.StandardOutput.ReadToEndAsync()
+  $stderr = $process.StandardError.ReadToEndAsync()
+  if (-not $process.WaitForExit(8000)) {
+    try { $process.Kill($true) } catch { }
+    [void]$process.WaitForExit(2000)
+    return [pscustomobject]@{ Ready = $false; Output = 'Docker engine check timed out after 8 seconds.' }
+  }
+  $process.WaitForExit()
+  if ($process.ExitCode -eq 0 -and $stdout.Result.Trim() -ne 'linux') {
+    return [pscustomobject]@{ Ready = $false; Output = "Docker is using $($stdout.Result.Trim()) containers. Switch Docker Desktop to Linux containers." }
+  }
+  return [pscustomobject]@{ Ready = ($process.ExitCode -eq 0); Output = ($stdout.Result + $stderr.Result).Trim() }
 }
 
 function Get-RunRoot {
@@ -27,7 +60,7 @@ function Get-RunRoot {
     return (Get-GitText @('rev-parse', '--show-toplevel'))
   }
 
-  Get-GitText @('fetch', 'origin', 'main') | Out-Null
+  Get-GitText @('fetch', 'origin', 'main:refs/remotes/origin/main') | Out-Null
   $runDirectory = Join-Path $StateDirectory 'main-worktree'
   if (Test-Path (Join-Path $runDirectory '.git')) {
     $existingStatus = Get-GitText @('-C', $runDirectory, 'status', '--porcelain')
@@ -102,10 +135,10 @@ function Show-LauncherMenu {
   Write-Host ''
   Write-Host 'MAZEDUNEH — Local development' -ForegroundColor Green
   Write-Host 'Choose what to start:' -ForegroundColor Cyan
-  Write-Host '  1) Full system: PostgreSQL + API + Storefront + Admin'
-  Write-Host '  2) Storefront with local API and PostgreSQL'
-  Write-Host '  3) Admin with local API and PostgreSQL'
-  Write-Host '  4) API + PostgreSQL'
+  Write-Host '  1) Full system in Docker (recommended; one command on each computer)'
+  Write-Host '  2) Host-based Storefront with local API and PostgreSQL'
+  Write-Host '  3) Host-based Admin with local API and PostgreSQL'
+  Write-Host '  4) Host-based API + PostgreSQL'
   Write-Host '  5) Storefront preview (sample catalog, no Docker/API)'
   Write-Host '  6) Show service status'
   Write-Host '  7) Stop launcher-owned app processes'
@@ -122,13 +155,21 @@ function Start-OrExplainDocker {
     return $false
   }
 
-  try { & $docker.Source info --format '{{.ServerVersion}}' 2>$null | Out-Null }
-  catch { }
-  if ($LASTEXITCODE -ne 0) {
-    $desktopCandidates = @(
+  $engine = Test-DockerEngine $docker.Source
+  if (-not $engine.Ready) {
+    $virtualization = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
+      Where-Object { $null -ne $_.VirtualizationFirmwareEnabled } |
+      Select-Object -First 1 -ExpandProperty VirtualizationFirmwareEnabled
+    if ($virtualization -eq $false) {
+      Write-Host 'Firmware virtualization is disabled. Enable Intel VT-x/Intel Virtualization Technology (or AMD-V/SVM) in BIOS/UEFI, enable Windows Subsystem for Linux and Virtual Machine Platform, then restart Windows.' -ForegroundColor Yellow
+      $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+      if ($wsl) { & $wsl.Source --status 2>&1 | ForEach-Object { Write-Host "WSL: $($_.ToString().Replace([string][char]0, ''))" -ForegroundColor DarkYellow } }
+      return $false
+    }
+    $desktopCandidates = @(@(
       (Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'),
       (Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/Docker Desktop.exe')
-    ) | Where-Object { Test-Path $_ }
+    ) | Where-Object { Test-Path $_ })
     if ($desktopCandidates.Count -gt 0) {
       Write-Host 'Starting Docker Desktop; waiting for its engine...' -ForegroundColor Cyan
       Start-Process -FilePath $desktopCandidates[0] -WindowStyle Hidden
@@ -136,11 +177,20 @@ function Start-OrExplainDocker {
       $engineReady = $false
       do {
         Start-Sleep -Seconds 3
-        & $docker.Source info --format '{{.ServerVersion}}' 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $engineReady = $true; break }
+        $engine = Test-DockerEngine $docker.Source
+        if ($engine.Ready) { $engineReady = $true; break }
       } while ([DateTime]::UtcNow -lt $deadline)
       if (-not $engineReady) {
         Write-Host 'Docker Desktop is installed but its engine is not ready yet. Finish its first-run setup, wait for “Engine running”, then choose this option again.' -ForegroundColor Yellow
+        if ($engine.Output) { Write-Host $engine.Output -ForegroundColor DarkYellow }
+        $virtualization = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
+          Where-Object { $null -ne $_.VirtualizationFirmwareEnabled } |
+          Select-Object -First 1 -ExpandProperty VirtualizationFirmwareEnabled
+        if ($virtualization -eq $false) {
+          Write-Host 'Firmware virtualization is disabled. Enable Intel VT-x/Intel Virtualization Technology (or AMD-V/SVM) in BIOS/UEFI, enable Windows Subsystem for Linux and Virtual Machine Platform, then restart Windows.' -ForegroundColor Yellow
+        }
+        $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+        if ($wsl) { & $wsl.Source --status 2>&1 | ForEach-Object { Write-Host "WSL: $_" -ForegroundColor DarkYellow } }
         return $false
       }
       return $true
@@ -161,17 +211,16 @@ function Start-OrExplainDocker {
 function Install-OrStartDocker {
   $docker = Get-Command docker -ErrorAction SilentlyContinue
   if ($docker) {
-    $desktopCandidates = @(
+    $desktopCandidates = @(@(
       (Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'),
       (Join-Path $env:LOCALAPPDATA 'Programs/DockerDesktop/Docker Desktop.exe')
-    ) | Where-Object { Test-Path $_ }
+    ) | Where-Object { Test-Path $_ })
     if ($desktopCandidates.Count -gt 0) {
       [void](Start-OrExplainDocker)
       return
     }
-    try { & $docker.Source info --format '{{.ServerVersion}}' 2>$null | Out-Null }
-    catch { }
-    if ($LASTEXITCODE -eq 0) {
+    $engine = Test-DockerEngine $docker.Source
+    if ($engine.Ready) {
       [void](Start-OrExplainDocker)
       return
     }
@@ -200,7 +249,7 @@ if ($Component -eq 'menu') {
     exit 0
   }
   switch ($choice.Trim()) {
-    '1' { $Component = 'all' }
+    '1' { & (Join-Path $PSScriptRoot 'stack.ps1') }
     '2' { $Component = 'storefront' }
     '3' { $Component = 'admin' }
     '4' { $Component = 'api' }

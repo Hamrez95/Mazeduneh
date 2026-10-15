@@ -11,25 +11,32 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 
 ## Local development
 
-### Local demo on Windows
+### Run the whole system (Windows, macOS, Linux)
 
-For a fresh checkout, install PowerShell 7.4+, Git, Docker Desktop, Node.js 24, the .NET 10 SDK, and Flutter stable, then run:
+The quick path needs only **PowerShell 7.4+** and **Docker Desktop** (Windows/macOS), or Docker Engine with Compose (Linux). Node.js, .NET, Flutter, PostgreSQL, and app dependencies are installed inside the containers.
 
 ```powershell
 git clone https://github.com/Hamrez95/Mazeduneh.git
 cd Mazeduneh
-pwsh -File ./scripts/dev.ps1
+pwsh -File ./scripts/stack.ps1
 ```
 
-The default menu starts the full local stack. Use menu options 2–5 for smaller slices. If Docker Desktop is missing, option 8 offers its official installer; Windows may require Administrator approval or a restart.
+The first run builds all three apps, starts PostgreSQL, applies migrations, and creates a local Admin account. The default addresses are Storefront `http://127.0.0.1:3000`, Admin `http://127.0.0.1:8080`, and API `http://127.0.0.1:5080`; if one is already in use, the launcher selects the next available local port and prints the actual addresses. The generated Admin password is printed once per run and saved under the ignored `.local-dev` folder.
 
-The launcher opens a menu. Choose the full system, website, Admin, or API separately; choose **Storefront preview** to browse the sample catalog without Docker or an API. The preview cannot submit real orders or start the Admin panel. For full end-to-end testing, install/start Docker Desktop from menu option 8, wait until it says **Engine running**, then run the launcher again and choose the system parts you need.
+```powershell
+pwsh -File ./scripts/stack.ps1 -Action status
+pwsh -File ./scripts/stack.ps1 -Action stop
+```
 
-Full local mode needs PowerShell 7.4+, Git, Docker Desktop with Compose, Node.js/npm, .NET 10 SDK, and Flutter stable. If Docker is missing, the launcher offers the official Docker Desktop installer through `winget`; Windows may require Administrator approval or a restart. If Docker is installed but stopped, the launcher starts it from either the machine-wide or per-user install location and waits for readiness before continuing. Missing tools are reported with an install hint instead of a PowerShell stack trace.
+Stopping removes app containers but keeps the PostgreSQL database and uploaded media. To reset demo data, use Docker Desktop to remove the `mazeduneh` volumes explicitly.
 
-The launcher runs the latest fetched `origin/main` in an ignored detached worktree, so a developer's current branch and uncommitted work remain untouched. Full mode starts persistent local PostgreSQL, then the API, Storefront, and secure Admin web entry point. Everything listens on `127.0.0.1`; it does not use Supabase, Cloudflare, Vercel, Liara, or a production account. The API connects to that PostgreSQL instance and applies its existing compatible migrations; it does not drop or reset data. If fetching the latest `main` fails, the launcher stops rather than presenting an old checkout as current.
+This stack binds every published port to `127.0.0.1`, uses a local PostgreSQL volume, and enables sandbox payments. It does not connect to a production account or external database. Never reuse its credentials or settings for production.
 
-Use these commands from the repository root:
+On Windows, if Docker reports that its engine cannot start, enable **Intel VT-x/Intel Virtualization Technology** (or **AMD-V/SVM**) in BIOS/UEFI, turn on **Windows Subsystem for Linux** and **Virtual Machine Platform**, and restart Windows. The launcher detects disabled firmware virtualization and prints this specific recovery path. macOS and Linux users need a running Docker engine with Compose.
+
+### Host-based development
+
+For faster hot reload while editing, `scripts/dev.ps1` can run the app processes directly on the host. This path also needs Node.js 24, the .NET 10 SDK, Flutter stable, and Docker for PostgreSQL. It uses a detached copy of `origin/main` by default; add `-CurrentBranch` only when you intend to run the current checkout.
 
 ```powershell
 pwsh -File ./scripts/dev.ps1 -Status
@@ -38,11 +45,7 @@ pwsh -File ./scripts/dev.ps1 -CurrentBranch -NoBrowser
 pwsh -File ./scripts/dev.ps1 -Component storefront-preview -NoBrowser
 ```
 
-The admin login is printed when the launcher starts. Its random local-demo password is stored in the ignored `.local-dev` folder so it remains the same between runs. Keep this launcher bound to this computer; it is not a public deployment setup.
-
-For scripted runs, use `-Component all`, `storefront`, `admin`, or `api`; `admin` and `storefront` also start the API and PostgreSQL they need. `storefront-preview` starts the sample catalog only. `-Status`, `-Stop`, and `-NoBrowser` are also available. The default menu runs the latest fetched main. Use `-CurrentBranch` only when intentionally testing the current checkout.
-
-The launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and prints the exact main SHA it runs. If startup fails after launching app processes, it stops only those processes owned by that run and leaves PostgreSQL data intact.
+The host-based launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and leaves PostgreSQL data intact when app processes stop. `storefront-preview` can browse sample products without Docker/API, but cannot submit real orders or start Admin.
 
 ### Storefront order submission
 

@@ -184,11 +184,13 @@ class _InventoryPageState extends State<InventoryPage> {
           _InventoryAttentionBanner(expiredCount: expiredCount, expiringCount: expiringCount),
           const SizedBox(height: 14),
         ],
-        Expanded(child: GridView.count(
+        Expanded(child: GridView.custom(
           key: const ValueKey('inventory-sections'),
-          crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-          mainAxisExtent: (constraints.maxWidth < 720 ? 340.0 : 380.0) * MediaQuery.textScalerOf(context).scale(14) / 14,
-          children: [
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
+            mainAxisExtent: (constraints.maxWidth < 720 ? 340.0 : 380.0) * MediaQuery.textScalerOf(context).scale(14) / 14,
+          ),
+          childrenDelegate: SliverChildListDelegate([
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             const SizedBox(height: 12),
@@ -305,7 +307,7 @@ class _InventoryPageState extends State<InventoryPage> {
               },
             )),
           ]))),
-          ],
+          ]),
         )),
       ]);
     });
