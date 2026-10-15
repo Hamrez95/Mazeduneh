@@ -793,7 +793,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0), coalesce(sum(shipping_expense),0)
+            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
+                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0)
             from checkout_orders
             where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
             """;
@@ -801,6 +802,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         decimal revenue;
         decimal tax;
         decimal shippingExpense;
+        decimal shippingRevenue;
+        decimal discount;
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
@@ -811,15 +814,23 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             revenue = reader.GetDecimal(1);
             tax = reader.GetDecimal(2);
             shippingExpense = reader.GetDecimal(3);
+            shippingRevenue = reader.GetDecimal(4);
+            discount = reader.GetDecimal(5);
         }
 
         const string lineSql = """
-            select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*(l.cost_price+l.packaging_cost+l.additional_cost)),0), coalesce(sum(l.line_total),0)
+            select coalesce(sum(l.quantity),0)::int,
+                   coalesce(sum(l.quantity*l.cost_price),0),
+                   coalesce(sum(l.quantity*l.packaging_cost),0),
+                   coalesce(sum(l.quantity*l.additional_cost),0),
+                   coalesce(sum(l.line_total),0)
             from checkout_order_lines l join checkout_orders o on o.id=l.order_id
             where o.created_at >= @from and o.created_at < @to and o.state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int units;
-        decimal cost;
+        decimal productCost;
+        decimal packagingCost;
+        decimal additionalCost;
         decimal merchandiseRevenue;
         await using (var command = new NpgsqlCommand(lineSql, connection))
         {
@@ -828,14 +839,21 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             units = reader.GetInt32(0);
-            cost = reader.GetDecimal(1);
-            merchandiseRevenue = reader.GetDecimal(2);
+            productCost = reader.GetDecimal(1);
+            packagingCost = reader.GetDecimal(2);
+            additionalCost = reader.GetDecimal(3);
+            merchandiseRevenue = reader.GetDecimal(4);
         }
 
-        var profit = revenue - cost;
-        var netProfit = profit - shippingExpense - tax;
-        var margin = revenue <= 0 ? 0 : profit / revenue * 100;
-        return new AdminAnalytics(periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
+        var cost = productCost + packagingCost + additionalCost;
+        // Customer payments include shipping and tax; tax is payable to the tax authority, not profit.
+        var netMerchandiseRevenue = merchandiseRevenue - discount;
+        var profit = netMerchandiseRevenue - cost;
+        var netProfit = profit + shippingRevenue - shippingExpense;
+        var margin = netMerchandiseRevenue <= 0 ? 0 : profit / netMerchandiseRevenue * 100;
+        return new AdminAnalytics(
+            periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense,
+            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost);
     }
 
     public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
@@ -844,18 +862,22 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var to = period?.To ?? DateTimeOffset.UtcNow;
         var from = period?.From ?? to.AddDays(-days);
         const string sql = """
-            select l.product_title,l.sku,l.variant_label,
-                   sum(l.quantity)::int,
-                   coalesce(sum(l.line_total),0),
-                   coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)
-            from checkout_order_lines l
-            join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from and o.created_at < @to
-              and o.state in ('Paid','Preparing','Shipped','Delivered')
-            group by l.product_title,l.sku,l.variant_label
-            order by (coalesce(sum(l.line_total),0) -
-                      coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)) desc,
-                     l.product_title
+            with grouped as (
+                select l.product_title,l.sku,l.variant_label,
+                       sum(l.quantity)::int as units_sold,
+                       coalesce(sum(l.line_total),0) as revenue,
+                       coalesce(sum(case when o.subtotal > 0
+                           then o.discount * l.line_total / o.subtotal else 0 end),0) as discount,
+                       coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost
+                from checkout_order_lines l
+                join checkout_orders o on o.id=l.order_id
+                where o.created_at >= @from and o.created_at < @to
+                  and o.state in ('Paid','Preparing','Shipped','Delivered')
+                group by l.product_title,l.sku,l.variant_label
+            )
+            select product_title,sku,variant_label,units_sold,revenue,discount,cost
+            from grouped
+            order by (revenue - discount - cost) desc, product_title
             limit 200;
             """;
 
@@ -869,10 +891,11 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         while (await reader.ReadAsync(cancellationToken))
         {
             var revenue = reader.GetDecimal(4);
-            var cost = reader.GetDecimal(5);
+            var discount = reader.GetDecimal(5);
+            var cost = reader.GetDecimal(6);
             rows.Add(new AdminProductProfitability(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), revenue, cost, revenue - cost));
+                reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount));
         }
         return rows;
     }
@@ -1288,8 +1311,12 @@ public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreferenc
         ? new Dictionary<string, string[]>()
         : new Dictionary<string, string[]> { [nameof(input.Widgets)] = ["ترتیب باید هر پنج بخش داشبورد را دقیقاً یک بار داشته باشد."] };
 }
-public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
-public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
+public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal Discount = 0);
+public sealed record AdminAnalytics(
+    int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
+    decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,
+    decimal MerchandiseRevenue = 0, decimal Discount = 0, decimal ShippingRevenue = 0,
+    decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
 public sealed record AdminNotification(
     string Type,
     string Title,
