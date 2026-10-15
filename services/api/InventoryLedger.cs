@@ -5,7 +5,7 @@ public sealed class InventoryLedgerDatabase(IConfiguration configuration, ILogge
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -337,7 +337,9 @@ public static class InventoryLedgerModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["quantityDelta"] = ["تعداد یا طول دلیل خارج از محدودهٔ مجاز است."] });
             var result = await database.AdjustAsync(request, actor, context.TraceIdentifier, cancellationToken, key);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<StepUpAuthorizationFilter>()
+          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.InventoryWrite));
 
         endpoints.MapPost("/api/v1/admin/inventory/waste", async (
             StockWasteRequest request,
@@ -363,7 +365,9 @@ public static class InventoryLedgerModule
             var result = await database.WriteOffBatchAsync(
                 request.Sku, request.BatchCode, request.Quantity, actor, request.Reason.Trim(), context.TraceIdentifier, cancellationToken, key);
             return result.IsSuccess ? Results.Ok(result) : Results.Conflict(new { message = result.Message });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<StepUpAuthorizationFilter>()
+          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.InventoryWrite));
 
         endpoints.MapGet("/api/v1/admin/inventory/movements", async (
             string? sku,

@@ -9,6 +9,15 @@ import 'formatters.dart';
 import 'notification_tile.dart';
 import 'order_api.dart';
 
+List<String> _healthRecommendations(AdminDashboardHealth health) => [
+  if (health.database == 'unhealthy' || health.database == 'not-configured') 'اتصال پایگاه داده را بررسی کنید؛ آمار و عملیات فروشگاه به آن وابسته است.',
+  if (health.migrations == 'empty' || health.migrations == 'unavailable') 'وضعیت مهاجرت‌های پایگاه داده را بررسی کنید.',
+  if (health.adminAuthentication == 'not-configured') 'ورود امن مدیر در تنظیمات محیط راه‌اندازی نشده است.',
+  if (health.payment == 'disabled') 'درگاه پرداخت غیرفعال است؛ پرداخت اینترنتی سفارش‌ها انجام نمی‌شود.',
+  if (health.payment == 'sandbox-enabled') 'پرداخت آزمایشی فعال است؛ پیش از فروش واقعی، درگاه عملیاتی را تنظیم کنید.',
+  if (health.mediaStorage == 'not-configured') 'ذخیره‌سازی رسانه راه‌اندازی نشده است؛ تنظیمات سرویس فایل را بررسی کنید.',
+];
+
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, this.api, this.onNavigate});
   final OrderApiClient? api;
@@ -45,8 +54,8 @@ class _DashboardPageState extends State<DashboardPage> {
         .catchError((Object exception) => exception);
     try {
       final today = DateUtils.dateOnly(DateTime.now());
-      final rangeStart = customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
-      final rangeEnd = customRange?.end ?? today;
+      final rangeStart = _selectedRangeStart(today);
+      final rangeEnd = _selectedRangeEnd(today);
       final result = await Future.wait([
         api.fetchDashboard(
           days: dashboardDays,
@@ -74,6 +83,31 @@ class _DashboardPageState extends State<DashboardPage> {
         systemHealth = healthResult;
       }
     });
+  }
+
+  DateTime _selectedRangeStart(DateTime today) =>
+      customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
+
+  DateTime _selectedRangeEnd(DateTime today) => customRange?.end ?? today;
+
+  AdminNavigationIntent _periodOrdersIntent() {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final start = _selectedRangeStart(today);
+    final end = _selectedRangeEnd(today);
+    return AdminNavigationIntent(
+      module: AdminModule.orders,
+      createdFromUtc: start.toUtc(),
+      createdToUtcExclusive: DateTime(end.year, end.month, end.day + 1).toUtc(),
+    );
+  }
+
+  AdminNavigationIntent _periodReportsIntent() {
+    final orderIntent = _periodOrdersIntent();
+    return AdminNavigationIntent(
+      module: AdminModule.reports,
+      createdFromUtc: orderIntent.createdFromUtc,
+      createdToUtcExclusive: orderIntent.createdToUtcExclusive,
+    );
   }
 
   Future<void> customizeDashboard() async {
@@ -184,10 +218,10 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
         if (can(AdminPermissions.ordersRead)) ...[
-          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders))),
-          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.reports))),
+          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
           MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
           MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
           MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
@@ -251,6 +285,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final health = systemHealth!;
+    final recommendations = _healthRecommendations(health);
     final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
     String label(String value) => switch (value) {
           'healthy' || 'ready' || 'tracked' => 'سالم',
@@ -293,6 +328,15 @@ class _DashboardPageState extends State<DashboardPage> {
               padding: const EdgeInsets.only(top: 3),
               child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
             ),
+          if (recommendations.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text('اقدام پیشنهادی', style: TextStyle(fontWeight: FontWeight.w900)),
+            for (final recommendation in recommendations)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(top: 6, start: 4),
+                child: Text('• $recommendation', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
+              ),
+          ],
           const SizedBox(height: 6),
           const Text(
             'وضعیت پرداخت و رسانه از روی پیکربندی است؛ اتصال بیرونی آن‌ها اینجا آزموده نمی‌شود.',

@@ -92,6 +92,7 @@ void main() {
     expect(find.text('ثبت محصول'), findsOneWidget);
     expect(find.text('پیگیری سفارش‌ها'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('پرداخت: حالت آزمایشی فعال'), 350, maxScrolls: 20);
+    expect(find.textContaining('پرداخت آزمایشی فعال است؛ پیش از فروش واقعی، درگاه عملیاتی را تنظیم کنید.'), findsOneWidget);
     expect(find.text('ذخیره‌سازی رسانه: محلی'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -99,6 +100,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('پیگیری سفارش‌ها'));
     expect(destination?.module, AdminModule.orders);
+  });
+
+  testWidgets('dashboard recommends setup when payment and storage are disabled', (tester) async {
+    await tester.pumpWidget(_dashboardHarness(paymentStatus: 'disabled', storageStatus: 'not-configured'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('ذخیره‌سازی رسانه: پیکربندی نشده'), 350, maxScrolls: 20);
+    expect(find.textContaining('درگاه پرداخت غیرفعال است؛ پرداخت اینترنتی سفارش‌ها انجام نمی‌شود.'), findsOneWidget);
+    expect(find.textContaining('ذخیره‌سازی رسانه راه‌اندازی نشده است؛ تنظیمات سرویس فایل را بررسی کنید.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('dashboard order KPI and low-stock alert navigate to the relevant modules', (tester) async {
@@ -121,6 +132,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
     expect(destination?.module, AdminModule.reports);
+    final today = DateUtils.dateOnly(DateTime.now());
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
@@ -129,6 +143,22 @@ void main() {
     await tester.tap(find.text('پسته اکبری'));
     expect(destination, const AdminNavigationIntent(module: AdminModule.inventory, sku: 'PI-AKB-250'));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('period order KPI carries the selected local day into the orders route', (tester) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('تعداد سفارش بازه'), 350, maxScrolls: 20);
+    await tester.ensureVisible(find.text('تعداد سفارش بازه'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تعداد سفارش بازه'));
+
+    expect(destination?.module, AdminModule.orders);
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
   });
 
   testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
@@ -259,7 +289,7 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const []}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], String paymentStatus = 'sandbox-enabled', String storageStatus = 'local'}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(
@@ -268,8 +298,8 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
           'database': 'healthy',
           'migrations': 'tracked',
           'adminAuthentication': 'configured',
-          'payment': 'sandbox-enabled',
-          'mediaStorage': 'local',
+          'payment': paymentStatus,
+          'mediaStorage': storageStatus,
           'ready': true,
         }),
         200,

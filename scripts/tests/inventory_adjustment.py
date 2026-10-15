@@ -13,10 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 BASE = 'http://127.0.0.1:5111'
 LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED = (
     'CI-ADJUST-LEGACY', 'CI-ADJUST-BATCH', 'CI-ADJUST-UPGRADE', 'CI-ADJUST-ACTOR')
+step_up_cache = {}
 
 
-def request(path, method='GET', body=None, token=None, key=None):
+def request(path, method='GET', body=None, token=None, key=None, extra_headers=None):
     headers = {'Content-Type': 'application/json'} if body is not None else {}
+    headers.update(extra_headers or {})
     if token:
         headers['Authorization'] = 'Bearer ' + token
     if key:
@@ -63,8 +65,28 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
-def adjust(sku, delta, key, auth_token=None):
-    return request('/api/v1/admin/inventory/adjust', 'POST', {'sku': sku, 'quantityDelta': delta, 'reason': 'CI invariant'}, auth_token or token, key)
+def adjust(sku, delta, key, auth_token=None, password='Mazeduneh-CI-Owner-Password!', proof_headers=None):
+    bearer = auth_token or token
+    headers = proof_headers or step_up_headers(bearer, password)
+    return request('/api/v1/admin/inventory/adjust', 'POST',
+                   {'sku': sku, 'quantityDelta': delta, 'reason': 'CI invariant'}, bearer, key, headers)
+
+
+def write_off(body, key, proof_headers=None):
+    headers = proof_headers or step_up_headers(token)
+    return request('/api/v1/admin/inventory/waste', 'POST', body, token, key, headers)
+
+
+def step_up_headers(auth_token, password='Mazeduneh-CI-Owner-Password!'):
+    cached_proof = step_up_cache.get(auth_token)
+    if cached_proof is not None and time.monotonic() - cached_proof[0] < 180:
+        return cached_proof[1]
+    status, result = request('/api/v1/admin/auth/step-up', 'POST',
+                             {'password': password}, auth_token)
+    assert status == 200 and result['stepUpToken'], (status, result)
+    headers = {'X-Admin-Step-Up': result['stepUpToken']}
+    step_up_cache[auth_token] = (time.monotonic(), headers)
+    return headers
 
 
 def balances(sku):
@@ -73,7 +95,8 @@ def balances(sku):
     _, batches = request('/api/v1/admin/inventory/batches?sku=' + sku, token=token)
     _, movements = request('/api/v1/admin/inventory/movements?sku=' + sku, token=token)
     _, audit = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId=' + sku, token=token)
-    return available, sum(b['remainingPackages'] for b in batches), len(movements), len(audit)
+    inventory_audit = [item for item in audit if item['action'].startswith('inventory.')]
+    return available, sum(b['remainingPackages'] for b in batches), len(movements), len(inventory_audit)
 
 
 def reserve_lines(key, lines):
@@ -87,7 +110,11 @@ def reserve(key, quantity=1, sku=BATCHED):
 
 
 def cancel(order):
-    return request('/api/v1/admin/orders/' + order['id'] + '/state', 'PATCH', {'state': 'Cancelled', 'reason': 'CI release'}, token)
+    path = '/api/v1/admin/orders/' + order['id'] + '/state'
+    body = {'state': 'Cancelled', 'reason': 'CI release'}
+    status, response = request(path, 'PATCH', body, token)
+    assert status == 428, (status, response)
+    return request(path, 'PATCH', body, token, extra_headers=step_up_headers(token))
 
 
 def expire_fixture_reservation(order_id):
@@ -106,16 +133,19 @@ with tempfile.TemporaryFile() as log:
             'title': 'CI invariant', 'slug': 'ci-adjustment-invariant', 'category': 'CI', 'origin': 'IR',
             'currency': 'IRR', 'unitType': 'Weight', 'isPublished': True, 'variants': [
                 {'sku': sku, 'quantity': 250, 'displayLabel': sku, 'price': 5000, 'availablePackages': 0}
-                for sku in [LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED]]}, token)
+                for sku in [LEGACY, BATCHED, UPGRADE, ACTOR_SCOPED]]}, token,
+            extra_headers=step_up_headers(token))
         assert status == 201, status
-        assert request('/api/v1/admin/inventory/adjust', 'POST', {'sku': LEGACY, 'quantityDelta': 1, 'reason': 'missing key'}, token)[0] == 400
+        assert request('/api/v1/admin/inventory/adjust', 'POST', {'sku': LEGACY, 'quantityDelta': 1, 'reason': 'missing key'}, token)[0] == 428
+        assert request('/api/v1/admin/inventory/adjust', 'POST', {'sku': LEGACY, 'quantityDelta': 1, 'reason': 'missing key'},
+                       token, extra_headers=step_up_headers(token))[0] == 400
         assert adjust(LEGACY, 10, 'ci-adjust-opening')[0] == 200
         opening = balances(LEGACY)
         assert opening == (10, 0, 1, 1), opening
 
         invitation_status, invitation = request('/api/v1/admin/users', 'POST', {
             'email': 'ci-inventory-operator@mazeduneh.test', 'displayName': 'CI inventory operator',
-            'role': 'WarehouseOperator'}, token)
+            'role': 'WarehouseOperator'}, token, extra_headers=step_up_headers(token))
         assert invitation_status == 201, (invitation_status, invitation)
         assert request('/api/v1/admin/auth/accept-invite', 'POST', {
             'token': invitation['invitationToken'], 'password': 'Mazeduneh-CI-Operator-Password!'} )[0] == 204
@@ -124,7 +154,8 @@ with tempfile.TemporaryFile() as log:
         assert operator_status == 200, (operator_status, operator_login)
         actor_key = 'ci-adjust-actor-scope'
         assert adjust(ACTOR_SCOPED, 5, actor_key)[0] == 200
-        assert adjust(ACTOR_SCOPED, 5, actor_key, operator_login['accessToken'])[0] == 200
+        assert adjust(ACTOR_SCOPED, 5, actor_key, operator_login['accessToken'],
+                      'Mazeduneh-CI-Operator-Password!')[0] == 200
         assert balances(ACTOR_SCOPED) == (10, 0, 2, 2)
         owner_replay_status, owner_replay = adjust(ACTOR_SCOPED, 5, actor_key)
         assert owner_replay_status == 200 and owner_replay['balanceAfter'] == 5
@@ -134,8 +165,9 @@ with tempfile.TemporaryFile() as log:
             os.environ['Admin__Email'], 'ci-inventory-operator@mazeduneh.test'}
 
         # Concurrent duplicate requests write once; changed payload conflicts.
+        concurrent_proof = step_up_headers(token)
         with ThreadPoolExecutor(max_workers=4) as pool:
-            results = list(pool.map(lambda _: adjust(LEGACY, -2, 'ci-adjust-replay'), range(4)))
+            results = list(pool.map(lambda _: adjust(LEGACY, -2, 'ci-adjust-replay', proof_headers=concurrent_proof), range(4)))
         assert all(status == 200 for status, _ in results)
         assert all(body['balanceAfter'] == 8 for _, body in results)
         assert balances(LEGACY) == (8, 0, 2, 2)
@@ -195,13 +227,14 @@ with tempfile.TemporaryFile() as log:
         assert cancel(order)[0] in [200, 409]
         assert balances(BATCHED) == released
         waste = {'sku': BATCHED, 'batchCode': 'CI-INVARIANT-LOT', 'quantity': 2, 'reason': 'CI waste'}
-        assert request('/api/v1/admin/inventory/waste', 'POST', waste, token, 'ci-invariant-waste')[0] == 200
+        assert request('/api/v1/admin/inventory/waste', 'POST', waste, token, 'ci-waste-missing-proof')[0] == 428
+        assert write_off(waste, 'ci-invariant-waste')[0] == 200
         wasted = balances(BATCHED)
         assert wasted[:3] == (8, 8, 4), wasted
-        assert request('/api/v1/admin/inventory/waste', 'POST', waste, token, 'ci-invariant-waste')[0] == 200
+        assert write_off(waste, 'ci-invariant-waste')[0] == 200
         assert balances(BATCHED) == wasted
-        assert request('/api/v1/admin/inventory/waste', 'POST', dict(waste, quantity=9), token, 'ci-invariant-too-much')[0] == 409
-        assert request('/api/v1/admin/inventory/waste', 'POST', dict(waste, batchCode='MISSING'), token, 'ci-invariant-missing')[0] == 409
+        assert write_off(dict(waste, quantity=9), 'ci-invariant-too-much')[0] == 409
+        assert write_off(dict(waste, batchCode='MISSING'), 'ci-invariant-missing')[0] == 409
         assert balances(BATCHED) == wasted
         # Checkout and forbidden generic adjustments share variant-before-batch locks.
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -266,3 +299,4 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 print('Inventory legacy/batch policy, reservations/releases/waste, atomic failure, concurrent and durable retry checks passed')
+

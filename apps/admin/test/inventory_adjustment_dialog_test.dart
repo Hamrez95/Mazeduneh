@@ -35,6 +35,7 @@ void main() {
                 if (attempts == 1) {
                   throw OrderApiException('موجودی تغییر کرده است؛ انبار را تازه‌سازی کنید.', statusCode: 409);
                 }
+                return true;
               },
             ),
           ),
@@ -74,7 +75,7 @@ void main() {
                 sku: 'PI-250', quantity: 250, displayLabel: '۲۵۰ گرم',
                 price: 5000, availablePackages: 4,
               ),
-              onSubmit: (_, __) async { attempts++; },
+              onSubmit: (_, __) async { attempts++; return true; },
             ),
           ),
           child: const Text('باز کردن اصلاح'),
@@ -93,5 +94,37 @@ void main() {
     expect(attempts, 0);
     expect(find.text('عدد معتبر وارد کنید.'), findsOneWidget);
     expect(tester.widget<TextFormField>(fields.at(0)).controller!.text, '۱٫۵');
+  });
+
+  testWidgets('cancelling step-up keeps the inventory draft open', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Builder(builder: (context) => TextButton(
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => AdjustmentDialog(
+              variant: const ProductVariant(
+                sku: 'PI-250', quantity: 250, displayLabel: '۲۵۰ گرم',
+                price: 5000, availablePackages: 4,
+              ),
+              onSubmit: (_, __) async => false,
+            ),
+          ),
+          child: const Text('باز کردن اصلاح'),
+        )),
+      ),
+    ));
+
+    await tester.tap(find.text('باز کردن اصلاح'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), '-۲');
+    await tester.enterText(fields.at(1), 'اصلاح تست');
+    await tester.tap(find.text('ثبت اصلاح'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اصلاح موجودی PI-250'), findsOneWidget);
+    expect(tester.widget<TextFormField>(fields.at(0)).controller!.text, '-۲');
+    expect(tester.widget<TextFormField>(fields.at(1)).controller!.text, 'اصلاح تست');
   });
 }

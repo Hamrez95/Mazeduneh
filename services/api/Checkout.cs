@@ -10,7 +10,6 @@ public static class CheckoutModule
     {
         services.AddSingleton<CheckoutDatabase>();
         services.AddSingleton<CheckoutService>();
-        services.AddHostedService<CheckoutSchemaInitializer>();
         services.AddCustomerIdentity();
         services.AddHostedService<ReservationExpiryWorker>();
         return services;
@@ -40,22 +39,45 @@ public static class CheckoutModule
             };
         });
 
-        checkout.MapGet("/orders/{orderId:guid}", async (
+        checkout.MapPost("/orders/{orderId:guid}/marketing-consent/revoke", async (
             Guid orderId,
-            string receiptToken,
+            RevokeMarketingConsentRequest request,
             CheckoutService service,
             CancellationToken cancellationToken) =>
-            await service.FindAsync(orderId, receiptToken, cancellationToken) is { } order
-                ? Results.Ok(order)
-                : Results.NotFound(new { message = "سفارش پیدا نشد." }));
+        {
+            if (string.IsNullOrWhiteSpace(request.ReceiptToken) || request.ReceiptToken.Length > 200)
+                return Results.BadRequest(new { message = "توکن رسید معتبر نیست." });
 
-        checkout.MapGet("/orders/{orderId:guid}/invoice", async (
+            var revoked = await service.RevokeMarketingConsentAsync(orderId, request.ReceiptToken, cancellationToken);
+            return revoked
+                ? Results.NoContent()
+                : Results.NotFound(new { message = "سفارش پیدا نشد." });
+        });
+
+        checkout.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
-            string receiptToken,
+            HttpRequest httpRequest,
             CheckoutService service,
             HttpResponse response,
             CancellationToken cancellationToken) =>
         {
+            response.Headers.CacheControl = "no-store";
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
+            var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
+            return order is null
+                ? Results.NotFound(new { message = "سفارش پیدا نشد." })
+                : Results.Ok(order with { ReceiptToken = string.Empty });
+        });
+
+        checkout.MapGet("/orders/{orderId:guid}/invoice", async (
+            Guid orderId,
+            HttpRequest httpRequest,
+            CheckoutService service,
+            HttpResponse response,
+            CancellationToken cancellationToken) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var receiptToken = httpRequest.Headers["X-Order-Receipt-Token"].ToString();
             var order = await service.FindAsync(orderId, receiptToken, cancellationToken);
             if (order is null) return Results.NotFound(new { message = "سفارش پیدا نشد." });
             response.Headers.ContentDisposition = $"attachment; filename=\"mazeduneh-invoice-{orderId:N}.html\"";
@@ -116,6 +138,9 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
             : null;
         return Task.FromResult(found);
     }
+
+    public Task<bool> RevokeMarketingConsentAsync(Guid orderId, string receiptToken, CancellationToken cancellationToken) =>
+        database.RevokeMarketingConsentAsync(orderId, receiptToken, cancellationToken);
 
     private CheckoutResult CreateInMemory(string idempotencyKey, string fingerprint, CheckoutRequest request)
     {
@@ -194,7 +219,8 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 }
 
 public sealed record CheckoutRequest(string CustomerName, string Mobile, string Province, string City,
-    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post")
+    string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post",
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool MarketingConsent = false)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -224,6 +250,7 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
 }
 
 public sealed record CheckoutItemRequest(string Sku, int Quantity);
+public sealed record RevokeMarketingConsentRequest(string ReceiptToken);
 public sealed record CheckoutBatchAllocation(string BatchCode, DateTimeOffset ExpiresAt, int Quantity, decimal CostPrice, decimal PackagingCost, decimal AdditionalCost);
 public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal,
     decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,

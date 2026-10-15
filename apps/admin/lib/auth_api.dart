@@ -25,7 +25,7 @@ class AuthApiClient {
   final String baseUrl;
   final String storeId;
 
-  Future<void> login({required String email, required String password}) async {
+  Future<void> login({required String email, required String password, String? mfaCode}) async {
     OwnerSession.instance.clear();
     final revision = OwnerSession.instance.revision;
     final response = await _client.post(
@@ -35,6 +35,7 @@ class AuthApiClient {
         'email': email.trim(),
         'password': password,
         'storeId': storeId,
+        if (mfaCode != null && mfaCode.trim().isNotEmpty) 'mfaCode': mfaCode.trim(),
       }),
     );
 
@@ -90,7 +91,7 @@ class AuthApiClient {
     );
   }
 
-  Future<String> stepUp({required String password}) async {
+  Future<String> stepUp({required String password, String? mfaCode}) async {
     final token = OwnerSession.instance.bearerToken;
     if (token == null) {
       throw AuthApiException('نشست شما منقضی شده است.', statusCode: 401);
@@ -101,7 +102,10 @@ class AuthApiClient {
         'authorization': 'Bearer $token',
         'content-type': 'application/json; charset=utf-8',
       },
-      body: jsonEncode({'password': password}),
+      body: jsonEncode({
+        'password': password,
+        if (mfaCode != null && mfaCode.trim().isNotEmpty) 'mfaCode': mfaCode.trim(),
+      }),
     );
     if (response.statusCode == 401) OwnerSession.instance.clear();
     if (response.statusCode != 200) {
@@ -208,6 +212,14 @@ class AuthApiClient {
 
   String _message(http.Response response) {
     if (response.statusCode == 401) return 'ایمیل یا رمز عبور صحیح نیست.';
+    if (response.statusCode == 428) return 'کد تأیید دومرحله‌ای را وارد کنید.';
+    if (response.statusCode == 403) {
+      try {
+        final body = jsonDecode(utf8.decode(response.bodyBytes));
+        if (body is Map<String, dynamic> && body['code'] == 'mfa_invalid')
+          return 'کد تأیید دومرحله‌ای معتبر نیست.';
+      } catch (_) {}
+    }
     if (response.statusCode == 400) {
       try {
         final body = jsonDecode(utf8.decode(response.bodyBytes));

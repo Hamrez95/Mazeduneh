@@ -39,10 +39,10 @@ class AdminUsersApiClient {
     return body.map((item) => AdminRole.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, required List<String> permissions, String? storeId}) async {
+  Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, required List<String> permissions, required String stepUpToken, String? storeId}) async {
     final response = await _client.post(
       _uri('/api/v1/admin/users', storeId: storeId),
-      headers: _headers(json: true),
+      headers: _headers(json: true, stepUpToken: stepUpToken),
       body: jsonEncode({'email': email.trim(), 'displayName': displayName.trim(), 'role': role, 'permissions': permissions}),
     );
     _guard(response);
@@ -50,12 +50,12 @@ class AdminUsersApiClient {
     return AdminUserInvitation.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminUser> setPermissions(String id, List<String> permissions, {String? storeId}) async {
+  Future<AdminUser> setPermissions(String id, List<String> permissions, {required String stepUpToken, String? storeId}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/api/v1/admin/users/$id/permissions').replace(queryParameters: {
         if (storeId != null && storeId.trim().isNotEmpty) 'storeId': storeId.trim(),
       }),
-      headers: _headers(json: true),
+      headers: _headers(json: true, stepUpToken: stepUpToken),
       body: jsonEncode({'permissions': permissions}),
     );
     _guard(response);
@@ -63,12 +63,12 @@ class AdminUsersApiClient {
     return AdminUser.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminUser> setStatus(String id, bool isActive, {String? storeId}) async {
+  Future<AdminUser> setStatus(String id, bool isActive, {required String stepUpToken, String? storeId}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/api/v1/admin/users/$id/status').replace(queryParameters: {
         if (storeId != null && storeId.trim().isNotEmpty) 'storeId': storeId.trim(),
       }),
-      headers: _headers(json: true),
+      headers: _headers(json: true, stepUpToken: stepUpToken),
       body: jsonEncode({'isActive': isActive}),
     );
     _guard(response);
@@ -80,11 +80,12 @@ class AdminUsersApiClient {
         if (storeId != null && storeId.trim().isNotEmpty) 'storeId': storeId.trim(),
       });
 
-  Map<String, String> _headers({bool json = false}) {
+  Map<String, String> _headers({bool json = false, String? stepUpToken}) {
     final token = OwnerSession.instance.bearerToken;
     if (token == null) throw AdminUsersApiException('نشست شما منقضی شده است.', statusCode: 401);
     return {
       'authorization': 'Bearer $token',
+      if (stepUpToken != null) 'x-admin-step-up': stepUpToken,
       if (json) 'content-type': 'application/json; charset=utf-8',
     };
   }

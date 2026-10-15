@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'admin_permissions.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
 import 'admin_users_page.dart';
@@ -34,26 +33,13 @@ class _AdminShellState extends State<AdminShell> {
   var navigation = const AdminNavigationIntent(module: AdminModule.dashboard);
   final navigationHistory = <AdminNavigationIntent>[];
   final catalogKey = GlobalKey<CatalogPageState>();
-  static const items = [
-    ('داشبورد', Icons.space_dashboard_rounded, AdminPermissions.dashboardRead),
-    ('سفارش‌ها', Icons.receipt_long_rounded, AdminPermissions.ordersRead),
-    ('محصولات', Icons.inventory_2_rounded, AdminPermissions.productsRead),
-    ('انبار', Icons.warehouse_rounded, AdminPermissions.inventoryRead),
-    ('گزارش‌ها', Icons.query_stats_rounded, AdminPermissions.reportsRead),
-    ('اعلان‌ها', Icons.notifications_active_rounded, AdminPermissions.dashboardRead),
-    ('مشتری‌ها', Icons.people_alt_rounded, AdminPermissions.customersRead),
-    ('قیمت و ارسال', Icons.percent_rounded, AdminPermissions.pricingRead),
-    ('فروش سازمانی', Icons.business_center_rounded, AdminPermissions.corporateRead),
-    ('امنیت', Icons.shield_outlined, AdminPermissions.auditRead),
-    ('کاربران', Icons.manage_accounts_outlined, AdminPermissions.usersRead),
-  ];
 
   @override
   void initState() {
     super.initState();
     if (OwnerSession.instance.isAuthenticated) {
-      final firstAllowed = items.indexWhere(
-        (item) => OwnerSession.instance.can(item.$3),
+      final firstAllowed = AdminModule.values.indexWhere(
+        (module) => OwnerSession.instance.can(module.permission),
       );
       if (firstAllowed >= 0) index = firstAllowed;
     }
@@ -62,23 +48,14 @@ class _AdminShellState extends State<AdminShell> {
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
-    final visibleIndexes = [for (var i = 0; i < items.length; i++) if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(items[i].$3)) i];
-    final primaryIndexes = visibleIndexes.take(4).toList();
-    final secondaryIndexes = visibleIndexes.skip(4).toList();
-    final selectedPrimary = primaryIndexes.indexOf(index);
-    final pages = [
-      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate)),
-      AdminPermissionGate(permission: AdminPermissions.ordersRead, child: OrdersPage(key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter)),
-      AdminPermissionGate(permission: AdminPermissions.productsRead, child: CatalogPage(key: catalogKey)),
-      AdminPermissionGate(permission: AdminPermissions.inventoryRead, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
-      const AdminPermissionGate(permission: AdminPermissions.reportsRead, child: ReportsPage()),
-      AdminPermissionGate(permission: AdminPermissions.dashboardRead, child: NotificationsPage(onNavigate: _navigate)),
-      const AdminPermissionGate(permission: AdminPermissions.customersRead, child: CustomerManagementPage()),
-      const AdminPermissionGate(permission: AdminPermissions.pricingRead, child: CommerceSettingsPage()),
-      const AdminPermissionGate(permission: AdminPermissions.corporateRead, child: CorporateRequestsPage()),
-      const AdminPermissionGate(permission: AdminPermissions.auditRead, child: AuditLogPage()),
-      const AdminPermissionGate(permission: AdminPermissions.usersRead, child: AdminUsersPage()),
+    final visibleModules = [
+      for (final module in AdminModule.values)
+        if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(module.permission)) module,
     ];
+    final primaryModules = visibleModules.take(4).toList();
+    final secondaryModules = visibleModules.skip(4).toList();
+    final selectedPrimary = primaryModules.indexWhere((module) => AdminModule.values.indexOf(module) == index);
+    final pages = [for (final module in AdminModule.values) _modulePage(module)];
     return PopScope<Object?>(
       canPop: navigationHistory.isEmpty,
       onPopInvokedWithResult: (didPop, _) { if (!didPop) _goBack(); },
@@ -87,25 +64,25 @@ class _AdminShellState extends State<AdminShell> {
         leading: navigationHistory.isEmpty ? null : IconButton(tooltip: 'بازگشت به ${_moduleLabel(navigationHistory.last.module)}', onPressed: _goBack, icon: const Icon(Icons.arrow_back_rounded)),
         title: const Brand(compact: true),
       ),
-      bottomNavigationBar: desktop || visibleIndexes.isEmpty
+      bottomNavigationBar: desktop || visibleModules.isEmpty
           ? null
-          : visibleIndexes.length == 1
+          : visibleModules.length == 1
           ? BottomAppBar(
               child: SafeArea(
                 child: SizedBox(
                   height: 56,
                   child: Center(
                     child: Semantics(
-                      label: 'بخش فعال: ${items[visibleIndexes.single].$1}',
+                      label: 'بخش فعال: ${visibleModules.single.label}',
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            items[visibleIndexes.single].$2,
+                            visibleModules.single.icon,
                             color: AdminColors.ink,
                           ),
                           const SizedBox(width: 8),
-                          Text(items[visibleIndexes.single].$1),
+                          Text(visibleModules.single.label),
                         ],
                       ),
                     ),
@@ -114,9 +91,16 @@ class _AdminShellState extends State<AdminShell> {
               ),
             )
           : NavigationBar(
-              selectedIndex: secondaryIndexes.isNotEmpty ? (selectedPrimary < 0 ? primaryIndexes.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
-              onDestinationSelected: (value) => secondaryIndexes.isNotEmpty && value == primaryIndexes.length ? _openMoreMenu(secondaryIndexes) : _selectModule(primaryIndexes[value]),
-              destinations: [for (final item in [for (final i in primaryIndexes) items[i], if (secondaryIndexes.isNotEmpty) ('بیشتر', Icons.more_horiz_rounded, '')]) NavigationDestination(icon: Icon(item.$2), label: item.$1)],
+              selectedIndex: secondaryModules.isNotEmpty ? (selectedPrimary < 0 ? primaryModules.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
+              onDestinationSelected: (value) => secondaryModules.isNotEmpty && value == primaryModules.length
+                  ? _openMoreMenu(secondaryModules)
+                  : _selectModule(AdminModule.values.indexOf(primaryModules[value])),
+              destinations: [
+                for (final module in primaryModules)
+                  NavigationDestination(icon: Icon(module.icon), label: module.label),
+                if (secondaryModules.isNotEmpty)
+                  const NavigationDestination(icon: Icon(Icons.more_horiz_rounded), label: 'بیشتر'),
+              ],
             ),
       body: Row(children: [
         if (desktop)
@@ -132,7 +116,7 @@ class _AdminShellState extends State<AdminShell> {
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
-                    for (final i in visibleIndexes)
+                    for (final module in visibleModules)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Material(
@@ -142,26 +126,26 @@ class _AdminShellState extends State<AdminShell> {
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: ListTile(
-                      selected: index == i,
+                      selected: index == AdminModule.values.indexOf(module),
                       selectedTileColor: AdminColors.ink,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                       leading: Icon(
-                        items[i].$2,
-                        color: index == i
+                        module.icon,
+                        color: index == AdminModule.values.indexOf(module)
                             ? Colors.white
                             : const Color(0xFFBFD0C5),
                       ),
                       title: Text(
-                        items[i].$1,
+                        module.label,
                         style: TextStyle(
-                          color: index == i
+                          color: index == AdminModule.values.indexOf(module)
                               ? Colors.white
                               : const Color(0xFFD5DFD6),
                         ),
                       ),
-                      onTap: () => _selectModule(i),
+                      onTap: () => _selectModule(AdminModule.values.indexOf(module)),
                     ),
                   ),
                 ),
@@ -222,7 +206,7 @@ class _AdminShellState extends State<AdminShell> {
           ),
         Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
       ]),
-      floatingActionButton: index == 2
+      floatingActionButton: index == AdminModule.products.index
           ? FloatingActionButton.extended(
               onPressed: () => catalogKey.currentState?.openCreateDialog(),
               icon: const Icon(Icons.add_rounded),
@@ -237,7 +221,7 @@ class _AdminShellState extends State<AdminShell> {
     final session = OwnerSession.instance;
     if (session.isAuthenticated && !session.can(intent.module.permission)) return;
     final destination = AdminModule.values.indexOf(intent.module);
-    if (destination < 0 || destination >= items.length || intent == navigation) return;
+    if (destination < 0 || intent == navigation) return;
     setState(() { navigationHistory.add(navigation); navigation = intent; index = destination; });
   }
 
@@ -256,17 +240,10 @@ class _AdminShellState extends State<AdminShell> {
     setState(() { navigation = previous; index = AdminModule.values.indexOf(previous.module); });
   }
 
-  String _moduleLabel(AdminModule module) => switch (module) {
-    AdminModule.dashboard => 'داشبورد', AdminModule.orders => 'سفارش‌ها',
-    AdminModule.products => 'محصولات', AdminModule.inventory => 'انبار',
-    AdminModule.reports => 'گزارش‌ها', AdminModule.notifications => 'اعلان‌ها',
-    AdminModule.customers => 'مشتری‌ها', AdminModule.pricing => 'قیمت و ارسال',
-    AdminModule.corporate => 'فروش سازمانی', AdminModule.audit => 'امنیت',
-    AdminModule.users => 'کاربران',
-  };
+  String _moduleLabel(AdminModule module) => module.label;
 
-  Future<void> _openMoreMenu(List<int> secondaryIndexes) async {
-    final selected = await showModalBottomSheet<int>(
+  Future<void> _openMoreMenu(List<AdminModule> secondaryModules) async {
+    final selected = await showModalBottomSheet<AdminModule>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -278,21 +255,42 @@ class _AdminShellState extends State<AdminShell> {
               padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
             ),
-            for (final i in secondaryIndexes)
+            for (final module in secondaryModules)
               ListTile(
-                selected: index == i,
+                selected: index == AdminModule.values.indexOf(module),
                 selectedTileColor: AdminColors.mintSoft,
-                leading: Icon(items[i].$2, color: AdminColors.ink),
-                title: Text(items[i].$1),
+                leading: Icon(module.icon, color: AdminColors.ink),
+                title: Text(module.label),
                 trailing: const Icon(Icons.arrow_back_rounded, size: 18),
-                onTap: () => Navigator.pop(context, i),
+                onTap: () => Navigator.pop(context, module),
               ),
           ],
         ),
       ),
     );
-    if (selected != null && mounted) _selectModule(selected);
+    if (selected != null && mounted) _selectModule(AdminModule.values.indexOf(selected));
   }
+
+  Widget _modulePage(AdminModule module) => switch (module) {
+        AdminModule.dashboard => AdminPermissionGate(permission: module.permission, child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate)),
+        AdminModule.orders => AdminPermissionGate(permission: module.permission, child: OrdersPage(
+          key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter,
+          initialQuery: navigation.query ?? '', initialCreatedFromUtc: navigation.createdFromUtc,
+          initialCreatedToUtcExclusive: navigation.createdToUtcExclusive,
+        )),
+        AdminModule.products => AdminPermissionGate(permission: module.permission, child: CatalogPage(key: catalogKey, onNavigate: _navigate)),
+        AdminModule.inventory => AdminPermissionGate(permission: module.permission, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
+        AdminModule.reports => AdminPermissionGate(permission: module.permission, child: ReportsPage(
+          key: ValueKey(navigation), initialFromUtc: navigation.createdFromUtc,
+          initialToUtcExclusive: navigation.createdToUtcExclusive, onNavigate: _navigate,
+        )),
+        AdminModule.notifications => AdminPermissionGate(permission: module.permission, child: NotificationsPage(onNavigate: _navigate)),
+        AdminModule.customers => AdminPermissionGate(permission: module.permission, child: const CustomerManagementPage()),
+        AdminModule.pricing => AdminPermissionGate(permission: module.permission, child: const CommerceSettingsPage()),
+        AdminModule.corporate => AdminPermissionGate(permission: module.permission, child: const CorporateRequestsPage()),
+        AdminModule.audit => AdminPermissionGate(permission: module.permission, child: const AuditLogPage()),
+        AdminModule.users => AdminPermissionGate(permission: module.permission, child: const AdminUsersPage()),
+      };
 }
 
 class Brand extends StatelessWidget {
@@ -354,3 +352,4 @@ class Brand extends StatelessWidget {
     ],
   );
 }
+

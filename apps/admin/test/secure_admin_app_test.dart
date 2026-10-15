@@ -145,6 +145,36 @@ void main() {
     },
   );
 
+  testWidgets('login reveals a TOTP field only after the server requests MFA', (tester) async {
+    var sawCode = false;
+    await pumpApp(tester, MockClient((request) async {
+      if (request.url.path.endsWith('/session')) return identity();
+      if (request.url.path.endsWith('/login')) {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        if (body['mfaCode'] == null) {
+          expect(find.text('کد تأیید دومرحله‌ای'), findsNothing);
+          return http.Response('{}', 428);
+        }
+        sawCode = body['mfaCode'] == '123456';
+        return login();
+      }
+      fail('Unexpected request: ${request.url.path}');
+    }));
+
+    expect(find.text('کد تأیید دومرحله‌ای'), findsNothing);
+    await tester.enterText(find.byType(TextFormField).at(0), 'owner@example.test');
+    await tester.enterText(find.byType(TextFormField).at(1), 'password');
+    await tester.tap(find.text('ورود به پنل'));
+    await tester.pumpAndSettle();
+    expect(find.text('کد تأیید دومرحله‌ای'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).at(2), '123456');
+    await tester.tap(find.text('ورود به پنل'));
+    await tester.pumpAndSettle();
+    expect(sawCode, isTrue);
+    expect(find.text('protected data'), findsOneWidget);
+  });
+
   testWidgets(
     'provisional login and invalid session never build protected content',
     (tester) async {

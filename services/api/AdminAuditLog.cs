@@ -7,7 +7,7 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -124,12 +124,6 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         command.Parameters.AddWithValue("occurred_at", DateTimeOffset.UtcNow);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
-}
-
-public sealed class AdminAuditLogSchemaInitializer(AdminAuditLogDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record AdminAuditLogEntry(Guid Id, string Actor, string Action, string EntityType, string EntityId,

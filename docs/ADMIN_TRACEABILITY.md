@@ -32,6 +32,10 @@
 | responsive، accessibility و Persian numerals | Shared Admin/Storefront | shared UI/error/formatter contract | ندارد؛ presentation concern | #4، #77، #28، #29 | ناقص؛ پایه موجود |
 | CI سبز و controlled launch | CI/Infra | workflow، environment و verification | migration ledger، deployment metadata | #8، #100 | ناقص؛ CI main سبز |
 
+## Audit تغییرات کاتالوگ
+
+در پیکربندی PostgreSQL، ایجاد و ویرایش محصول، انتشار یا خارج‌کردن محصول از انتشار، و ایجاد/ویرایش/فعال‌سازی/حذف دسته‌بندی در `admin_audit_logs` ثبت می‌شود. رکورد Audit شامل actor، شناسهٔ درخواست و before/after است و در همان تراکنش تغییر کاتالوگ نوشته می‌شود؛ اگر ثبت Audit شکست بخورد، خود تغییر نیز commit نمی‌شود.
+
 ## مالکیت و قاعدهٔ بدون orphan
 
 هیچ ردیف مهمی بدون Issue نیست. اگر implementation جدید به جدولی نیاز دارد که در ستون «هدف» آمده است، ابتدا migration و API contract همان Issue باید ایجاد شود؛ ساخت جدول پراکنده در runtime یا hard-code در UI مجاز نیست.
@@ -43,3 +47,7 @@
 3. API و migration واقعی main
 4. تست و CI
 5. سپس implementation یک Slice معنی‌دار با یک commit قابل توضیح
+
+
+
+ثبت محصول، چون SKU و قیمت اولیهٔ هر بسته را هم‌زمان ایجاد می‌کند، به مجوز `pricing.write` و تأیید دوبارهٔ هویت نیاز دارد. پنل پس از تکمیل فرم این تأیید را می‌گیرد و API بدون آن درخواست معتبر را نمی‌پذیرد؛ تست‌های محصول، ایجاد بدون مجوز قیمت و نبود توکن را پوشش می‌دهند.

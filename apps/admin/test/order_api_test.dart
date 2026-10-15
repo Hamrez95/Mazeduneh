@@ -24,10 +24,12 @@ void main() {
           headers: {'content-type': 'application/json; charset=utf-8'});
     });
     final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
-    await api.adjustStock('PI-250', -1, 'شکسته', operationKey: 'stable-adjustment-01');
-    await api.writeOffStock('PI-250', 'LOT-1', 1, 'شکسته', operationKey: 'stable-waste-0001');
+    await api.adjustStock('PI-250', -1, 'شکسته', operationKey: 'stable-adjustment-01', stepUpToken: 'adjust-token');
+    await api.writeOffStock('PI-250', 'LOT-1', 1, 'شکسته', operationKey: 'stable-waste-0001', stepUpToken: 'waste-token');
     expect(captured[0].headers['idempotency-key'], 'stable-adjustment-01');
     expect(captured[1].headers['idempotency-key'], 'stable-waste-0001');
+    expect(captured[0].headers['x-admin-step-up'], 'adjust-token');
+    expect(captured[1].headers['x-admin-step-up'], 'waste-token');
     expect(captured.map((request) => request.url.path), [
       '/api/v1/admin/inventory/adjust', '/api/v1/admin/inventory/waste',
     ]);
@@ -71,13 +73,40 @@ void main() {
       ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
 
-    final orders = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOrders(state: 'Paid', query: 'Mina');
+    final orders = await OrderApiClient(client: client, baseUrl: 'https://api.test').fetchOrders(state: 'Paid', query: 'AK-250');
     expect(captured.headers['authorization'], 'Bearer order-test-token');
     expect(captured.url.path, '/api/v1/admin/orders');
     expect(captured.url.queryParameters['state'], 'Paid');
-    expect(captured.url.queryParameters['q'], 'Mina');
+    expect(captured.url.queryParameters['q'], 'AK-250');
     expect(orders.single.nextState, 'Preparing');
     expect(orders.single.paymentReference, 'SANDBOX-1');
+  });
+
+  test('order list and export preserve explicit UTC creation range boundaries', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 2);
+
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    await api.fetchOrders(
+      createdFromUtc: from,
+      createdToUtcExclusive: to,
+    );
+    await api.exportOrdersCsv(
+      stepUpToken: 'fresh-token',
+      createdFromUtc: from,
+      createdToUtcExclusive: to,
+    );
+
+    for (final request in captured) {
+      expect(request.url.queryParameters['from'], from.toIso8601String());
+      expect(request.url.queryParameters['to'], to.toIso8601String());
+    }
+    expect(captured[1].headers['x-admin-step-up'], 'fresh-token');
   });
 
   test('custom dashboard period sends explicit UTC boundaries', () async {
@@ -106,18 +135,46 @@ void main() {
     expect(captured.url.queryParameters.containsKey('days'), isFalse);
   });
 
+  test('analytics and product profitability accept the same explicit UTC period', () async {
+    final captured = <http.Request>[];
+    final client = MockClient((request) async {
+      captured.add(request);
+      if (request.url.path.endsWith('/analytics/products')) {
+        return http.Response('[]', 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(jsonEncode({
+        'days': 1, 'orderCount': 0, 'unitsSold': 0, 'revenue': 0, 'cost': 0,
+        'grossProfit': 0, 'grossMarginPercent': 0, 'tax': 0, 'netProfit': 0, 'shippingExpense': 0,
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    final from = DateTime.utc(2026, 10, 1);
+    final to = DateTime.utc(2026, 10, 8);
+
+    await api.fetchAnalytics(fromUtc: from, toUtcExclusive: to);
+    await api.fetchProductProfitability(fromUtc: from, toUtcExclusive: to);
+
+    expect(captured, hasLength(2));
+    for (final request in captured) {
+      expect(request.url.queryParameters['from'], from.toIso8601String());
+      expect(request.url.queryParameters['to'], to.toIso8601String());
+      expect(request.url.queryParameters.containsKey('days'), isFalse);
+    }
+  });
+
   test('exportOrdersCsv preserves active filters and authenticated download contract', () async {
     late http.Request captured;
     final client = MockClient((request) async {
       captured = request;
       return http.Response.bytes([0xEF, 0xBB, 0xBF, 0xD8, 0xB3], 200, headers: {'content-type': 'text/csv; charset=utf-8'});
     });
-    final bytes = await OrderApiClient(client: client, baseUrl: 'https://api.test').exportOrdersCsv(state: 'Paid', query: 'Mina', limit: 500);
+    final bytes = await OrderApiClient(client: client, baseUrl: 'https://api.test').exportOrdersCsv(stepUpToken: 'fresh-proof', state: 'Paid', query: 'Mina', limit: 500);
     expect(captured.url.path, '/api/v1/admin/orders/export.csv');
     expect(captured.url.queryParameters['state'], 'Paid');
     expect(captured.url.queryParameters['q'], 'Mina');
     expect(captured.url.queryParameters['limit'], '500');
     expect(captured.headers['authorization'], 'Bearer order-test-token');
+    expect(captured.headers['x-admin-step-up'], 'fresh-proof');
     expect(bytes.take(3), [0xEF, 0xBB, 0xBF]);
   });
 
@@ -251,10 +308,10 @@ void main() {
     expect(batches.single.isExpiringSoon, isTrue);
   });
 
-  test('updateShipping sends tracking and actual expense', () async {
-    late http.Request captured;
+  test('updateShipping requires step-up only when actual expense changes', () async {
+    final captured = <http.Request>[];
     final client = MockClient((request) async {
-      captured = request;
+      captured.add(request);
       return http.Response(jsonEncode({
         'id': '11111111-1111-1111-1111-111111111111', 'customerName': 'Mina', 'mobile': '09120000000', 'province': 'Tehran', 'city': 'Tehran',
         'payable': 2450000, 'currency': 'IRR', 'state': 'Shipped', 'createdAt': '2026-07-31T08:00:00Z', 'reservationExpiresAt': '2026-07-31T08:20:00Z',
@@ -263,10 +320,25 @@ void main() {
         'trackingCode': 'TR-2', 'shippedAt': '2026-07-31T08:03:00Z', 'lines': [], 'transitions': [], 'notes': [], 'payment': null,
       }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     });
-    final detail = await OrderApiClient(client: client, baseUrl: 'https://api.test').updateShipping('11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2', actualShippingCost: 45000, reason: 'اصلاح کد رهگیری');
-    expect(captured.method, 'PATCH');
-    expect(captured.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
-    expect(jsonDecode(captured.body), {'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000, 'reason': 'اصلاح کد رهگیری'});
+    final api = OrderApiClient(client: client, baseUrl: 'https://api.test');
+    final detail = await api.updateShipping(
+      '11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-2',
+      actualShippingCost: 45000, stepUpToken: 'fresh-token', reason: 'اصلاح هزینه ارسال');
+    await api.updateShipping(
+      '11111111-1111-1111-1111-111111111111', carrier: 'پست', trackingCode: 'TR-3',
+      updateActualShippingCost: false, reason: 'ثبت کد رهگیری');
+    expect(captured.first.method, 'PATCH');
+    expect(captured.first.url.path, '/api/v1/admin/orders/11111111-1111-1111-1111-111111111111/shipping');
+    expect(jsonDecode(captured.first.body), {
+      'carrier': 'پست', 'trackingCode': 'TR-2', 'actualShippingCost': 45000,
+      'updateActualShippingCost': true, 'reason': 'اصلاح هزینه ارسال',
+    });
+    expect(captured.first.headers['x-admin-step-up'], 'fresh-token');
+    expect(jsonDecode(captured.last.body), {
+      'carrier': 'پست', 'trackingCode': 'TR-3', 'actualShippingCost': null,
+      'updateActualShippingCost': false, 'reason': 'ثبت کد رهگیری',
+    });
+    expect(captured.last.headers.containsKey('x-admin-step-up'), isFalse);
     expect(detail.trackingCode, 'TR-2');
   });
 
@@ -276,7 +348,9 @@ void main() {
       captured = request;
       return http.Response(jsonEncode({'isSuccess': true, 'sku': 'PI-AKB-250', 'balanceAfter': 2}), 200);
     });
-    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test').writeOffStock('PI-AKB-250', 'LOT-1', 1, 'بسته آسیب‌دیده', operationKey: 'test-writeoff-0001');
+    final result = await OrderApiClient(client: client, baseUrl: 'https://api.test').writeOffStock(
+      'PI-AKB-250', 'LOT-1', 1, 'بسته آسیب‌دیده',
+      operationKey: 'test-writeoff-0001', stepUpToken: 'fresh-token');
     expect(captured.method, 'POST');
     expect(captured.url.path, '/api/v1/admin/inventory/waste');
     expect(jsonDecode(captured.body), {'sku': 'PI-AKB-250', 'batchCode': 'LOT-1', 'quantity': 1, 'reason': 'بسته آسیب‌دیده'});

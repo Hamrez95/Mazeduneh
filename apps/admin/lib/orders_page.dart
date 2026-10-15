@@ -7,6 +7,7 @@ import 'admin_permissions.dart';
 import 'admin_navigation.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_step_up_dialog.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
@@ -25,9 +26,12 @@ String _paymentProviderLabel(String provider) => switch (provider) {
     };
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all});
+  const OrdersPage({super.key, this.api, this.initialFilter = AdminOrderFilter.all, this.initialQuery = '', this.initialCreatedFromUtc, this.initialCreatedToUtcExclusive});
   final OrderApiClient? api;
   final AdminOrderFilter initialFilter;
+  final String initialQuery;
+  final DateTime? initialCreatedFromUtc;
+  final DateTime? initialCreatedToUtcExclusive;
 
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -64,12 +68,19 @@ class _OrdersPageState extends State<OrdersPage> {
   @override
   void initState() {
     super.initState();
+    searchController.text = widget.initialQuery;
+    searchQuery = widget.initialQuery;
     load();
   }
 
   @override
   void didUpdateWidget(covariant OrdersPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQuery != widget.initialQuery && searchQuery != widget.initialQuery) {
+      searchController.text = widget.initialQuery;
+      searchQuery = widget.initialQuery;
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) load(); });
+    }
     if (oldWidget.initialFilter != widget.initialFilter && selectedState != widget.initialFilter.apiValue) {
       selectedState = widget.initialFilter.apiValue;
       overdueOnly = false;
@@ -94,7 +105,11 @@ class _OrdersPageState extends State<OrdersPage> {
           });
         }
       } else {
-        final result = await api.fetchOrders(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+        final result = await api.fetchOrders(
+          state: selectedState.isEmpty ? null : selectedState, query: searchQuery,
+          createdFromUtc: widget.initialCreatedFromUtc,
+          createdToUtcExclusive: widget.initialCreatedToUtcExclusive,
+        );
         if (mounted) {
           setState(() {
             orders = result;
@@ -156,9 +171,15 @@ class _OrdersPageState extends State<OrdersPage> {
       );
 
   Future<void> exportCsv() async {
+    final stepUpToken = await showAdminStepUpDialog(context);
+    if (stepUpToken == null || !mounted) return;
     setState(() => exporting = true);
     try {
-      final bytes = await api.exportOrdersCsv(state: selectedState.isEmpty ? null : selectedState, query: searchQuery);
+      final bytes = await api.exportOrdersCsv(
+        stepUpToken: stepUpToken, state: selectedState.isEmpty ? null : selectedState,
+        query: searchQuery, createdFromUtc: widget.initialCreatedFromUtc,
+        createdToUtcExclusive: widget.initialCreatedToUtcExclusive,
+      );
       final opened = await launchUrl(
         Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: {'charset': 'utf-8'}),
         webOnlyWindowName: '_blank',
@@ -216,6 +237,8 @@ class _OrdersPageState extends State<OrdersPage> {
             final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
               const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              if (widget.initialCreatedFromUtc != null && widget.initialCreatedToUtcExclusive != null)
+                const Text('فهرست بر اساس بازهٔ انتخاب‌شده در داشبورد فیلتر شده است.', style: TextStyle(color: Colors.grey, fontSize: 11)),
             ]);
             final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               FilterChip(
@@ -542,9 +565,24 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دلیل ثبت یا اصلاح اطلاعات ارسال را وارد کنید.')));
       return;
     }
+    final currentExpense = detail?.shippingExpense ?? 0;
+    final nextExpense = expense ?? 0;
+    final updateActualShippingCost = nextExpense != currentExpense;
+    final stepUpToken = updateActualShippingCost
+        ? await showAdminStepUpDialog(context)
+        : null;
+    if (updateActualShippingCost && (stepUpToken == null || !mounted)) return;
     setState(() => savingShipping = true);
     try {
-      final result = await widget.api.updateShipping(widget.order.id, carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(), trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(), actualShippingCost: expense, reason: reason);
+      final result = await widget.api.updateShipping(
+        widget.order.id,
+        carrier: carrierController.text.trim().isEmpty ? null : carrierController.text.trim(),
+        trackingCode: trackingController.text.trim().isEmpty ? null : trackingController.text.trim(),
+        actualShippingCost: expense,
+        updateActualShippingCost: updateActualShippingCost,
+        stepUpToken: stepUpToken,
+        reason: reason,
+      );
       if (mounted) {
         setState(() => detail = result);
         shippingReasonController.clear();

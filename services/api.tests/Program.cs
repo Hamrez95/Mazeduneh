@@ -50,6 +50,89 @@ Console.WriteLine("Purchase pagination cursor unit checks passed");
 Check(AdminPermissionCatalog.DefaultRoles.Values.All(AdminPermissionCatalog.AreValidPermissions), "A standard role contains a permission rejected by the membership editor");
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator", Array.Empty<string>()).Count == 0, "An explicit empty permission set fell back to role defaults");
 Check(AdminPermissionCatalog.Resolve("WarehouseOperator").Count > 0, "Omitted permissions did not fall back to role defaults");
+var settingsReadContext = new DefaultHttpContext();
+settingsReadContext.Request.Method = HttpMethods.Get;
+settingsReadContext.Request.Path = "/api/v1/admin/commerce/settings";
+Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsRead, "Commerce settings read did not use its dedicated permission");
+settingsReadContext.Request.Method = HttpMethods.Put;
+Check(AdminPermissionCatalog.RequiredPermission(settingsReadContext) == AdminPermissionCatalog.SettingsWrite, "Commerce settings write did not use its dedicated permission");
+var adminPermissionRoutes = new (string Method, string Path, string Permission)[]
+{
+    (HttpMethods.Get, "/api/v1/admin/users", AdminPermissionCatalog.UsersRead),
+    (HttpMethods.Patch, "/api/v1/admin/users/00000000-0000-0000-0000-000000000001/permissions", AdminPermissionCatalog.UsersWrite),
+    (HttpMethods.Get, "/api/v1/admin/audit-log", AdminPermissionCatalog.AuditRead),
+    (HttpMethods.Get, "/api/v1/admin/orders", AdminPermissionCatalog.OrdersRead),
+    (HttpMethods.Patch, "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/state", AdminPermissionCatalog.OrdersWrite),
+    (HttpMethods.Get, "/api/v1/admin/orders/export.csv", AdminPermissionCatalog.OrdersExport),
+    (HttpMethods.Get, "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/invoice", AdminPermissionCatalog.OrdersDocumentsRead),
+    (HttpMethods.Get, "/api/v1/admin/dashboard", AdminPermissionCatalog.DashboardRead),
+    (HttpMethods.Get, "/api/v1/admin/analytics/products", AdminPermissionCatalog.ReportsRead),
+    (HttpMethods.Get, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryRead),
+    (HttpMethods.Post, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryWrite),
+    (HttpMethods.Get, "/api/v1/admin/inventory/pricing/SKU", AdminPermissionCatalog.PricingRead),
+    (HttpMethods.Post, "/api/v1/admin/inventory/pricing/SKU/apply", AdminPermissionCatalog.PricingWrite),
+    (HttpMethods.Get, "/api/v1/admin/customers", AdminPermissionCatalog.CustomersRead),
+    (HttpMethods.Get, "/api/v1/admin/customers/export.csv", AdminPermissionCatalog.CustomersExport),
+    (HttpMethods.Get, "/api/v1/admin/corporate-requests", AdminPermissionCatalog.CorporateRead),
+    (HttpMethods.Post, "/api/v1/admin/corporate-requests/00000000-0000-0000-0000-000000000001/notes", AdminPermissionCatalog.CorporateWrite),
+    (HttpMethods.Get, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsRead),
+    (HttpMethods.Put, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsWrite),
+    (HttpMethods.Get, "/api/v1/admin/media/metadata/image.png", AdminPermissionCatalog.ContentRead),
+    (HttpMethods.Post, "/api/v1/admin/media", AdminPermissionCatalog.ContentWrite),
+    (HttpMethods.Get, "/api/v1/categories/admin", AdminPermissionCatalog.CategoriesRead),
+    (HttpMethods.Post, "/api/v1/categories", AdminPermissionCatalog.CategoriesWrite),
+    (HttpMethods.Get, "/api/v1/products/admin", AdminPermissionCatalog.ProductsRead),
+    (HttpMethods.Put, "/api/v1/products/almond", AdminPermissionCatalog.ProductsWrite),
+};
+foreach (var (method, path, expectedPermission) in adminPermissionRoutes)
+{
+    var routeContext = new DefaultHttpContext();
+    routeContext.Request.Method = method;
+    routeContext.Request.Path = path;
+    Check(AdminPermissionCatalog.RequiredPermission(routeContext) == expectedPermission,
+        $"Admin route {method} {path} did not require {expectedPermission}");
+}
+Console.WriteLine($"Admin permission route contract checks passed ({adminPermissionRoutes.Length} routes)");
+Check(CorporateRequestStatuses.CanTransition("New", "Reviewing"), "A new corporate request could not enter review");
+Check(CorporateRequestStatuses.CanTransition("Shipped", "Finalized"), "A shipped corporate request could not be finalized");
+Check(CorporateRequestStatuses.CanTransition("Contacted", "Contacted"), "An idempotent corporate status update was rejected");
+Check(!CorporateRequestStatuses.CanTransition("New", "Shipped"), "A new corporate request skipped directly to shipped");
+Check(!CorporateRequestStatuses.CanTransition("Finalized", "Reviewing"), "A finalized corporate request could be reopened");
+Check(!CorporateRequestStatuses.CanTransition("Cancelled", "Approved"), "A cancelled corporate request could be reopened");
+Console.WriteLine("Corporate sales status transition contract checks passed");
+var marketingManager = new AdminPrincipal("marketing@example.test", now.AddHours(1), "MarketingManager", AdminPermissionCatalog.Resolve("MarketingManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
+var storeManager = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager", AdminPermissionCatalog.Resolve("StoreManager"), Guid.NewGuid(), Guid.NewGuid(), "default");
+var unknownRolePermissions = AdminPermissionCatalog.Resolve("StoreManageer");
+Check(unknownRolePermissions.Count == 0, "An unknown Admin role inherited Owner permissions");
+var unknownRolePrincipal = new AdminPrincipal("unknown-role@example.test", now.AddHours(1), "StoreManageer",
+    AdminPermissionCatalog.Resolve("StoreManageer", [AdminPermissionCatalog.DashboardRead, AdminPermissionCatalog.OrdersWrite]),
+    Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(!AdminPermissionCatalog.Allows(unknownRolePrincipal, AdminPermissionCatalog.DashboardRead) &&
+      !AdminPermissionCatalog.Allows(unknownRolePrincipal, AdminPermissionCatalog.OrdersWrite),
+    "Explicit permission overrides elevated an unknown Admin role");
+Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
+Check(!AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsRead) && !AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsWrite), "Marketing manager can access tax or shipping settings");
+Check(AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsRead) && AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsWrite), "Store manager lost commerce settings access");
+var unknownAdminContext = new DefaultHttpContext();
+unknownAdminContext.Request.Method = HttpMethods.Get;
+unknownAdminContext.Request.Path = "/api/v1/admin/unknown-sensitive-operation";
+var unknownAdminPermission = AdminPermissionCatalog.RequiredPermission(unknownAdminContext);
+Check(unknownAdminPermission == AdminPermissionCatalog.UnmappedAdminRoute, "An unmapped Admin endpoint did not fail closed to the Owner");
+unknownAdminContext.Request.Path = "/api/v1/admin/users-private";
+Check(AdminPermissionCatalog.RequiredPermission(unknownAdminContext) == AdminPermissionCatalog.UnmappedAdminRoute,
+    "An unrelated path sharing an Admin prefix inherited the users permission");
+var ownerPrincipal = new AdminPrincipal("owner@example.test", now.AddHours(1), "Owner", AdminPermissionCatalog.Owner, Guid.NewGuid(), null, "default");
+Check(AdminPermissionCatalog.Allows(ownerPrincipal, unknownAdminPermission!), "Owner lost access to an unmapped Admin endpoint");
+Check(!AdminPermissionCatalog.Allows(storeManager, unknownAdminPermission!), "Store Manager can access an unmapped Admin endpoint");
+Check(!AdminPermissionCatalog.AreValidPermissions([AdminPermissionCatalog.UnmappedAdminRoute]), "The Owner-only fallback can be assigned as a membership permission");
+var forgedFallbackPermission = new AdminPrincipal("manager@example.test", now.AddHours(1), "StoreManager",
+    [AdminPermissionCatalog.UnmappedAdminRoute], Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(!AdminPermissionCatalog.Allows(forgedFallbackPermission, AdminPermissionCatalog.UnmappedAdminRoute),
+    "A forged fallback permission granted a member access to an unmapped Admin endpoint");
+var unknownPublicContext = new DefaultHttpContext();
+unknownPublicContext.Request.Method = HttpMethods.Get;
+unknownPublicContext.Request.Path = "/api/v1/public/unmapped";
+Check(AdminPermissionCatalog.RequiredPermission(unknownPublicContext) is null, "An unmapped public endpoint received an Admin permission");
 Console.WriteLine("Membership permission catalog and explicit-empty override checks passed");
 
 var costProduct = new Product(Guid.NewGuid(), "محصول آزمون", "test-product", "آجیل", "ایران", "IRR", ProductUnitType.Weight, false,
@@ -168,6 +251,68 @@ var unconfiguredZibalSettings = new ConfigurationBuilder().AddInMemoryCollection
 Check(!new ZibalGateway(new HttpClient(), unconfiguredZibalSettings, NullLogger<ZibalGateway>.Instance).IsConfigured,
     "Zibal accepted an insecure HTTP callback URL");
 Console.WriteLine("Zibal request, server-side verify, inquiry, decline, retry, and configuration contract checks passed");
+
+var rfcTotpSecret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+Check(AdminTotpAuthenticator.IsValidSecret(rfcTotpSecret), "Valid Base32 TOTP secret rejected");
+Check(!AdminTotpAuthenticator.IsValidSecret("not-a-secret"), "Invalid Base32 TOTP secret accepted");
+Check(AdminTotpAuthenticator.Verify(rfcTotpSecret, "287082", DateTimeOffset.FromUnixTimeSeconds(59)),
+    "RFC 6238 SHA-1 TOTP vector rejected");
+Check(AdminTotpAuthenticator.GetMatchingTimeStep(rfcTotpSecret, "287082", DateTimeOffset.FromUnixTimeSeconds(59)) == 1,
+    "RFC 6238 TOTP matched the wrong time step");
+Check(!AdminTotpAuthenticator.Verify(rfcTotpSecret, "287083", DateTimeOffset.FromUnixTimeSeconds(59)),
+    "Incorrect TOTP code accepted");
+var mfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Email"] = "owner@example.test",
+    ["Admin:PasswordHash"] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("owner-secret"u8)),
+    ["Admin:TokenSigningKey"] = new string('m', 64),
+    ["Admin:Mfa:Required"] = "true",
+    ["Admin:Mfa:TotpSecret"] = rfcTotpSecret,
+}).Build();
+var mfaTokens = new AdminTokenService(mfaConfiguration);
+Check(mfaTokens.ValidateMfaCode("Owner", null) == AdminMfaValidationResult.Missing, "Required MFA did not challenge for a missing code");
+Check(mfaTokens.ValidateMfaCode("StoreManager", null) == AdminMfaValidationResult.NotRequired, "MFA challenge was applied to a non-owner role");
+var mfaIssued = mfaTokens.Issue("owner@example.test", null, mfaVerified: true);
+Check(mfaTokens.TryValidate(mfaIssued.Token, out var mfaPrincipal) && mfaPrincipal.MfaVerified, "MFA verification was not bound to the signed access token");
+var invalidMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:Required"] = "true",
+    ["Admin:Mfa:TotpSecret"] = "invalid",
+}).Build();
+Check(new AdminTokenService(invalidMfaConfiguration).ValidateMfaCode("Owner", null) == AdminMfaValidationResult.NotConfigured,
+    "Required MFA accepted invalid/missing server configuration");
+var replayTestConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Catalog");
+if (!string.IsNullOrWhiteSpace(replayTestConnectionString))
+{
+    var replayConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["ConnectionStrings:Catalog"] = replayTestConnectionString
+    }).Build();
+    var replayAudit = new AdminAuditLogDatabase(replayConfiguration, NullLogger<AdminAuditLogDatabase>.Instance);
+    var replayDatabase = new AdminUsersDatabase(replayConfiguration, NullLogger<AdminUsersDatabase>.Instance, mfaTokens, replayAudit);
+    await replayDatabase.ApplyMigrationsAsync(CancellationToken.None);
+    var replayCredentialId = $"test-{Guid.NewGuid():N}";
+    try
+    {
+        Check(await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 100, CancellationToken.None),
+            "First TOTP use was not recorded");
+        Check(!await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 100, CancellationToken.None),
+            "The same TOTP time step was accepted twice");
+        Check(!await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 99, CancellationToken.None),
+            "An older TOTP time step was accepted after a newer one");
+        Check(await replayDatabase.TryConsumeTotpTimeStepAsync(replayCredentialId, 101, CancellationToken.None),
+            "A new TOTP time step was rejected");
+    }
+    finally
+    {
+        await using var connection = new NpgsqlConnection(replayTestConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("delete from admin_totp_replay_guard where credential_id=@credential_id", connection);
+        command.Parameters.AddWithValue("credential_id", replayCredentialId);
+        await command.ExecuteNonQueryAsync();
+    }
+}
+Console.WriteLine("Admin TOTP RFC vector, role policy, fail-closed configuration, and signed MFA claim checks passed");
 
 var stepUpConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {

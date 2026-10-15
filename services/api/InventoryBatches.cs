@@ -85,7 +85,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -350,7 +350,6 @@ public static class InventoryBatchModule
     public static IServiceCollection AddInventoryBatches(this IServiceCollection services)
     {
         services.AddSingleton<InventoryBatchDatabase>();
-        services.AddHostedService<InventoryBatchSchemaInitializer>();
         return services;
     }
 
@@ -405,12 +404,6 @@ public static class InventoryBatchModule
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         return endpoints;
     }
-}
-
-public sealed class InventoryBatchSchemaInitializer(InventoryBatchDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record InventoryPurchasePage(IReadOnlyCollection<InventoryBatch> Items, string? NextCursor);

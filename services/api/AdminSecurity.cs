@@ -11,11 +11,23 @@ public static class AdminSecurityExtensions
     {
         services.AddSingleton<AdminTokenService>();
         services.AddSingleton<OwnerAuthorizationFilter>();
+        services.AddSingleton<UserMutationTargetAuthorizationFilter>();
         services.AddSingleton<StepUpAuthorizationFilter>();
+        services.AddSingleton<OrderCancellationStepUpAuthorizationFilter>();
+        services.AddSingleton<OrderShippingCostStepUpAuthorizationFilter>();
+        services.AddSingleton<ProductPriceStepUpAuthorizationFilter>();
+        services.AddSingleton<ProductCreatePriceStepUpAuthorizationFilter>();
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddFixedWindowLimiter("admin-login", limiter =>
+            {
+                limiter.PermitLimit = 5;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+                limiter.AutoReplenishment = true;
+            });
+            options.AddFixedWindowLimiter("admin-step-up", limiter =>
             {
                 limiter.PermitLimit = 5;
                 limiter.Window = TimeSpan.FromMinutes(1);
@@ -40,7 +52,20 @@ public static class AdminSecurityExtensions
             if (tokens.ValidateCredentials(request.Email, request.Password) &&
                 (string.IsNullOrWhiteSpace(request.StoreId) || string.Equals(request.StoreId.Trim(), "default", StringComparison.Ordinal)))
             {
-                var owner = tokens.Issue(request.Email);
+                if (tokens.IsMfaRequiredForRole(tokens.ConfiguredRole) && !users.IsConfigured)
+                    return TotpReplayPersistenceUnavailable();
+                var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
+                if (users.IsConfigured && ownerUserId is null)
+                    return Results.Problem(
+                        title: "نشست مدیر اصلی آماده نیست.",
+                        detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+                var mfaFailure = await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
+                if (mfaFailure is not null) return mfaFailure;
+                var mfaVerified = tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
+                var owner = tokens.Issue(request.Email, ownerUserId, mfaVerified);
+                if (ownerUserId is Guid userId)
+                    await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
                 return Results.Ok(new
                 {
                     accessToken = owner.Token,
@@ -49,13 +74,17 @@ public static class AdminSecurityExtensions
                     role = owner.Role,
                     permissions = owner.Permissions,
                     email = tokens.OwnerEmail,
-                    storeId = "default"
+                    storeId = "default",
+                    mfaVerified
                 });
             }
 
             var member = await users.AuthenticateAsync(request.Email, request.Password, request.StoreId, cancellationToken);
             if (member is null) return Results.Unauthorized();
-            var issued = tokens.Issue(member);
+            var memberMfaFailure = await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
+            if (memberMfaFailure is not null) return memberMfaFailure;
+            var memberMfaVerified = tokens.IsMfaRequiredForRole(member.Role);
+            var issued = tokens.Issue(member, memberMfaVerified);
             await users.CreateSessionAsync(member.Id, member.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
             return Results.Ok(new
             {
@@ -65,7 +94,8 @@ public static class AdminSecurityExtensions
                 role = issued.Role,
                 permissions = issued.Permissions,
                 email = member.Email,
-                storeId = member.StoreId
+                storeId = member.StoreId,
+                mfaVerified = memberMfaVerified
             });
         })
         .RequireRateLimiting("admin-login")
@@ -87,6 +117,8 @@ public static class AdminSecurityExtensions
         {
             var token = AdminTokenService.ReadBearerToken(context.Request);
             if (token is null || !tokens.TryValidate(token, out var principal)) return Results.Unauthorized();
+            if (tokens.IsMfaRequiredForRole(principal.Role) && !principal.MfaVerified)
+                return MfaRequiredResult();
             if (principal.UserId is Guid userId &&
                 !await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                 return Results.Unauthorized();
@@ -121,19 +153,31 @@ public static class AdminSecurityExtensions
             {
                 if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                     return Results.Unauthorized();
-                var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
-                if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
-                    return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                if (principal.StoreId == "default" &&
+                    string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!tokens.ValidateCredentials(principal.Email, request.Password))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
+                else
+                {
+                    var member = await users.AuthenticateAsync(principal.Email, request.Password, principal.StoreId, cancellationToken);
+                    if (member is null || member.Id != userId || !string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal))
+                        return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+                }
             }
             else if (!tokens.ValidateCredentials(principal.Email, request.Password))
             {
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
             }
 
+            var mfaFailure = await GetMfaFailureAsync(tokens, users, principal.Role, request.MfaCode, cancellationToken);
+            if (mfaFailure is not null) return mfaFailure;
+
             var issued = tokens.IssueStepUp(principal);
             return Results.Ok(new { stepUpToken = issued.Token, expiresAt = issued.ExpiresAt });
         })
-        .RequireRateLimiting("admin-login")
+        .RequireRateLimiting("admin-step-up")
         .WithTags("Admin Auth");
 
         endpoints.MapGet("/api/v1/admin/audit-log", async (
@@ -186,6 +230,8 @@ public static class AdminSecurityExtensions
             }
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/permissions", async (
@@ -201,6 +247,9 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         endpoints.MapPatch("/api/v1/admin/users/{id:guid}/status", async (
@@ -218,27 +267,78 @@ public static class AdminSecurityExtensions
                 : Results.Ok(updated);
         })
         .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
         .WithTags("Admin Users");
 
         return endpoints;
     }
 
+    private static async Task<IResult?> GetMfaFailureAsync(
+        AdminTokenService tokens,
+        AdminUsersDatabase users,
+        string role,
+        string? code,
+        CancellationToken cancellationToken)
+    {
+        var validation = tokens.ValidateMfaCode(role, code, out var timeStep);
+        switch (validation)
+        {
+            case AdminMfaValidationResult.NotRequired:
+                return null;
+            case AdminMfaValidationResult.NotConfigured:
+                return Results.Problem(
+                    title: "تأیید دومرحله‌ای پیکربندی نشده است.",
+                    detail: "برای حساب مدیر اصلی، Admin__Mfa__TotpSecret را در secret manager ثبت کنید.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            case AdminMfaValidationResult.Missing:
+                return MfaRequiredResult();
+            case AdminMfaValidationResult.Invalid:
+                return InvalidMfaResult();
+            case AdminMfaValidationResult.Valid:
+                if (!users.IsConfigured) return TotpReplayPersistenceUnavailable();
+                if (timeStep is not long acceptedStep) return InvalidMfaResult();
+                return await users.TryConsumeTotpTimeStepAsync("configured-owner", acceptedStep, cancellationToken)
+                    ? null
+                    : InvalidMfaResult();
+            default:
+                return InvalidMfaResult();
+        }
+    }
+
+    internal static IResult MfaRequiredResult() => Results.Json(
+        new { message = "کد تأیید دومرحله‌ای لازم است.", code = "mfa_required" },
+        statusCode: StatusCodes.Status428PreconditionRequired);
+
+    private static IResult InvalidMfaResult() => Results.Json(
+        new { message = "کد تأیید دومرحله‌ای معتبر نیست.", code = "mfa_invalid" },
+        statusCode: StatusCodes.Status403Forbidden);
+
+    private static IResult TotpReplayPersistenceUnavailable() => Results.Problem(
+        title: "ذخیره‌سازی امن کد تأیید آماده نیست.",
+        detail: "برای جلوگیری از استفادهٔ دوبارهٔ کد، اتصال دیتابیس مدیران و migrationهای آن لازم است.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
         var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
-        return principal?.UserId is not null ? principal.StoreId : requestedStoreId;
+        return principal?.UserId is not null && context.Items["ConfiguredOwnerSession"] is not true
+            ? principal.StoreId
+            : requestedStoreId;
     }
 }
 
-public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null);
+public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null, string? MfaCode = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
-public sealed record AdminStepUpRequest(string Password);
+public sealed record AdminStepUpRequest(string Password, string? MfaCode = null);
 public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
 public sealed record IssuedAdminStepUpToken(string Token, DateTimeOffset ExpiresAt);
-public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId);
+public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId, bool MfaVerified = false);
 
 public static class AdminPermissionCatalog
 {
+    public const string UnmappedAdminRoute = "admin.unmapped.owner-only";
     public const string DashboardRead = "dashboard.read";
     public const string OrdersRead = "orders.read";
     public const string OrdersExport = "orders.export";
@@ -256,12 +356,13 @@ public static class AdminPermissionCatalog
     public const string CategoriesWrite = "categories.write";
     public const string PricingRead = "pricing.read";
     public const string PricingWrite = "pricing.write";
+    public const string SettingsRead = "settings.read";
+    public const string SettingsWrite = "settings.write";
     public const string CorporateRead = "corporate.read";
     public const string CorporateWrite = "corporate.write";
     public const string ContentRead = "content.read";
     public const string ContentWrite = "content.write";
     public const string AuditRead = "audit.read";
-    public const string SettingsWrite = "settings.write";
     public const string UsersRead = "users.read";
     public const string UsersWrite = "users.write";
 
@@ -270,7 +371,7 @@ public static class AdminPermissionCatalog
         DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite,
         InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
-        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
 
     public static IReadOnlyList<string> AllPermissions { get; } =
@@ -279,7 +380,7 @@ public static class AdminPermissionCatalog
         ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead,
         CustomersPiiRead, CustomersExport, ReportsRead,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
-        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsWrite
+        CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
 
     public static bool AreValidPermissions(IEnumerable<string>? permissions) =>
@@ -289,7 +390,7 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsWrite],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsRead, SettingsWrite],
             ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead, CorporateRead],
             ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersPiiRead],
             ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, PricingRead],
@@ -320,42 +421,61 @@ public static class AdminPermissionCatalog
 
     public static IReadOnlyList<string> Resolve(string? role, IReadOnlyList<string>? overridePermissions = null)
     {
+        var normalizedRole = role?.Trim() ?? string.Empty;
+        if (!DefaultRoles.ContainsKey(normalizedRole))
+            return Array.Empty<string>();
+
         if (overridePermissions is not null)
             return overridePermissions.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        return DefaultRoles.TryGetValue(NormalizeRole(role), out var permissions) ? permissions : Owner;
+        return DefaultRoles[normalizedRole];
     }
 
-    public static bool Allows(AdminPrincipal principal, string permission) =>
-        string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase) ||
-        principal.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+    public static bool Allows(AdminPrincipal principal, string permission)
+    {
+        if (string.Equals(permission, UnmappedAdminRoute, StringComparison.OrdinalIgnoreCase))
+            return string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase);
+
+        return string.Equals(principal.Role, "Owner", StringComparison.OrdinalIgnoreCase) ||
+            principal.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+    }
 
     public static string? RequiredPermission(HttpContext context)
     {
         var path = (context.Request.Path.Value ?? string.Empty).TrimEnd('/');
         var method = context.Request.Method;
-        if (path.StartsWith("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
-        if (path.StartsWith("/api/v1/admin/audit-log", StringComparison.OrdinalIgnoreCase)) return AuditRead;
+        if (IsUnderPath(context, "/api/v1/admin/users")) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
+        if (IsUnderPath(context, "/api/v1/admin/audit-log")) return AuditRead;
         if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase)) return OrdersExport;
         if (IsOrderDocument(context)) return OrdersDocumentsRead;
-        if (path.StartsWith("/api/v1/admin/shipping/overdue", StringComparison.OrdinalIgnoreCase)) return OrdersRead;
-        if (path.StartsWith("/api/v1/admin/orders", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
-        if (path.StartsWith("/api/v1/admin/dashboard", StringComparison.OrdinalIgnoreCase) ||
-            path.StartsWith("/api/v1/admin/notifications", StringComparison.OrdinalIgnoreCase)) return DashboardRead;
-        if (path.StartsWith("/api/v1/admin/analytics", StringComparison.OrdinalIgnoreCase)) return ReportsRead;
-        if (path.StartsWith("/api/v1/admin/inventory/pricing", StringComparison.OrdinalIgnoreCase))
+        if (IsUnderPath(context, "/api/v1/admin/shipping/overdue")) return OrdersRead;
+        if (IsUnderPath(context, "/api/v1/admin/orders")) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;
+        if (IsUnderPath(context, "/api/v1/admin/dashboard") || IsUnderPath(context, "/api/v1/admin/notifications")) return DashboardRead;
+        if (IsUnderPath(context, "/api/v1/admin/analytics")) return ReportsRead;
+        if (IsUnderPath(context, "/api/v1/admin/inventory/pricing"))
             return path.EndsWith("/apply", StringComparison.OrdinalIgnoreCase) ? PricingWrite : PricingRead;
-        if (path.StartsWith("/api/v1/admin/inventory", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
-        if (path.StartsWith("/api/v1/admin/customers/export", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
-        if (path.StartsWith("/api/v1/admin/customers", StringComparison.OrdinalIgnoreCase)) return CustomersRead;
-        if (path.StartsWith("/api/v1/admin/corporate-requests", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
-        if (path.StartsWith("/api/v1/admin/commerce/settings", StringComparison.OrdinalIgnoreCase)) return HttpMethods.IsGet(method) ? PricingRead : PricingWrite;
-        if (path.StartsWith("/api/v1/admin/media/metadata", StringComparison.OrdinalIgnoreCase)) return ContentRead;
-        if (path.StartsWith("/api/v1/admin/media", StringComparison.OrdinalIgnoreCase)) return ContentWrite;
-        if (path.StartsWith("/api/v1/categories/admin", StringComparison.OrdinalIgnoreCase)) return CategoriesRead;
-        if (path.StartsWith("/api/v1/categories", StringComparison.OrdinalIgnoreCase)) return CategoriesWrite;
-        if (path.StartsWith("/api/v1/products/admin", StringComparison.OrdinalIgnoreCase)) return ProductsRead;
-        if (path.StartsWith("/api/v1/products", StringComparison.OrdinalIgnoreCase)) return ProductsWrite;
-        return null;
+        if (IsUnderPath(context, "/api/v1/admin/inventory")) return HttpMethods.IsGet(method) ? InventoryRead : InventoryWrite;
+        if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/customers/export.csv", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
+        if (IsUnderPath(context, "/api/v1/admin/customers")) return CustomersRead;
+        if (IsUnderPath(context, "/api/v1/admin/corporate-requests")) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
+        if (IsUnderPath(context, "/api/v1/admin/commerce/settings")) return HttpMethods.IsGet(method) ? SettingsRead : SettingsWrite;
+        if (IsUnderPath(context, "/api/v1/admin/media/metadata")) return ContentRead;
+        if (IsUnderPath(context, "/api/v1/admin/media")) return ContentWrite;
+        if (IsUnderPath(context, "/api/v1/categories/admin")) return CategoriesRead;
+        if (IsUnderPath(context, "/api/v1/categories")) return CategoriesWrite;
+        if (IsUnderPath(context, "/api/v1/products/admin")) return ProductsRead;
+        if (IsUnderPath(context, "/api/v1/products")) return ProductsWrite;
+        return context.Request.Path.StartsWithSegments(
+            new PathString("/api/v1/admin"),
+            StringComparison.OrdinalIgnoreCase)
+            ? UnmappedAdminRoute
+            : null;
+    }
+
+    private static bool IsUnderPath(HttpContext context, string path)
+    {
+        var requestPath = context.Request.Path.Value ?? string.Empty;
+        return requestPath.StartsWith(path, StringComparison.OrdinalIgnoreCase) &&
+            (requestPath.Length == path.Length || requestPath[path.Length] == '/');
     }
     public static bool IsOrderDocument(HttpContext context)
     {
@@ -388,6 +508,8 @@ public static class AdminPermissionCatalog
 
 }
 
+public enum AdminMfaValidationResult { NotRequired, NotConfigured, Missing, Invalid, Valid }
+
 public sealed class AdminTokenService
 {
     private readonly byte[] _signingKey;
@@ -395,6 +517,9 @@ public sealed class AdminTokenService
     private readonly TimeSpan _lifetime;
     private readonly string _configuredRole;
     private readonly IReadOnlyList<string> _configuredPermissions;
+    private readonly bool _mfaRequired;
+    private readonly string? _mfaTotpSecret;
+    private readonly bool _mfaSecretIsValid;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new(StringComparer.Ordinal);
 
     public AdminTokenService(IConfiguration configuration)
@@ -405,9 +530,13 @@ public sealed class AdminTokenService
         _lifetime = TimeSpan.FromMinutes(Math.Clamp(configuration.GetValue("Admin:AccessTokenMinutes", 15), 5, 60));
         _configuredRole = AdminPermissionCatalog.NormalizeRole(configuration["Admin:Role"]);
         _configuredPermissions = ParsePermissions(configuration["Admin:Permissions"]);
+        _mfaRequired = configuration.GetValue("Admin:Mfa:Required", false);
+        _mfaTotpSecret = configuration["Admin:Mfa:TotpSecret"]?.Trim();
+        _mfaSecretIsValid = AdminTotpAuthenticator.IsValidSecret(_mfaTotpSecret);
     }
 
     public string OwnerEmail { get; }
+    public string ConfiguredRole => _configuredRole;
     public bool CanIssueTokens => _signingKey.Length >= 32;
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(OwnerEmail) &&
@@ -422,11 +551,30 @@ public sealed class AdminTokenService
         return CryptographicOperations.FixedTimeEquals(suppliedHash, _configuredPasswordHash);
     }
 
-    public IssuedAdminToken Issue(string email) =>
-        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default");
+    public bool IsMfaRequiredForRole(string role) =>
+        _mfaRequired && string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase);
 
-    public IssuedAdminToken Issue(AdminUserSummary member) =>
-        Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId);
+    public AdminMfaValidationResult ValidateMfaCode(string role, string? code)
+        => ValidateMfaCode(role, code, out _);
+
+    public AdminMfaValidationResult ValidateMfaCode(string role, string? code, out long? timeStep)
+    {
+        timeStep = null;
+        if (!IsMfaRequiredForRole(role)) return AdminMfaValidationResult.NotRequired;
+        if (!_mfaSecretIsValid) return AdminMfaValidationResult.NotConfigured;
+        if (string.IsNullOrWhiteSpace(code)) return AdminMfaValidationResult.Missing;
+        timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(_mfaTotpSecret, code, DateTimeOffset.UtcNow);
+        return timeStep is not null ? AdminMfaValidationResult.Valid : AdminMfaValidationResult.Invalid;
+    }
+
+    public IssuedAdminToken Issue(string email) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), null, "default", false);
+
+    public IssuedAdminToken Issue(string email, Guid? userId, bool mfaVerified = false) =>
+        Issue(email, _configuredRole, AdminPermissionCatalog.Resolve(_configuredRole, _configuredPermissions.Count == 0 ? null : _configuredPermissions), userId, "default", mfaVerified);
+
+    public IssuedAdminToken Issue(AdminUserSummary member, bool mfaVerified = false) =>
+        Issue(member.Email, member.Role, member.Permissions, member.Id, member.StoreId, mfaVerified);
 
     public IssuedAdminStepUpToken IssueStepUp(AdminPrincipal principal)
     {
@@ -462,12 +610,12 @@ public sealed class AdminTokenService
             expiresAt <= principal.ExpiresAt;
     }
 
-    private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId)
+    private IssuedAdminToken Issue(string email, string role, IReadOnlyList<string> permissions, Guid? userId, string storeId, bool mfaVerified)
     {
         if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
         var expiresAt = DateTimeOffset.UtcNow.Add(_lifetime);
         var sessionId = Guid.NewGuid();
-        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{sessionId:N}|{role}|{string.Join(',', permissions)}|{userId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(storeId))}";
+        var payload = $"{email.Trim().ToLowerInvariant()}|{expiresAt.ToUnixTimeSeconds()}|{sessionId:N}|{role}|{string.Join(',', permissions)}|{userId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(storeId))}|{(mfaVerified ? '1' : '0')}";
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
         var token = $"{Base64Url(payloadBytes)}.{Base64Url(signature)}";
@@ -509,7 +657,9 @@ public sealed class AdminTokenService
             storeId = Encoding.UTF8.GetString(storeBytes);
             if (string.IsNullOrWhiteSpace(storeId) || storeId.Length > 120) return false;
         }
-        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions, sessionId, userId, storeId);
+        var mfaVerified = fields.Length > 7 && fields[7] == "1";
+        if (fields.Length > 7 && fields[7] is not ("0" or "1")) return false;
+        principal = new AdminPrincipal(fields[0], expiresAt, role, permissions, sessionId, userId, storeId, mfaVerified);
         return true;
     }
 
@@ -559,14 +709,30 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         var token = AdminTokenService.ReadBearerToken(context.HttpContext.Request);
         if (token is null || !tokens.TryValidate(token, out var principal))
             return Results.Unauthorized();
+        if (tokens.IsMfaRequiredForRole(principal.Role) && !principal.MfaVerified)
+            return AdminSecurityExtensions.MfaRequiredResult();
 
         if (principal.UserId is Guid userId)
         {
             if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, context.HttpContext.RequestAborted))
                 return Results.Unauthorized();
+            var configuredOwnerSession = principal.StoreId == "default" &&
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
+            context.HttpContext.Items["ConfiguredOwnerSession"] = configuredOwnerSession;
             var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
-            if (!string.IsNullOrWhiteSpace(requestedStore) && !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
+            if (!configuredOwnerSession && !string.IsNullOrWhiteSpace(requestedStore) &&
+                !string.Equals(requestedStore.Trim(), principal.StoreId, StringComparison.Ordinal))
                 return Results.Json(new { message = "به این فروشگاه دسترسی ندارید." }, statusCode: StatusCodes.Status403Forbidden);
+            if (!configuredOwnerSession && !string.Equals(principal.StoreId, "default", StringComparison.Ordinal) &&
+                !context.HttpContext.Request.Path.StartsWithSegments("/api/v1/admin/users", StringComparison.OrdinalIgnoreCase))
+                return Results.Json(
+                    new { message = "دسترسی عملیاتی این فروشگاه تا فعال‌شدن داده‌های تفکیک‌شده محدود است." },
+                    statusCode: StatusCodes.Status403Forbidden);
+        }
+        else
+        {
+            context.HttpContext.Items["ConfiguredOwnerSession"] =
+                string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
         }
 
         context.HttpContext.Items["AdminPrincipal"] = principal;
@@ -596,6 +762,143 @@ public sealed class StepUpAuthorizationFilter(AdminTokenService tokens) : IEndpo
                 new { message = "برای این عملیات، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
                 statusCode: StatusCodes.Status428PreconditionRequired));
         return next(context);
+    }
+}
+
+public sealed class OrderCancellationStepUpAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var isCancellation = context.Arguments.Any(argument => argument switch
+        {
+            SetOrderStateRequest request => string.Equals(request.State, "Cancelled", StringComparison.OrdinalIgnoreCase),
+            BulkOrderStateRequest request => string.Equals(request.State, "Cancelled", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        });
+        if (!isCancellation)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "این عملیات برای نقش فعلی مجاز نیست." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای لغو سفارش و آزادسازی موجودی، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class OrderShippingCostStepUpAuthorizationFilter(AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var updatesShippingCost = context.Arguments.OfType<AdminShipmentUpdateInput>()
+            .Any(input => input.UpdateActualShippingCost);
+        if (!updatesShippingCost)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "این عملیات برای نقش فعلی مجاز نیست." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر هزینهٔ واقعی ارسال، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class ProductCreatePriceStepUpAuthorizationFilter(ProductCatalog catalog, AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.Arguments.OfType<CreateProductRequest>().FirstOrDefault();
+        if (request is null || request.Validate().Count > 0)
+            return next(context);
+
+        if (request.IsPublished && catalog.ValidateForPublication(catalog.Build(request)).Count > 0)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای ثبت محصول و قیمت اولیه، دسترسی قیمت‌گذاری لازم است." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای ثبت محصول و قیمت اولیه، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class ProductPriceStepUpAuthorizationFilter(ProductCatalog catalog, AdminTokenService tokens) : IEndpointFilter
+{
+    public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.Arguments.OfType<UpdateProductRequest>().FirstOrDefault();
+        if (request is null ||
+            !context.HttpContext.Request.RouteValues.TryGetValue("slug", out var routeSlug) ||
+            catalog.FindBySlug(routeSlug?.ToString() ?? string.Empty) is not { } existing)
+            return next(context);
+
+        var existingPrices = existing.Variants.ToDictionary(variant => variant.Sku, variant => variant.Price,
+            StringComparer.OrdinalIgnoreCase);
+        var changesSellingPrice = request.Variants.Any(variant =>
+            !existingPrices.TryGetValue(variant.Sku, out var currentPrice) || currentPrice != variant.Price);
+        if (!changesSellingPrice)
+            return next(context);
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null || !AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.PricingWrite))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر قیمت فروش، دسترسی قیمت‌گذاری لازم است." },
+                statusCode: StatusCodes.Status403Forbidden));
+
+        var token = context.HttpContext.Request.Headers["X-Admin-Step-Up"].ToString();
+        if (string.IsNullOrWhiteSpace(token) || !tokens.TryValidateStepUp(token, principal))
+            return ValueTask.FromResult<object?>(Results.Json(
+                new { message = "برای تغییر قیمت فروش، تأیید دوبارهٔ هویت لازم است.", code = "step_up_required" },
+                statusCode: StatusCodes.Status428PreconditionRequired));
+
+        return next(context);
+    }
+}
+
+public sealed class UserMutationTargetAuthorizationFilter(AdminUsersDatabase users) : IEndpointFilter
+{
+    public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        if (!context.HttpContext.Request.RouteValues.TryGetValue("id", out var routeId) ||
+            !Guid.TryParse(routeId?.ToString(), out var userId))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        var principal = context.HttpContext.Items["AdminPrincipal"] as AdminPrincipal;
+        if (principal is null)
+            return Results.Unauthorized();
+
+        var requestedStore = context.HttpContext.Request.Query["storeId"].ToString();
+        var storeId = principal.UserId is not null && context.HttpContext.Items["ConfiguredOwnerSession"] is not true
+            ? principal.StoreId
+            : string.IsNullOrWhiteSpace(requestedStore) ? null : requestedStore.Trim();
+        if (!await users.CanManageAsync(userId, storeId, context.HttpContext.RequestAborted))
+            return Results.NotFound(new { message = "کاربر پیدا نشد." });
+
+        return await next(context);
     }
 }
 

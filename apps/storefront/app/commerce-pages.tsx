@@ -286,6 +286,9 @@ export function CheckoutPage() {
   const [shippingMethods, setShippingMethods] = useState<ShippingMethodOption[]>([]);
   const [shippingMethod, setShippingMethod] = useState("post");
   const [submitting, setSubmitting] = useState(false);
+  const [revokingConsent, setRevokingConsent] = useState(false);
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [consentRevoked, setConsentRevoked] = useState(false);
   const [error, setError] = useState("");
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
   const unsupportedLines = cart.filter((line) => !line.sku);
@@ -319,7 +322,10 @@ export function CheckoutPage() {
         setReceipt(returnedReceipt);
         if (payment === "success" || payment === "review") {
           setError(payment === "success" ? "پرداخت در حال تأیید نهایی است." : "در حال بررسی وضعیت پرداخت با سرویس زیبال…");
-          fetch(`${apiBaseUrl}/api/v1/checkout/orders/${saved.orderId}?receiptToken=${encodeURIComponent(saved.receiptToken)}`, { cache: "no-store" })
+          fetch(`${apiBaseUrl}/api/v1/checkout/orders/${saved.orderId}`, {
+            headers: { "X-Order-Receipt-Token": saved.receiptToken },
+            cache: "no-store",
+          })
             .then((response) => response.ok ? response.json() as Promise<CheckoutOrderResponse> : Promise.reject(new Error("order-status")))
             .then((order) => {
               const paid = order.state === "Paid";
@@ -369,6 +375,7 @@ export function CheckoutPage() {
       address: String(data.get("address") ?? ""),
       postalCode: toAsciiDigits(String(data.get("postal") ?? "")),
       shippingMethod: String(data.get("shippingMethod") ?? shippingMethod),
+      marketingConsent: data.get("marketingConsent") === "on",
       lines: cart.map((line) => ({ sku: line.sku!, quantity: line.quantity })),
     };
 
@@ -403,10 +410,74 @@ export function CheckoutPage() {
     }
   }
 
+  async function downloadInvoice() {
+    if (!receipt || !receipt.receiptToken || !apiBaseUrl) {
+      setError("برای دانلود فاکتور، رسید سفارش در این دستگاه در دسترس نیست.");
+      return;
+    }
+
+    setDownloadingInvoice(true);
+    setError("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/invoice`, {
+        headers: { "X-Order-Receipt-Token": receipt.receiptToken },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { message?: string };
+        throw new Error(body.message || "دانلود فاکتور انجام نشد؛ دوباره تلاش کن.");
+      }
+      const downloadUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `mazeduneh-invoice-${receipt.orderId}.html`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "دانلود فاکتور انجام نشد؛ دوباره تلاش کن.");
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  }
+
+  async function revokeMarketingConsent() {
+    if (!receipt || !receipt.receiptToken || !apiBaseUrl) {
+      setError("برای لغو رضایت، رسید سفارش در این دستگاه در دسترس نیست.");
+      return;
+    }
+
+    setRevokingConsent(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/marketing-consent/revoke`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ receiptToken: receipt.receiptToken }),
+          cache: "no-store",
+        },
+      );
+      const body = await response.json().catch(() => ({})) as { message?: string };
+      if (!response.ok) throw new Error(body.message || "لغو پیامک‌های بازاریابی انجام نشد.");
+      setConsentRevoked(true);
+      setError("رضایت دریافت پیامک‌های بازاریابی لغو شد.");
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : "لغو رضایت انجام نشد؛ دوباره تلاش کن.");
+    } finally {
+      setRevokingConsent(false);
+    }
+  }
+
   async function refreshPaymentStatus(nextReceipt: CheckoutReceipt) {
     setError("در حال بررسی وضعیت پرداخت…");
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/checkout/orders/${nextReceipt.orderId}?receiptToken=${encodeURIComponent(nextReceipt.receiptToken)}`, { cache: "no-store" });
+      const response = await fetch(`${apiBaseUrl}/api/v1/checkout/orders/${nextReceipt.orderId}`, {
+        headers: { "X-Order-Receipt-Token": nextReceipt.receiptToken },
+        cache: "no-store",
+      });
       if (!response.ok) throw new Error("order-status");
       const order = await response.json() as CheckoutOrderResponse;
       const paid = order.state === "Paid";
@@ -417,7 +488,7 @@ export function CheckoutPage() {
     }
   }
 
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && receipt.paymentOutcome === "review" && <button className={styles.primaryAction} type="button" onClick={() => refreshPaymentStatus(receipt)}>بررسی دوبارهٔ وضعیت</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome !== "review" && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}<a className={styles.secondaryAction} href={receipt.receiptToken ? `${apiBaseUrl}/api/v1/checkout/orders/${receipt.orderId}/invoice?receiptToken=${encodeURIComponent(receipt.receiptToken)}` : "#"}>دانلود فاکتور</a><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && receipt.paymentOutcome === "review" && <button className={styles.primaryAction} type="button" onClick={() => refreshPaymentStatus(receipt)}>بررسی دوبارهٔ وضعیت</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome !== "review" && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}<button className={styles.secondaryAction} type="button" onClick={revokeMarketingConsent} disabled={revokingConsent || consentRevoked || !receipt.receiptToken}>{consentRevoked ? "پیامک تبلیغاتی لغو شد" : revokingConsent ? "در حال ثبت لغو…" : "لغو رضایت پیامکی"}</button><button className={styles.secondaryAction} type="button" onClick={downloadInvoice} disabled={downloadingInvoice || !receipt.receiptToken}>{downloadingInvoice ? "در حال آماده‌سازی فاکتور…" : "دانلود فاکتور"}</button><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
     <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>
@@ -434,6 +505,10 @@ export function CheckoutPage() {
           <div className={styles.field}><label htmlFor="shippingMethod">روش ارسال</label><select id="shippingMethod" name="shippingMethod" value={shippingMethod} onChange={(event) => setShippingMethod(event.target.value)} required>{shippingMethods.length ? shippingMethods.map((item) => <option key={item.code} value={item.code}>{item.title} · {toman(Math.round(item.price / 10))} تومان</option>) : <option value="post">پست (محاسبه نهایی در سرور)</option>}</select></div>
           <div className={styles.field}><label htmlFor="postal">کد پستی</label><input id="postal" name="postal" inputMode="numeric" autoComplete="postal-code" pattern="[0-9۰-۹]{10}" required placeholder="۱۰ رقم" /></div>
         </div>
+        <label className={`${styles.deliveryOption} ${styles.fieldWide}`}>
+          <input id="marketingConsent" name="marketingConsent" type="checkbox" />
+          <span><b>دریافت پیامک‌های معرفی و تخفیف</b>این انتخاب اختیاری است و ثبت یا هزینهٔ سفارش را تغییر نمی‌دهد.</span>
+        </label>
         <div className={styles.paymentInfo}><b>ارسال پستی برای این مرحله در نظر گرفته شده است.</b><br />هزینهٔ ارسال نهایی را سرور محاسبه می‌کند. ثبت سفارش به‌معنی پرداخت نیست؛ خرید پس از اتصال و تأیید درگاه کامل می‌شود.</div>
         {error && <p role="alert" className={styles.paymentInfo}>{error}</p>}
         {unsupportedLines.length > 0 && <p className={styles.summaryNote}>برای ثبت آنلاین، فعلاً این کالاها را از سبد بردار: {unsupportedLines.map((line) => line.title).join("، ")}.</p>}

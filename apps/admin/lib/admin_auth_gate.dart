@@ -149,14 +149,17 @@ class _AdminLoginPageState extends State<_AdminLoginPage> {
   final formKey = GlobalKey<FormState>();
   final email = TextEditingController();
   final password = TextEditingController();
+  final mfaCode = TextEditingController();
   bool submitting = false;
   bool obscure = true;
+  bool mfaRequired = false;
   late String? error = widget.initialError;
 
   @override
   void dispose() {
     email.dispose();
     password.dispose();
+    mfaCode.dispose();
     super.dispose();
   }
 
@@ -167,9 +170,16 @@ class _AdminLoginPageState extends State<_AdminLoginPage> {
       error = null;
     });
     try {
-      await widget.api.login(email: email.text, password: password.text);
+      await widget.api.login(
+        email: email.text,
+        password: password.text,
+        mfaCode: mfaRequired ? mfaCode.text : null,
+      );
     } on AuthApiException catch (exception) {
-      if (mounted) setState(() => error = exception.message);
+      if (mounted) setState(() {
+        if (exception.statusCode == 428) mfaRequired = true;
+        error = exception.message;
+      });
     } catch (_) {
       if (mounted)
         setState(() => error = 'ارتباط با سرور برقرار نشد. دوباره تلاش کنید.');
@@ -224,6 +234,27 @@ class _AdminLoginPageState extends State<_AdminLoginPage> {
                 ? 'رمز عبور را وارد کنید.'
                 : null,
           ),
+          if (mfaRequired) ...[
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: mfaCode,
+              autofocus: true,
+              textDirection: TextDirection.ltr,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              maxLength: 6,
+              onFieldSubmitted: (_) => submit(),
+              decoration: const InputDecoration(
+                labelText: 'کد تأیید دومرحله‌ای',
+                helperText: 'کد ۶ رقمی برنامهٔ احراز هویت را وارد کنید.',
+                counterText: '',
+                prefixIcon: Icon(Icons.security_rounded),
+              ),
+              validator: (value) => mfaRequired && (value?.trim().length != 6)
+                  ? 'کد ۶ رقمی را وارد کنید.'
+                  : null,
+            ),
+          ],
           if (error != null) ...[
             const SizedBox(height: 12),
             _AuthMessage(text: error!, isError: true),

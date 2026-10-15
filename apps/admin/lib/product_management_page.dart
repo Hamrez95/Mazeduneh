@@ -1,6 +1,7 @@
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 
+import 'admin_step_up_dialog.dart';
 import 'catalog_api.dart';
 
 class ProductManagementPage extends StatefulWidget {
@@ -451,7 +452,9 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
             .toList(),
       );
       if (widget.initialProduct == null) {
-        await widget.api.createProduct(command);
+        final stepUpToken = await showAdminStepUpDialog(context);
+        if (stepUpToken == null || !mounted) return;
+        await widget.api.createProduct(command, stepUpToken: stepUpToken);
       } else {
         await widget.api.updateProduct(
           widget.initialProduct!.slug,
