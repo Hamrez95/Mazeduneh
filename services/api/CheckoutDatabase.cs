@@ -267,6 +267,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")]);
 
             await InsertOrderAsync(connection, transaction, order, cancellationToken);
+            if (request.MarketingConsent)
+                await RecordMarketingConsentGrantAsync(connection, transaction, order.Id, now, cancellationToken);
+
             const string idempotencySql = """
                 insert into checkout_idempotency (idempotency_key, fingerprint, order_id, created_at)
                 values (@key, @fingerprint, @order_id, @created_at);
@@ -309,6 +312,106 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         return expected.Length == supplied.Length && CryptographicOperations.FixedTimeEquals(expected, supplied)
             ? order
             : null;
+    }
+
+    public async Task<bool> RevokeMarketingConsentAsync(Guid orderId, string receiptToken, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured || string.IsNullOrWhiteSpace(receiptToken) || receiptToken.Length > 200) return false;
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        const string orderSql = """
+            select customer_id, receipt_token
+            from checkout_orders
+            where id = @order_id
+            for update;
+            """;
+        Guid? customerId;
+        string expectedToken;
+        await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("order_id", orderId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+            customerId = reader.IsDBNull(0) ? null : reader.GetGuid(0);
+            expectedToken = reader.GetString(1);
+        }
+
+        var expected = Encoding.UTF8.GetBytes(expectedToken);
+        var supplied = Encoding.UTF8.GetBytes(receiptToken);
+        if (customerId is null || expected.Length != supplied.Length ||
+            !CryptographicOperations.FixedTimeEquals(expected, supplied))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        var recordedAt = DateTimeOffset.UtcNow;
+        const string revokeSql = """
+            with updated_customer as (
+                update customers
+                set marketing_consent = false, updated_at = @recorded_at
+                where id = @customer_id
+                returning id
+            )
+            insert into customer_consent_events (
+                id, customer_id, order_id, channel, purpose, granted,
+                source, policy_version, actor, recorded_at
+            )
+            select gen_random_uuid(), id, @order_id, 'sms', 'marketing', false,
+                   'receipt_self_service', 'marketing-v1', 'customer', @recorded_at
+            from updated_customer
+            on conflict (order_id, purpose, granted) where order_id is not null do nothing;
+            """;
+        await using (var command = new NpgsqlCommand(revokeSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("customer_id", customerId.Value);
+            command.Parameters.AddWithValue("order_id", orderId);
+            command.Parameters.AddWithValue("recorded_at", recordedAt);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    private static async Task RecordMarketingConsentGrantAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Guid orderId,
+        DateTimeOffset recordedAt,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            with updated_customer as (
+                update customers
+                set marketing_consent = true, updated_at = @recorded_at
+                where id = (
+                    select customer_id from checkout_orders
+                    where id = @order_id and customer_id is not null
+                )
+                returning id
+            )
+            insert into customer_consent_events (
+                id, customer_id, order_id, channel, purpose, granted,
+                source, policy_version, actor, recorded_at
+            )
+            select gen_random_uuid(), id, @order_id, 'sms', 'marketing', true,
+                   'guest_checkout', 'marketing-v1', 'customer', @recorded_at
+            from updated_customer
+            on conflict (order_id, purpose, granted) where order_id is not null do nothing;
+            """;
+        await using var command = new NpgsqlCommand(sql, connection, transaction);
+        command.Parameters.AddWithValue("order_id", orderId);
+        command.Parameters.AddWithValue("recorded_at", recordedAt);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
+            throw new InvalidOperationException("Marketing consent was not linked to the checkout customer.");
     }
 
     public async Task<IReadOnlyCollection<StockLevelChange>> ReleaseExpiredAsync(CancellationToken cancellationToken)

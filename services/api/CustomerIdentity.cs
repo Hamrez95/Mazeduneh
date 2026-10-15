@@ -84,7 +84,8 @@ public static class CustomerIdentityModule
         FullName = CustomerPrivacy.AnonymousName(customer.Id),
         Mobile = CustomerPrivacy.Hidden,
         NormalizedMobile = string.Empty,
-        Addresses = Array.Empty<CustomerAddressSummary>()
+        Addresses = Array.Empty<CustomerAddressSummary>(),
+        ConsentHistory = Array.Empty<CustomerConsentEventSummary>()
     };
 }
 
@@ -204,6 +205,26 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "customers", "001-bootstrap", sql, cancellationToken);
+        const string consentHistoryMigration = """
+            create table if not exists customer_consent_events (
+                id uuid primary key,
+                customer_id uuid not null references customers(id) on delete restrict,
+                order_id uuid references checkout_orders(id) on delete set null,
+                channel varchar(20) not null check (channel = 'sms'),
+                purpose varchar(32) not null check (purpose = 'marketing'),
+                granted boolean not null,
+                source varchar(40) not null,
+                policy_version varchar(40) not null,
+                actor text not null,
+                recorded_at timestamptz not null
+            );
+            create index if not exists ix_customer_consent_events_customer
+                on customer_consent_events(customer_id, recorded_at desc);
+            create unique index if not exists ux_customer_consent_events_order_choice
+                on customer_consent_events(order_id, purpose, granted)
+                where order_id is not null;
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "customers", "002-consent-history", consentHistoryMigration, cancellationToken);
         logger.LogInformation("Customer identity schema and checkout trigger are ready.");
     }
 
@@ -323,8 +344,34 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
                 reader.GetBoolean(5),
                 reader.GetFieldValue<DateTimeOffset>(6)));
         }
+        await reader.CloseAsync();
 
-        return summary with { Addresses = addresses };
+        const string consentSql = """
+            select id, channel, purpose, granted, source, policy_version, actor, recorded_at, order_id
+            from customer_consent_events
+            where customer_id = @customer_id
+            order by recorded_at desc, id desc
+            limit 100;
+            """;
+        await using var consentCommand = new NpgsqlCommand(consentSql, connection);
+        consentCommand.Parameters.AddWithValue("customer_id", customerId);
+        await using var consentReader = await consentCommand.ExecuteReaderAsync(cancellationToken);
+        var consentHistory = new List<CustomerConsentEventSummary>();
+        while (await consentReader.ReadAsync(cancellationToken))
+        {
+            consentHistory.Add(new CustomerConsentEventSummary(
+                consentReader.GetGuid(0),
+                consentReader.GetString(1),
+                consentReader.GetString(2),
+                consentReader.GetBoolean(3),
+                consentReader.GetString(4),
+                consentReader.GetString(5),
+                consentReader.GetString(6),
+                consentReader.GetFieldValue<DateTimeOffset>(7),
+                consentReader.IsDBNull(8) ? null : consentReader.GetGuid(8)));
+        }
+
+        return summary with { Addresses = addresses, ConsentHistory = consentHistory };
     }
 }
 
@@ -336,6 +383,17 @@ public sealed record CustomerAddressSummary(
     string PostalCode,
     bool IsDefault,
     DateTimeOffset LastUsedAt);
+
+public sealed record CustomerConsentEventSummary(
+    Guid Id,
+    string Channel,
+    string Purpose,
+    bool Granted,
+    string Source,
+    string PolicyVersion,
+    string Actor,
+    DateTimeOffset RecordedAt,
+    Guid? OrderId);
 
 public sealed record CustomerSummary(
     Guid Id,
@@ -349,4 +407,5 @@ public sealed record CustomerSummary(
     decimal TotalSpend,
     decimal AverageOrderValue,
     DateTimeOffset? LastPurchaseAt,
-    IReadOnlyCollection<CustomerAddressSummary> Addresses = null!);
+    IReadOnlyCollection<CustomerAddressSummary> Addresses = null!,
+    IReadOnlyCollection<CustomerConsentEventSummary> ConsentHistory = null!);

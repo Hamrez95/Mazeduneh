@@ -351,6 +351,13 @@ class _CustomerDetails extends StatelessWidget {
               _DetailRow('رضایت ارتباطی', customer.marketingConsent ? 'فعال' : 'ثبت نشده'),
               _DetailRow('اولین ثبت', formatPersianDateTime(customer.createdAt)),
               _DetailRow('آخرین فعالیت', formatPersianDateTime(customer.updatedAt)),
+              const SizedBox(height: 8),
+              const Text('سوابق رضایت تبلیغاتی', style: TextStyle(fontWeight: FontWeight.w900, color: _CustomerColors.inkDeep)),
+              const SizedBox(height: 10),
+              if (customer.consentHistory.isEmpty)
+                const Text('هنوز رویدادی ثبت نشده است.', style: TextStyle(color: _CustomerColors.muted))
+              else
+                for (final event in customer.consentHistory) _ConsentHistoryRow(event: event),
               if (customer.addresses.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 const Text('آدرس‌های ذخیره‌شده', style: TextStyle(fontWeight: FontWeight.w900, color: _CustomerColors.inkDeep)),
@@ -361,6 +368,51 @@ class _CustomerDetails extends StatelessWidget {
           ),
         ),
       );
+}
+
+class _ConsentHistoryRow extends StatelessWidget {
+  const _ConsentHistoryRow({required this.event});
+
+  final CustomerConsentEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final source = switch (event.source) {
+      'guest_checkout' => 'ثبت هنگام خرید',
+      'receipt_self_service' => 'لغو از رسید سفارش',
+      _ => event.source,
+    };
+    final channel = event.channel == 'sms' ? 'پیامک تبلیغاتی' : event.channel;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: event.granted ? const Color(0xFFEAF5EC) : const Color(0xFFFFF1E8),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(event.granted ? Icons.check_circle_outline : Icons.do_not_disturb_on_outlined,
+              size: 18, color: event.granted ? const Color(0xFF38734A) : const Color(0xFF9A5E37)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(event.granted ? 'رضایت دریافت $channel ثبت شد' : 'رضایت دریافت $channel لغو شد',
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: _CustomerColors.inkDeep)),
+                const SizedBox(height: 3),
+                Text('$source · ${formatPersianDateTime(event.recordedAt)}',
+                    style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _AddressRow extends StatelessWidget {

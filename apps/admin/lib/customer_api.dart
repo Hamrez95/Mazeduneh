@@ -113,6 +113,7 @@ class CustomerSummary {
     required this.averageOrderValue,
     required this.lastPurchaseAt,
     this.addresses = const [],
+    this.consentHistory = const [],
   });
 
   final String id;
@@ -127,6 +128,7 @@ class CustomerSummary {
   final num averageOrderValue;
   final DateTime? lastPurchaseAt;
   final List<CustomerAddress> addresses;
+  final List<CustomerConsentEvent> consentHistory;
 
   factory CustomerSummary.fromJson(Map<String, dynamic> json) => CustomerSummary(
         id: json['id'].toString(),
@@ -144,6 +146,46 @@ class CustomerSummary {
             .whereType<Map<String, dynamic>>()
             .map(CustomerAddress.fromJson)
             .toList(),
+        consentHistory: (json['consentHistory'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CustomerConsentEvent.fromJson)
+            .toList(),
+      );
+}
+
+class CustomerConsentEvent {
+  const CustomerConsentEvent({
+    required this.id,
+    required this.channel,
+    required this.purpose,
+    required this.granted,
+    required this.source,
+    required this.policyVersion,
+    required this.actor,
+    required this.recordedAt,
+    required this.orderId,
+  });
+
+  final String id;
+  final String channel;
+  final String purpose;
+  final bool granted;
+  final String source;
+  final String policyVersion;
+  final String actor;
+  final DateTime recordedAt;
+  final String? orderId;
+
+  factory CustomerConsentEvent.fromJson(Map<String, dynamic> json) => CustomerConsentEvent(
+        id: json['id'].toString(),
+        channel: json['channel'] as String? ?? '',
+        purpose: json['purpose'] as String? ?? '',
+        granted: json['granted'] as bool? ?? false,
+        source: json['source'] as String? ?? '',
+        policyVersion: json['policyVersion'] as String? ?? '',
+        actor: json['actor'] as String? ?? '',
+        recordedAt: DateTime.parse(json['recordedAt'] as String),
+        orderId: json['orderId'] as String?,
       );
 }
 
