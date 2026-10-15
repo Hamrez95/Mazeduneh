@@ -93,8 +93,15 @@ class AdminAuditLogEntry {
   String get actionLabel => switch (action) {
         'inventory.adjustment' => 'اصلاح موجودی',
         'product.publication' => 'تغییر انتشار محصول',
-        'admin-user.created' => 'افزودن کاربر مدیریتی',
+        'admin-user.created' => 'افزودن مدیر',
+        'admin-user.invited' => 'دعوت مدیر',
+        'admin-user.invitation-accepted' => 'پذیرش دعوت عضویت',
+        'admin-user.permissions-changed' => 'تغییر دسترسی‌های مدیر',
         'admin-user.status-changed' => 'تغییر وضعیت کاربر مدیریتی',
+        'order.state-changed' => 'تغییر وضعیت سفارش',
+        'inventory.purchase.received' => 'ثبت رسید خرید انبار',
+        'inventory.price.applied' => 'به‌روزرسانی قیمت انبار',
+        'commerce-settings.update' => 'تغییر تنظیمات فروشگاه',
         _ => action,
       };
 
@@ -102,6 +109,9 @@ class AdminAuditLogEntry {
         'ProductVariant' => 'SKU محصول',
         'Product' => 'محصول',
         'AdminUser' => 'کاربر مدیریتی',
+        'Order' => 'سفارش',
+        'InventoryBatch' => 'بچ انبار',
+        'commerce_settings' => 'تنظیمات فروشگاه',
         _ => entityType,
       };
 

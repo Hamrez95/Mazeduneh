@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,10 +15,12 @@ PREFIX = 'ci-planning-fixture'
 ADMIN = '/api/v1/admin/corporate-requests'
 
 
-def request(path, method='GET', body=None, token=None):
+def request(path, method='GET', body=None, token=None, extra_headers=None, include_headers=False):
     headers = {'Content-Type': 'application/json'} if body is not None else {}
     if token:
         headers['Authorization'] = 'Bearer ' + token
+    if extra_headers:
+        headers.update(extra_headers)
     try:
         response = urlopen(Request(BASE + path, method=method, headers=headers,
                                    data=json.dumps(body).encode() if body is not None else None), timeout=8)
@@ -25,7 +28,8 @@ def request(path, method='GET', body=None, token=None):
         response = error
     with response:
         content = response.read()
-        return response.status, json.loads(content) if content else None
+        result = (response.status, json.loads(content) if content else None)
+        return (*result, response.headers) if include_headers else result
 
 
 def start_api(log, restricted=False):
@@ -75,24 +79,88 @@ def ids(params=''):
     return {item['id'] for item in items}
 
 
+def change_status(id, status):
+    return request(ADMIN + '/' + id + '/status', 'PATCH', {'status': status, 'note': 'CI'}, token)
+
+
+def metrics():
+    status, value = request(ADMIN + '/summary', token=token)
+    assert status == 200
+    return value
+
+
 with tempfile.TemporaryFile() as log:
     api, token = start_api(log)
     try:
+        baseline = metrics()
+        package_body = {
+            'name': 'CI package snapshot', 'description': 'Snapshot contract fixture', 'isActive': True,
+            'items': [{'name': 'CI item', 'quantity': 2, 'unit': 'بسته', 'unitPrice': 120000}],
+        }
+        package_status, package = request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)
+        assert package_status == 200, package
+        assert package['unitPrice'] == 240000 and package['items'][0]['quantity'] == 2
+        assert request(ADMIN + '/packages', token=token)[0] == 200
+        assert request(ADMIN + '/packages')[0] == 401
+        public_status, public_packages = request('/api/v1/corporate-packages')
+        assert public_status == 200 and any(item['code'] == 'ci-corp-kit' for item in public_packages)
+        template_body = {
+            'title': 'CI greeting', 'body': 'Hello company', 'isActive': True,
+        }
+        template_status, template = request(
+            ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)
+        assert template_status == 200 and template['code'] == 'ci-greeting'
+        assert template['title'] == 'CI greeting' and template['isActive'] is True
+        template_list_status, templates = request(ADMIN + '/templates', token=token)
+        assert template_list_status == 200 and any(item['code'] == 'ci-greeting' for item in templates)
+        assert request(ADMIN + '/templates')[0] == 401
+        disabled_body = dict(template_body, isActive=False)
+        disabled_status, disabled = request(
+            ADMIN + '/templates/ci-greeting', 'PUT', disabled_body, token)
+        assert disabled_status == 200 and disabled['isActive'] is False
         fixtures = []
         for index in range(7):
-            status, created = request('/api/v1/corporate-requests', 'POST', {
+            status, created, response_headers = request('/api/v1/corporate-requests', 'POST', {
                 'customerName': 'CI customer', 'companyName': PREFIX + '-' + str(index),
                 'mobile': '09123456789', 'email': None, 'city': 'CI-city', 'occasion': 'CI',
-                'orderQuantity': 50, 'packageType': 'CI', 'budget': None, 'deliveryDate': None,
-                'customPackaging': False, 'description': None, 'logoKey': None})
+                'orderQuantity': 50, 'packageType': 'CI', 'packageCode': 'ci-corp-kit' if index == 0 else None,
+                'budget': None, 'deliveryDate': None, 'customPackaging': False,
+                'description': None, 'logoKey': None}, include_headers=True)
             assert status == 201, status
+            access_token = created['accessToken']
+            assert access_token and access_token not in (response_headers.get('Location') or '')
+            public_path = '/api/v1/corporate-requests/' + created['id']
+            assert request(public_path)[0] == 404
+            assert request(public_path + '?accessToken=')[0] == 404
+            assert request(public_path + '?accessToken=' + quote(access_token))[0] == 404
+            assert request(public_path, extra_headers={'X-Corporate-Request-Token': 'invalid'})[0] == 404
+            public_status, public_summary = request(public_path, extra_headers={
+                'X-Corporate-Request-Token': access_token})
+            assert public_status == 200 and public_summary['id'] == created['id']
+            assert 'mobile' not in public_summary and 'email' not in public_summary
             fixtures.append(created['id'])
         a, b, c, d, e, f, g = fixtures
-        mutate(b, '/assign', {'assignedTo': 'CI owner'})
+        detail_status, saved_request = request(ADMIN + '/' + a, token=token)
+        assert detail_status == 200 and saved_request['packageCode'] == 'ci-corp-kit'
+        snapshot = saved_request['packageSnapshot']
+        assert snapshot['unitPrice'] == 240000 and snapshot['orderQuantity'] == 50
+        assert snapshot['estimatedTotal'] == 12000000
+        repriced = dict(package_body, items=[{'name': 'CI item', 'quantity': 2, 'unit': 'بسته', 'unitPrice': 150000}])
+        updated_status, updated_package = request(ADMIN + '/packages/ci-corp-kit', 'PUT', repriced, token)
+        assert updated_status == 200 and updated_package['unitPrice'] == 300000
+        _, historical = request(ADMIN + '/' + a, token=token)
+        assert historical['packageSnapshot']['unitPrice'] == 240000
+        assert historical['packageSnapshot']['estimatedTotal'] == 12000000
+        assigned = mutate(b, '/assign', {'assignedTo': 'CI owner'})
+        assert assigned['assignedTo'] == 'CI owner'
         mutate(c, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
         mutate(d, '/assign', {'assignedTo': 'CI owner'})
         mutate(d, '/follow-up', {'nextFollowUpAt': '2000-01-01T00:00:00Z'})
-        mutate(e, '/status', {'status': 'Finalized', 'note': 'CI'}, 'PATCH')
+        assert change_status(e, 'Shipped')[0] == 409  # Cannot skip the sales and fulfillment stages.
+        for next_status in ['Reviewing', 'Contacted', 'ProformaSent', 'Negotiating', 'Approved', 'Preparing', 'Shipped', 'Finalized']:
+            status, updated = change_status(e, next_status)
+            assert status == 200 and updated['status'] == next_status, (next_status, status, updated)
+        assert change_status(e, 'Reviewing')[0] == 409  # Terminal requests cannot be reopened.
         mutate(f, '/status', {'status': 'Cancelled', 'note': 'CI'}, 'PATCH')
         mutate(g, '/assign', {'assignedTo': '  '})
         mutate(g, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
@@ -101,6 +169,13 @@ with tempfile.TemporaryFile() as log:
         assert ids('&needsPlanning=true') == {a, b, c, g}
         assert ids('&needsPlanning=true&status=New&city=CI-city&minQuantity=50&maxQuantity=50') == {a, b, c, g}
         assert ids('&overdue=true') == {d}
+        notification_status, notifications = request('/api/v1/admin/notifications', token=token)
+        assert notification_status == 200
+        assert notifications['corporateOverdueFollowUps'] >= 1
+        assert any(item['type'] == 'corporate-follow-up'
+                   and 'ci-planning-fixture-3' in item['detail']
+                   and item['target']['module'] == 'corporate'
+                   for item in notifications['items'])
         assert request(ADMIN + '?needsPlanning=true&overdue=true', token=token)[0] == 400
         assert request(ADMIN + '?needsPlanning=invalid', token=token)[0] == 400
         assert request(ADMIN + '?needsPlanning=true')[0] == 401
@@ -108,16 +183,38 @@ with tempfile.TemporaryFile() as log:
         assert a in ids('&needsPlanning=true')  # Still missing its follow-up date.
         mutate(a, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
         assert ids('&needsPlanning=true') == {b, c, g}
+        updated_metrics = metrics()
+        assert updated_metrics['totalCount'] == baseline['totalCount'] + len(fixtures)
+        assert updated_metrics['newCount'] == baseline['newCount'] + 5
+        assert updated_metrics['activeCount'] == baseline['activeCount'] + 5
+        assert updated_metrics['finalizedCount'] == baseline['finalizedCount'] + 1
+        assert updated_metrics['firstContactCount'] == baseline['firstContactCount'] + 1
+        expected_rate = updated_metrics['finalizedCount'] * 100 / updated_metrics['totalCount']
+        assert abs(updated_metrics['conversionRatePercent'] - expected_rate) < 0.01
+        assert updated_metrics['averageHoursToFirstContact'] >= 0
     finally:
         stop_api(api)
     api, token = start_api(log)
     try:
         assert ids('&needsPlanning=true') == {b, c, g}
+        persisted_templates = request(ADMIN + '/templates', token=token)
+        assert persisted_templates[0] == 200 and any(
+            item['code'] == 'ci-greeting' and item['isActive'] is False
+            for item in persisted_templates[1])
     finally:
         stop_api(api)
     api, token = start_api(log, restricted=True)
     try:
         assert request(ADMIN + '?needsPlanning=true', token=token)[0] == 403
+        assert request(ADMIN + '/packages', token=token)[0] == 403
+        assert request(ADMIN + '/packages/ci-corp-kit', 'PUT', package_body, token)[0] == 403
+        assert request(ADMIN + '/templates', token=token)[0] == 403
+        assert request(ADMIN + '/templates/ci-greeting', 'PUT', template_body, token)[0] == 403
+        notification_status, restricted_notifications = request('/api/v1/admin/notifications', token=token)
+        assert notification_status == 200
+        assert restricted_notifications['corporateOverdueFollowUps'] == 0
+        assert not any(item['type'] == 'corporate-follow-up'
+                       for item in restricted_notifications['items'])
     finally:
         stop_api(api)
 

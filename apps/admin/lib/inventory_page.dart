@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
+import 'admin_step_up_dialog.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
 import 'auth_session.dart';
@@ -110,11 +111,16 @@ class _InventoryPageState extends State<InventoryPage> {
         variant: variant,
         batches: variantBatches,
         onSubmit: (command, operationKey) async {
+          final stepUpToken = await showAdminStepUpDialog(context);
+          if (stepUpToken == null || !mounted) return false;
           if (command.isWaste) {
-            await orders.writeOffStock(variant.sku, command.batchCode!, command.delta, command.reason, operationKey: operationKey);
+            await orders.writeOffStock(variant.sku, command.batchCode!, command.delta, command.reason,
+              operationKey: operationKey, stepUpToken: stepUpToken);
           } else {
-            await orders.adjustStock(variant.sku, command.delta, command.reason, operationKey: operationKey);
+            await orders.adjustStock(variant.sku, command.delta, command.reason,
+              operationKey: operationKey, stepUpToken: stepUpToken);
           }
+          return true;
         },
       ),
     );
@@ -354,7 +360,7 @@ class AdjustmentDialog extends StatefulWidget {
   const AdjustmentDialog({super.key, required this.variant, this.batches = const [], this.onSubmit});
   final ProductVariant variant;
   final List<InventoryBatch> batches;
-  final Future<void> Function(AdjustmentCommand command, String operationKey)? onSubmit;
+  final Future<bool> Function(AdjustmentCommand command, String operationKey)? onSubmit;
   @override
   State<AdjustmentDialog> createState() => _AdjustmentDialogState();
 }
@@ -379,8 +385,8 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
     previousPayload = payload;
     setState(() { busy = true; error = null; });
     try {
-      await widget.onSubmit?.call(command, operationKey!);
-      if (mounted) Navigator.pop(context, command);
+      final wasSubmitted = await widget.onSubmit?.call(command, operationKey!) ?? true;
+      if (mounted && wasSubmitted) Navigator.pop(context, command);
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {

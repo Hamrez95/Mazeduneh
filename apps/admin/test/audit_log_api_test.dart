@@ -49,4 +49,20 @@ void main() {
     await expectLater(api.fetchLogs(), throwsA(isA<AuditLogApiException>()));
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
+
+  test('maps membership audit events to clear Persian labels', () {
+    final event = AdminAuditLogEntry.fromJson({
+      'id': 'membership-event',
+      'actor': 'owner@example.com',
+      'action': 'admin-user.permissions-changed',
+      'entityType': 'AdminUser',
+      'entityId': 'member-1',
+      'reason': 'تغییر دسترسی',
+      'requestId': 'trace-2',
+      'occurredAt': '2026-08-01T08:00:00Z',
+    });
+
+    expect(event.actionLabel, 'تغییر دسترسی‌های مدیر');
+    expect(event.entityLabel, 'کاربر مدیریتی');
+  });
 }

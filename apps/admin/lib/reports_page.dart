@@ -2,12 +2,18 @@ import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_navigation.dart';
+import 'admin_permissions.dart';
+import 'auth_session.dart';
 import 'formatters.dart';
 import 'order_api.dart';
 
 class ReportsPage extends StatefulWidget {
-  const ReportsPage({super.key, this.api});
+  const ReportsPage({super.key, this.api, this.initialFromUtc, this.initialToUtcExclusive, this.onNavigate});
   final OrderApiClient? api;
+  final DateTime? initialFromUtc;
+  final DateTime? initialToUtcExclusive;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
   @override
   State<ReportsPage> createState() => _ReportsPageState();
 }
@@ -17,18 +23,38 @@ class _ReportsPageState extends State<ReportsPage> {
   AdminAnalytics? analytics;
   List<AdminProductProfitability> profitability = const [];
   int days = 30;
+  DateTimeRange? selectedRange;
   bool loading = true;
   Object? error;
 
   @override
-  void initState() { super.initState(); load(); }
+  void initState() {
+    super.initState();
+    if (widget.initialFromUtc != null && widget.initialToUtcExclusive != null) {
+      final localStart = widget.initialFromUtc!.toLocal();
+      final localEndExclusive = widget.initialToUtcExclusive!.toLocal();
+      selectedRange = DateTimeRange(
+        start: DateTime(localStart.year, localStart.month, localStart.day),
+        end: DateTime(localEndExclusive.year, localEndExclusive.month, localEndExclusive.day - 1),
+      );
+    }
+    load();
+  }
+
+  DateTime? get _fromUtc => selectedRange == null
+      ? null
+      : DateTime(selectedRange!.start.year, selectedRange!.start.month, selectedRange!.start.day).toUtc();
+
+  DateTime? get _toUtcExclusive => selectedRange == null
+      ? null
+      : DateTime(selectedRange!.end.year, selectedRange!.end.month, selectedRange!.end.day + 1).toUtc();
 
   Future<void> load() async {
     setState(() { loading = true; error = null; });
     try {
       final result = await Future.wait([
-        api.fetchAnalytics(days: days),
-        api.fetchProductProfitability(days: days),
+        api.fetchAnalytics(days: days, fromUtc: _fromUtc, toUtcExclusive: _toUtcExclusive),
+        api.fetchProductProfitability(days: days, fromUtc: _fromUtc, toUtcExclusive: _toUtcExclusive),
       ]);
       if (mounted) setState(() {
         analytics = result[0] as AdminAnalytics;
@@ -54,7 +80,7 @@ class _ReportsPageState extends State<ReportsPage> {
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
       ]),
       const SizedBox(height: 20),
-      SegmentedButton<int>(
+      if (selectedRange == null) SegmentedButton<int>(
         segments: const [
           ButtonSegment(value: 7, label: Text('۷ روز')),
           ButtonSegment(value: 30, label: Text('۳۰ روز')),
@@ -65,7 +91,10 @@ class _ReportsPageState extends State<ReportsPage> {
           setState(() => days = value.first);
           load();
         },
-      ),
+      ) else Row(children: [
+        Expanded(child: Text('بازهٔ داشبورد: ${formatPersianDate(selectedRange!.start)} تا ${formatPersianDate(selectedRange!.end)}')),
+        TextButton(onPressed: () { setState(() { selectedRange = null; days = 30; }); load(); }, child: const Text('۳۰ روز اخیر')),
+      ]),
       const SizedBox(height: 20),
       Expanded(child: _body()),
     ]),
@@ -76,22 +105,23 @@ class _ReportsPageState extends State<ReportsPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final data = analytics!;
     if (data.orderCount == 0) return const Center(child: Text('برای این بازه هنوز داده‌ی فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)));
+    final merchandiseSalesAfterDiscount = data.merchandiseRevenue - data.discount;
     return LayoutBuilder(builder: (context, constraints) {
       final columns = constraints.maxWidth >= 1050 ? 3 : constraints.maxWidth >= 680 ? 2 : 1;
       return ListView(children: [
         GridView.count(
           crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 3.2 : 1.9, shrinkWrap: true,
+          childAspectRatio: columns == 1 ? 2.6 : 1.9, shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _ReportMetric(title: 'درآمد شامل ارسال', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
-            _ReportMetric(title: 'هزینه مواد و بسته‌بندی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
-            _ReportMetric(title: 'هزینه واقعی ارسال', value: '${formatPersianNumber(data.shippingExpense)} ریال', icon: Icons.local_shipping_rounded, tint: const Color(0xFFEAF3EE)),
+            _ReportMetric(title: 'مبلغ پرداخت‌شده با ارسال و مالیات', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.payments_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'فروش کالا پس از تخفیف', value: '${formatPersianNumber(merchandiseSalesAfterDiscount)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
+            _ReportMetric(title: 'هزینهٔ کل محصول و آماده‌سازی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
+            _ReportMetric(title: 'درآمد ارسال', value: '${formatPersianNumber(data.shippingRevenue)} ریال', icon: Icons.local_shipping_outlined, tint: const Color(0xFFEAF3EE)),
+            _ReportMetric(title: 'هزینهٔ واقعی ارسال', value: '${formatPersianNumber(data.shippingExpense)} ریال', icon: Icons.local_shipping_rounded, tint: const Color(0xFFEAF3EE)),
             _ReportMetric(title: 'مالیات پرداختنی', value: '${formatPersianNumber(data.tax)} ریال', icon: Icons.account_balance_rounded, tint: const Color(0xFFFCE6E0)),
             _ReportMetric(title: 'سود خالص', value: '${formatPersianNumber(data.netProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
             _ReportMetric(title: 'حاشیه سود ناخالص', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
-            _ReportMetric(title: 'تعداد سفارش', value: formatPersianInteger(data.orderCount), icon: Icons.receipt_long_rounded, tint: const Color(0xFFEDE8F8)),
-            _ReportMetric(title: 'واحد فروخته‌شده', value: formatPersianInteger(data.unitsSold), icon: Icons.shopping_bag_rounded, tint: const Color(0xFFEAF3EE)),
           ],
         ),
         const SizedBox(height: 18),
@@ -100,7 +130,9 @@ class _ReportsPageState extends State<ReportsPage> {
           const SizedBox(height: 12),
           Text(
             'در ${formatPersianInteger(data.days)} روز گذشته، ${formatPersianInteger(data.orderCount)} سفارش با ${formatPersianInteger(data.unitsSold)} واحد ثبت شده است. '
-            'هزینهٔ مواد، بسته‌بندی و جانبی ${formatPersianNumber(data.cost)} ریال، هزینهٔ واقعی ارسال ${formatPersianNumber(data.shippingExpense)} ریال، مالیات پرداختنی ${formatPersianNumber(data.tax)} ریال و سود خالص ${formatPersianNumber(data.netProfit)} ریال بوده است.',
+            'فروش کالا پیش از تخفیف ${formatPersianNumber(data.merchandiseRevenue)} ریال و تخفیف ${formatPersianNumber(data.discount)} ریال بوده؛ فروش کالا پس از تخفیف ${formatPersianNumber(merchandiseSalesAfterDiscount)} ریال است. '
+            'از هزینهٔ کل ${formatPersianNumber(data.cost)} ریالی، ${formatPersianNumber(data.productCost)} ریال هزینهٔ محصول، ${formatPersianNumber(data.packagingCost)} ریال بسته‌بندی و ${formatPersianNumber(data.additionalCost)} ریال جانبی است. '
+            'سود ناخالص ${formatPersianNumber(data.grossProfit)} ریال است؛ با افزودن درآمد ارسال ${formatPersianNumber(data.shippingRevenue)} و کسر هزینهٔ ارسال ${formatPersianNumber(data.shippingExpense)}، سود خالص به دست می‌آید. مالیات پرداختنی ${formatPersianNumber(data.tax)} ریال است و جزو سود نیست.',
             style: const TextStyle(height: 1.7, color: AdminColors.muted),
           ),
         ]))),
@@ -136,7 +168,18 @@ class _ReportsPageState extends State<ReportsPage> {
                             ),
                             Text('${formatPersianInteger(item.unitsSold)} واحد', style: const TextStyle(color: AdminColors.muted)),
                             Text('فروش ${formatPersianNumber(item.revenue)} ریال', style: const TextStyle(fontSize: 12)),
+                            Text('تخفیف ${formatPersianNumber(item.discount)} ریال', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
+                            Text('هزینه ${formatPersianNumber(item.cost)} ریال', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
                             Text('سود ${formatPersianNumber(item.grossProfit)} ریال', style: TextStyle(fontWeight: FontWeight.w900, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.ink)),
+                            if (!OwnerSession.instance.isAuthenticated ||
+                                OwnerSession.instance.can(AdminPermissions.inventoryRead))
+                              OutlinedButton.icon(
+                                onPressed: widget.onNavigate == null ? null : () => widget.onNavigate!(
+                                  AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku),
+                                ),
+                                icon: const Icon(Icons.warehouse_outlined, size: 18),
+                                label: const Text('مشاهده در انبار'),
+                              ),
                           ],
                         ),
                       ),

@@ -10,6 +10,7 @@
 | API → S3 | Media__Provider=S3 و Media__S3__Endpoint/Bucket/Region/AccessKey/SecretKey/ForcePathStyle | زمان اجرای API؛ فقط سرور |
 | آدرس عمومی تصاویر API | Media__PublicBaseUrl | زمان اجرای API |
 | ورود مدیر | Admin__Email/PasswordHash/TokenSigningKey | زمان اجرای API؛ secret manager |
+| MFA مدیر اصلی (اختیاری) | Admin__Mfa__Required و Admin__Mfa__TotpSecret | secret manager؛ TOTP شش‌رقمی |
 | مبداهای مجاز مرورگر | Cors__AllowedOrigins__0 و __1 | آدرس دقیق HTTPS فروشگاه و پنل |
 | فروشگاه → API | NEXT_PUBLIC_MAZEDUNEH_API_URL | هنگام build فروشگاه؛ عمومی |
 | پنل → API | MAZEDUNEH_API_BASE_URL | هنگام build پنل با dart-define؛ عمومی |
@@ -19,6 +20,8 @@
 نمونهٔ بدون اطلاعات واقعی در services/api/.env.example و apps/storefront/.env.example است. API دات‌نت فایل .env را خودکار نمی‌خواند؛ مقادیر باید در Environment یا secret manager میزبان تنظیم شوند. Dockerfile هر سرویس از پوشهٔ خود ساخته می‌شود. پنل اکنون lib/secure_main.dart را می‌سازد؛ همان entry point امن فعال و تست‌شده در CI.
 
 `MAZEDUNEH_ADMIN_STORE_ID` فقط مشخص می‌کند پنل هنگام ورود کدام عضویت فروشگاه را درخواست کند؛ مجوز دسترسی محسوب نمی‌شود. API عضویت فعالِ همان ایمیل/رمز را در همان فروشگاه بررسی می‌کند و شناسهٔ فروشگاه نشست را از توکن امضاشده می‌خواند. کلاینت پس از ورود نمی‌تواند زمینهٔ نشست را با query string عوض کند.
+
+برای فعال‌کردن MFA مدیر اصلی، یک seed تصادفی Base32 با دست‌کم ۱۶ بایت دادهٔ رمزگشایی‌شده در `Admin__Mfa__TotpSecret` نگه دارید و `Admin__Mfa__Required=true` را تنظیم کنید. برنامهٔ احراز هویت باید TOTP با SHA-1، کد ۶ رقمی و بازهٔ ۳۰ ثانیه‌ای داشته باشد. seed را در Git یا متغیر عمومی پنل قرار ندهید. ورود و تأیید عملیات حساس فقط پس از درخواست سرور کد را نمایش می‌دهند؛ seed و اتصال برنامهٔ احراز هویت باید پیش از فعال‌سازی امن به مدیر تحویل شوند. برای جلوگیری از پذیرش دوبارهٔ یک کد، اتصال دیتابیس مدیران لازم است و هر کد فقط یک بار در تمام نمونه‌های API پذیرفته می‌شود. تغییر Required/seed نشست‌های قبلی را تا زمان انقضا معتبر نگه می‌دارد؛ ورود تازه با MFA اجباری است.
 
 ## اطلاعاتی که پس از خرید سرویس وارد می‌شوند
 
@@ -41,6 +44,6 @@
 ۴. فروشگاه و پنل را با آدرس API مقصد دوباره build کنید؛ آدرس API در مرورگر داخل artifact است و فقط تغییر env زمان اجرا کافی نیست.
 ۵. بعد از آزمون سفارش/انبار/قیمت/دسترسی، DNS را تغییر دهید و نسخهٔ قبلی را برای rollback حفظ کنید.
 
-آزمون عملی مهاجرت، backup/restore، DNS و پرداخت واقعی هنوز انجام نشده و #100/#76 باز می‌مانند. اولین شروع روی دیتابیس خالی در کد فعلی seed دمو دارد؛ جداسازی seed از production همچنان #76 است. Sandbox پرداخت برای production فعال نشود. Docker محلی موجود نیست؛ CI entry point وب را build می‌کند، اما ادعای build یا انتشار Docker image واقعی نداریم.
+آزمون واقعی migration و backup/restore روی سرویس staging، DNS و پرداخت واقعی باید پیش از لانچ انجام شوند (#76/#100). migration دیگر در startup عادی API اجرا نمی‌شود؛ آن را با job کنترل‌شدهٔ `--migrate` پیش از ارتقا اجرا کنید. `--seed-demo` فقط برای local/demo است و CI جلوی اجرای ضمنی آن را می‌گیرد. Sandbox پرداخت برای production فعال نشود.
 
 Skills: deployments-cicd، lifecycle-architecture-review، Supabase guidance. Graphify version/query/update در executor موجود نیست و fallback ثبت شد. هیچ حساب، سرویس پولی، DNS یا secret تغییر نکرد.

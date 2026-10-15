@@ -67,10 +67,81 @@ jobs:
         run: dotnet restore services/api/Mazeduneh.Api.csproj
       - name: Build
         run: dotnet build services/api/Mazeduneh.Api.csproj --configuration Release --no-restore
+      - name: Database migration, staging recovery, and seed-separation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=mazeduneh_ci
+          API_DLL=services/api/bin/Release/net10.0/Mazeduneh.Api.dll
+          MIGRATION_DATABASE=mazeduneh_migration_contract
+          RESTORE_DATABASE=mazeduneh_staging_restore
+          MIGRATION_CONNECTION="Host=127.0.0.1;Port=5432;Database=${MIGRATION_DATABASE};Username=mazeduneh;Password=mazeduneh_ci"
+          api_pid=""
+          cleanup() {
+            if [[ -n "$api_pid" ]] && kill -0 "$api_pid" 2>/dev/null; then
+              kill "$api_pid" || true
+              wait "$api_pid" || true
+            fi
+          }
+          trap cleanup EXIT
+          sudo -u postgres createdb --owner=mazeduneh "$MIGRATION_DATABASE"
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --urls http://127.0.0.1:5098 > /tmp/mazeduneh-unmigrated-api.log 2>&1 &
+          api_pid=$!
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5098/health/live > /dev/null; then break; fi
+            sleep 1
+          done
+          test "$(curl -s -o /tmp/mazeduneh-unmigrated-ready.json -w '%{http_code}' http://127.0.0.1:5098/health/ready)" = 503
+          kill "$api_pid"
+          wait "$api_pid" || true
+          api_pid=""
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command "select to_regclass('public.schema_migrations') is null;")" = t
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate > /tmp/mazeduneh-migrate-a.log 2>&1 &
+          migration_a=$!
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate > /tmp/mazeduneh-migrate-b.log 2>&1 &
+          migration_b=$!
+          wait "$migration_a"
+          wait "$migration_b"
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate
+
+          migration_count=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align \
+            --command 'select count(*) from schema_migrations;')
+          test "$migration_count" -gt 0
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = 0
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = 0
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-admin
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-demo
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-admin
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --seed-demo
+          products_before=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')
+          admins_before=$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')
+          test "$products_before" -gt 0
+          test "$admins_before" = 1
+
+          ConnectionStrings__Catalog="$MIGRATION_CONNECTION" dotnet "$API_DLL" --migrate
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = "$products_before"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$MIGRATION_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = "$admins_before"
+
+          pg_dump --host 127.0.0.1 --username mazeduneh --format=custom --file=/tmp/mazeduneh-staging.backup "$MIGRATION_DATABASE"
+          sudo -u postgres createdb --owner=mazeduneh "$RESTORE_DATABASE"
+          pg_restore --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --no-owner /tmp/mazeduneh-staging.backup
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from schema_migrations;')" = "$migration_count"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from products;')" = "$products_before"
+          test "$(psql --host 127.0.0.1 --username mazeduneh --dbname "$RESTORE_DATABASE" --tuples-only --no-align --command 'select count(*) from admin_users;')" = "$admins_before"
+          sudo -u postgres dropdb "$RESTORE_DATABASE"
+          sudo -u postgres dropdb "$MIGRATION_DATABASE"
+
+          dotnet "$API_DLL" --migrate
+          dotnet "$API_DLL" --seed-admin
+          dotnet "$API_DLL" --seed-demo
       - name: Durable checkout payment and order operations contract
         shell: bash
         run: |
           set -euo pipefail
+          trap 'status=$?; printf "Contract command failed (exit %s): %s\\n" "$status" "$BASH_COMMAND" >&2' ERR
           start_api() {
             dotnet run --project services/api/Mazeduneh.Api.csproj --configuration Release --no-build --urls http://127.0.0.1:5099 > /tmp/mazeduneh-api.log 2>&1 &
             API_PID=$!
@@ -133,7 +204,13 @@ jobs:
           start_api
           ORDER_ID=$(cat /tmp/order-id)
           RECEIPT_TOKEN=$(cat /tmp/receipt-token)
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
+          MISSING_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}")
+          test "${MISSING_RECEIPT_TOKEN_STATUS}" = "404"
+          QUERY_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=invalid-receipt-token")
+          test "${QUERY_RECEIPT_TOKEN_STATUS}" = "404"
+          INVALID_RECEIPT_TOKEN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H 'X-Order-Receipt-Token: invalid-receipt-token')
+          test "${INVALID_RECEIPT_TOKEN_STATUS}" = "404"
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-after-restart.json
 
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/payments/orders/${ORDER_ID}/intent" \
             -H 'Content-Type: application/json' --data "{\"receiptToken\":\"${RECEIPT_TOKEN}\"}" > /tmp/payment-intent.json
@@ -154,7 +231,7 @@ jobs:
 
           stop_api
           start_api
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
+          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-paid-after-restart.json
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/login \
             -H 'Content-Type: application/json' \
@@ -180,6 +257,18 @@ jobs:
           assert 'orders.read' in session['permissions']
           assert 'products.write' in session['permissions']
           PY
+          for export_path in \
+            /api/v1/admin/orders/export.csv \
+            /api/v1/admin/customers/export.csv; do
+            export_status=$(curl -s -o /tmp/sensitive-export-response.json -w '%{http_code}' \
+              "http://127.0.0.1:5099${export_path}" -H "Authorization: Bearer ${TOKEN}")
+            test "${export_status}" = "428"
+            python3 - <<'PY'
+          import json
+          response = json.load(open('/tmp/sensitive-export-response.json', encoding='utf-8'))
+          assert response['code'] == 'step_up_required'
+          PY
+          done
           curl -fsS http://127.0.0.1:5099/api/v1/admin/users \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/admin-users.json
           python3 - <<'PY'
@@ -199,8 +288,11 @@ jobs:
           assert warehouse['titleFa'] == 'اپراتور انبار'
           assert 'inventory.write' in warehouse['permissions']
           PY
-          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+          STEP_UP_TOKEN=$(curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' | python3 -c "import json,sys; print(json.load(sys.stdin)['stepUpToken'])")
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/users \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"email":"warehouse@example.test","displayName":"اپراتور انبار","role":"WarehouseOperator"}' > /tmp/admin-user-created.json
           USER_ID=$(python3 -c "import json; print(json.load(open('/tmp/admin-user-created.json'))['user']['id'])")
           python3 - <<'PY'
@@ -213,7 +305,7 @@ jobs:
           assert 'inventory.write' in created['permissions']
           PY
           curl -fsS -X PATCH "http://127.0.0.1:5099/api/v1/admin/users/${USER_ID}/status" \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"isActive":false}' > /tmp/admin-user-disabled.json
           python3 - <<'PY'
           import json
@@ -329,8 +421,12 @@ jobs:
           assert any(item['movementType'] == 'Reserved' and item['quantityDelta'] == -1 for item in movements)
           PY
 
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/inventory-step-up.json
+          INVENTORY_STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/inventory-step-up.json'))['stepUpToken'])")
           curl -fsS -X POST "http://127.0.0.1:5099/api/v1/admin/inventory/adjust" \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-durable-adjustment-01' \
             --data '{"sku":"PI-AKB-250","quantityDelta":1,"reason":"ci-audit"}' -D /tmp/inventory-adjusted.headers > /tmp/inventory-adjusted.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=ProductVariant&entityId=PI-AKB-250&limit=20" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-audit-log.json
@@ -347,21 +443,21 @@ jobs:
           PY
 
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/products/ \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"title":"CI waste fixture","slug":"ci-waste-fixture","category":"CI","origin":"IR","currency":"IRR","unitType":"Weight","isPublished":true,"variants":[{"sku":"CI-WASTE-ONLY","quantity":250,"displayLabel":"CI waste fixture","price":5000,"availablePackages":0}]}' > /tmp/ci-waste-product.json
           curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/inventory/batches \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","receivedPackages":1,"producedAt":"2026-10-01T00:00:00Z","expiresAt":"2027-10-01T00:00:00Z","costPrice":1000,"purchasedAt":"2026-10-07T00:00:00Z","supplier":"CI Supplier"}' > /tmp/inventory-waste-batch.json
           WASTE_INVALID_STATUS=$(curl -s -o /tmp/inventory-waste-invalid.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-invalid-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":0,"reason":"invalid"}')
           test "${WASTE_INVALID_STATUS}" = "400"
           WASTE_OVERFLOW_STATUS=$(curl -s -o /tmp/inventory-waste-overflow.json -w '%{http_code}' -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-overflow-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":2,"reason":"over-batch"}')
           test "${WASTE_OVERFLOW_STATUS}" = "409"
           curl -fsS -D /tmp/inventory-waste.headers -X POST http://127.0.0.1:5099/api/v1/admin/inventory/waste \
-            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${INVENTORY_STEP_UP_TOKEN}" -H 'Content-Type: application/json' -H 'Idempotency-Key: ci-waste-success-01' \
             --data '{"sku":"CI-WASTE-ONLY","batchCode":"CI-WASTE-LOT-1","quantity":1,"reason":"ci-damaged-package"}' > /tmp/inventory-waste.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/inventory/movements?sku=CI-WASTE-ONLY" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/inventory-waste-movements.json
@@ -424,10 +520,18 @@ jobs:
           
           SHIPPING_INVALID_STATUS=$(curl -s -o /tmp/order-shipping-invalid.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000}')
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","updateActualShippingCost":false}')
           test "${SHIPPING_INVALID_STATUS}" = "400"
-          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+          curl -fsS -X POST http://127.0.0.1:5099/api/v1/admin/auth/step-up \
             -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/shipping-step-up.json
+          SHIPPING_STEP_UP_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/shipping-step-up.json'))['stepUpToken'])")
+          SHIPPING_STEP_UP_STATUS=$(curl -s -o /tmp/order-shipping-step-up-required.json -w '%{http_code}' -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+            --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}')
+          test "${SHIPPING_STEP_UP_STATUS}" = "428"
+          curl -fsS -D /tmp/order-shipping.headers -X PATCH "http://127.0.0.1:5099/api/v1/admin/orders/${ORDER_ID}/shipping" \
+            -H "Authorization: Bearer ${TOKEN}" -H "X-Admin-Step-Up: ${SHIPPING_STEP_UP_TOKEN}" -H 'Content-Type: application/json' \
             --data '{"carrier":"پست","trackingCode":"CI-TRACK-1","actualShippingCost":12000,"reason":"ci-shipment-audit"}' > /tmp/order-shipping.json
           curl -fsS "http://127.0.0.1:5099/api/v1/admin/audit-log?entityType=Order&entityId=${ORDER_ID}" \
             -H "Authorization: Bearer ${TOKEN}" > /tmp/order-shipping-audit.json
@@ -544,14 +648,43 @@ jobs:
             -H "Authorization: Bearer ${SALES_TOKEN}")
           test "${ANALYTICS_STATUS}" = "403"
           stop_role_api
-          start_api
-          curl -fsS "http://127.0.0.1:5099/api/v1/checkout/orders/${ORDER_ID}?receiptToken=${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
+
+          ADMIN_ROLE=MarketingManager start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/marketing-login.json
+          MARKETING_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/marketing-login.json'))['accessToken'])")
+          MARKETING_SETTINGS_READ=$(curl -s -o /tmp/marketing-settings-read.json -w '%{http_code}' \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${MARKETING_TOKEN}")
+          test "${MARKETING_SETTINGS_READ}" = "403"
+          MARKETING_SETTINGS_WRITE=$(curl -s -o /tmp/marketing-settings-write.json -w '%{http_code}' -X PUT \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${MARKETING_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
+          test "${MARKETING_SETTINGS_WRITE}" = "403"
+          stop_role_api
+
+          ADMIN_ROLE=StoreManager start_role_api
+          curl -fsS -X POST http://127.0.0.1:5100/api/v1/admin/auth/login \
+            -H 'Content-Type: application/json' \
+            --data '{"email":"ci-owner@mazeduneh.test","password":"Mazeduneh-CI-Owner-Password!"}' > /tmp/store-manager-login.json
+          STORE_MANAGER_TOKEN=$(python3 -c "import json; print(json.load(open('/tmp/store-manager-login.json'))['accessToken'])")
+          STORE_MANAGER_SETTINGS_READ=$(curl -s -o /tmp/store-manager-settings.json -w '%{http_code}' \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${STORE_MANAGER_TOKEN}")
+          test "${STORE_MANAGER_SETTINGS_READ}" = "200"
+          STORE_MANAGER_SETTINGS_WRITE=$(curl -s -o /tmp/store-manager-settings-write.json -w '%{http_code}' -X PUT \
+            http://127.0.0.1:5100/api/v1/admin/commerce/settings -H "Authorization: Bearer ${STORE_MANAGER_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"taxRatePercent":10,"shippingMethods":[{"code":"standard","title":"پست","price":50000,"freeAbove":0,"isActive":true,"internalCost":0}]}' )
+          test "${STORE_MANAGER_SETTINGS_WRITE}" = "428"
+          curl -fsS "http://127.0.0.1:5100/api/v1/checkout/orders/${ORDER_ID}" -H "X-Order-Receipt-Token: ${RECEIPT_TOKEN}" > /tmp/order-delivered-after-restart.json
           python3 - <<'PY'
           import json
           order = json.load(open('/tmp/order-delivered-after-restart.json', encoding='utf-8'))
           assert order['state'] == 'Delivered'
           assert [item['state'] for item in order['transitions']] == ['AwaitingPayment','Paid','Preparing','Shipped','Delivered']
           PY
+          stop_role_api
 
       - name: API readiness failure and recovery contract
         env:

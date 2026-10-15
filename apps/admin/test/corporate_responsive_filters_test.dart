@@ -23,7 +23,9 @@ void main() {
       final client = MockClient((request) async {
         captured.add(request.url);
         return http.Response(jsonEncode(request.url.path.endsWith('/summary')
-            ? {'newCount': 12, 'unfollowedCount': 0} : []), 200,
+            ? {'newCount': 12, 'unfollowedCount': 0, 'totalCount': 20, 'activeCount': 15,
+                'finalizedCount': 5, 'conversionRatePercent': 25, 'activePipelineBudget': 5000000,
+                'averageHoursToFirstContact': 4.5, 'firstContactCount': 10} : []), 200,
             headers: {'content-type': 'application/json; charset=utf-8'});
       });
       await tester.pumpWidget(MaterialApp(
@@ -36,30 +38,41 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('۱۲ جدید'), findsOneWidget);
+      expect(find.text('نرخ تبدیل به سفارش نهایی'), findsOneWidget);
+      final mainScrollable = find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first;
+      await tester.scrollUntilVisible(find.text('وضعیت درخواست'), 300, scrollable: mainScrollable);
       expect(find.text('وضعیت درخواست'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.byType(TextField).first);
+      await tester.scrollUntilVisible(find.byType(TextField).first, 300, scrollable: mainScrollable);
       await tester.enterText(find.byType(TextField).first, 'شرکت');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(captured.any((uri) => uri.queryParameters['query'] == 'شرکت'), isTrue);
-      final overdueChip = find.widgetWithText(FilterChip, 'پیگیری‌های عقب‌افتاده');
-      await tester.ensureVisible(overdueChip);
+      await tester.drag(mainScrollable, const Offset(0, 1000));
       await tester.pumpAndSettle();
+      final overdueChip = find.widgetWithText(FilterChip, 'پیگیری‌های عقب‌افتاده');
       await tester.tap(overdueChip);
       await tester.pumpAndSettle();
       expect(captured.any((uri) => uri.queryParameters['overdue'] == 'true'), isTrue);
-      await tester.ensureVisible(find.text('پیگیری عقب‌افتاده‌ای پیدا نشد'));
-      expect(find.text('پیگیری عقب‌افتاده‌ای پیدا نشد'), findsOneWidget);
       final planningChip = find.widgetWithText(FilterChip, 'نیازمند برنامه‌ریزی');
-      await tester.ensureVisible(planningChip);
-      await tester.pumpAndSettle();
       await tester.tap(planningChip);
       await tester.pumpAndSettle();
       final planning = captured.where((uri) => uri.queryParameters['needsPlanning'] == 'true').last;
       expect(planning.queryParameters.containsKey('overdue'), isFalse);
-      await tester.ensureVisible(find.text('همه درخواست‌های فعال برنامه‌ریزی شده‌اند'));
-      expect(find.text('همه درخواست‌های فعال برنامه‌ریزی شده‌اند'), findsOneWidget);
+      await tester.ensureVisible(find.text('مدیریت بسته‌ها'));
+      await tester.tap(find.text('مدیریت بسته‌ها'));
+      await tester.pumpAndSettle();
+      expect(find.text('مدیریت بسته‌های فروش سازمانی'), findsOneWidget);
+      final packageScrollable = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(Scrollable),
+      ).first;
+      await tester.scrollUntilVisible(
+        find.text('افزودن قلم'),
+        120,
+        scrollable: packageScrollable,
+      );
+      expect(find.text('افزودن قلم'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

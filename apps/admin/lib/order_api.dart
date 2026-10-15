@@ -25,8 +25,16 @@ class OrderApiClient {
     return {'authorization': 'Bearer $token', if (json) 'content-type': 'application/json; charset=utf-8'};
   }
 
-  Future<List<AdminOrder>> fetchOrders({String? state, String? query, int limit = 100}) async {
-    final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
+  Future<List<AdminOrder>> fetchOrders({String? state, String? query, DateTime? createdFromUtc, DateTime? createdToUtcExclusive, int limit = 100}) async {
+    if ((createdFromUtc == null) != (createdToUtcExclusive == null)) {
+      throw ArgumentError('Both order date range boundaries are required.');
+    }
+    final params = <String, String>{
+      'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state,
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (createdFromUtc != null) 'from': createdFromUtc.toUtc().toIso8601String(),
+      if (createdToUtcExclusive != null) 'to': createdToUtcExclusive.toUtc().toIso8601String(),
+    };
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders').replace(queryParameters: params), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
@@ -45,9 +53,17 @@ class OrderApiClient {
     return decoded.map((item) => AdminOverdueShipment.fromJson(item as Map<String, dynamic>)).toList();
   }
 
-  Future<List<int>> exportOrdersCsv({String? state, String? query, int limit = 1000}) async {
-    final params = <String, String>{'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state, if (query != null && query.trim().isNotEmpty) 'q': query.trim()};
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/export.csv').replace(queryParameters: params), headers: _headers());
+  Future<List<int>> exportOrdersCsv({required String stepUpToken, String? state, String? query, DateTime? createdFromUtc, DateTime? createdToUtcExclusive, int limit = 1000}) async {
+    if ((createdFromUtc == null) != (createdToUtcExclusive == null)) {
+      throw ArgumentError('Both order date range boundaries are required.');
+    }
+    final params = <String, String>{
+      'limit': '$limit', if (state != null && state.isNotEmpty) 'state': state,
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (createdFromUtc != null) 'from': createdFromUtc.toUtc().toIso8601String(),
+      if (createdToUtcExclusive != null) 'to': createdToUtcExclusive.toUtc().toIso8601String(),
+    };
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/export.csv').replace(queryParameters: params), headers: {..._headers(), 'x-admin-step-up': stepUpToken});
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return response.bodyBytes;
@@ -94,16 +110,32 @@ class OrderApiClient {
     return DashboardPreferences.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminAnalytics> fetchAnalytics({int days = 30}) async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: {'days': '$days'}), headers: _headers());
+  Future<AdminAnalytics> fetchAnalytics({int days = 30, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both analytics range boundaries are required.');
+    }
+    final query = <String, String>{
+      if (fromUtc == null) 'days': '$days',
+      if (fromUtc != null) 'from': fromUtc.toUtc().toIso8601String(),
+      if (toUtcExclusive != null) 'to': toUtcExclusive.toUtc().toIso8601String(),
+    };
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics').replace(queryParameters: query), headers: _headers());
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminAnalytics.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<List<AdminProductProfitability>> fetchProductProfitability({int days = 30}) async {
+  Future<List<AdminProductProfitability>> fetchProductProfitability({int days = 30, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both product analytics range boundaries are required.');
+    }
+    final query = <String, String>{
+      if (fromUtc == null) 'days': '$days',
+      if (fromUtc != null) 'from': fromUtc.toUtc().toIso8601String(),
+      if (toUtcExclusive != null) 'to': toUtcExclusive.toUtc().toIso8601String(),
+    };
     final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/admin/analytics/products').replace(queryParameters: {'days': '$days'}),
+      Uri.parse('$baseUrl/api/v1/admin/analytics/products').replace(queryParameters: query),
       headers: _headers(),
     );
     _guard(response);
@@ -119,17 +151,17 @@ class OrderApiClient {
     return AdminNotifications.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<StockAdjustmentResult> adjustStock(String sku, int quantityDelta, String reason, {required String operationKey}) async {
-    final response = await _client.post(Uri.parse('$baseUrl/api/v1/admin/inventory/adjust'), headers: {..._headers(json: true), 'Idempotency-Key': operationKey}, body: jsonEncode({'sku': sku, 'quantityDelta': quantityDelta, 'reason': reason}));
+  Future<StockAdjustmentResult> adjustStock(String sku, int quantityDelta, String reason, {required String operationKey, required String stepUpToken}) async {
+    final response = await _client.post(Uri.parse('$baseUrl/api/v1/admin/inventory/adjust'), headers: {..._headers(json: true), 'Idempotency-Key': operationKey, 'x-admin-step-up': stepUpToken}, body: jsonEncode({'sku': sku, 'quantityDelta': quantityDelta, 'reason': reason}));
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return StockAdjustmentResult.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<StockAdjustmentResult> writeOffStock(String sku, String batchCode, int quantity, String reason, {required String operationKey}) async {
+  Future<StockAdjustmentResult> writeOffStock(String sku, String batchCode, int quantity, String reason, {required String operationKey, required String stepUpToken}) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/inventory/waste'),
-      headers: {..._headers(json: true), 'Idempotency-Key': operationKey},
+      headers: {..._headers(json: true), 'Idempotency-Key': operationKey, 'x-admin-step-up': stepUpToken},
       body: jsonEncode({'sku': sku, 'batchCode': batchCode, 'quantity': quantity, 'reason': reason}),
     );
     _guard(response);
@@ -274,11 +306,11 @@ class OrderApiClient {
     return AdminOrderNote.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost, required String reason}) async {
+  Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost, bool updateActualShippingCost = true, String? stepUpToken, required String reason}) async {
     final response = await _client.patch(
       Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/shipping'),
-      headers: _headers(json: true),
-      body: jsonEncode({'carrier': carrier, 'trackingCode': trackingCode, 'actualShippingCost': actualShippingCost, 'reason': reason}),
+      headers: {..._headers(json: true), if (stepUpToken != null) 'x-admin-step-up': stepUpToken},
+      body: jsonEncode({'carrier': carrier, 'trackingCode': trackingCode, 'actualShippingCost': actualShippingCost, 'updateActualShippingCost': updateActualShippingCost, 'reason': reason}),
     );
     _guard(response);
     if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
@@ -614,6 +646,7 @@ class AdminProductProfitability {
     required this.revenue,
     required this.cost,
     required this.grossProfit,
+    this.discount = 0,
   });
 
   final String productTitle;
@@ -623,6 +656,7 @@ class AdminProductProfitability {
   final num revenue;
   final num cost;
   final num grossProfit;
+  final num discount;
 
   factory AdminProductProfitability.fromJson(Map<String, dynamic> json) => AdminProductProfitability(
         productTitle: json['productTitle'] as String,
@@ -632,11 +666,29 @@ class AdminProductProfitability {
         revenue: json['revenue'] as num,
         cost: json['cost'] as num,
         grossProfit: json['grossProfit'] as num,
+        discount: (json['discount'] as num?) ?? 0,
       );
 }
 
 class AdminAnalytics {
-  const AdminAnalytics({required this.days, required this.orderCount, required this.unitsSold, required this.revenue, required this.cost, required this.grossProfit, required this.grossMarginPercent, required this.tax, required this.netProfit, required this.shippingExpense});
+  const AdminAnalytics({
+    required this.days,
+    required this.orderCount,
+    required this.unitsSold,
+    required this.revenue,
+    required this.cost,
+    required this.grossProfit,
+    required this.grossMarginPercent,
+    required this.tax,
+    required this.netProfit,
+    required this.shippingExpense,
+    this.merchandiseRevenue = 0,
+    this.discount = 0,
+    this.shippingRevenue = 0,
+    this.productCost = 0,
+    this.packagingCost = 0,
+    this.additionalCost = 0,
+  });
   final int days;
   final int orderCount;
   final int unitsSold;
@@ -647,6 +699,12 @@ class AdminAnalytics {
   final num tax;
   final num netProfit;
   final num shippingExpense;
+  final num merchandiseRevenue;
+  final num discount;
+  final num shippingRevenue;
+  final num productCost;
+  final num packagingCost;
+  final num additionalCost;
   factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
     days: json['days'] as int,
     orderCount: json['orderCount'] as int,
@@ -658,6 +716,12 @@ class AdminAnalytics {
     tax: (json['tax'] as num?) ?? 0,
     netProfit: (json['netProfit'] as num?) ?? ((json['grossProfit'] as num) - ((json['tax'] as num?) ?? 0)),
     shippingExpense: (json['shippingExpense'] as num?) ?? 0,
+    merchandiseRevenue: (json['merchandiseRevenue'] as num?) ?? 0,
+    discount: (json['discount'] as num?) ?? 0,
+    shippingRevenue: (json['shippingRevenue'] as num?) ?? 0,
+    productCost: (json['productCost'] as num?) ?? (json['cost'] as num),
+    packagingCost: (json['packagingCost'] as num?) ?? 0,
+    additionalCost: (json['additionalCost'] as num?) ?? 0,
   );
 }
 
@@ -725,12 +789,23 @@ class AdminNotification {
 }
 
 class AdminNotifications {
-  const AdminNotifications({required this.awaitingPayment, required this.lowStockItems, required this.items});
+  const AdminNotifications({
+    required this.awaitingPayment,
+    required this.lowStockItems,
+    required this.items,
+    this.corporateOverdueFollowUps = 0,
+  });
   final int awaitingPayment;
   final int lowStockItems;
+  final int corporateOverdueFollowUps;
   final List<AdminNotification> items;
   int get count => items.length;
-  factory AdminNotifications.fromJson(Map<String, dynamic> json) => AdminNotifications(awaitingPayment: json['awaitingPayment'] as int, lowStockItems: json['lowStockItems'] as int, items: (json['items'] as List<dynamic>).map((item) => AdminNotification.fromJson(item as Map<String, dynamic>)).toList());
+  factory AdminNotifications.fromJson(Map<String, dynamic> json) => AdminNotifications(
+    awaitingPayment: json['awaitingPayment'] as int,
+    lowStockItems: json['lowStockItems'] as int,
+    corporateOverdueFollowUps: (json['corporateOverdueFollowUps'] as num?)?.toInt() ?? 0,
+    items: (json['items'] as List<dynamic>).map((item) => AdminNotification.fromJson(item as Map<String, dynamic>)).toList(),
+  );
 }
 
 class StockAdjustmentResult {

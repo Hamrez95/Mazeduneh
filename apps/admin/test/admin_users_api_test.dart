@@ -41,9 +41,9 @@ void main() {
     final users = await api.fetchUsers();
     final roles = await api.fetchRoles();
     final selectedPermissions = ['inventory.read', 'customers.pii.read'];
-    final created = await api.createUser(email: 'warehouse@example.com', displayName: 'اپراتور انبار', role: 'WarehouseOperator', permissions: selectedPermissions);
-    final updated = await api.setPermissions(created.user.id, ['inventory.read']);
-    final disabled = await api.setStatus(created.user.id, false);
+    final created = await api.createUser(email: 'warehouse@example.com', displayName: 'اپراتور انبار', role: 'WarehouseOperator', permissions: selectedPermissions, stepUpToken: 'fresh-proof');
+    final updated = await api.setPermissions(created.user.id, ['inventory.read'], stepUpToken: 'fresh-proof');
+    final disabled = await api.setStatus(created.user.id, false, stepUpToken: 'fresh-proof');
 
     expect(users.single.displayName, 'اپراتور انبار');
     expect(roles.single.titleFa, 'اپراتور انبار');
@@ -51,6 +51,7 @@ void main() {
     expect(updated.permissions, ['inventory.read']);
     expect(disabled.isActive, isFalse);
     expect(requests.where((request) => request.headers['authorization'] == 'Bearer users-token'), hasLength(5));
+    expect(requests.skip(2).every((request) => request.headers['x-admin-step-up'] == 'fresh-proof'), isTrue);
     expect(jsonDecode(requests[2].body)['role'], 'WarehouseOperator');
     expect(jsonDecode(requests[2].body)['permissions'], selectedPermissions);
     expect(requests[3].url.path, '/api/v1/admin/users/user-1/permissions');

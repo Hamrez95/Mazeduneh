@@ -2,8 +2,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
+import 'admin_step_up_dialog.dart';
 import 'admin_theme.dart';
 import 'admin_permissions.dart';
+import 'admin_navigation.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'edit_product_dialog.dart';
@@ -11,8 +13,9 @@ import 'formatters.dart';
 import 'media_api.dart';
 
 class CatalogPage extends StatefulWidget {
-  const CatalogPage({super.key, this.api});
+  const CatalogPage({super.key, this.api, this.onNavigate});
   final CatalogApiClient? api;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
 
   @override
   State<CatalogPage> createState() => CatalogPageState();
@@ -55,14 +58,24 @@ class CatalogPageState extends State<CatalogPage> {
   }
 
   Future<void> openCreateDialog() async {
+    final session = OwnerSession.instance;
+    if (!session.can(AdminPermissions.productsWrite)) return;
+    if (!session.can(AdminPermissions.pricingWrite)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('برای ثبت محصول و قیمت اولیه، دسترسی قیمت‌گذاری لازم است.'),
+      ));
+      return;
+    }
     final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(
       mediaApi: MediaApiClient(),
       categories: categories,
       canWriteCosts: OwnerSession.instance.can(AdminPermissions.pricingWrite),
     ));
-    if (command == null) return;
+    if (command == null || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context);
+    if (stepUpToken == null || !mounted) return;
     try {
-      await api.createProduct(command);
+      await api.createProduct(command, stepUpToken: stepUpToken);
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌صورت پیش‌نویس ثبت شد.')));
@@ -204,6 +217,9 @@ class CatalogPageState extends State<CatalogPage> {
             onEdit: OwnerSession.instance.can(AdminPermissions.productsWrite)
                 ? () => editProduct(product)
                 : null,
+            onVariantOrders: OwnerSession.instance.can(AdminPermissions.ordersRead)
+                ? (sku) => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.orders, query: sku))
+                : null,
           );
         },
       );
@@ -218,12 +234,14 @@ class ProductCard extends StatelessWidget {
     required this.publicationBusy,
     required this.onPublicationPressed,
     this.onEdit,
+    this.onVariantOrders,
   });
 
   final Product product;
   final bool publicationBusy;
   final VoidCallback onPublicationPressed;
   final VoidCallback? onEdit;
+  final ValueChanged<String>? onVariantOrders;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -249,7 +267,14 @@ class ProductCard extends StatelessWidget {
             const Spacer(),
             Wrap(spacing: 5, runSpacing: 5, children: [
               for (final variant in product.variants)
-                Chip(label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10))),
+                if (onVariantOrders != null)
+                  ActionChip(
+                    tooltip: 'نمایش سفارش‌های ${variant.displayLabel}',
+                    onPressed: () => onVariantOrders!(variant.sku),
+                    label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10)),
+                  )
+                else
+                  Chip(label: Text('${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)} بسته', style: const TextStyle(fontSize: 10))),
             ]),
             const SizedBox(height: 8),
             Text(

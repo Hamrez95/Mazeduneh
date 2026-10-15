@@ -79,7 +79,7 @@ class _AuditLogPageState extends State<AuditLogPage> {
           const Card(child: AdminEmptyState(
             icon: Icons.fact_check_outlined,
             title: 'هنوز فعالیت حساسی ثبت نشده است',
-            detail: 'وقتی انتشار محصول یا اصلاح موجودی انجام شود، خلاصه تغییرات اینجا دیده می‌شود.',
+            detail: 'با ثبت دعوت، تغییر دسترسی، انتشار محصول یا اصلاح موجودی، جزئیات آن اینجا نمایش داده می‌شود.',
           ))
         else
           _AuditResults(entries: entries),
@@ -109,7 +109,7 @@ class _AuditHeader extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 6),
-          const Text('برای پیگیری تغییرات انتشار محصول و موجودی، دلیل و تصویر قبل و بعد را بررسی کنید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
+          const Text('دعوت‌ها، تغییر دسترسی‌ها و عملیات فروشگاه را با انجام‌دهنده و تصویر قبل و بعد پیگیری کنید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
           if (lastLoadedAt != null) ...[
             const SizedBox(height: 5),
             Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
@@ -140,11 +140,15 @@ class _AuditFilters extends StatelessWidget {
               final stacked = constraints.maxWidth < 620;
               final type = DropdownButtonFormField<String>(
                 value: entityType,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'نوع مورد'),
                 items: const [
                   DropdownMenuItem(value: '', child: Text('همه فعالیت‌ها')),
+                  DropdownMenuItem(value: 'AdminUser', child: Text('کاربران مدیریتی')),
+                  DropdownMenuItem(value: 'Order', child: Text('سفارش‌ها')),
                   DropdownMenuItem(value: 'Product', child: Text('محصول')),
                   DropdownMenuItem(value: 'ProductVariant', child: Text('SKU محصول')),
+                  DropdownMenuItem(value: 'InventoryBatch', child: Text('بچ انبار')),
                 ],
                 onChanged: onTypeChanged,
               );
@@ -187,7 +191,7 @@ class _AuditEntryTile extends StatelessWidget {
   Widget build(BuildContext context) => ExpansionTile(
         tilePadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         childrenPadding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
-        leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, foregroundColor: AdminColors.ink, child: Icon(entry.action == 'inventory.adjustment' ? Icons.inventory_2_rounded : Icons.publish_rounded, size: 19)),
+        leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, foregroundColor: AdminColors.ink, child: Icon(_iconFor(entry), size: 19)),
         title: Text(entry.actionLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
         subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('${entry.entityLabel}: ${entry.entityId}  ·  ${formatPersianDateTime(entry.occurredAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
         children: [
@@ -199,6 +203,14 @@ class _AuditEntryTile extends StatelessWidget {
         ],
       );
 }
+
+IconData _iconFor(AdminAuditLogEntry entry) => switch (entry.entityType) {
+      'AdminUser' => Icons.manage_accounts_rounded,
+      'Order' => Icons.receipt_long_rounded,
+      'InventoryBatch' || 'ProductVariant' => Icons.inventory_2_rounded,
+      _ when entry.action == 'inventory.adjustment' => Icons.inventory_2_rounded,
+      _ => Icons.publish_rounded,
+    };
 
 class _AuditMetaGrid extends StatelessWidget {
   const _AuditMetaGrid({required this.entry});

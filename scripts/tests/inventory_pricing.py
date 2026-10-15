@@ -83,10 +83,13 @@ def checkout(key):
 with tempfile.TemporaryFile() as log:
     api, token = start_api()
     try:
+        status, create_proof = step_up(token)
+        assert status == 200 and create_proof.get('stepUpToken')
         status, _ = request('/api/v1/products/', 'POST', {
             'title': 'CI price', 'slug': SLUG, 'category': 'CI', 'origin': 'IR', 'currency': 'IRR',
             'unitType': 'Weight', 'isPublished': True, 'variants': [
-                {'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]}, token)
+                {'sku': SKU, 'quantity': 250, 'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}]},
+            token, {'X-Admin-Step-Up': create_proof['stepUpToken']})
         assert status == 201
         receipt = {'sku': SKU, 'batchCode': 'CI-PRICE-ONE', 'receivedPackages': 12,
                    'producedAt': '2025-01-01T00:00:00Z', 'expiresAt': '2030-01-01T00:00:00Z',
@@ -117,8 +120,9 @@ with tempfile.TemporaryFile() as log:
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 5000}, token, step_up_headers)[0] == 409
         assert request(PATH+'/apply', 'POST', {'recipe': recipe, 'expectedPrice': 6630}, token, step_up_headers)[0] == 200  # No-op, no duplicate audit.
         _, events = request('/api/v1/admin/audit-log?entityType=ProductVariant&entityId='+SKU, token=token)
-        assert len(events) == 1 and events[0]['actor'] == os.environ['Admin__Email']
-        assert events[0]['beforeJson'] and events[0]['afterJson']
+        price_events = [event for event in events if event['action'] == 'inventory.price.applied']
+        assert len(price_events) == 1 and price_events[0]['actor'] == os.environ['Admin__Email']
+        assert price_events[0]['beforeJson'] and price_events[0]['afterJson']
         _, public = request('/api/v1/products/'+SLUG)
         assert public['variants'][0]['price'] == 6630  # Visible before process restart.
         assert public['variants'][0]['costPrice'] == 0
@@ -129,7 +133,7 @@ with tempfile.TemporaryFile() as log:
         assert history[0]['costPrice'] == 4000 and history[0]['packagingCost'] == 500  # Original purchase immutable.
         new_order = checkout('ci-price-after')
         assert new_order['lines'][0]['unitPrice'] == 6630
-        _, original = request('/api/v1/checkout/orders/'+old_order['id']+'?receiptToken='+old_order['receiptToken'])
+        _, original = request('/api/v1/checkout/orders/'+old_order['id'], extra_headers={'X-Order-Receipt-Token': old_order['receiptToken']})
         assert original['lines'][0]['unitPrice'] == 5000
         assert request(PATH)[0] == 401
     finally:
@@ -168,7 +172,7 @@ with tempfile.TemporaryFile() as log:
                                {'X-Admin-Step-Up': proof['stepUpToken']})[0] == 403
         finally:
             stop_api(api)
-    for permissions, expected_status in [('pricing.read', 403), ('pricing.read,pricing.write', 428)]:
+    for permissions, expected_status in [('settings.read', 403), ('settings.read,settings.write', 428)]:
         api, token = start_api(permissions)
         try:
             _, settings = request('/api/v1/admin/commerce/settings', token=token)
@@ -193,6 +197,13 @@ with tempfile.TemporaryFile() as log:
         _, state = request(PATH, token=owner_token)
         status, products = request('/api/v1/products/admin', token=content_token, base=RESTRICTED_BASE)
         assert status == 200
+        create_status, _ = request('/api/v1/products/', 'POST', {
+            'title': 'Content-only create', 'slug': 'content-only-create-fixture', 'category': 'CI',
+            'origin': 'IR', 'currency': 'IRR', 'unitType': 'Weight', 'isPublished': False,
+            'variants': [{'sku': 'CI-CONTENT-ONLY-CREATE', 'quantity': 250,
+                          'displayLabel': '250g', 'price': 5000, 'availablePackages': 0}],
+        }, content_token, base=RESTRICTED_BASE)
+        assert create_status == 403, create_status
         product = next(item for item in products if item['slug'] == SLUG)
         variant = product['variants'][0]
         stale_price = variant['price']
@@ -240,6 +251,10 @@ with tempfile.TemporaryFile() as log:
                 'costPrice': 999999, 'packagingCost': 999999, 'additionalCost': 999999,
             }],
         }
+        unauthorized_price_change = dict(update, variants=[dict(
+            update['variants'][0], price=stale_price + 1)])
+        assert request('/api/v1/products/'+SLUG, 'PUT', unauthorized_price_change,
+                       content_token, base=RESTRICTED_BASE)[0] == 403
         status, updated_product = request('/api/v1/products/'+SLUG, 'PUT', update,
                                           content_token, base=RESTRICTED_BASE)
         assert status == 200

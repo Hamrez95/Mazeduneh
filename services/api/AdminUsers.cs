@@ -11,7 +11,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
 
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -51,17 +51,47 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "003-member-permissions", """
             alter table admin_users add column if not exists permissions_json jsonb null;
             """, cancellationToken);
-        await using var seed = new NpgsqlCommand("""
-            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
-            values(@id,@store_id,@email,@display_name,'Owner',true,'system',now())
-            on conflict(store_id,email) do update set role='Owner', is_active=true, deactivated_at=null;
-            """, connection);
-        seed.Parameters.AddWithValue("id", Guid.NewGuid());
-        seed.Parameters.AddWithValue("store_id", DefaultStoreId);
-        seed.Parameters.AddWithValue("email", tokens.OwnerEmail);
-        seed.Parameters.AddWithValue("display_name", "مدیر اصلی");
-        await seed.ExecuteNonQueryAsync(cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "004-totp-replay-guard", """
+            create table if not exists admin_totp_replay_guard (
+                credential_id varchar(120) primary key,
+                last_time_step bigint not null
+            );
+            """, cancellationToken);
         logger.LogInformation("Admin user membership schema is ready.");
+    }
+
+    public async Task<bool> TryConsumeTotpTimeStepAsync(string credentialId, long timeStep, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_totp_replay_guard(credential_id,last_time_step)
+            values(@credential_id,@time_step)
+            on conflict(credential_id) do update
+                set last_time_step=excluded.last_time_step
+                where admin_totp_replay_guard.last_time_step<excluded.last_time_step
+            returning 1;
+            """, connection);
+        command.Parameters.AddWithValue("credential_id", credentialId);
+        command.Parameters.AddWithValue("time_step", timeStep);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
+    }
+
+    public async Task SeedOwnerMembershipAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) throw new InvalidOperationException("ConnectionStrings:Catalog must be configured to seed an admin membership.");
+        if (string.IsNullOrWhiteSpace(tokens.OwnerEmail)) throw new InvalidOperationException("Admin:Email must be configured to seed an admin membership.");
+
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_users(id,store_id,email,display_name,role,is_active,created_by,created_at)
+            values(@id,@store_id,@email,@display_name,'Owner',true,'deployment-seed',now())
+            on conflict(store_id,email) do nothing;
+            """, connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("store_id", DefaultStoreId);
+        command.Parameters.AddWithValue("email", tokens.OwnerEmail);
+        command.Parameters.AddWithValue("display_name", "مدیر اصلی");
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<AdminUserSummary>> ListAsync(string? storeId, CancellationToken cancellationToken)
@@ -179,7 +209,8 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await using var command = new NpgsqlCommand("""
             insert into admin_user_sessions(session_id,user_id,store_id,created_at,expires_at)
             select @session_id,id,store_id,now(),@expires_at
-            from admin_users where id=@user_id and store_id=@store_id and is_active=true and password_hash is not null;
+            from admin_users where id=@user_id and store_id=@store_id and is_active=true
+              and (password_hash is not null or role='Owner');
             """, connection);
         command.Parameters.AddWithValue("session_id", sessionId);
         command.Parameters.AddWithValue("user_id", userId);
@@ -187,6 +218,21 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         command.Parameters.AddWithValue("expires_at", expiresAt);
         if (await command.ExecuteNonQueryAsync(cancellationToken) != 1)
             throw new InvalidOperationException("عضویت مدیر دیگر فعال نیست.");
+    }
+
+    public async Task<Guid?> FindOwnerMembershipIdAsync(string email, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id from admin_users
+            where store_id=@store_id and email=@email and role='Owner' and is_active=true
+            limit 1;
+            """, connection);
+        command.Parameters.AddWithValue("store_id", DefaultStoreId);
+        command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is Guid userId ? userId : null;
     }
 
     public async Task<bool> IsSessionActiveAsync(Guid userId, string storeId, Guid sessionId, CancellationToken cancellationToken)
@@ -256,6 +302,21 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             await audit.RecordAsync(connection, transaction, actor, "admin-user.status-changed", "AdminUser", id.ToString(), before, updated, isActive ? "فعال‌سازی عضویت مدیر" : "غیرفعال‌سازی عضویت مدیر", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return updated;
+    }
+
+    public async Task<bool> CanManageAsync(Guid id, string? storeId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return false;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select exists (
+                select 1 from admin_users
+                where id=@id and store_id=@store_id and lower(role) <> 'owner'
+            );
+            """, connection);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
     }
 
     public async Task<AdminUserSummary?> SetPermissionsAsync(Guid id, IReadOnlyList<string> permissions, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
@@ -340,12 +401,6 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         json is null ? AdminPermissionCatalog.Resolve(role) : JsonSerializer.Deserialize<string[]>(json) ?? [];
 
     private static string NormalizeStoreId(string? storeId) => string.IsNullOrWhiteSpace(storeId) ? DefaultStoreId : storeId.Trim();
-}
-
-public sealed class AdminUserSchemaInitializer(AdminUsersDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 public sealed record AdminUserSummary(Guid Id, string StoreId, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt, bool HasPassword);

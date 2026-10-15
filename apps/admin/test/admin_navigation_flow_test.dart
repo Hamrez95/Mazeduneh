@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/admin_navigation.dart';
+import 'package:mazeduneh_admin/admin_permissions.dart';
 import 'package:mazeduneh_admin/admin_shell.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/inventory_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
+import 'package:mazeduneh_admin/orders_page.dart';
 
 void main() {
   setUp(
@@ -20,6 +22,43 @@ void main() {
     ),
   );
   tearDown(OwnerSession.instance.clear);
+
+  test('commerce settings navigation uses its separate read permission', () {
+    expect(AdminModule.pricing.permission, AdminPermissions.settingsRead);
+    expect(AdminPermissions.settingsRead, isNot(AdminPermissions.pricingRead));
+  });
+
+  test('module navigation metadata is unique and round-trips from API targets', () {
+    final modules = AdminModule.values;
+    expect(modules.map((module) => module.apiValue).toSet(), hasLength(modules.length));
+    expect(modules.map((module) => module.label).toSet(), hasLength(modules.length));
+    for (final module in modules) {
+      expect(AdminModule.fromApiValue(module.apiValue), module);
+      expect(module.permission, isNotEmpty);
+    }
+  });
+
+  testWidgets('orders page applies the SKU sent by a product navigation intent', (tester) async {
+    Uri? orderRequest;
+    final api = OrderApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        orderRequest = request.url;
+        return _json([]);
+      }),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(body: OrdersPage(api: api, initialQuery: 'PI-AKB-250')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(orderRequest?.queryParameters['q'], 'PI-AKB-250');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'inventory navigation intent filters purchase history by exact SKU and batch',
@@ -205,3 +244,4 @@ http.Response _json(Object body) => http.Response(
   200,
   headers: {'content-type': 'application/json; charset=utf-8'},
 );
+

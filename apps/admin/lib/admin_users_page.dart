@@ -4,14 +4,18 @@ import 'package:flutter/services.dart';
 import 'admin_state.dart';
 import 'admin_permissions.dart';
 import 'admin_users_api.dart';
+import 'admin_users_filters.dart';
 import 'auth_session.dart';
+import 'auth_api.dart';
 import 'formatters.dart';
 import 'admin_theme.dart';
+import 'admin_step_up_dialog.dart';
 
 class AdminUsersPage extends StatefulWidget {
-  const AdminUsersPage({super.key, this.api});
+  const AdminUsersPage({super.key, this.api, this.auth});
 
   final AdminUsersApiClient? api;
+  final AuthApiClient? auth;
 
   @override
   State<AdminUsersPage> createState() => _AdminUsersPageState();
@@ -25,11 +29,20 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   bool loading = true;
   String? changingUserId;
   DateTime? lastLoadedAt;
+  final TextEditingController searchController = TextEditingController();
+  AdminUserStatusFilter statusFilter = AdminUserStatusFilter.all;
+  String? roleFilter;
 
   @override
   void initState() {
     super.initState();
     load();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> load() async {
@@ -54,6 +67,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleUsers = _filteredUsers();
     if (loading && users.isEmpty) return const Center(child: CircularProgressIndicator());
     if (error != null && users.isEmpty) return AdminErrorState(error: error!, onRetry: load);
 
@@ -68,6 +82,23 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
               const SizedBox(height: 14),
               AdminStaleBanner(detail: 'فهرست نمایش‌داده‌شده ممکن است تازه نباشد. ${requestErrorMessage(error!)}', onRetry: load),
             ],
+            if (users.isNotEmpty) ...[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: AdminUsersFilterBar(
+                    users: users,
+                    searchController: searchController,
+                    status: statusFilter,
+                    role: roleFilter,
+                    onStatusChanged: (filter) => setState(() => statusFilter = filter),
+                    onRoleChanged: (role) => setState(() => roleFilter = role),
+                    onSearchChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
             const SizedBox(height: 20),
             if (users.isEmpty)
               Card(
@@ -79,12 +110,47 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   onAction: roles.where((role) => role.role != 'Owner').isEmpty ? null : _openCreateDialog,
                 ),
               )
+            else if (visibleUsers.isEmpty)
+              Card(
+                child: AdminEmptyState(
+                  icon: Icons.person_search_outlined,
+                  title: 'همکاری با این مشخصات پیدا نشد',
+                  detail: 'نام، ایمیل یا فیلتر نقش و وضعیت را بررسی کنید.',
+                  actionLabel: 'پاک‌کردن فیلترها',
+                  onAction: _clearFilters,
+                ),
+              )
             else
-              _UsersList(users: users, changingUserId: changingUserId, onToggle: _toggleStatus, onEditPermissions: _editPermissions),
+              _UsersList(users: visibleUsers, changingUserId: changingUserId, onToggle: _toggleStatus, onEditPermissions: _editPermissions),
           ],
         ),
       ),
     );
+  }
+
+  List<AdminUser> _filteredUsers() {
+    final query = searchController.text.trim().toLowerCase();
+    return users.where((user) {
+      final matchesQuery = query.isEmpty ||
+          user.displayName.toLowerCase().contains(query) ||
+          user.email.toLowerCase().contains(query);
+      final matchesRole = roleFilter == null || user.role == roleFilter;
+      final matchesStatus = switch (statusFilter) {
+        AdminUserStatusFilter.all => true,
+        AdminUserStatusFilter.active => user.isActive && user.hasPassword,
+        AdminUserStatusFilter.invited => user.isActive && !user.hasPassword,
+        AdminUserStatusFilter.inactive => !user.isActive,
+      };
+      return matchesQuery && matchesRole && matchesStatus;
+    }).toList(growable: false);
+  }
+
+  void _clearFilters() {
+    setState(() {
+      searchController.clear();
+      statusFilter = AdminUserStatusFilter.all;
+      roleFilter = null;
+    });
   }
 
   Future<void> _openCreateDialog() async {
@@ -93,8 +159,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       builder: (_) => _CreateUserDialog(roles: roles.where((role) => role.role != 'Owner').toList()),
     );
     if (draft == null || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
     try {
-      final invitation = await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role, permissions: draft.permissions);
+      final invitation = await api.createUser(email: draft.email, displayName: draft.displayName, role: draft.role, permissions: draft.permissions, stepUpToken: stepUpToken);
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -133,9 +201,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       context: context,
       builder: (_) => _PermissionsDialog(
         initialPermissions: user.permissions,
-        onSave: (permissions) async {
+        auth: widget.auth,
+        onSave: (permissions, stepUpToken) async {
           try {
-            await api.setPermissions(user.id, permissions);
+            await api.setPermissions(user.id, permissions, stepUpToken: stepUpToken);
             await load();
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسترسی‌های کاربر به‌روزرسانی شد.')));
             return null;
@@ -167,9 +236,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
     setState(() => changingUserId = user.id);
     try {
-      await api.setStatus(user.id, nextStatus);
+      await api.setStatus(user.id, nextStatus, stepUpToken: stepUpToken);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(nextStatus ? 'دسترسی کاربر فعال شد.' : 'دسترسی کاربر غیرفعال شد.')));
       await load();
     } on AdminUsersApiException catch (exception) {
@@ -345,9 +416,10 @@ class _CreateUserDialogState extends State<_CreateUserDialog> {
 }
 
 class _PermissionsDialog extends StatefulWidget {
-  const _PermissionsDialog({required this.initialPermissions, required this.onSave});
+  const _PermissionsDialog({required this.initialPermissions, required this.onSave, this.auth});
   final List<String> initialPermissions;
-  final Future<String?> Function(List<String> permissions) onSave;
+  final Future<String?> Function(List<String> permissions, String stepUpToken) onSave;
+  final AuthApiClient? auth;
   @override
   State<_PermissionsDialog> createState() => _PermissionsDialogState();
 }
@@ -358,11 +430,15 @@ class _PermissionsDialogState extends State<_PermissionsDialog> {
   String? error;
 
   Future<void> save() async {
+    if (saving) return;
     setState(() {
-      saving = true;
       error = null;
     });
-    final message = await widget.onSave(permissions.toList());
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (!mounted) return;
+    if (stepUpToken == null) return;
+    setState(() => saving = true);
+    final message = await widget.onSave(permissions.toList(), stepUpToken);
     if (!mounted) return;
     if (message == null) {
       Navigator.pop(context);

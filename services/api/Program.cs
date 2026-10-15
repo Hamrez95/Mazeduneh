@@ -2,7 +2,10 @@ using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 using Npgsql;
 
-var builder = WebApplication.CreateBuilder(args);
+var databaseCommands = args.Where(argument => argument is "--migrate" or "--seed-admin" or "--seed-demo")
+    .ToHashSet(StringComparer.Ordinal);
+var builderArguments = args.Where(argument => !databaseCommands.Contains(argument)).ToArray();
+var builder = WebApplication.CreateBuilder(builderArguments);
 builder.Logging.AddJsonConsole(options =>
 {
     // Framework request scopes contain raw paths; keep them out of console logs.
@@ -25,9 +28,8 @@ builder.Services.AddSingleton<ProductCatalog>();
 builder.Services.AddSingleton<CatalogDatabase>();
 builder.Services.AddSingleton<InventoryLedgerDatabase>();
 builder.Services.AddSingleton<AdminAuditLogDatabase>();
-builder.Services.AddHostedService<AdminAuditLogSchemaInitializer>();
 builder.Services.AddSingleton<AdminUsersDatabase>();
-builder.Services.AddHostedService<AdminUserSchemaInitializer>();
+builder.Services.AddSingleton<DatabaseDeploymentTasks>();
 builder.Services.AddAdminSecurity(builder.Configuration);
 builder.Services.AddCheckout();
 builder.Services.AddPayments();
@@ -57,23 +59,35 @@ app.MapCorporateSales();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();
 var database = app.Services.GetRequiredService<CatalogDatabase>();
+if (databaseCommands.Count > 0)
+{
+    var deploymentTasks = app.Services.GetRequiredService<DatabaseDeploymentTasks>();
+    var cancellationToken = CancellationToken.None;
+    if (databaseCommands.Contains("--migrate"))
+        await deploymentTasks.MigrateAsync(cancellationToken);
+    if (databaseCommands.Contains("--seed-admin"))
+        await deploymentTasks.SeedAdminAsync(cancellationToken);
+    if (databaseCommands.Contains("--seed-demo"))
+        await deploymentTasks.SeedDemoCatalogAsync(cancellationToken);
+    return;
+}
+
 if (database.IsConfigured)
 {
-    await database.InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<InventoryLedgerDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<InventoryBatchDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<CommercePricingDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    await app.Services.GetRequiredService<CorporateRequestDatabase>().InitializeAsync(app.Lifetime.ApplicationStopping);
-    var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
-    if (persistedProducts.Count == 0)
+    var migrations = await DatabaseMigrationRunner.ListAsync(builder.Configuration, app.Lifetime.ApplicationStopping);
+    if (migrations.Any(migration => migration.Component == "catalog" && migration.Version == "002-nutrition-costing"))
     {
-        foreach (var seededProduct in catalog.AllIncludingDrafts())
-            await database.InsertAsync(seededProduct, app.Lifetime.ApplicationStopping);
+        var persistedProducts = await database.LoadAsync(app.Lifetime.ApplicationStopping);
+        catalog.ReplaceWith(persistedProducts);
     }
     else
     {
-        catalog.ReplaceWith(persistedProducts);
+        catalog.ReplaceWith([]);
     }
+}
+else if (!builder.Environment.IsDevelopment())
+{
+    catalog.ReplaceWith([]);
 }
 
 app.MapApiHealth();
@@ -82,13 +96,14 @@ app.MapGet("/api/v1/categories", async (CatalogDatabase db, CancellationToken ca
 app.MapGet("/api/v1/categories/admin", async (CatalogDatabase db, CancellationToken cancellationToken) => Results.Ok(await db.LoadCategoriesAsync(cancellationToken)))
     .AddEndpointFilter<OwnerAuthorizationFilter>();
 
-app.MapPost("/api/v1/categories", async (CreateCategoryRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+app.MapPost("/api/v1/categories", async (CreateCategoryRequest request, CatalogDatabase db, HttpContext context, CancellationToken cancellationToken) =>
 {
     var errors = request.Validate();
     if (errors.Count > 0) return Results.ValidationProblem(errors);
     try
     {
-        return Results.Created($"/api/v1/categories/{request.Slug}", await db.InsertCategoryAsync(request, cancellationToken));
+        var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+        return Results.Created($"/api/v1/categories/{request.Slug}", await db.InsertCategoryAsync(request, actor, context.TraceIdentifier, cancellationToken));
     }
     catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
     {
@@ -97,28 +112,31 @@ app.MapPost("/api/v1/categories", async (CreateCategoryRequest request, CatalogD
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>();
 
-app.MapPut("/api/v1/categories/{slug}", async (string slug, UpdateCategoryRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+app.MapPut("/api/v1/categories/{slug}", async (string slug, UpdateCategoryRequest request, CatalogDatabase db, HttpContext context, CancellationToken cancellationToken) =>
 {
     var errors = request.Validate();
     if (errors.Count > 0) return Results.ValidationProblem(errors);
     var before = (await db.LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
-    var updated = await db.UpdateCategoryAsync(slug, request, cancellationToken);
+    var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+    var updated = await db.UpdateCategoryAsync(slug, request, actor, context.TraceIdentifier, cancellationToken);
     if (before is not null && updated is not null) app.Services.GetRequiredService<ProductCatalog>().RenameCategory(before.Name, updated.Name);
     return updated is null ? Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." }) : Results.Ok(updated);
 }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
-app.MapPatch("/api/v1/categories/{slug}/active", async (string slug, SetCategoryActiveRequest request, CatalogDatabase db, CancellationToken cancellationToken) =>
+app.MapPatch("/api/v1/categories/{slug}/active", async (string slug, SetCategoryActiveRequest request, CatalogDatabase db, HttpContext context, CancellationToken cancellationToken) =>
 {
-    var updated = await db.SetCategoryActiveAsync(slug, request.IsActive, cancellationToken);
+    var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+    var updated = await db.SetCategoryActiveAsync(slug, request.IsActive, actor, context.TraceIdentifier, cancellationToken);
     return updated is null ? Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." }) : Results.Ok(new { message = request.IsActive ? "دسته‌بندی فعال شد." : "دسته‌بندی غیرفعال شد.", category = updated });
 }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
-app.MapDelete("/api/v1/categories/{slug}", async (string slug, CatalogDatabase db, ProductCatalog productCatalog, CancellationToken cancellationToken) =>
+app.MapDelete("/api/v1/categories/{slug}", async (string slug, CatalogDatabase db, ProductCatalog productCatalog, HttpContext context, CancellationToken cancellationToken) =>
 {
     var category = (await db.LoadCategoriesAsync(cancellationToken)).FirstOrDefault(item => item.Slug.Equals(slug, StringComparison.OrdinalIgnoreCase));
     if (category is not null && productCatalog.AllIncludingDrafts().Any(product => product.Category.Equals(category.Name, StringComparison.OrdinalIgnoreCase)))
         return Results.Conflict(new { message = "این دسته‌بندی به محصول متصل است و حذف نمی‌شود. ابتدا محصولات را جابه‌جا یا دسته را غیرفعال کنید." });
-    var result = await db.DeleteCategoryAsync(slug, cancellationToken);
+    var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+    var result = await db.DeleteCategoryAsync(slug, actor, context.TraceIdentifier, cancellationToken);
     if (result.ProductCount == -1) return Results.NotFound(new { message = "دسته‌بندی موردنظر پیدا نشد." });
     if (!result.Deleted) return Results.Conflict(new { message = $"این دسته‌بندی به {result.ProductCount} محصول متصل است و حذف نمی‌شود. ابتدا محصولات را جابه‌جا یا دسته را غیرفعال کنید." });
     return Results.Ok(new { message = "دسته‌بندی با موفقیت حذف شد." });
@@ -186,7 +204,7 @@ products.MapPost("/", async (
     }
     try
     {
-        await db.InsertAsync(product, cancellationToken);
+        await db.InsertAsync(product, principal.Email, context.TraceIdentifier, cancellationToken);
         productCatalog.Add(product);
         return Results.Created($"/api/v1/products/{product.Slug}", ProductCostPrivacy.ProjectFor(product, principal));
     }
@@ -195,7 +213,8 @@ products.MapPost("/", async (
         return Results.Conflict(new { message = "شناسه آدرس یا SKU تکراری است." });
     }
 })
-.AddEndpointFilter<OwnerAuthorizationFilter>();
+.AddEndpointFilter<OwnerAuthorizationFilter>()
+.AddEndpointFilter<ProductCreatePriceStepUpAuthorizationFilter>();
 
 products.MapPut("/{slug}", async (
     string slug,
@@ -224,18 +243,18 @@ products.MapPut("/{slug}", async (
         var publicationErrors = productCatalog.ValidateForPublication(updated);
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
-    var persisted = await db.UpdateAsync(updated, canWriteCosts, cancellationToken);
+    var persisted = await db.UpdateAsync(updated, existing, canWriteCosts, principal.Email, context.TraceIdentifier, cancellationToken);
     productCatalog.Add(persisted);
     return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
 })
-.AddEndpointFilter<OwnerAuthorizationFilter>();
+.AddEndpointFilter<OwnerAuthorizationFilter>()
+.AddEndpointFilter<ProductPriceStepUpAuthorizationFilter>();
 
 products.MapPatch("/{slug}/publication", async (
     string slug,
     SetProductPublicationRequest request,
     ProductCatalog productCatalog,
     CatalogDatabase db,
-    AdminAuditLogDatabase audit,
     HttpContext context,
     CancellationToken cancellationToken) =>
 {
@@ -249,19 +268,9 @@ products.MapPatch("/{slug}/publication", async (
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
     var updated = existing with { IsPublished = request.IsPublished };
-    await db.SetPublicationAsync(existing.Id, request.IsPublished, cancellationToken);
-    productCatalog.Add(updated);
     var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-    await audit.RecordAsync(
-        actor,
-        "product.publication",
-        "Product",
-        existing.Id.ToString(),
-        new { existing.Slug, existing.IsPublished },
-        new { updated.Slug, updated.IsPublished },
-        request.IsPublished ? "انتشار محصول" : "خارج کردن محصول از انتشار",
-        context.TraceIdentifier,
-        cancellationToken);
+    await db.SetPublicationAsync(existing.Id, existing.IsPublished, request.IsPublished, actor, context.TraceIdentifier, cancellationToken);
+    productCatalog.Add(updated);
 
     return Results.Ok(new
     {
@@ -428,3 +437,4 @@ public sealed class ProductCatalog
 }
 
 public partial class Program;
+

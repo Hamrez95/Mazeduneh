@@ -27,6 +27,88 @@ class CorporateApiClient {
         .map((item) => CorporateRequestSummary.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<CorporatePackage>> fetchPackages() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/packages'),
+      headers: _headers,
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>)
+        .map((item) => CorporatePackage.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CorporatePackage> savePackage({
+    required String code,
+    required String name,
+    required String description,
+    required bool isActive,
+    required List<CorporatePackageItem> items,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/packages/$code'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({
+        'name': name,
+        'description': description.isEmpty ? null : description,
+        'isActive': isActive,
+        'items': items
+            .map((item) => {
+                  'name': item.name,
+                  'quantity': item.quantity,
+                  'unit': item.unit,
+                  'unitPrice': item.unitPrice,
+                })
+            .toList(),
+      }),
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return CorporatePackage.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
+  }
+
+
+  Future<List<CorporateResponseTemplate>> fetchResponseTemplates() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/templates'),
+      headers: _headers,
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>)
+        .map((item) => CorporateResponseTemplate.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<CorporateResponseTemplate> saveResponseTemplate({
+    required String code,
+    required String title,
+    required String body,
+    required bool isActive,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/admin/corporate-requests/templates/$code'),
+      headers: {..._headers, 'content-type': 'application/json'},
+      body: jsonEncode({'title': title, 'body': body, 'isActive': isActive}),
+    );
+    _guard(response);
+    if (response.statusCode != 200) {
+      throw CorporateApiException(_message(response), statusCode: response.statusCode);
+    }
+    return CorporateResponseTemplate.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
+  }
+
   Future<CorporateSummary> fetchSummary() async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/summary'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateSummary.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<CorporateRequestDetail> fetchDetail(String id) async { final response=await _client.get(Uri.parse('$baseUrl/api/v1/admin/corporate-requests/$id'),headers:_headers); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); return CorporateRequestDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String,dynamic>); }
   Future<void> changeStatus(String id,String status,{String? note}) => _send('PATCH','/api/v1/admin/corporate-requests/$id/status',{'status':status,'note':note});
@@ -41,5 +123,120 @@ class CorporateApiClient {
 }
 
 class CorporateRequestSummary { const CorporateRequestSummary({required this.id,required this.customerName,required this.companyName,required this.mobile,required this.city,required this.occasion,required this.orderQuantity,required this.packageType,required this.status,required this.assignedTo,required this.nextFollowUpAt,required this.createdAt}); final String id,customerName,companyName,mobile,city,occasion,packageType,status; final int orderQuantity; final String? assignedTo; final DateTime? nextFollowUpAt; final DateTime createdAt; factory CorporateRequestSummary.fromJson(Map<String,dynamic> j)=>CorporateRequestSummary(id:j['id'].toString(),customerName:j['customerName'] as String,companyName:j['companyName'] as String,mobile:j['mobile'] as String,city:j['city'] as String,occasion:j['occasion'] as String,orderQuantity:j['orderQuantity'] as int,packageType:j['packageType'] as String,status:j['status'] as String,assignedTo:j['assignedTo'] as String?,nextFollowUpAt:j['nextFollowUpAt']==null?null:DateTime.parse(j['nextFollowUpAt'] as String),createdAt:DateTime.parse(j['createdAt'] as String)); }
-class CorporateSummary { const CorporateSummary(this.newCount,this.unfollowedCount); final int newCount,unfollowedCount; factory CorporateSummary.fromJson(Map<String,dynamic> j)=>CorporateSummary(j['newCount'] as int,j['unfollowedCount'] as int); }
+class CorporatePackageItem {
+  const CorporatePackageItem({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+  });
+
+  final String name;
+  final num quantity;
+  final String unit;
+  final num unitPrice;
+
+  factory CorporatePackageItem.fromJson(Map<String, dynamic> json) =>
+      CorporatePackageItem(
+        name: json['name'] as String,
+        quantity: json['quantity'] as num,
+        unit: json['unit'] as String,
+        unitPrice: json['unitPrice'] as num,
+      );
+}
+
+class CorporatePackage {
+  const CorporatePackage({
+    required this.code,
+    required this.name,
+    required this.description,
+    required this.isActive,
+    required this.unitPrice,
+    required this.items,
+  });
+
+  final String code;
+  final String name;
+  final String? description;
+  final bool isActive;
+  final num unitPrice;
+  final List<CorporatePackageItem> items;
+
+  factory CorporatePackage.fromJson(Map<String, dynamic> json) =>
+      CorporatePackage(
+        code: json['code'] as String,
+        name: json['name'] as String,
+        description: json['description'] as String?,
+        isActive: json['isActive'] as bool,
+        unitPrice: json['unitPrice'] as num,
+        items: (json['items'] as List<dynamic>)
+            .map((item) => CorporatePackageItem.fromJson(item as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
+
+class CorporateResponseTemplate {
+  const CorporateResponseTemplate({
+    required this.code,
+    required this.title,
+    required this.body,
+    required this.isActive,
+    required this.updatedAt,
+    required this.updatedBy,
+  });
+
+  final String code;
+  final String title;
+  final String body;
+  final bool isActive;
+  final DateTime updatedAt;
+  final String updatedBy;
+
+  factory CorporateResponseTemplate.fromJson(Map<String, dynamic> json) =>
+      CorporateResponseTemplate(
+        code: json['code'] as String,
+        title: json['title'] as String,
+        body: json['body'] as String,
+        isActive: json['isActive'] as bool,
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        updatedBy: json['updatedBy'] as String,
+      );
+}
+
+class CorporateSummary {
+  const CorporateSummary({
+    required this.newCount,
+    required this.unfollowedCount,
+    this.totalCount = 0,
+    this.activeCount = 0,
+    this.finalizedCount = 0,
+    this.conversionRatePercent = 0,
+    this.activePipelineBudget = 0,
+    this.averageHoursToFirstContact = 0,
+    this.firstContactCount = 0,
+  });
+
+  final int newCount;
+  final int unfollowedCount;
+  final int totalCount;
+  final int activeCount;
+  final int finalizedCount;
+  final num conversionRatePercent;
+  final num activePipelineBudget;
+  final num averageHoursToFirstContact;
+  final int firstContactCount;
+
+  factory CorporateSummary.fromJson(Map<String, dynamic> json) => CorporateSummary(
+        newCount: (json['newCount'] as num?)?.toInt() ?? 0,
+        unfollowedCount: (json['unfollowedCount'] as num?)?.toInt() ?? 0,
+        totalCount: (json['totalCount'] as num?)?.toInt() ?? 0,
+        activeCount: (json['activeCount'] as num?)?.toInt() ?? 0,
+        finalizedCount: (json['finalizedCount'] as num?)?.toInt() ?? 0,
+        conversionRatePercent: json['conversionRatePercent'] as num? ?? 0,
+        activePipelineBudget: json['activePipelineBudget'] as num? ?? 0,
+        averageHoursToFirstContact: json['averageHoursToFirstContact'] as num? ?? 0,
+        firstContactCount: (json['firstContactCount'] as num?)?.toInt() ?? 0,
+      );
+}
 class CorporateRequestDetail { const CorporateRequestDetail({required this.id,required this.customerName,required this.companyName,required this.mobile,required this.email,required this.city,required this.occasion,required this.orderQuantity,required this.packageType,required this.budget,required this.deliveryDate,required this.customPackaging,required this.description,required this.status,required this.assignedTo,required this.nextFollowUpAt,required this.internalNote,required this.createdAt,this.logoUrl,this.proformaUrl}); final String id,customerName,companyName,mobile,city,occasion,packageType,status; final String? email,description,assignedTo,nextFollowUpAt,internalNote,logoUrl,proformaUrl; final int orderQuantity; final num? budget; final DateTime? deliveryDate,createdAt; final bool customPackaging; factory CorporateRequestDetail.fromJson(Map<String,dynamic> j)=>CorporateRequestDetail(id:j['id'].toString(),customerName:j['customerName'] as String,companyName:j['companyName'] as String,mobile:j['mobile'] as String,email:j['email'] as String?,city:j['city'] as String,occasion:j['occasion'] as String,orderQuantity:j['orderQuantity'] as int,packageType:j['packageType'] as String,budget:j['budget'] as num?,deliveryDate:j['deliveryDate']==null?null:DateTime.parse(j['deliveryDate'] as String),customPackaging:j['customPackaging'] as bool,description:j['description'] as String?,status:j['status'] as String,assignedTo:j['assignedTo'] as String?,nextFollowUpAt:j['nextFollowUpAt'] as String?,internalNote:j['internalNote'] as String?,createdAt:DateTime.parse(j['createdAt'] as String),logoUrl:j['logoUrl'] as String?,proformaUrl:j['proformaUrl'] as String?); }

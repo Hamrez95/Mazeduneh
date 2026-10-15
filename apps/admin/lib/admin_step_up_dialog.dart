@@ -21,12 +21,15 @@ class _AdminStepUpDialog extends StatefulWidget {
 
 class _AdminStepUpDialogState extends State<_AdminStepUpDialog> {
   final password = TextEditingController();
+  final mfaCode = TextEditingController();
   bool busy = false;
+  bool mfaRequired = false;
   String? error;
 
   @override
   void dispose() {
     password.dispose();
+    mfaCode.dispose();
     super.dispose();
   }
 
@@ -37,10 +40,16 @@ class _AdminStepUpDialogState extends State<_AdminStepUpDialog> {
       error = null;
     });
     try {
-      final token = await widget.auth.stepUp(password: password.text);
+      final token = await widget.auth.stepUp(
+        password: password.text,
+        mfaCode: mfaRequired ? mfaCode.text : null,
+      );
       if (mounted) Navigator.pop(context, token);
     } on AuthApiException catch (exception) {
-      if (mounted) setState(() => error = exception.message);
+      if (mounted) setState(() {
+        if (exception.statusCode == 428) mfaRequired = true;
+        error = exception.message;
+      });
     } catch (_) {
       if (mounted) setState(() => error = 'تأیید هویت انجام نشد؛ اتصال را بررسی و دوباره تلاش کنید.');
     } finally {
@@ -74,6 +83,24 @@ class _AdminStepUpDialogState extends State<_AdminStepUpDialog> {
                 prefixIcon: Icon(Icons.lock_outline_rounded),
               ),
             ),
+            if (mfaRequired) ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: mfaCode,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.done,
+                maxLength: 6,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => confirm(),
+                decoration: const InputDecoration(
+                  labelText: 'کد تأیید دومرحله‌ای',
+                  helperText: 'کد ۶ رقمی برنامهٔ احراز هویت را وارد کنید.',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.security_rounded),
+                ),
+              ),
+            ],
             if (error != null) ...[
               const SizedBox(height: 10),
               Semantics(liveRegion: true, child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
@@ -91,7 +118,7 @@ class _AdminStepUpDialogState extends State<_AdminStepUpDialog> {
           child: const Text('انصراف'),
         ),
         FilledButton.icon(
-          onPressed: busy || password.text.isEmpty ? null : confirm,
+          onPressed: busy || password.text.isEmpty || (mfaRequired && mfaCode.text.trim().length != 6) ? null : confirm,
           icon: const Icon(Icons.verified_user_outlined),
           label: const Text('تأیید هویت'),
         ),

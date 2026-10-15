@@ -66,4 +66,120 @@ void main() {
     expect(captured.url.queryParameters.containsKey('overdue'), isFalse);
   });
 
+  test('package catalog API loads and saves audited package definitions', () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.method == 'GET') {
+        return http.Response(jsonEncode([
+          {
+            'code': 'premium',
+            'name': 'پریمیوم',
+            'description': 'پک ویژه',
+            'isActive': true,
+            'unitPrice': 250000,
+            'items': [
+              {'name': 'پسته', 'quantity': 1, 'unit': 'بسته', 'unitPrice': 250000}
+            ],
+          }
+        ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(jsonEncode({
+        'code': 'premium',
+        'name': 'پریمیوم',
+        'description': 'پک ویژه',
+        'isActive': true,
+        'unitPrice': 250000,
+        'items': [
+          {'name': 'پسته', 'quantity': 1, 'unit': 'بسته', 'unitPrice': 250000}
+        ],
+      }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = CorporateApiClient(client: client, baseUrl: 'https://api.test');
+
+    final packages = await api.fetchPackages();
+    expect(packages.single.name, 'پریمیوم');
+    expect(packages.single.items.single.unitPrice, 250000);
+    final saved = await api.savePackage(
+      code: 'premium',
+      name: 'پریمیوم',
+      description: 'پک ویژه',
+      isActive: true,
+      items: packages.single.items,
+    );
+
+    expect(saved.unitPrice, 250000);
+    expect(requests[0].url.path, '/api/v1/admin/corporate-requests/packages');
+    expect(requests[0].headers['authorization'], 'Bearer corporate-test-token');
+    expect(requests[1].method, 'PUT');
+    expect(requests[1].url.path, '/api/v1/admin/corporate-requests/packages/premium');
+    expect(jsonDecode(requests[1].body)['items'].single['unitPrice'], 250000);
+  });
+
+
+  test('response template catalog loads and saves editable templates', () async {
+    final requests = <http.Request>[];
+    final template = {
+      'code': 'welcome-company',
+      'title': 'خوش‌آمدگویی',
+      'body': 'سلام شرکت گرامی',
+      'isActive': true,
+      'updatedAt': '2026-10-15T09:00:00Z',
+      'updatedBy': 'owner@example.com',
+    };
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.method == 'GET') {
+        return http.Response(jsonEncode([template]), 200,
+            headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(jsonEncode(template), 200,
+          headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = CorporateApiClient(client: client, baseUrl: 'https://api.test');
+
+    final loaded = await api.fetchResponseTemplates();
+    expect(loaded.single.title, 'خوش‌آمدگویی');
+    expect(loaded.single.body, 'سلام شرکت گرامی');
+    final saved = await api.saveResponseTemplate(
+      code: 'welcome-company',
+      title: 'خوش‌آمدگویی',
+      body: 'سلام شرکت گرامی',
+      isActive: true,
+    );
+
+    expect(saved.updatedBy, 'owner@example.com');
+    expect(requests[0].url.path,
+        '/api/v1/admin/corporate-requests/templates');
+    expect(requests[0].headers['authorization'], 'Bearer corporate-test-token');
+    expect(requests[1].method, 'PUT');
+    expect(requests[1].url.path,
+        '/api/v1/admin/corporate-requests/templates/welcome-company');
+    expect(jsonDecode(requests[1].body)['body'], 'سلام شرکت گرامی');
+  });
+
+  test('corporate metrics parse the conversion and first-contact funnel', () async {
+    final client = MockClient((_) async => http.Response(jsonEncode({
+      'newCount': 2,
+      'unfollowedCount': 1,
+      'totalCount': 10,
+      'activeCount': 6,
+      'finalizedCount': 4,
+      'conversionRatePercent': 40.0,
+      'activePipelineBudget': 1250000,
+      'averageHoursToFirstContact': 3.5,
+      'firstContactCount': 5,
+    }), 200));
+
+    final summary = await CorporateApiClient(client: client, baseUrl: 'https://api.test').fetchSummary();
+
+    expect(summary.totalCount, 10);
+    expect(summary.activeCount, 6);
+    expect(summary.finalizedCount, 4);
+    expect(summary.conversionRatePercent, 40.0);
+    expect(summary.activePipelineBudget, 1250000);
+    expect(summary.averageHoursToFirstContact, 3.5);
+    expect(summary.firstContactCount, 5);
+  });
+
 }

@@ -1,4 +1,5 @@
 """Membership invitation, store binding, revocation and authorization regression."""
+import base64
 import json
 import os
 from pathlib import Path
@@ -9,12 +10,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[2]
+API_DLL = ROOT / "services/api/bin/Release/net10.0/Mazeduneh.Api.dll"
 BASE = "http://127.0.0.1:5107"
 OWNER_PASSWORD = "Mazeduneh-CI-Owner-Password!"
 
 
-def request(path, method="GET", body=None, token=None):
+def request(path, method="GET", body=None, token=None, extra_headers=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
+    headers.update(extra_headers or {})
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
@@ -28,8 +31,7 @@ def request(path, method="GET", body=None, token=None):
 
 
 def start_api(log):
-    process = subprocess.Popen(["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
-                                "--configuration", "Release", "--no-build", "--urls", BASE],
+    process = subprocess.Popen(["dotnet", str(API_DLL), "--urls", BASE],
                                cwd=ROOT, env=os.environ.copy(), stdout=log, stderr=subprocess.STDOUT)
     try:
         for _ in range(40):
@@ -59,12 +61,27 @@ def stop_api(process):
         process.wait(timeout=5)
 
 
+_STEP_UP_TOKENS = {}
+
+
+def step_up_headers(owner_token):
+    step_up_token = _STEP_UP_TOKENS.get(owner_token)
+    if step_up_token is None:
+        status, result = request("/api/v1/admin/auth/step-up", "POST",
+                                 {"password": OWNER_PASSWORD}, owner_token)
+        assert status == 200 and result["stepUpToken"], (status, result)
+        step_up_token = result["stepUpToken"]
+        _STEP_UP_TOKENS[owner_token] = step_up_token
+    return {"X-Admin-Step-Up": step_up_token}
+
+
 def invite(owner_token, email, name, permissions=None, store_id=None):
     payload = {"email": email, "displayName": name, "role": "WarehouseOperator"}
     if permissions is not None:
         payload["permissions"] = permissions
     path = "/api/v1/admin/users" + ("?storeId=" + store_id if store_id else "")
-    status, result = request(path, "POST", payload, owner_token)
+    status, result = request(path, "POST", payload, owner_token,
+                             step_up_headers(owner_token))
     assert status == 201, (status, result)
     assert result["user"]["email"] == email and result["invitationToken"] and result["expiresAt"]
     return result
@@ -89,9 +106,29 @@ def accept_and_login(invitation, email, password, check_unaccepted_login=True, s
     return login["accessToken"]
 
 
+subprocess.run(["dotnet", str(API_DLL), "--seed-admin"],
+               cwd=ROOT, env=os.environ.copy(), check=True)
+
 with tempfile.TemporaryFile() as log:
     api, owner_token = start_api(log)
     try:
+        original_owner_token = owner_token
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        stop_api(api)
+        api, owner_token = start_api(log)
+        assert request("/api/v1/admin/auth/session", token=original_owner_token)[0] == 200
+        assert request("/api/v1/admin/auth/logout", "POST", token=original_owner_token)[0] == 204
+        stop_api(api)
+        api, owner_token = start_api(log)
+        owner_payload = original_owner_token.split(".", 1)[0]
+        owner_fields = base64.urlsafe_b64decode(owner_payload + "=" * (-len(owner_payload) % 4)).decode().split("|")
+        stale_status, stale_response = request("/api/v1/admin/auth/session", token=original_owner_token)
+        assert stale_status == 401, (stale_status, owner_fields[5] if len(owner_fields) > 5 else "missing user id", stale_response)
+
+        status, denied = request("/api/v1/admin/users", "POST", {
+            "email": "missing-proof@example.test", "displayName": "Missing proof",
+            "role": "WarehouseOperator"}, owner_token)
+        assert status == 428 and denied["code"] == "step_up_required", (status, denied)
         first_email = "membership-one@example.test"
         first_password = "Membership-CI-Password-1!"
         first_invitation = invite(owner_token, first_email, "CI member one")
@@ -113,8 +150,12 @@ with tempfile.TemporaryFile() as log:
             assert status == 403 and denial["message"] == "به این فروشگاه دسترسی ندارید.", (path, status, denial)
 
         member_id = first_invitation["user"]["id"]
-        status, revised = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
+        status, denied = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
                                  {"permissions": ["inventory.read"]}, owner_token)
+        assert status == 428 and denied["code"] == "step_up_required", (status, denied)
+        status, revised = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
+                                 {"permissions": ["inventory.read"]}, owner_token,
+                                 step_up_headers(owner_token))
         assert status == 200 and revised["permissions"] == ["inventory.read"]
         # Keep the production rate limit intact while proving both the override
         # and session revocation survive an API restart against the same database.
@@ -129,7 +170,8 @@ with tempfile.TemporaryFile() as log:
         assert request("/api/v1/admin/orders", token=limited_token)[0] == 403
 
         status, cleared = request("/api/v1/admin/users/" + member_id + "/permissions", "PATCH",
-                                  {"permissions": []}, owner_token)
+                                  {"permissions": []}, owner_token,
+                                  step_up_headers(owner_token))
         assert status == 200 and cleared["permissions"] == []
         assert request("/api/v1/admin/auth/session", token=limited_token)[0] == 401
         status, empty_login = request("/api/v1/admin/auth/login", "POST", {
@@ -162,12 +204,23 @@ with tempfile.TemporaryFile() as log:
         status, tenant_users = request("/api/v1/admin/users", token=tenant_token)
         assert status == 200 and any(user["id"] == tenant_invitation["user"]["id"] for user in tenant_users)
         assert all(user["storeId"] == "tenant-a" for user in tenant_users), (status, tenant_users)
+        for path in [
+            "/api/v1/admin/orders",
+            "/api/v1/admin/orders?storeId=tenant-a",
+            "/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=tenant-a",
+            "/api/v1/admin/customers?storeId=tenant-a",
+            "/api/v1/admin/audit-log?storeId=tenant-a",
+            "/api/v1/admin/commerce/settings",
+        ]:
+            status, denial = request(path, token=tenant_token)
+            assert status == 403, (path, status, denial)
         status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/permissions",
                                  "PATCH", {"permissions": []}, tenant_token)
         assert status == 404, (status, denied)
         assert request("/api/v1/admin/users?storeId=default", token=tenant_token)[0] == 403
         status, owner_unchanged = request("/api/v1/admin/users/" + tenant_invitation["user"]["id"] + "/status?storeId=tenant-a",
-                                          "PATCH", {"isActive": False}, owner_token)
+                                          "PATCH", {"isActive": False}, owner_token,
+                                          step_up_headers(owner_token))
         assert status == 404, (status, owner_unchanged)
         assert request("/api/v1/admin/auth/session", token=tenant_token)[0] == 200
 
@@ -177,14 +230,21 @@ with tempfile.TemporaryFile() as log:
 
         second_email = "membership-two@example.test"
         second_password = "Membership-CI-Password-2!"
-        second_invitation = invite(owner_token, second_email, "CI member two", ["orders.read", "customers.pii.read"])
+        second_invitation = invite(owner_token, second_email, "CI member two",
+                                   ["orders.read", "customers.pii.read"])
         second_token = accept_and_login(second_invitation, second_email, second_password, check_unaccepted_login=False)
         member_id = second_invitation["user"]["id"]
+        status, denied = request("/api/v1/admin/users/" + member_id + "/status", "PATCH",
+                                 {"isActive": False}, owner_token)
+        assert status == 428 and denied["code"] == "step_up_required", (status, denied)
         status, disabled = request("/api/v1/admin/users/" + member_id + "/status", "PATCH",
-                                   {"isActive": False}, owner_token)
+                                   {"isActive": False}, owner_token,
+                                   step_up_headers(owner_token))
         assert status == 200 and disabled["isActive"] is False
         assert request("/api/v1/admin/auth/session", token=second_token)[0] == 401
         assert request("/api/v1/admin/inventory/movements?sku=UNKNOWN", token=second_token)[0] == 401
+        assert request("/api/v1/admin/auth/logout", "POST", token=owner_token)[0] == 204
+        assert request("/api/v1/admin/auth/session", token=owner_token)[0] == 401
     finally:
         stop_api(api)
 

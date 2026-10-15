@@ -8,7 +8,6 @@ public static class OrderManagementModule
     public static IServiceCollection AddOrderManagement(this IServiceCollection services)
     {
         services.AddSingleton<OrderManagementDatabase>();
-        services.AddHostedService<OrderManagementSchemaInitializer>();
         return services;
     }
 
@@ -20,6 +19,8 @@ public static class OrderManagementModule
             string? state,
             string? q,
             int? limit,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -28,7 +29,11 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var rows = await database.ListAsync(state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken, CustomerPrivacy.CanReadPii(context));
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            var rows = await database.ListAsync(
+                state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken,
+                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
             return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -36,6 +41,8 @@ public static class OrderManagementModule
             string? state,
             string? q,
             int? limit,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             HttpContext context,
             CancellationToken cancellationToken) =>
@@ -44,7 +51,11 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["وضعیت سفارش معتبر نیست."] });
             if (q?.Length > 120)
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["عبارت جست‌وجو نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."] });
-            var orders = await database.ListAsync(state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken, CustomerPrivacy.CanReadPii(context));
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            var orders = await database.ListAsync(
+                state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken,
+                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
             static string Csv(object? value)
             {
                 var text = value?.ToString() ?? string.Empty;
@@ -59,7 +70,9 @@ public static class OrderManagementModule
                     Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
             }
             return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-orders.csv");
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<StepUpAuthorizationFilter>()
+          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.OrdersExport));
 
         admin.MapGet("/orders/{orderId:guid}", async (
             Guid orderId,
@@ -120,7 +133,7 @@ public static class OrderManagementModule
             var errors = new Dictionary<string, string[]>();
             if (input.Carrier is { Length: > 120 }) errors[nameof(input.Carrier)] = ["نام شرکت حمل نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
             if (input.TrackingCode is { Length: > 120 }) errors[nameof(input.TrackingCode)] = ["کد رهگیری نمی‌تواند بیشتر از ۱۲۰ نویسه باشد."];
-            if (input.ActualShippingCost is < 0 or > 1_000_000_000) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
+            if (input.UpdateActualShippingCost && (input.ActualShippingCost is < 0 or > 1_000_000_000)) errors[nameof(input.ActualShippingCost)] = ["هزینه واقعی ارسال باید بین صفر تا یک میلیارد باشد."];
             if (string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Trim().Length > 500)
                 errors[nameof(input.Reason)] = ["دلیل ثبت یا اصلاح اطلاعات ارسال باید بین ۱ تا ۵۰۰ نویسه باشد."];
             if (errors.Count > 0) return Results.ValidationProblem(errors);
@@ -129,7 +142,8 @@ public static class OrderManagementModule
             var updated = await database.UpdateShippingAsync(
                 orderId, input, principal.Email, context.TraceIdentifier, audit, cancellationToken);
             return updated is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Ok(OrderPrivacy.Project(updated, context));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderShippingCostStepUpAuthorizationFilter>();
 
         admin.MapGet("/dashboard", async (
             int? days,
@@ -225,20 +239,28 @@ public static class OrderManagementModule
 
         admin.MapGet("/analytics", async (
             int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
-            Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken)))
+        {
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است؛ شروع و پایان معتبر را حداکثر برای یک سال انتخاب کنید."] });
+            return Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken, period));
+        })
             .AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/analytics/products", async (
             int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
             OrderManagementDatabase database,
             CancellationToken cancellationToken) =>
         {
             var windowDays = days ?? 30;
-            if (windowDays is < 1 or > 365)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["بازه گزارش باید بین ۱ تا ۳۶۵ روز باشد."] });
-            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken));
+            if ((from is null && (windowDays is < 1 or > 365)) || !DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ انتخابی نامعتبر است؛ تاریخ‌ها باید معتبر و حداکثر یک‌سال باشند."] });
+            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken, period));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapGet("/notifications", async (
@@ -250,6 +272,7 @@ public static class OrderManagementModule
             return Results.Ok(await database.NotificationsAsync(
                 AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead),
                 AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead),
+                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CorporateRead),
                 cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -289,7 +312,8 @@ public static class OrderManagementModule
                 OrderOperationStatus.NotFound => Results.NotFound(new { message = result.Message }),
                 _ => Results.Conflict(new { message = result.Message })
             };
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
 
         admin.MapPost("/orders/bulk-state", async (
             BulkOrderStateRequest request,
@@ -324,7 +348,8 @@ public static class OrderManagementModule
             }
 
             return Results.Ok(new { updated, failed });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
 
         return endpoints;
     }
@@ -341,7 +366,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
         if (!IsConfigured) return;
         const string sql = """
@@ -393,7 +418,9 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         string? query,
         int limit,
         CancellationToken cancellationToken,
-        bool allowContactSearch = true)
+        bool allowContactSearch = true,
+        DateTimeOffset? createdFrom = null,
+        DateTimeOffset? createdTo = null)
     {
         if (!IsConfigured) return Array.Empty<AdminOrderSummary>();
         const string sql = """
@@ -408,9 +435,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 or (lower(@state) = 'problem' and o.state in ('Cancelled','Expired'))
                 or lower(o.state)=lower(@state))
               and (@query = '' or o.id::text ilike '%' || @query || '%'
+                   or exists (select 1 from checkout_order_lines searched_line
+                              where searched_line.order_id = o.id
+                                and searched_line.sku ilike '%' || @query || '%')
                    or (@contact_search and (o.customer_name ilike '%' || @query || '%'
                    or o.mobile ilike '%' || @query || '%'
                    or o.city ilike '%' || @query || '%')))
+              and (@created_from is null or o.created_at >= @created_from)
+              and (@created_to is null or o.created_at < @created_to)
             group by o.id,p.reference,p.state
             order by o.created_at desc
             limit @limit;
@@ -422,6 +454,14 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("limit", limit);
         command.Parameters.AddWithValue("contact_search", allowContactSearch);
+        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_from", NpgsqlTypes.NpgsqlDbType.TimestampTz)
+        {
+            Value = createdFrom is null ? DBNull.Value : createdFrom.Value
+        });
+        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_to", NpgsqlTypes.NpgsqlDbType.TimestampTz)
+        {
+            Value = createdTo is null ? DBNull.Value : createdTo.Value
+        });
         var result = new List<AdminOrderSummary>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
@@ -573,7 +613,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
 
         const string sql = """
             update checkout_orders
-            set shipping_carrier=@carrier, tracking_code=@tracking_code, shipping_expense=@expense,
+            set shipping_carrier=@carrier, tracking_code=@tracking_code,
+                shipping_expense=case when @update_expense then @expense else shipping_expense end,
                 shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
             where id=@id
             returning shipped_at;
@@ -584,6 +625,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             command.Parameters.AddWithValue("carrier", (object?)input.Carrier?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("tracking_code", (object?)input.TrackingCode?.Trim() ?? DBNull.Value);
             command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
+            command.Parameters.AddWithValue("update_expense", input.UpdateActualShippingCost);
             command.Parameters.AddWithValue("id", orderId);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
@@ -594,7 +636,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var after = new AdminShippingAuditSnapshot(
             input.Carrier?.Trim(),
             input.TrackingCode?.Trim(),
-            input.ActualShippingCost ?? 0m,
+            input.UpdateActualShippingCost ? input.ActualShippingCost ?? 0m : before.actualShippingCost,
             shippedAt);
         await audit.RecordAsync(
             connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
@@ -742,73 +784,100 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return preferences;
     }
 
-    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken)
+    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
     {
         if (!IsConfigured) return new AdminAnalytics(days, 0, 0, 0, 0, 0, 0);
-        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        var to = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? to.AddDays(-days);
+        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((to - from).TotalDays), 1, 366);
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0), coalesce(sum(shipping_expense),0)
+            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
+                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0)
             from checkout_orders
-            where created_at >= @from and state in ('Paid','Preparing','Shipped','Delivered');
+            where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int orderCount;
         decimal revenue;
         decimal tax;
         decimal shippingExpense;
+        decimal shippingRevenue;
+        decimal discount;
         await using (var command = new NpgsqlCommand(orderSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             orderCount = reader.GetInt32(0);
             revenue = reader.GetDecimal(1);
             tax = reader.GetDecimal(2);
             shippingExpense = reader.GetDecimal(3);
+            shippingRevenue = reader.GetDecimal(4);
+            discount = reader.GetDecimal(5);
         }
 
         const string lineSql = """
-            select coalesce(sum(l.quantity),0)::int, coalesce(sum(l.quantity*(l.cost_price+l.packaging_cost+l.additional_cost)),0), coalesce(sum(l.line_total),0)
+            select coalesce(sum(l.quantity),0)::int,
+                   coalesce(sum(l.quantity*l.cost_price),0),
+                   coalesce(sum(l.quantity*l.packaging_cost),0),
+                   coalesce(sum(l.quantity*l.additional_cost),0),
+                   coalesce(sum(l.line_total),0)
             from checkout_order_lines l join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from and o.state in ('Paid','Preparing','Shipped','Delivered');
+            where o.created_at >= @from and o.created_at < @to and o.state in ('Paid','Preparing','Shipped','Delivered');
             """;
         int units;
-        decimal cost;
+        decimal productCost;
+        decimal packagingCost;
+        decimal additionalCost;
         decimal merchandiseRevenue;
         await using (var command = new NpgsqlCommand(lineSql, connection))
         {
             command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             await reader.ReadAsync(cancellationToken);
             units = reader.GetInt32(0);
-            cost = reader.GetDecimal(1);
-            merchandiseRevenue = reader.GetDecimal(2);
+            productCost = reader.GetDecimal(1);
+            packagingCost = reader.GetDecimal(2);
+            additionalCost = reader.GetDecimal(3);
+            merchandiseRevenue = reader.GetDecimal(4);
         }
 
-        var profit = revenue - cost;
-        var netProfit = profit - shippingExpense - tax;
-        var margin = revenue <= 0 ? 0 : profit / revenue * 100;
-        return new AdminAnalytics(days, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense);
+        var cost = productCost + packagingCost + additionalCost;
+        // Customer payments include shipping and tax; tax is payable to the tax authority, not profit.
+        var netMerchandiseRevenue = merchandiseRevenue - discount;
+        var profit = netMerchandiseRevenue - cost;
+        var netProfit = profit + shippingRevenue - shippingExpense;
+        var margin = netMerchandiseRevenue <= 0 ? 0 : profit / netMerchandiseRevenue * 100;
+        return new AdminAnalytics(
+            periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense,
+            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost);
     }
 
-    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
     {
         if (!IsConfigured) return Array.Empty<AdminProductProfitability>();
-        var from = DateTimeOffset.UtcNow.AddDays(-days);
+        var to = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? to.AddDays(-days);
         const string sql = """
-            select l.product_title,l.sku,l.variant_label,
-                   sum(l.quantity)::int,
-                   coalesce(sum(l.line_total),0),
-                   coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)
-            from checkout_order_lines l
-            join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from
-              and o.state in ('Paid','Preparing','Shipped','Delivered')
-            group by l.product_title,l.sku,l.variant_label
-            order by (coalesce(sum(l.line_total),0) -
-                      coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0)) desc,
-                     l.product_title
+            with grouped as (
+                select l.product_title,l.sku,l.variant_label,
+                       sum(l.quantity)::int as units_sold,
+                       coalesce(sum(l.line_total),0) as revenue,
+                       coalesce(sum(case when o.subtotal > 0
+                           then o.discount * l.line_total / o.subtotal else 0 end),0) as discount,
+                       coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost
+                from checkout_order_lines l
+                join checkout_orders o on o.id=l.order_id
+                where o.created_at >= @from and o.created_at < @to
+                  and o.state in ('Paid','Preparing','Shipped','Delivered')
+                group by l.product_title,l.sku,l.variant_label
+            )
+            select product_title,sku,variant_label,units_sold,revenue,discount,cost
+            from grouped
+            order by (revenue - discount - cost) desc, product_title
             limit 200;
             """;
 
@@ -817,21 +886,23 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", to);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
             var revenue = reader.GetDecimal(4);
-            var cost = reader.GetDecimal(5);
+            var discount = reader.GetDecimal(5);
+            var cost = reader.GetDecimal(6);
             rows.Add(new AdminProductProfitability(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), revenue, cost, revenue - cost));
+                reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount));
         }
         return rows;
     }
 
-    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, CancellationToken cancellationToken)
+    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, bool includeCorporate, CancellationToken cancellationToken)
     {
-        if (!IsConfigured || (!includeOrders && !includeInventory))
+        if (!IsConfigured || (!includeOrders && !includeInventory && !includeCorporate))
             return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -842,6 +913,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             """;
         var awaitingPayment = 0;
         var recentOrders = 0;
+        var corporateOverdueFollowUps = 0;
         if (includeOrders)
         {
             await using (var command = new NpgsqlCommand(orderSql, connection))
@@ -867,6 +939,41 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                         new AdminNavigationTarget("inventory", Sku: reader.GetString(1))));
         }
 
+        if (includeCorporate)
+        {
+            const string countSql = """
+                select count(*)::int
+                from corporate_requests
+                where status not in ('Finalized','Cancelled')
+                  and next_follow_up_at is not null and next_follow_up_at<=now();
+                """;
+            await using (var command = new NpgsqlCommand(countSql, connection))
+                corporateOverdueFollowUps = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+
+            const string remindersSql = """
+                select company_name,assigned_to,next_follow_up_at
+                from corporate_requests
+                where status not in ('Finalized','Cancelled')
+                  and next_follow_up_at is not null and next_follow_up_at<=now()
+                order by next_follow_up_at asc
+                limit 10;
+                """;
+            await using var reminders = new NpgsqlCommand(remindersSql, connection);
+            await using var reminderReader = await reminders.ExecuteReaderAsync(cancellationToken);
+            while (await reminderReader.ReadAsync(cancellationToken))
+            {
+                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(2);
+                var assignedTo = reminderReader.IsDBNull(1) || string.IsNullOrWhiteSpace(reminderReader.GetString(1))
+                    ? "بدون مسئول"
+                    : reminderReader.GetString(1);
+                items.Add(new AdminNotification(
+                    "corporate-follow-up",
+                    "موعد پیگیری فروش سازمانی گذشته است.",
+                    $"{reminderReader.GetString(0)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
+                    new AdminNavigationTarget("corporate")));
+            }
+        }
+
         if (awaitingPayment > 0)
             items.Insert(0, new AdminNotification(
                 "awaiting-payment",
@@ -879,7 +986,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.",
                 "مرور سفارش‌ها و وضعیت ارسال",
                 new AdminNavigationTarget("orders")));
-        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items);
+        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items, corporateOverdueFollowUps);
     }
 
     public async Task<IReadOnlyCollection<AdminOverdueShipment>> ListOverdueShipmentsAsync(int days, CancellationToken cancellationToken)
@@ -1102,16 +1209,15 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     private static string? EmptyToNull(string value) => string.IsNullOrEmpty(value) ? null : value;
 }
 
-public sealed class OrderManagementSchemaInitializer(OrderManagementDatabase database) : IHostedService
-{
-    public Task StartAsync(CancellationToken cancellationToken) => database.InitializeAsync(cancellationToken);
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-}
-
 public sealed record SetOrderStateRequest(string State, string? Reason);
 public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
 public sealed record AdminOrderNoteInput(string Note);
-public sealed record AdminShipmentUpdateInput(string? Carrier, string? TrackingCode, decimal? ActualShippingCost, string? Reason);
+public sealed record AdminShipmentUpdateInput(
+    string? Carrier,
+    string? TrackingCode,
+    decimal? ActualShippingCost,
+    string? Reason,
+    bool UpdateActualShippingCost = true);
 public sealed record AdminShippingAuditSnapshot(string? carrier, string? trackingCode, decimal actualShippingCost, DateTimeOffset? shippedAt);
 public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
@@ -1205,14 +1311,18 @@ public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreferenc
         ? new Dictionary<string, string[]>()
         : new Dictionary<string, string[]> { [nameof(input.Widgets)] = ["ترتیب باید هر پنج بخش داشبورد را دقیقاً یک بار داشته باشد."] };
 }
-public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit);
-public sealed record AdminAnalytics(int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0);
+public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal Discount = 0);
+public sealed record AdminAnalytics(
+    int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
+    decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,
+    decimal MerchandiseRevenue = 0, decimal Discount = 0, decimal ShippingRevenue = 0,
+    decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
 public sealed record AdminNotification(
     string Type,
     string Title,
     string Detail,
     AdminNavigationTarget? Target = null);
-public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items);
+public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items, int CorporateOverdueFollowUps = 0);
 public enum OrderOperationStatus { Updated, NotFound, Conflict }
 public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrderSummary? Order = null,
     string? Message = null, IReadOnlyCollection<StockLevelChange>? StockLevels = null)
