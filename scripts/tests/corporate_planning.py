@@ -114,13 +114,15 @@ with tempfile.TemporaryFile() as log:
             assert 'mobile' not in public_summary and 'email' not in public_summary
             fixtures.append(created['id'])
         a, b, c, d, e, f, g = fixtures
-        mutate(b, '/assign', {'assignedTo': 'CI owner'})
+        assigned = mutate(b, '/assign', {'assignedTo': 'CI owner'})
+        assert assigned['assignedTo'] == 'CI owner'
         mutate(c, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})
         mutate(d, '/assign', {'assignedTo': 'CI owner'})
         mutate(d, '/follow-up', {'nextFollowUpAt': '2000-01-01T00:00:00Z'})
         assert change_status(e, 'Shipped')[0] == 409  # Cannot skip the sales and fulfillment stages.
         for next_status in ['Reviewing', 'Contacted', 'ProformaSent', 'Negotiating', 'Approved', 'Preparing', 'Shipped', 'Finalized']:
-            assert change_status(e, next_status)[0] == 200, next_status
+            status, updated = change_status(e, next_status)
+            assert status == 200 and updated['status'] == next_status, (next_status, status, updated)
         assert change_status(e, 'Reviewing')[0] == 409  # Terminal requests cannot be reopened.
         mutate(f, '/status', {'status': 'Cancelled', 'note': 'CI'}, 'PATCH')
         mutate(g, '/assign', {'assignedTo': '  '})

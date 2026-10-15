@@ -301,14 +301,25 @@ public sealed class CorporateRequestDatabase(IConfiguration configuration, ILogg
             reader.GetInt32(8));
     }
 
-    public async Task<CorporateRequestDetail?> FindAsync(Guid id, CancellationToken ct) => await FindCoreAsync(id, null, ct);
-    public async Task<object?> FindPublicAsync(Guid id, string? token, CancellationToken ct) => await FindCoreAsync(id, token, ct) is { } request ? new { request.Id, request.CustomerName, request.CompanyName, request.Status, statusTitle = CorporateRequestStatuses.Title(request.Status), request.CreatedAt, request.UpdatedAt } : null;
+    public async Task<CorporateRequestDetail?> FindAsync(Guid id, CancellationToken ct) =>
+        await FindCoreAsync(id, null, ct, requireAccessToken: false);
 
-    private async Task<CorporateRequestDetail?> FindCoreAsync(Guid id, string? token, CancellationToken ct)
+    public async Task<object?> FindPublicAsync(Guid id, string? token, CancellationToken ct) =>
+        await FindCoreAsync(id, token, ct, requireAccessToken: true) is { } request
+            ? new { request.Id, request.CustomerName, request.CompanyName, request.Status, statusTitle = CorporateRequestStatuses.Title(request.Status), request.CreatedAt, request.UpdatedAt }
+            : null;
+
+    private async Task<CorporateRequestDetail?> FindCoreAsync(Guid id, string? token, CancellationToken ct, bool requireAccessToken)
     {
-        if (!IsConfigured || string.IsNullOrWhiteSpace(token)) return null;
-        const string sql = "select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at from corporate_requests where id=@id and public_access_token=@token;";
-        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"id",id); Add(command,"token",token!);
+        if (!IsConfigured || (requireAccessToken && string.IsNullOrWhiteSpace(token))) return null;
+        const string selectSql = """
+            select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at
+            from corporate_requests
+            where id=@id
+            """;
+        var sql = requireAccessToken ? $"{selectSql} and public_access_token=@token;" : $"{selectSql};";
+        await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(ct); await using var command = new NpgsqlCommand(sql, connection); Add(command,"id",id);
+        if (requireAccessToken) Add(command,"token",token!);
         await using var reader = await command.ExecuteReaderAsync(ct); if (!await reader.ReadAsync(ct)) return null; var detail = ReadDetail(reader); await reader.CloseAsync();
         detail = detail with { Events = await EventsAsync(connection, id, ct), Messages = await MessagesAsync(connection, id, ct) }; return detail;
     }
