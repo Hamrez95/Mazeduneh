@@ -29,6 +29,8 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminDashboard? dashboard;
+  AdminAnalytics? financialAnalytics;
+  Object? financialAnalyticsError;
   AdminDashboardHealth? systemHealth;
   AdminNotifications? notifications;
   DashboardPreferences preferences = DashboardPreferences.defaults;
@@ -43,10 +45,15 @@ class _DashboardPageState extends State<DashboardPage> {
   void initState() { super.initState(); load(); }
 
   Future<void> load() async {
+    final session = OwnerSession.instance;
+    final canReadFinancials =
+        !session.isAuthenticated || session.can(AdminPermissions.reportsRead);
     setState(() {
       loading = true;
       healthLoading = true;
       error = null;
+      financialAnalytics = null;
+      financialAnalyticsError = null;
       systemHealth = null;
     });
     final healthFuture = api.fetchDashboardHealth()
@@ -56,19 +63,39 @@ class _DashboardPageState extends State<DashboardPage> {
       final today = DateUtils.dateOnly(DateTime.now());
       final rangeStart = _selectedRangeStart(today);
       final rangeEnd = _selectedRangeEnd(today);
+      final rangeStartUtc = rangeStart.toUtc();
+      final rangeEndUtcExclusive =
+          DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc();
+      final analyticsFuture = canReadFinancials
+          ? api
+              .fetchAnalytics(
+                days: dashboardDays,
+                fromUtc: rangeStartUtc,
+                toUtcExclusive: rangeEndUtcExclusive,
+              )
+              .then<Object?>((value) => value)
+              .catchError((Object exception) => exception)
+          : Future<Object?>.value(null);
       final result = await Future.wait([
         api.fetchDashboard(
           days: dashboardDays,
-          fromUtc: rangeStart.toUtc(),
-          toUtcExclusive: DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc(),
+          fromUtc: rangeStartUtc,
+          toUtcExclusive: rangeEndUtcExclusive,
         ),
         api.fetchNotifications(),
         api.fetchDashboardPreferences(),
+        analyticsFuture,
       ]);
       if (mounted) setState(() {
         dashboard = result[0] as AdminDashboard;
         notifications = result[1] as AdminNotifications;
         preferences = result[2] as DashboardPreferences;
+        final analyticsResult = result[3];
+        if (analyticsResult is AdminAnalytics) {
+          financialAnalytics = analyticsResult;
+        } else if (analyticsResult != null) {
+          financialAnalyticsError = analyticsResult;
+        }
         lastLoadedAt = DateTime.now();
       });
     } catch (exception) {
@@ -219,6 +246,26 @@ class _DashboardPageState extends State<DashboardPage> {
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
         if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
+        if (data.financialsVisible && can(AdminPermissions.reportsRead))
+          MetricCard(
+            'سود خالص بازه',
+            financialAnalytics != null
+                ? '${formatPersianNumber(financialAnalytics!.netProfit)} ریال'
+                : financialAnalyticsError != null
+                    ? 'بارگذاری نشد'
+                    : loading
+                        ? 'در حال دریافت…'
+                        : '—',
+            Icons.account_balance_wallet_rounded,
+            tint: financialAnalytics != null && financialAnalytics!.netProfit < 0
+                ? const Color(0xFFFCE6E0)
+                : const Color(0xFFE6EEF8),
+            onTap: financialAnalyticsError != null
+                ? load
+                : widget.onNavigate == null
+                    ? null
+                    : () => widget.onNavigate!(_periodReportsIntent()),
+          ),
         if (can(AdminPermissions.ordersRead)) ...[
           MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
           if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),

@@ -214,6 +214,39 @@ void main() {
     expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
   });
 
+  testWidgets('net profit KPI uses and opens the selected report period', (tester) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final analyticsRequests = <Uri>[];
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(_dashboardHarness(
+      onNavigate: (value) => destination = value,
+      analyticsRequests: analyticsRequests,
+      netProfit: 275000,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(analyticsRequests, hasLength(1));
+    expect(analyticsRequests.single.path, '/api/v1/admin/analytics');
+    expect(
+      analyticsRequests.single.queryParameters['from'],
+      DateTime(today.year, today.month, today.day).toUtc().toIso8601String(),
+    );
+    expect(
+      analyticsRequests.single.queryParameters['to'],
+      DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String(),
+    );
+
+    await tester.scrollUntilVisible(find.text('سود خالص بازه'), 350, maxScrolls: 20);
+    await tester.ensureVisible(find.text('سود خالص بازه'));
+    expect(find.textContaining('۲۷۵'), findsOneWidget);
+    await tester.tap(find.text('سود خالص بازه'));
+
+    expect(destination?.module, AdminModule.reports);
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
     tester.view.physicalSize = const Size(360, 900);
     tester.view.devicePixelRatio = 1;
@@ -277,7 +310,10 @@ void main() {
 
   testWidgets('dashboard-only role gets an educational empty action state', (tester) async {
     OwnerSession.instance.updateIdentity(role: 'DashboardViewer', permissions: ['dashboard.read']);
+    final analyticsRequests = <Uri>[];
     await tester.pumpWidget(_dashboardHarness(
+      financialsVisible: false,
+      analyticsRequests: analyticsRequests,
       problemOrders: 2,
       awaitingPayment: 3,
       corporateRequests: 4,
@@ -294,6 +330,8 @@ void main() {
     expect(find.text('پیگیری سفارش‌ها'), findsNothing);
     expect(find.text('مشاهده موجودی'), findsNothing);
     expect(find.textContaining('با مدیر فروشگاه هماهنگ کنید'), findsOneWidget);
+    expect(find.text('سود خالص بازه'), findsNothing);
+    expect(analyticsRequests, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
@@ -352,7 +390,7 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], int problemOrders = 0, int awaitingPayment = 0, int corporateRequests = 0, String paymentStatus = 'sandbox-enabled', String storageStatus = 'local'}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], int problemOrders = 0, int awaitingPayment = 0, int corporateRequests = 0, String paymentStatus = 'sandbox-enabled', String storageStatus = 'local', bool financialsVisible = true, num netProfit = 275000, List<Uri>? analyticsRequests}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(
@@ -369,6 +407,25 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
         headers: {'content-type': 'application/json; charset=utf-8'},
       );
     }
+    if (request.url.path.endsWith('/analytics')) {
+      analyticsRequests?.add(request.url);
+      return http.Response(
+        jsonEncode({
+          'days': 1,
+          'orderCount': 2,
+          'unitsSold': 3,
+          'revenue': 850000,
+          'cost': 575000,
+          'grossProfit': 275000,
+          'grossMarginPercent': 32.35,
+          'tax': 0,
+          'netProfit': netProfit,
+          'shippingExpense': 0,
+        }),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      );
+    }
     return http.Response(
       jsonEncode(request.url.path.endsWith('/dashboard')
           ? {
@@ -380,6 +437,7 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
               'delivered': 0,
               'paidRevenue': 0,
               'todayRevenue': 0,
+              'financialsVisible': financialsVisible,
               'lowStock': lowStock,
               'expiringSoon': expiringSoon,
             }
