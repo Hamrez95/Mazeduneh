@@ -79,9 +79,9 @@ def seed_role_dashboard_preferences():
     sql = """insert into admin_dashboard_role_preferences
         (store_id, role, widgets, updated_by, updated_at)
         values ('default', 'WarehouseOperator',
-        '[{"id":"expiring","visible":true},{"id":"alerts","visible":false},
-          {"id":"metrics","visible":true},{"id":"quickActions","visible":false},
-          {"id":"lowStock","visible":true}]'::jsonb,
+        '[{"Id":"expiring","Visible":true},{"Id":"alerts","Visible":false},
+          {"Id":"metrics","Visible":true},{"Id":"quickActions","Visible":false},
+          {"Id":"lowStock","Visible":true}]'::jsonb,
         'dashboard-preferences-ci', now())
         on conflict (store_id, role) do update
         set widgets=excluded.widgets, updated_by=excluded.updated_by, updated_at=excluded.updated_at;"""
