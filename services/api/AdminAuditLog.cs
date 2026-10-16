@@ -29,6 +29,15 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "admin-audit", "001-bootstrap", sql, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-audit", "002-store-scope", """
+            alter table admin_audit_logs add column if not exists store_id varchar(120) null;
+            update admin_audit_logs
+            set store_id=coalesce(nullif(after_json->>'StoreId',''),nullif(before_json->>'StoreId',''),'default')
+            where store_id is null;
+            alter table admin_audit_logs alter column store_id set default 'default';
+            alter table admin_audit_logs alter column store_id set not null;
+            create index if not exists ix_admin_audit_logs_store_occurred on admin_audit_logs(store_id,occurred_at desc);
+            """, cancellationToken);
         logger.LogInformation("Admin audit log schema is ready.");
     }
 
@@ -41,10 +50,11 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         object? after,
         string reason,
         string requestId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? storeId = null)
     {
         if (!IsConfigured) return Task.CompletedTask;
-        return RecordWithConnectionAsync(null, null, actor, action, entityType, entityId, before, after, reason, requestId, cancellationToken);
+        return RecordWithConnectionAsync(null, null, actor, action, entityType, entityId, before, after, reason, requestId, cancellationToken, storeId);
     }
 
     public Task RecordAsync(
@@ -58,17 +68,19 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         object? after,
         string reason,
         string requestId,
-        CancellationToken cancellationToken) =>
-        RecordWithConnectionAsync(connection, transaction, actor, action, entityType, entityId, before, after, reason, requestId, cancellationToken);
+        CancellationToken cancellationToken,
+        string? storeId = null) =>
+        RecordWithConnectionAsync(connection, transaction, actor, action, entityType, entityId, before, after, reason, requestId, cancellationToken, storeId);
 
-    public async Task<IReadOnlyCollection<AdminAuditLogEntry>> ListAsync(string? entityType, string? entityId, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyCollection<AdminAuditLogEntry>> ListAsync(string? entityType, string? entityId, int limit, string? storeId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return Array.Empty<AdminAuditLogEntry>();
         const string sql = """
-            select id,actor,action,entity_type,entity_id,before_json,after_json,reason,request_id,occurred_at
+            select id,actor,action,entity_type,entity_id,before_json,after_json,reason,request_id,occurred_at,store_id
             from admin_audit_logs
             where (@entity_type = '' or entity_type = @entity_type)
               and (@entity_id = '' or entity_id = @entity_id)
+              and store_id=@store_id
             order by occurred_at desc
             limit @limit;
             """;
@@ -77,6 +89,7 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("entity_type", entityType?.Trim() ?? string.Empty);
         command.Parameters.AddWithValue("entity_id", entityId?.Trim() ?? string.Empty);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
         command.Parameters.AddWithValue("limit", limit);
         var result = new List<AdminAuditLogEntry>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -84,7 +97,7 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
             result.Add(new AdminAuditLogEntry(
                 reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
                 reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
-                reader.GetString(7), reader.GetString(8), reader.GetFieldValue<DateTimeOffset>(9)));
+                reader.GetString(7), reader.GetString(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetString(10)));
         return result;
     }
 
@@ -99,7 +112,8 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         object? after,
         string reason,
         string requestId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? storeId)
     {
         var ownsConnection = connection is null;
         connection ??= new NpgsqlConnection(_connectionString);
@@ -107,12 +121,13 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         if (ownsConnection) await connection.OpenAsync(cancellationToken);
         const string sql = """
             insert into admin_audit_logs
-                (id,actor,action,entity_type,entity_id,before_json,after_json,reason,request_id,occurred_at)
+                (id,store_id,actor,action,entity_type,entity_id,before_json,after_json,reason,request_id,occurred_at)
             values
-                (@id,@actor,@action,@entity_type,@entity_id,@before_json,@after_json,@reason,@request_id,@occurred_at);
+                (@id,@store_id,@actor,@action,@entity_type,@entity_id,@before_json,@after_json,@reason,@request_id,@occurred_at);
             """;
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
         command.Parameters.AddWithValue("actor", actor.Trim());
         command.Parameters.AddWithValue("action", action.Trim());
         command.Parameters.AddWithValue("entity_type", entityType.Trim());
@@ -124,7 +139,9 @@ public sealed class AdminAuditLogDatabase(IConfiguration configuration, ILogger<
         command.Parameters.AddWithValue("occurred_at", DateTimeOffset.UtcNow);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private static string NormalizeStoreId(string? storeId) => string.IsNullOrWhiteSpace(storeId) ? "default" : storeId.Trim();
 }
 
 public sealed record AdminAuditLogEntry(Guid Id, string Actor, string Action, string EntityType, string EntityId,
-    string? BeforeJson, string? AfterJson, string Reason, string RequestId, DateTimeOffset OccurredAt);
+    string? BeforeJson, string? AfterJson, string Reason, string RequestId, DateTimeOffset OccurredAt, string StoreId);

@@ -132,7 +132,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await command.ExecuteNonQueryAsync(cancellationToken);
         var created = await GetAsync(connection, id, cancellationToken);
         if (created is null) throw new InvalidOperationException("کاربر ایجادشده پیدا نشد.");
-        await audit.RecordAsync(actor, "admin-user.invited", "AdminUser", id.ToString(), null, created, "ایجاد عضویت و صدور دعوت یک‌بارمصرف", requestId, cancellationToken);
+        await audit.RecordAsync(actor, "admin-user.invited", "AdminUser", id.ToString(), null, created, "ایجاد عضویت و صدور دعوت یک‌بارمصرف", requestId, cancellationToken, normalizedStoreId);
         return new AdminUserInvitation(created, invitationToken, expiresAt);
     }
 
@@ -198,7 +198,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         }
         await audit.RecordAsync(connection, transaction, email, "admin-user.invitation-accepted", "AdminUser", userId.ToString(),
             new { InvitationPending = true }, new { InvitationPending = false, StoreId = storeId, Role = role },
-            "Invitation accepted", requestId, cancellationToken);
+            "Invitation accepted", requestId, cancellationToken, storeId);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
@@ -341,9 +341,9 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
 
         var entityId = $"{userId:D}:{sessionId:D}";
         await audit.RecordAsync(connection, transaction, actor, "admin-user.session-revoked", "AdminUserSession", entityId,
-            new { UserId = userId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = (DateTimeOffset?)null },
-            new { UserId = userId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = revokedAt },
-            "لغو نشست همکار توسط مدیر فروشگاه", requestId, cancellationToken);
+            new { UserId = userId, StoreId = normalizedStoreId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = (DateTimeOffset?)null },
+            new { UserId = userId, StoreId = normalizedStoreId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = revokedAt },
+            "لغو نشست همکار توسط مدیر فروشگاه", requestId, cancellationToken, normalizedStoreId);
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
@@ -380,7 +380,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         }
         var updated = await GetAsync(connection, id, cancellationToken, transaction);
         if (updated is not null)
-            await audit.RecordAsync(connection, transaction, actor, "admin-user.status-changed", "AdminUser", id.ToString(), before, updated, isActive ? "فعال‌سازی عضویت مدیر" : "غیرفعال‌سازی عضویت مدیر", requestId, cancellationToken);
+            await audit.RecordAsync(connection, transaction, actor, "admin-user.status-changed", "AdminUser", id.ToString(), before, updated, isActive ? "فعال‌سازی عضویت مدیر" : "غیرفعال‌سازی عضویت مدیر", requestId, cancellationToken, NormalizeStoreId(storeId));
         await transaction.CommitAsync(cancellationToken);
         return updated;
     }
@@ -428,7 +428,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         }
         var updated = await GetAsync(connection, id, cancellationToken, transaction);
         if (updated is not null)
-            await audit.RecordAsync(connection, transaction, actor, "admin-user.permissions-changed", "AdminUser", id.ToString(), before, updated, "به‌روزرسانی دسترسی‌های عضویت مدیر", requestId, cancellationToken);
+            await audit.RecordAsync(connection, transaction, actor, "admin-user.permissions-changed", "AdminUser", id.ToString(), before, updated, "به‌روزرسانی دسترسی‌های عضویت مدیر", requestId, cancellationToken, NormalizeStoreId(storeId));
         await transaction.CommitAsync(cancellationToken);
         return updated;
     }
