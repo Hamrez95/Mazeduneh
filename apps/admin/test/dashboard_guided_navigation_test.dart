@@ -274,8 +274,10 @@ void main() {
     expect(find.text('هزینه‌های جانبی'), findsOneWidget);
     expect(find.textContaining('مالیات پرداختنی در سود محاسبه نمی‌شود'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('جزئیات کامل در گزارش سود'));
-    await tester.tap(find.text('جزئیات کامل در گزارش سود'));
+    final detailsButton = find.widgetWithText(TextButton, 'جزئیات کامل در گزارش سود');
+    await tester.scrollUntilVisible(detailsButton, 350, maxScrolls: 20);
+    await tester.pumpAndSettle();
+    await tester.tap(detailsButton);
     expect(destination?.module, AdminModule.reports);
     expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
     expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
