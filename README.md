@@ -21,6 +21,8 @@ cd Mazeduneh
 pwsh -File ./scripts/stack.ps1
 ```
 
+On Windows, you can double-click [`start-local.cmd`](start-local.cmd) instead. It starts the same full stack and prints a PowerShell 7.4 install command if PowerShell 7 is missing.
+
 The first run builds all three apps, starts PostgreSQL, applies migrations, and creates a local Admin account. The default addresses are Storefront `http://127.0.0.1:3000`, Admin `http://127.0.0.1:8080`, and API `http://127.0.0.1:5080`; if one is already in use, the launcher selects the next available local port and prints the actual addresses. The generated Admin password is printed once per run and saved under the ignored `.local-dev` folder.
 
 ```powershell
