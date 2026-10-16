@@ -25,7 +25,11 @@ class AuthApiClient {
   final String baseUrl;
   final String storeId;
 
-  Future<void> login({required String email, required String password, String? mfaCode}) async {
+  Future<void> login({
+    required String email,
+    required String password,
+    String? mfaCode,
+  }) async {
     OwnerSession.instance.clear();
     final revision = OwnerSession.instance.revision;
     final response = await _client.post(
@@ -35,7 +39,8 @@ class AuthApiClient {
         'email': email.trim(),
         'password': password,
         'storeId': storeId,
-        if (mfaCode != null && mfaCode.trim().isNotEmpty) 'mfaCode': mfaCode.trim(),
+        if (mfaCode != null && mfaCode.trim().isNotEmpty)
+          'mfaCode': mfaCode.trim(),
       }),
     );
 
@@ -104,7 +109,8 @@ class AuthApiClient {
       },
       body: jsonEncode({
         'password': password,
-        if (mfaCode != null && mfaCode.trim().isNotEmpty) 'mfaCode': mfaCode.trim(),
+        if (mfaCode != null && mfaCode.trim().isNotEmpty)
+          'mfaCode': _asciiDigits(mfaCode.trim()),
       }),
     );
     if (response.statusCode == 401) OwnerSession.instance.clear();
@@ -129,6 +135,131 @@ class AuthApiClient {
     OwnerSession.instance.rememberStepUpToken(stepUpToken, expiresAt);
     return stepUpToken;
   }
+
+  Future<AdminMfaStatus> getMfaStatus() async {
+    final response = await _mfaRequest('GET', '/auth/mfa');
+    if (response.statusCode != 200)
+      throw AuthApiException(
+        _message(response),
+        statusCode: response.statusCode,
+      );
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    return AdminMfaStatus(
+      enabled: body['enabled'] == true,
+      pendingExpiresAt: DateTime.tryParse(
+        body['pendingEnrollmentExpiresAt'] as String? ?? '',
+      ),
+    );
+  }
+
+  Future<AdminMfaEnrollment> beginMfaEnrollment({
+    required String password,
+    String? mfaCode,
+  }) async {
+    final response = await _mfaRequest(
+      'POST',
+      '/auth/mfa/enrollment',
+      body: {
+        'password': password,
+        if (mfaCode != null && mfaCode.trim().isNotEmpty)
+          'mfaCode': mfaCode.trim(),
+      },
+    );
+    if (response.statusCode != 200)
+      throw AuthApiException(
+        _message(response),
+        statusCode: response.statusCode,
+      );
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final secret = body['secret'] as String?;
+    final provisioningUri = body['provisioningUri'] as String?;
+    final expiresAt = DateTime.tryParse(body['expiresAt'] as String? ?? '');
+    if (secret == null || provisioningUri == null || expiresAt == null) {
+      throw AuthApiException('پاسخ ثبت تأیید دومرحله‌ای کامل نیست.');
+    }
+    return AdminMfaEnrollment(
+      secret: secret,
+      provisioningUri: provisioningUri,
+      expiresAt: expiresAt,
+    );
+  }
+
+  Future<void> confirmMfaEnrollment(String code) async {
+    final response = await _mfaRequest(
+      'POST',
+      '/auth/mfa/confirm',
+      body: {'mfaCode': _asciiDigits(code.trim())},
+    );
+    if (response.statusCode != 200)
+      throw AuthApiException(
+        _message(response),
+        statusCode: response.statusCode,
+      );
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final token = body['accessToken'] as String?;
+    final expiresAt = DateTime.tryParse(body['expiresAt'] as String? ?? '');
+    if (token == null ||
+        token.isEmpty ||
+        expiresAt == null ||
+        !expiresAt.isAfter(DateTime.now().toUtc())) {
+      throw AuthApiException('پاسخ فعال‌سازی تأیید دومرحله‌ای کامل نیست.');
+    }
+    OwnerSession.instance.replaceAccessToken(
+      accessToken: token,
+      expiresAt: expiresAt,
+    );
+  }
+
+  Future<void> disableMfa({
+    required String password,
+    required String mfaCode,
+  }) async {
+    final response = await _mfaRequest(
+      'POST',
+      '/auth/mfa/disable',
+      body: {'password': password, 'mfaCode': _asciiDigits(mfaCode.trim())},
+    );
+    if (response.statusCode != 204)
+      throw AuthApiException(
+        _message(response),
+        statusCode: response.statusCode,
+      );
+  }
+
+  Future<http.Response> _mfaRequest(
+    String method,
+    String path, {
+    Object? body,
+  }) async {
+    final token = OwnerSession.instance.bearerToken;
+    if (token == null)
+      throw AuthApiException('نشست شما منقضی شده است.', statusCode: 401);
+    final uri = Uri.parse('$baseUrl/api/v1/admin$path');
+    final headers = {
+      'authorization': 'Bearer $token',
+      'content-type': 'application/json; charset=utf-8',
+    };
+    final response = switch (method) {
+      'GET' => await _client.get(uri, headers: headers),
+      _ => await _client.post(uri, headers: headers, body: jsonEncode(body)),
+    };
+    if (response.statusCode == 401) OwnerSession.instance.clear();
+    return response;
+  }
+
+  static String _asciiDigits(String value) =>
+      value.replaceAllMapped(RegExp(r'[۰-۹٠-٩]'), (match) {
+        final digit = match.group(0)!;
+        final codePoint = digit.codeUnitAt(0);
+        return String.fromCharCode(
+          codePoint >= 0x6f0
+              ? codePoint - 0x6f0 + 0x30
+              : codePoint - 0x660 + 0x30,
+        );
+      });
 
   Future<void> acceptInvitation({
     required String token,
@@ -244,4 +375,21 @@ class AuthApiClient {
     } catch (_) {}
     return 'ورود با خطا مواجه شد (${response.statusCode}).';
   }
+}
+
+class AdminMfaStatus {
+  const AdminMfaStatus({required this.enabled, this.pendingExpiresAt});
+  final bool enabled;
+  final DateTime? pendingExpiresAt;
+}
+
+class AdminMfaEnrollment {
+  const AdminMfaEnrollment({
+    required this.secret,
+    required this.provisioningUri,
+    required this.expiresAt,
+  });
+  final String secret;
+  final String provisioningUri;
+  final DateTime expiresAt;
 }

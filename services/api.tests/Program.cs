@@ -272,8 +272,34 @@ var mfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dict
 var mfaTokens = new AdminTokenService(mfaConfiguration);
 Check(mfaTokens.ValidateMfaCode("Owner", null) == AdminMfaValidationResult.Missing, "Required MFA did not challenge for a missing code");
 Check(mfaTokens.ValidateMfaCode("StoreManager", null) == AdminMfaValidationResult.NotRequired, "MFA challenge was applied to a non-owner role");
+var generatedMembershipSecret = AdminTotpAuthenticator.CreateSecret();
+Check(generatedMembershipSecret.Length == 32 && AdminTotpAuthenticator.IsValidSecret(generatedMembershipSecret), "Generated membership TOTP secret was invalid");
+Check(AdminTotpAuthenticator.CreateProvisioningUri("owner+test@example.test", "Mazeduneh Admin", generatedMembershipSecret).StartsWith("otpauth://totp/"),
+    "TOTP provisioning URI was not generated");
+var mfaUserId = Guid.NewGuid();
+var protectedMembershipSecret = mfaTokens.ProtectMembershipMfaSecret(mfaUserId, "tenant-a", generatedMembershipSecret);
+Check(!protectedMembershipSecret.SequenceEqual(Encoding.UTF8.GetBytes(generatedMembershipSecret)), "Membership TOTP secret was stored as plaintext");
+Check(mfaTokens.UnprotectMembershipMfaSecret(mfaUserId, "tenant-a", protectedMembershipSecret) == generatedMembershipSecret,
+    "Membership TOTP secret failed encryption roundtrip");
+var wrongStoreMfaSecretRejected = false;
+try { _ = mfaTokens.UnprotectMembershipMfaSecret(mfaUserId, "tenant-b", protectedMembershipSecret); }
+catch (System.Security.Cryptography.CryptographicException) { wrongStoreMfaSecretRejected = true; }
+Check(wrongStoreMfaSecretRejected, "Membership TOTP secret crossed store boundaries");
+var tamperedMembershipSecret = protectedMembershipSecret.ToArray();
+tamperedMembershipSecret[^1] ^= 1;
+var tamperedMfaSecretRejected = false;
+try { _ = mfaTokens.UnprotectMembershipMfaSecret(mfaUserId, "tenant-a", tamperedMembershipSecret); }
+catch (System.Security.Cryptography.CryptographicException) { tamperedMfaSecretRejected = true; }
+Check(tamperedMfaSecretRejected, "Tampered membership TOTP secret was accepted");
 var mfaIssued = mfaTokens.Issue("owner@example.test", null, mfaVerified: true);
 Check(mfaTokens.TryValidate(mfaIssued.Token, out var mfaPrincipal) && mfaPrincipal.MfaVerified, "MFA verification was not bound to the signed access token");
+var unverifiedMembershipToken = mfaTokens.Issue("member@example.test", Guid.NewGuid());
+Check(mfaTokens.TryValidate(unverifiedMembershipToken.Token, out var unverifiedMembershipPrincipal), "Unverified membership token could not be decoded");
+var verifiedMembershipToken = mfaTokens.IssueMfaVerifiedSessionToken(unverifiedMembershipPrincipal);
+Check(mfaTokens.TryValidate(verifiedMembershipToken.Token, out var verifiedMembershipPrincipal) &&
+      verifiedMembershipPrincipal.MfaVerified && verifiedMembershipPrincipal.SessionId == unverifiedMembershipPrincipal.SessionId &&
+      verifiedMembershipPrincipal.ExpiresAt == unverifiedMembershipPrincipal.ExpiresAt,
+    "MFA completion did not preserve the active session identity and expiration");
 var invalidMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
 {
     ["Admin:Mfa:Required"] = "true",

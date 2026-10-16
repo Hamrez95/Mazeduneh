@@ -95,6 +95,48 @@ void main() {
     expect(jsonDecode(captured.body)['mfaCode'], '123456');
   });
 
+  test('membership MFA enrollment replaces the active token with a verified token', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'unverified-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'member@example.test',
+      role: 'StoreManager',
+      permissions: const ['orders.read'],
+      storeId: 'tenant-a',
+    );
+    final requests = <http.Request>[];
+    final api = AuthApiClient(
+      baseUrl: 'https://api.example.test',
+      client: MockClient((request) async {
+        requests.add(request);
+        if (request.method == 'GET') {
+          return http.Response('{"enabled":false}', 200);
+        }
+        if (request.url.path.endsWith('/enrollment')) {
+          return http.Response(jsonEncode({
+            'secret': 'JBSWY3DPEHPK3PXP',
+            'provisioningUri': 'otpauth://totp/Mazeduneh%20Admin?secret=JBSWY3DPEHPK3PXP',
+            'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 10)).toIso8601String(),
+          }), 200);
+        }
+        return http.Response(jsonEncode({
+          'accessToken': 'verified-session',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 9)).toIso8601String(),
+        }), 200);
+      }),
+    );
+
+    expect((await api.getMfaStatus()).enabled, isFalse);
+    final enrollment = await api.beginMfaEnrollment(password: 'current-password');
+    expect(enrollment.secret, 'JBSWY3DPEHPK3PXP');
+    expect(requests.last.headers['authorization'], 'Bearer unverified-session');
+    await api.confirmMfaEnrollment('۱۲۳۴۵۶');
+    expect(jsonDecode(requests.last.body), {'mfaCode': '123456'});
+    expect(OwnerSession.instance.bearerToken, 'verified-session');
+    expect(OwnerSession.instance.storeId, 'tenant-a');
+    expect(OwnerSession.instance.role, 'StoreManager');
+  });
+
   test('login rejects a server session bound to another store', () async {
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/session')) {
