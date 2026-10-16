@@ -1,4 +1,4 @@
-"""Role- and store-scoped dashboard preference API contract."""
+"""Per-user dashboard preference, role fallback, and store isolation contract."""
 import json
 import os
 from pathlib import Path
@@ -16,10 +16,11 @@ OWNER_PASSWORD = "Mazeduneh-CI-Owner-Password!"
 WIDGETS = ["metrics", "quickActions", "alerts", "lowStock", "expiring"]
 
 
-def request(path, method="GET", body=None, token=None):
+def request(path, method="GET", body=None, token=None, extra_headers=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
     if token:
         headers["Authorization"] = "Bearer " + token
+    headers.update(extra_headers or {})
     try:
         response = urlopen(Request(BASE + path, method=method, headers=headers,
                                    data=json.dumps(body).encode() if body is not None else None), timeout=8)
@@ -30,8 +31,8 @@ def request(path, method="GET", body=None, token=None):
         return response.status, json.loads(content) if content else None
 
 
-def start_api(role, log):
-    environment = dict(os.environ, Admin__Role=role, Admin__Permissions="dashboard.read")
+def start_api(role, log, permissions="dashboard.read"):
+    environment = dict(os.environ, Admin__Role=role, Admin__Permissions=permissions)
     process = subprocess.Popen(
         ["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj", "--configuration", "Release",
          "--no-build", "--urls", BASE], cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT,
@@ -62,6 +63,52 @@ def stop_api(process):
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+
+
+def seed_role_dashboard_preferences():
+    database = {}
+    for entry in os.environ["ConnectionStrings__Catalog"].split(";"):
+        if "=" in entry:
+            key, value = entry.split("=", 1)
+            database[key.strip().lower()] = value.strip()
+    environment = dict(os.environ)
+    for source, target in (("host", "PGHOST"), ("port", "PGPORT"), ("database", "PGDATABASE"),
+                           ("username", "PGUSER"), ("password", "PGPASSWORD")):
+        if source in database:
+            environment[target] = database[source]
+    sql = """insert into admin_dashboard_role_preferences
+        (store_id, role, widgets, updated_by, updated_at)
+        values ('default', 'WarehouseOperator',
+        '[{"Id":"expiring","Visible":true},{"Id":"alerts","Visible":false},
+          {"Id":"metrics","Visible":true},{"Id":"quickActions","Visible":false},
+          {"Id":"lowStock","Visible":true}]'::jsonb,
+        'dashboard-preferences-ci', now())
+        on conflict (store_id, role) do update
+        set widgets=excluded.widgets, updated_by=excluded.updated_by, updated_at=excluded.updated_at;"""
+    subprocess.run(["psql", "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--command", sql],
+                   cwd=ROOT, env=environment, check=True)
+
+
+def create_dashboard_member(owner_token, email, password, display_name):
+    status, step_up = request("/api/v1/admin/auth/step-up", "POST",
+                             {"password": OWNER_PASSWORD}, owner_token)
+    assert status == 200 and step_up["stepUpToken"], (status, step_up)
+    status, invitation = request("/api/v1/admin/users", "POST", {
+        "email": email,
+        "displayName": display_name,
+        "role": "WarehouseOperator",
+        "permissions": ["dashboard.read"],
+    }, owner_token, {"X-Admin-Step-Up": step_up["stepUpToken"]})
+    assert status == 201 and invitation["invitationToken"], (status, invitation)
+    status, _ = request("/api/v1/admin/auth/accept-invite", "POST", {
+        "token": invitation["invitationToken"], "password": password,
+    })
+    assert status == 204, status
+    status, login = request("/api/v1/admin/auth/login", "POST", {
+        "email": email, "password": password, "storeId": "default",
+    })
+    assert status == 200 and login["permissions"] == ["dashboard.read"], (status, login)
+    return login["accessToken"]
 
 
 with tempfile.TemporaryFile() as log:
@@ -121,6 +168,67 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 
-print("Dashboard preferences API: auth, validation, persistence, visibility, order and role isolation passed")
+    first_email = "dashboard-preferences-one@example.test"
+    first_password = "Dashboard-CI-Password-1!"
+    second_email = "dashboard-preferences-two@example.test"
+    second_password = "Dashboard-CI-Password-2!"
+    api, owner_token = start_api("Owner", log, permissions="")
+    try:
+        seed_role_dashboard_preferences()
+        first_user_token = create_dashboard_member(
+            owner_token, first_email, first_password, "Dashboard member one")
+        second_user_token = create_dashboard_member(
+            owner_token, second_email, second_password, "Dashboard member two")
+        endpoint = "/api/v1/admin/dashboard/preferences"
+        role_default = {"widgets": [
+            {"id": "expiring", "visible": True},
+            {"id": "alerts", "visible": False},
+            {"id": "metrics", "visible": True},
+            {"id": "quickActions", "visible": False},
+            {"id": "lowStock", "visible": True},
+        ]}
+        status, first_default = request(endpoint, token=first_user_token)
+        assert status == 200 and first_default == role_default, (status, first_default, role_default)
+        status, second_default = request(endpoint, token=second_user_token)
+        assert status == 200 and second_default == role_default, (status, second_default, role_default)
+
+        first_custom = {"widgets": [
+            {"id": "quickActions", "visible": False},
+            {"id": "metrics", "visible": True},
+            {"id": "alerts", "visible": True},
+            {"id": "lowStock", "visible": True},
+            {"id": "expiring", "visible": False},
+        ]}
+        second_custom = {"widgets": [
+            {"id": "expiring", "visible": True},
+            {"id": "alerts", "visible": False},
+            {"id": "metrics", "visible": False},
+            {"id": "quickActions", "visible": True},
+            {"id": "lowStock", "visible": True},
+        ]}
+        status, saved = request(endpoint, "PUT", first_custom, first_user_token)
+        assert status == 200 and saved == first_custom, (status, saved)
+        assert request(endpoint, token=first_user_token)[1] == first_custom
+        assert request(endpoint, token=second_user_token)[1] == role_default
+        status, saved = request(endpoint, "PUT", second_custom, second_user_token)
+        assert status == 200 and saved == second_custom, (status, saved)
+        assert request(endpoint, token=first_user_token)[1] == first_custom
+        assert request(endpoint, token=second_user_token)[1] == second_custom
+        stop_api(api)
+
+        api, owner_token = start_api("Owner", log, permissions="")
+        first_status, first_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": first_email, "password": first_password, "storeId": "default",
+        })
+        second_status, second_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": second_email, "password": second_password, "storeId": "default",
+        })
+        assert first_status == 200 and second_status == 200, (first_status, second_status)
+        assert request(endpoint, token=first_login["accessToken"])[1] == first_custom
+        assert request(endpoint, token=second_login["accessToken"])[1] == second_custom
+    finally:
+        stop_api(api)
+
+print("Dashboard preferences API: auth, validation, persistence, per-user, role and user isolation passed")
 
 
