@@ -121,7 +121,13 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                 ),
               )
             else
-              _UsersList(users: visibleUsers, changingUserId: changingUserId, onToggle: _toggleStatus, onEditPermissions: _editPermissions),
+              _UsersList(
+                users: visibleUsers,
+                changingUserId: changingUserId,
+                onToggle: _toggleStatus,
+                onEditPermissions: _editPermissions,
+                onManageSessions: _manageSessions,
+              ),
           ],
         ),
       ),
@@ -218,6 +224,13 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     );
   }
 
+  Future<void> _manageSessions(AdminUser user) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _AdminUserSessionsDialog(user: user, api: api, auth: widget.auth),
+    );
+  }
+
   Future<void> _toggleStatus(AdminUser user) async {
     if (user.email == OwnerSession.instance.email) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('برای جلوگیری از قطع دسترسی، مدیر اصلی از این صفحه غیرفعال نمی‌شود.')));
@@ -272,7 +285,7 @@ class _UsersHeader extends StatelessWidget {
               Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: AdminColors.mintSoft, borderRadius: BorderRadius.circular(20)), child: const Text('فقط Owner', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.ink))),
             ]),
             const SizedBox(height: 6),
-            const Text('همکاران را اضافه کنید، نقش مناسب بدهید و دسترسی‌های فعال را در یک نگاه ببینید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
+            const Text('همکاران، دسترسی‌ها و نشست‌های فعال را از همین‌جا مدیریت کنید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
             if (lastLoadedAt != null) ...[
               const SizedBox(height: 5),
               Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
@@ -284,12 +297,13 @@ class _UsersHeader extends StatelessWidget {
 }
 
 class _UsersList extends StatelessWidget {
-  const _UsersList({required this.users, required this.changingUserId, required this.onToggle, required this.onEditPermissions});
+  const _UsersList({required this.users, required this.changingUserId, required this.onToggle, required this.onEditPermissions, required this.onManageSessions});
 
   final List<AdminUser> users;
   final String? changingUserId;
   final ValueChanged<AdminUser> onToggle;
   final ValueChanged<AdminUser> onEditPermissions;
+  final ValueChanged<AdminUser> onManageSessions;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -319,6 +333,7 @@ class _UsersList extends StatelessWidget {
                       final action = changingUserId == user.id
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
                           : Wrap(spacing: 4, children: [
+                              if (!isOwner) TextButton.icon(onPressed: () => onManageSessions(user), icon: const Icon(Icons.devices_outlined), label: const Text('نشست‌ها')),
                               if (!isOwner) TextButton.icon(onPressed: () => onEditPermissions(user), icon: const Icon(Icons.tune_rounded), label: const Text('دسترسی‌ها')),
                               if (isOwner) const Tooltip(message: 'مدیر اصلی قابل ویرایش نیست', child: Padding(padding: EdgeInsets.all(8), child: Icon(Icons.lock_outline_rounded, color: AdminColors.muted)))
                               else TextButton.icon(onPressed: () => onToggle(user), icon: Icon(user.isActive ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded), label: Text(user.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی')),
@@ -330,6 +345,140 @@ class _UsersList extends StatelessWidget {
               ),
             ),
         ],
+      );
+}
+
+class _AdminUserSessionsDialog extends StatefulWidget {
+  const _AdminUserSessionsDialog({required this.user, required this.api, this.auth});
+
+  final AdminUser user;
+  final AdminUsersApiClient api;
+  final AuthApiClient? auth;
+
+  @override
+  State<_AdminUserSessionsDialog> createState() => _AdminUserSessionsDialogState();
+}
+
+class _AdminUserSessionsDialogState extends State<_AdminUserSessionsDialog> {
+  List<AdminUserSession> sessions = const [];
+  Object? error;
+  String? revokingSessionId;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await widget.api.fetchSessions(widget.user.id);
+      if (mounted) setState(() => sessions = result);
+    } catch (exception) {
+      if (mounted) setState(() => error = exception);
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> revoke(AdminUserSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('این نشست لغو شود؟'),
+        content: Text('${widget.user.displayName} از این نشست خارج می‌شود و برای ادامه باید دوباره وارد پنل شود.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('بازگشت')),
+          FilledButton.icon(onPressed: () => Navigator.pop(dialogContext, true), icon: const Icon(Icons.logout_rounded), label: const Text('لغو نشست')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final stepUpToken = await showAdminStepUpDialog(context, auth: widget.auth);
+    if (stepUpToken == null || !mounted) return;
+
+    setState(() => revokingSessionId = session.sessionId);
+    try {
+      await widget.api.revokeSession(widget.user.id, session.sessionId, stepUpToken: stepUpToken);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('نشست لغو شد؛ دسترسی همان لحظه قطع شد.')));
+      await load();
+    } on AdminUsersApiException catch (exception) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.message)));
+        await load();
+      }
+    } finally {
+      if (mounted) setState(() => revokingSessionId = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('نشست‌های ${widget.user.displayName}'),
+        content: SizedBox(
+          width: MediaQuery.sizeOf(context).width < 560 ? MediaQuery.sizeOf(context).width - 72 : 520,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height < 600 ? 300 : 440),
+            child: loading
+                ? const Center(child: CircularProgressIndicator(semanticsLabel: 'بارگذاری نشست‌ها'))
+                : error != null
+                    ? Column(mainAxisSize: MainAxisSize.min, children: [
+                        Text('نشست‌ها بارگذاری نشدند. ${requestErrorMessage(error!)}'),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(onPressed: load, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
+                      ])
+                    : sessions.isEmpty
+                        ? const Column(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.verified_user_outlined, size: 38, color: AdminColors.muted),
+                            SizedBox(height: 12),
+                            Text('نشست فعال دیگری برای این همکار وجود ندارد.'),
+                          ])
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: sessions.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              final session = sessions[index];
+                              final isRevoking = revokingSessionId == session.sessionId;
+                              return Card(
+                                color: const Color(0xFFF9F7F1),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                      const Icon(Icons.devices_outlined, color: AdminColors.ink),
+                                      const SizedBox(width: 10),
+                                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                        Text('شروع نشست: ${formatPersianDateTime(session.createdAt)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                        const SizedBox(height: 5),
+                                        Text('اعتبار تا: ${formatPersianDateTime(session.expiresAt)}', style: const TextStyle(color: AdminColors.muted)),
+                                      ])),
+                                    ]),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: AlignmentDirectional.centerEnd,
+                                      child: TextButton.icon(
+                                        onPressed: revokingSessionId == null ? () => revoke(session) : null,
+                                        icon: isRevoking
+                                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                            : const Icon(Icons.logout_rounded),
+                                        label: const Text('لغو نشست'),
+                                      ),
+                                    ),
+                                  ]),
+                                ),
+                              );
+                            },
+                          ),
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('بستن'))],
       );
 }
 

@@ -196,6 +196,64 @@ void main() {
     expect(requests.where((request) => request.url.path.endsWith('/permissions')), hasLength(1));
     expect(find.text('دسترسی‌های کاربر به‌روزرسانی شد.'), findsOneWidget);
   });
+
+  testWidgets('lets the owner inspect and revoke a member session after step-up', (tester) async {
+    tester.view.physicalSize = const Size(360, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final requests = <http.Request>[];
+    var activeSessions = true;
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/auth/step-up')) {
+        return http.Response(jsonEncode({
+          'stepUpToken': 'fresh-proof',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+        }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      if (request.url.path.endsWith('/roles')) {
+        return http.Response(jsonEncode([
+          {'role': 'WarehouseOperator', 'permissions': ['inventory.read'], 'titleFa': 'اپراتور انبار'},
+        ]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      if (request.url.path.endsWith('/revoke')) {
+        activeSessions = false;
+        return http.Response('', 204);
+      }
+      if (request.url.path.endsWith('/sessions')) {
+        return http.Response(jsonEncode(activeSessions ? [
+          {'sessionId': 'session-1', 'createdAt': '2026-10-03T12:00:00Z', 'expiresAt': '2026-10-03T20:00:00Z'},
+        ] : []), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+      }
+      return http.Response(jsonEncode([userJson(role: 'WarehouseOperator', hasPassword: true)]), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: client);
+    final auth = _FakeAuthApiClient();
+
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: Directionality(textDirection: TextDirection.rtl, child: AdminUsersPage(api: api, auth: auth)))));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('نشست‌ها'));
+    await tester.tap(find.text('نشست‌ها'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('نشست‌های کارمند انبار'), findsOneWidget);
+    expect(find.textContaining('اعتبار تا:'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'لغو نشست'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'لغو نشست'));
+    await tester.pumpAndSettle();
+    await confirmStepUp(tester);
+    await tester.pumpAndSettle();
+
+    final revoke = requests.singleWhere((request) => request.url.path.endsWith('/revoke'));
+    expect(revoke.url.path, '/api/v1/admin/users/WarehouseOperator-user/sessions/session-1/revoke');
+    expect(revoke.headers['x-admin-step-up'], 'fresh-proof');
+    expect(find.text('نشست فعال دیگری برای این همکار وجود ندارد.'), findsOneWidget);
+    expect(find.text('نشست لغو شد؛ دسترسی همان لحظه قطع شد.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Future<void> confirmStepUp(WidgetTester tester) async {

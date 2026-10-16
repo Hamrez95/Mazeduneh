@@ -201,6 +201,29 @@ public static class AdminSecurityExtensions
             .AddEndpointFilter<OwnerAuthorizationFilter>()
             .WithTags("Admin Users");
 
+        endpoints.MapGet("/api/v1/admin/users/{id:guid}/sessions", async (
+            Guid id, string? storeId, AdminUsersDatabase database, HttpContext context, CancellationToken cancellationToken) =>
+            Results.Ok(await database.ListActiveSessionsAsync(id, ResolveMembershipStore(context, storeId), cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>()
+            .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+            .WithTags("Admin Users");
+
+        endpoints.MapPost("/api/v1/admin/users/{id:guid}/sessions/{sessionId:guid}/revoke", async (
+            Guid id, Guid sessionId, string? storeId, AdminUsersDatabase database, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var revoked = await database.RevokeManagedSessionAsync(
+                id, sessionId, ResolveMembershipStore(context, storeId), actor, context.TraceIdentifier, cancellationToken);
+            return revoked
+                ? Results.NoContent()
+                : Results.NotFound(new { message = "نشست فعال پیدا نشد؛ فهرست را دوباره بارگذاری کنید." });
+        })
+        .AddEndpointFilter<OwnerAuthorizationFilter>()
+        .AddEndpointFilter<UserMutationTargetAuthorizationFilter>()
+        .AddEndpointFilter<StepUpAuthorizationFilter>()
+        .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.UsersWrite))
+        .WithTags("Admin Users");
+
         endpoints.MapGet("/api/v1/admin/users/roles", () =>
             Results.Ok(AdminPermissionCatalog.DefaultRoles.Select(item => new AdminRoleSummary(
                 item.Key,

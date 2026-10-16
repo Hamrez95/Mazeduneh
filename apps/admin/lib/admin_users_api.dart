@@ -39,6 +39,23 @@ class AdminUsersApiClient {
     return body.map((item) => AdminRole.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<AdminUserSession>> fetchSessions(String userId, {String? storeId}) async {
+    final response = await _client.get(_uri('/api/v1/admin/users/$userId/sessions', storeId: storeId), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw AdminUsersApiException(_message(response), statusCode: response.statusCode);
+    final body = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return body.map((item) => AdminUserSession.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> revokeSession(String userId, String sessionId, {required String stepUpToken, String? storeId}) async {
+    final uri = Uri.parse('$baseUrl/api/v1/admin/users/$userId/sessions/$sessionId/revoke').replace(queryParameters: {
+      if (storeId != null && storeId.trim().isNotEmpty) 'storeId': storeId.trim(),
+    });
+    final response = await _client.post(uri, headers: _headers(stepUpToken: stepUpToken));
+    _guard(response);
+    if (response.statusCode != 204) throw AdminUsersApiException(_message(response), statusCode: response.statusCode);
+  }
+
   Future<AdminUserInvitation> createUser({required String email, required String displayName, required String role, required List<String> permissions, required String stepUpToken, String? storeId}) async {
     final response = await _client.post(
       _uri('/api/v1/admin/users', storeId: storeId),
@@ -125,6 +142,20 @@ class AdminUserInvitation {
     final uri = Uri.base.replace(fragment: 'invite=$invitationToken');
     return uri.toString();
   }
+}
+
+class AdminUserSession {
+  const AdminUserSession({required this.sessionId, required this.createdAt, required this.expiresAt});
+
+  final String sessionId;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  factory AdminUserSession.fromJson(Map<String, dynamic> json) => AdminUserSession(
+        sessionId: json['sessionId'].toString(),
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        expiresAt: DateTime.parse(json['expiresAt'] as String),
+      );
 }
 
 class AdminUser {
