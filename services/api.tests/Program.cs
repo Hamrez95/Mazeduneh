@@ -281,6 +281,42 @@ var invalidMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(n
 }).Build();
 Check(new AdminTokenService(invalidMfaConfiguration).ValidateMfaCode("Owner", null) == AdminMfaValidationResult.NotConfigured,
     "Required MFA accepted invalid/missing server configuration");
+var sensitiveMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:Required"] = "false",
+    ["Admin:Mfa:TotpSecret"] = rfcTotpSecret,
+}).Build();
+var sensitiveMfaTokens = new AdminTokenService(sensitiveMfaConfiguration);
+Check(sensitiveMfaTokens.ValidateMfaCode("Owner", null) == AdminMfaValidationResult.NotRequired,
+    "Optional login MFA was unexpectedly made mandatory");
+Check(sensitiveMfaTokens.ValidateSensitiveActionMfaCode("Owner", null, out _) == AdminMfaValidationResult.Missing,
+    "Configured owner TOTP did not protect sensitive step-up");
+Check(sensitiveMfaTokens.ValidateSensitiveActionMfaCode("StoreManager", null, out _) == AdminMfaValidationResult.NotRequired,
+    "Sensitive owner TOTP was incorrectly applied to a non-owner role");
+var invalidSensitiveMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:Required"] = "false",
+    ["Admin:Mfa:TotpSecret"] = "invalid",
+}).Build();
+Check(new AdminTokenService(invalidSensitiveMfaConfiguration)
+        .ValidateSensitiveActionMfaCode("Owner", null, out _) == AdminMfaValidationResult.NotConfigured,
+    "An invalid configured owner TOTP secret silently disabled sensitive-action MFA");
+var missingSensitiveMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:Required"] = "false",
+}).Build();
+Check(new AdminTokenService(missingSensitiveMfaConfiguration)
+        .ValidateSensitiveActionMfaCode("Owner", null, out _) == AdminMfaValidationResult.NotConfigured,
+    "Sensitive owner actions were not fail-closed by default when no TOTP seed was configured");
+var localSensitiveMfaConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Admin:Mfa:Required"] = "false",
+    ["Admin:Mfa:SensitiveActionsRequired"] = "false",
+}).Build();
+Check(new AdminTokenService(localSensitiveMfaConfiguration)
+        .ValidateSensitiveActionMfaCode("Owner", null, out _) == AdminMfaValidationResult.NotRequired,
+    "The explicit local/demo MFA override did not disable sensitive-action TOTP");
+Console.WriteLine("Sensitive-action owner TOTP configuration and role checks passed");
 var replayTestConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Catalog");
 if (!string.IsNullOrWhiteSpace(replayTestConnectionString))
 {

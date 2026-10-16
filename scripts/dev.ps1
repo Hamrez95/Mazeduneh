@@ -452,6 +452,7 @@ if ($startApi) {
     Admin__Email = $adminEmail
     Admin__PasswordHash = $passwordHash
     Admin__TokenSigningKey = $signingKey
+    Admin__Mfa__SensitiveActionsRequired = 'false'
     'Cors__AllowedOrigins__0' = 'http://127.0.0.1:3000'
     'Cors__AllowedOrigins__1' = 'http://localhost:3000'
     'Cors__AllowedOrigins__2' = 'http://127.0.0.1:8080'

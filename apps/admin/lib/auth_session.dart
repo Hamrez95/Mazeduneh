@@ -11,6 +11,8 @@ class OwnerSession {
   DateTime? _expiresAt;
   String? _email;
   String? _role;
+  String? _stepUpToken;
+  DateTime? _stepUpExpiresAt;
   String _storeId = 'default';
   List<String> _permissions = const [];
 
@@ -18,6 +20,15 @@ class OwnerSession {
   String? get email => _email;
   DateTime? get expiresAt => _expiresAt;
   String? get role => _role;
+  String? get validStepUpToken {
+    if (_stepUpToken == null || _stepUpExpiresAt == null) return null;
+    if (!_stepUpExpiresAt!.isAfter(DateTime.now().toUtc())) {
+      _clearStepUpToken();
+      return null;
+    }
+    return _stepUpToken;
+  }
+
   String get storeId => _storeId;
   List<String> get permissions => List.unmodifiable(_permissions);
   bool can(String permission) =>
@@ -52,6 +63,7 @@ class OwnerSession {
     _expiresAt = expiresAt.toUtc();
     _email = email;
     _role = role;
+    _clearStepUpToken();
     _storeId = storeId;
     _permissions = List.unmodifiable(
       permissions.where((item) => item.trim().isNotEmpty),
@@ -64,12 +76,28 @@ class OwnerSession {
     required List<String> permissions,
     String? storeId,
   }) {
+    final identityChanged =
+        _role != role ||
+        (storeId != null && storeId.trim().isNotEmpty && _storeId != storeId) ||
+        !_samePermissions(_permissions, permissions);
     _role = role;
     if (storeId != null && storeId.trim().isNotEmpty) _storeId = storeId;
     _permissions = List.unmodifiable(
       permissions.where((item) => item.trim().isNotEmpty),
     );
+    if (identityChanged) _clearStepUpToken();
     _changes.add(true);
+  }
+
+  void rememberStepUpToken(String token, DateTime expiresAt) {
+    final normalizedExpiry = expiresAt.toUtc();
+    if (token.isEmpty || !isAuthenticated ||
+        !normalizedExpiry.isAfter(DateTime.now().toUtc())) {
+      _clearStepUpToken();
+      return;
+    }
+    _stepUpToken = token;
+    _stepUpExpiresAt = normalizedExpiry;
   }
 
   void clear() {
@@ -84,8 +112,21 @@ class OwnerSession {
     _expiresAt = null;
     _email = null;
     _role = null;
+    _clearStepUpToken();
     _storeId = 'default';
     _permissions = const [];
     if (hadSession) _changes.add(false);
+  }
+
+  void _clearStepUpToken() {
+    _stepUpToken = null;
+    _stepUpExpiresAt = null;
+  }
+
+  bool _samePermissions(List<String> left, List<String> right) {
+    final normalizedRight = right.where((item) => item.trim().isNotEmpty).toSet();
+    final normalizedLeft = left.where((item) => item.trim().isNotEmpty).toSet();
+    return normalizedLeft.length == normalizedRight.length &&
+        normalizedLeft.containsAll(normalizedRight);
   }
 }

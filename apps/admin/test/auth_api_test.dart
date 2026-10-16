@@ -199,7 +199,7 @@ void main() {
     expect(products, isEmpty);
   });
 
-  test('step-up sends the current bearer and password without persisting the token', () async {
+  test('step-up validates and caches its short-lived token in the active session', () async {
     OwnerSession.instance.establish(
       accessToken: 'admin-session',
       expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
@@ -209,7 +209,10 @@ void main() {
     final token = await AuthApiClient(
       client: MockClient((request) async {
         captured = request;
-        return http.Response(jsonEncode({'stepUpToken': 'one-use-window'}), 200);
+        return http.Response(jsonEncode({
+          'stepUpToken': 'one-use-window',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+        }), 200);
       }),
       baseUrl: 'https://api.example.com',
     ).stepUp(password: 'fresh-password');
@@ -218,6 +221,7 @@ void main() {
     expect(captured.headers['authorization'], 'Bearer admin-session');
     expect(jsonDecode(captured.body), {'password': 'fresh-password'});
     expect(token, 'one-use-window');
+    expect(OwnerSession.instance.validStepUpToken, token);
     expect(OwnerSession.instance.bearerToken, 'admin-session');
   });
 
@@ -243,11 +247,54 @@ void main() {
     await AuthApiClient(
       client: MockClient((request) async {
         captured = request;
-        return http.Response(jsonEncode({'stepUpToken': 'one-use-window'}), 200);
+        return http.Response(jsonEncode({
+          'stepUpToken': 'one-use-window',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+        }), 200);
       }),
       baseUrl: 'https://api.example.com',
     ).stepUp(password: 'fresh-password', mfaCode: '123456');
     expect(jsonDecode(captured.body), {'password': 'fresh-password', 'mfaCode': '123456'});
+  });
+
+  test('identity changes clear a cached step-up token', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'admin-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+      role: 'Owner',
+      permissions: ['orders.read'],
+    );
+    await AuthApiClient(client: MockClient((request) async => http.Response(
+      jsonEncode({
+        'stepUpToken': 'one-use-window',
+        'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+      }),
+      200,
+    ))).stepUp(password: 'fresh-password');
+
+    OwnerSession.instance.updateIdentity(role: 'StoreManager', permissions: ['orders.read']);
+
+    expect(OwnerSession.instance.validStepUpToken, isNull);
+  });
+
+  test('expired step-up responses are rejected and not cached', () async {
+    OwnerSession.instance.establish(
+      accessToken: 'admin-session',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'owner@example.com',
+    );
+    await expectLater(
+      AuthApiClient(client: MockClient((request) async => http.Response(
+        jsonEncode({
+          'stepUpToken': 'expired-window',
+          'expiresAt': DateTime.now().toUtc().subtract(const Duration(seconds: 1)).toIso8601String(),
+        }),
+        200,
+      ))).stepUp(password: 'fresh-password'),
+      throwsA(isA<AuthApiException>()),
+    );
+    expect(OwnerSession.instance.validStepUpToken, isNull);
   });
 
   test('incorrect step-up password does not clear the authenticated session', () async {

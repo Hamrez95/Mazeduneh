@@ -171,7 +171,9 @@ public static class AdminSecurityExtensions
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
             }
 
-            var mfaFailure = await GetMfaFailureAsync(tokens, users, principal.Role, request.MfaCode, cancellationToken);
+            var mfaFailure = await GetMfaFailureAsync(
+                tokens, users, principal.Role, request.MfaCode, cancellationToken,
+                requireSensitiveOwnerMfa: true);
             if (mfaFailure is not null) return mfaFailure;
 
             var issued = tokens.IssueStepUp(principal);
@@ -280,9 +282,13 @@ public static class AdminSecurityExtensions
         AdminUsersDatabase users,
         string role,
         string? code,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireSensitiveOwnerMfa = false)
     {
-        var validation = tokens.ValidateMfaCode(role, code, out var timeStep);
+        long? timeStep;
+        var validation = requireSensitiveOwnerMfa
+            ? tokens.ValidateSensitiveActionMfaCode(role, code, out timeStep)
+            : tokens.ValidateMfaCode(role, code, out timeStep);
         switch (validation)
         {
             case AdminMfaValidationResult.NotRequired:
@@ -518,6 +524,7 @@ public sealed class AdminTokenService
     private readonly string _configuredRole;
     private readonly IReadOnlyList<string> _configuredPermissions;
     private readonly bool _mfaRequired;
+    private readonly bool _sensitiveActionsMfaRequired;
     private readonly string? _mfaTotpSecret;
     private readonly bool _mfaSecretIsValid;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _revokedTokens = new(StringComparer.Ordinal);
@@ -531,6 +538,7 @@ public sealed class AdminTokenService
         _configuredRole = AdminPermissionCatalog.NormalizeRole(configuration["Admin:Role"]);
         _configuredPermissions = ParsePermissions(configuration["Admin:Permissions"]);
         _mfaRequired = configuration.GetValue("Admin:Mfa:Required", false);
+        _sensitiveActionsMfaRequired = configuration.GetValue("Admin:Mfa:SensitiveActionsRequired", true);
         _mfaTotpSecret = configuration["Admin:Mfa:TotpSecret"]?.Trim();
         _mfaSecretIsValid = AdminTotpAuthenticator.IsValidSecret(_mfaTotpSecret);
     }
@@ -559,8 +567,22 @@ public sealed class AdminTokenService
 
     public AdminMfaValidationResult ValidateMfaCode(string role, string? code, out long? timeStep)
     {
+        return ValidateMfaCode(role, code, out timeStep, IsMfaRequiredForRole(role));
+    }
+
+    public AdminMfaValidationResult ValidateSensitiveActionMfaCode(string role, string? code, out long? timeStep)
+    {
+        var requiredForOwner = string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase) &&
+            _sensitiveActionsMfaRequired;
+        return ValidateMfaCode(role, code, out timeStep,
+            IsMfaRequiredForRole(role) || requiredForOwner);
+    }
+
+    private AdminMfaValidationResult ValidateMfaCode(
+        string role, string? code, out long? timeStep, bool required)
+    {
         timeStep = null;
-        if (!IsMfaRequiredForRole(role)) return AdminMfaValidationResult.NotRequired;
+        if (!required) return AdminMfaValidationResult.NotRequired;
         if (!_mfaSecretIsValid) return AdminMfaValidationResult.NotConfigured;
         if (string.IsNullOrWhiteSpace(code)) return AdminMfaValidationResult.Missing;
         timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(_mfaTotpSecret, code, DateTimeOffset.UtcNow);

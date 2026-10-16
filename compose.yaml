@@ -31,6 +31,7 @@ services:
       Admin__Email: ${MAZEDUNEH_ADMIN_EMAIL:-admin@mazeduneh.local}
       Admin__PasswordHash: ${MAZEDUNEH_ADMIN_PASSWORD_HASH:-}
       Admin__TokenSigningKey: ${MAZEDUNEH_ADMIN_TOKEN_SIGNING_KEY:-}
+      Admin__Mfa__SensitiveActionsRequired: "false"
       Cors__AllowedOrigins__0: http://127.0.0.1:${MAZEDUNEH_STOREFRONT_PORT:-3000}
       Cors__AllowedOrigins__1: http://localhost:${MAZEDUNEH_STOREFRONT_PORT:-3000}
       Cors__AllowedOrigins__2: http://127.0.0.1:${MAZEDUNEH_ADMIN_PORT:-8080}

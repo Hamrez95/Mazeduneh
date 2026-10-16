@@ -26,7 +26,10 @@ void main() {
       client: MockClient((request) async {
         requests.add(jsonDecode(request.body) as Map<String, dynamic>);
         if (requests.length == 1) return http.Response('{}', 428);
-        return http.Response(jsonEncode({'stepUpToken': 'fresh-step-up'}), 200);
+        return http.Response(jsonEncode({
+          'stepUpToken': 'fresh-step-up',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+        }), 200);
       }),
     );
 
@@ -40,7 +43,7 @@ void main() {
     ));
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    expect(find.text('کد تأیید دومرحله‌ای'), findsNothing);
+    expect(find.text('کد شش‌رقمی برنامهٔ تأیید'), findsNothing);
 
     final passwordField = find.byWidgetPredicate(
       (widget) => widget is TextField && widget.decoration?.labelText == 'رمز عبور فعلی',
@@ -54,11 +57,11 @@ void main() {
     await tester.tap(confirmButton);
     await tester.pumpAndSettle();
     expect(requests, hasLength(1), reason: 'The password-only step-up request should reach the API first.');
-    expect(find.text('کد تأیید دومرحله‌ای'), findsOneWidget);
+    expect(find.text('کد شش‌رقمی برنامهٔ تأیید'), findsOneWidget);
     expect(requests.single, {'password': 'current-password'});
 
     final mfaField = find.byWidgetPredicate(
-      (widget) => widget is TextField && widget.decoration?.labelText == 'کد تأیید دومرحله‌ای',
+      (widget) => widget is TextField && widget.decoration?.labelText == 'کد شش‌رقمی برنامهٔ تأیید',
     );
     await tester.enterText(mfaField, '123456');
     await tester.pump();
@@ -66,6 +69,10 @@ void main() {
     await tester.tap(confirmButton);
     await tester.pumpAndSettle();
     expect(requests.last, {'password': 'current-password', 'mfaCode': '123456'});
+    expect(stepUpToken, 'fresh-step-up');
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(requests, hasLength(2), reason: 'A live session proof should be reused until it expires.');
     expect(stepUpToken, 'fresh-step-up');
   });
 }

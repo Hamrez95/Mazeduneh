@@ -44,7 +44,10 @@ void main() {
             headers: {'content-type': 'application/json; charset=utf-8'});
         }
         expect(password, 'secret');
-        return http.Response(jsonEncode({'stepUpToken': 'short-lived-step-up'}), 200);
+        return http.Response(jsonEncode({
+          'stepUpToken': 'short-lived-step-up',
+          'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+        }), 200);
       }));
       await tester.pumpWidget(app(client, auth: auth, scale: width == 360 ? 2 : 1));
       await tester.tap(find.text('باز کردن')); await tester.pumpAndSettle();
@@ -64,12 +67,12 @@ void main() {
       expect(find.text('تأیید دوبارهٔ هویت'), findsOneWidget);
       await tester.enterText(input('رمز عبور فعلی'), 'wrong-password');
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
+      await tester.tap(find.text('تأیید هویت')); await tester.pumpAndSettle();
       expect(find.text('رمز عبور تأیید نشد.'), findsOneWidget);
       expect(find.textContaining('قیمت پیشنهادی: ۶۶۳ تومان'), findsOneWidget);
       await tester.enterText(input('رمز عبور فعلی'), 'secret');
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'تأیید هویت')); await tester.pumpAndSettle();
+      await tester.tap(find.text('تأیید هویت')); await tester.pumpAndSettle();
       expect(applied?['expectedPrice'],5000);
       expect(stepUpHeader, 'short-lived-step-up');
       final recipe = applied?['recipe'] as Map<String,dynamic>;

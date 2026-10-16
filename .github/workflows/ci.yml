@@ -49,6 +49,7 @@ jobs:
       Admin__Email: ci-owner@mazeduneh.test
       Admin__PasswordHash: e285b7f5f8dd444780a92a2831698caa12a03c5b12c66d4b4a4c6f4688216ea2
       Admin__TokenSigningKey: mazeduneh-ci-signing-key-must-be-long-and-private
+      Admin__Mfa__SensitiveActionsRequired: 'false'
       Payments__SandboxEnabled: 'true'
     steps:
       - uses: actions/checkout@v4
