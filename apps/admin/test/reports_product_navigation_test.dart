@@ -142,7 +142,18 @@ void main() {
             },
           ]);
         }
-        return _json({'days': 30, 'orderCount': 1, 'unitsSold': 2, 'revenue': 500000, 'cost': 300000, 'grossProfit': 200000});
+        return _json({
+          'days': 30,
+          'orderCount': 1,
+          'unitsSold': 2,
+          'revenue': 500000,
+          'cost': 300000,
+          'grossProfit': 200000,
+          'grossMarginPercent': 40,
+          'tax': 0,
+          'netProfit': 200000,
+          'shippingExpense': 0,
+        });
       }),
     );
     await tester.pumpWidget(MaterialApp(
