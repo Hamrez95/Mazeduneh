@@ -184,15 +184,13 @@ class _AdminShellState extends State<AdminShell> {
                         : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
                     style: const TextStyle(color: Color(0xFF9EACA1)),
                   ),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    IconButton(
-                      tooltip: 'تنظیم تأیید دومرحله‌ای',
-                      onPressed: () => showAdminMfaSettingsDialog(context),
-                      icon: const Icon(Icons.security_rounded, color: Color(0xFFD5DFD6)),
-                    ),
-                    IconButton(
-                      tooltip: 'خروج از حساب',
-                      onPressed: () async {
+                  trailing: PopupMenuButton<String>(
+                    tooltip: 'تنظیمات حساب',
+                    icon: const Icon(Icons.more_vert_rounded, color: Color(0xFFD5DFD6)),
+                    onSelected: (action) async {
+                      if (action == 'mfa') {
+                        showAdminMfaSettingsDialog(context);
+                      } else if (action == 'logout') {
                         try {
                           await AuthApiClient().logout();
                         } catch (_) {
@@ -202,10 +200,25 @@ class _AdminShellState extends State<AdminShell> {
                             );
                           }
                         }
-                      },
-                      icon: const Icon(Icons.logout_rounded, color: Color(0xFFD5DFD6)),
-                    ),
-                  ]),
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'mfa',
+                        child: ListTile(
+                          leading: Icon(Icons.security_rounded),
+                          title: Text('تنظیم تأیید دومرحله‌ای'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'logout',
+                        child: ListTile(
+                          leading: Icon(Icons.logout_rounded),
+                          title: Text('خروج از حساب'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ]),
