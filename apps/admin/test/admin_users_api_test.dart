@@ -64,6 +64,29 @@ void main() {
     await expectLater(api.fetchUsers(), throwsA(isA<AdminUsersApiException>()));
     expect(OwnerSession.instance.isAuthenticated, isFalse);
   });
+
+  test('lists a member’s active sessions and revokes one with step-up proof', () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/revoke')) return http.Response('', 204);
+      return http.Response(utf8Body(jsonEncode([
+        {'sessionId': 'session-1', 'createdAt': '2026-10-03T12:00:00Z', 'expiresAt': '2026-10-03T20:00:00Z'},
+      ])), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    });
+    final api = AdminUsersApiClient(baseUrl: 'https://api.test', client: client);
+
+    final sessions = await api.fetchSessions('member-1');
+    await api.revokeSession('member-1', sessions.single.sessionId, stepUpToken: 'fresh-proof');
+
+    expect(sessions.single.sessionId, 'session-1');
+    expect(sessions.single.expiresAt, DateTime.parse('2026-10-03T20:00:00Z'));
+    expect(requests.map((request) => request.url.path), [
+      '/api/v1/admin/users/member-1/sessions',
+      '/api/v1/admin/users/member-1/sessions/session-1/revoke',
+    ]);
+    expect(requests.last.headers['x-admin-step-up'], 'fresh-proof');
+  });
 }
 
 String utf8Body(String value) => value;

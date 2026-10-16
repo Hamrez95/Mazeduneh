@@ -267,6 +267,87 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyCollection<AdminUserSessionSummary>> ListActiveSessionsAsync(
+        Guid userId, string? storeId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<AdminUserSessionSummary>();
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select s.session_id,s.created_at,s.expires_at
+            from admin_user_sessions s
+            join admin_users u on u.id=s.user_id and u.store_id=s.store_id
+            where s.user_id=@user_id and s.store_id=@store_id
+              and u.is_active=true and lower(u.role)<>'owner'
+              and s.revoked_at is null and s.expires_at>now()
+            order by s.created_at desc;
+            """, connection);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        var sessions = new List<AdminUserSessionSummary>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            sessions.Add(new AdminUserSessionSummary(
+                reader.GetGuid(0), reader.GetFieldValue<DateTimeOffset>(1), reader.GetFieldValue<DateTimeOffset>(2)));
+        return sessions;
+    }
+
+    public async Task<bool> RevokeManagedSessionAsync(
+        Guid userId, Guid sessionId, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return false;
+        var normalizedStoreId = NormalizeStoreId(storeId);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        DateTimeOffset createdAt;
+        DateTimeOffset expiresAt;
+        await using (var find = new NpgsqlCommand("""
+            select s.created_at,s.expires_at
+            from admin_user_sessions s
+            join admin_users u on u.id=s.user_id and u.store_id=s.store_id
+            where s.session_id=@session_id and s.user_id=@user_id and s.store_id=@store_id
+              and u.is_active=true and lower(u.role)<>'owner'
+              and s.revoked_at is null and s.expires_at>now()
+            for update of s;
+            """, connection, transaction))
+        {
+            find.Parameters.AddWithValue("session_id", sessionId);
+            find.Parameters.AddWithValue("user_id", userId);
+            find.Parameters.AddWithValue("store_id", normalizedStoreId);
+            await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return false;
+            }
+            createdAt = reader.GetFieldValue<DateTimeOffset>(0);
+            expiresAt = reader.GetFieldValue<DateTimeOffset>(1);
+        }
+
+        DateTimeOffset revokedAt;
+        await using (var revoke = new NpgsqlCommand("""
+            update admin_user_sessions set revoked_at=now()
+            where session_id=@session_id and user_id=@user_id and store_id=@store_id
+            returning revoked_at;
+            """, connection, transaction))
+        {
+            revoke.Parameters.AddWithValue("session_id", sessionId);
+            revoke.Parameters.AddWithValue("user_id", userId);
+            revoke.Parameters.AddWithValue("store_id", normalizedStoreId);
+            await using var reader = await revoke.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                throw new InvalidOperationException("نشست انتخاب‌شده دیگر فعال نیست.");
+            revokedAt = reader.GetFieldValue<DateTimeOffset>(0);
+        }
+
+        var entityId = $"{userId:D}:{sessionId:D}";
+        await audit.RecordAsync(connection, transaction, actor, "admin-user.session-revoked", "AdminUserSession", entityId,
+            new { UserId = userId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = (DateTimeOffset?)null },
+            new { UserId = userId, SessionId = sessionId, CreatedAt = createdAt, ExpiresAt = expiresAt, RevokedAt = revokedAt },
+            "لغو نشست همکار توسط مدیر فروشگاه", requestId, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<AdminUserSummary?> SetStatusAsync(Guid id, bool isActive, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return null;
@@ -404,6 +485,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
 }
 
 public sealed record AdminUserSummary(Guid Id, string StoreId, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt, bool HasPassword);
+public sealed record AdminUserSessionSummary(Guid SessionId, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt);
 public sealed record AdminUserInvitation(AdminUserSummary User, string InvitationToken, DateTimeOffset ExpiresAt);
 public sealed record AdminRoleSummary(string Role, IReadOnlyList<string> Permissions, string TitleFa);
 public sealed record AdminUserCreateRequest(string Email, string DisplayName, string Role, IReadOnlyList<string>? Permissions = null)

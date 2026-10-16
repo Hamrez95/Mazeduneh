@@ -236,6 +236,9 @@ with tempfile.TemporaryFile() as log:
                                           "PATCH", {"isActive": False}, owner_token,
                                           step_up_headers(owner_token))
         assert status == 404, (status, owner_unchanged)
+        status, denied = request("/api/v1/admin/users/" + first_invitation["user"]["id"] + "/sessions?storeId=default",
+                                 token=tenant_token)
+        assert status == 403, (status, denied)
         assert request("/api/v1/admin/auth/session", token=tenant_token)[0] == 200
 
         # Start a fresh in-memory rate-limit window before checking deactivation separately.
@@ -248,6 +251,25 @@ with tempfile.TemporaryFile() as log:
                                    ["orders.read", "customers.pii.read"])
         second_token = accept_and_login(second_invitation, second_email, second_password, check_unaccepted_login=False)
         member_id = second_invitation["user"]["id"]
+        status, sessions = request("/api/v1/admin/users/" + member_id + "/sessions", token=owner_token)
+        assert status == 200 and len(sessions) == 1, (status, sessions)
+        session_id = sessions[0]["sessionId"]
+        revoke_path = f"/api/v1/admin/users/{member_id}/sessions/{session_id}/revoke"
+        status, denied = request(revoke_path, "POST", token=owner_token)
+        assert status == 428 and denied["code"] == "step_up_required", (status, denied)
+        status, _ = request(revoke_path, "POST", token=owner_token,
+                            extra_headers=step_up_headers(owner_token))
+        assert status == 204, status
+        assert request("/api/v1/admin/auth/session", token=second_token)[0] == 401
+        assert request("/api/v1/admin/users/" + member_id + "/sessions", token=owner_token) == (200, [])
+        status, session_audit = request("/api/v1/admin/audit-log?entityType=AdminUserSession&entityId=" +
+                                        member_id + ":" + session_id, token=owner_token)
+        assert status == 200 and len(session_audit) == 1 and session_audit[0]["action"] == "admin-user.session-revoked", (
+            status, session_audit)
+        status, second_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": second_email, "password": second_password})
+        assert status == 200, (status, second_login)
+        second_token = second_login["accessToken"]
         status, denied = request("/api/v1/admin/users/" + member_id + "/status", "PATCH",
                                  {"isActive": False}, owner_token)
         assert status == 428 and denied["code"] == "step_up_required", (status, denied)
