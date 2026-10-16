@@ -208,6 +208,10 @@ with tempfile.TemporaryFile() as log:
             "/api/v1/admin/orders",
             "/api/v1/admin/orders?storeId=tenant-a",
             "/api/v1/admin/inventory/movements?sku=UNKNOWN&storeId=tenant-a",
+            "/api/v1/admin/inventory/purchases?storeId=tenant-a",
+            "/api/v1/admin/inventory/purchases?storeId=default",
+            "/api/v1/admin/inventory/batches?storeId=tenant-a",
+            "/api/v1/admin/inventory/batches?storeId=default",
             "/api/v1/admin/customers?storeId=tenant-a",
             "/api/v1/admin/audit-log?storeId=tenant-a",
             "/api/v1/admin/commerce/settings",
@@ -248,4 +252,4 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 
-print("Membership invitation, one-time use, permissions, store binding and revocation passed")
+print("Membership invitation, one-time use, permissions, store binding, cross-store inventory reads and revocation passed")
