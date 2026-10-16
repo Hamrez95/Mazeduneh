@@ -209,7 +209,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
 | #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI و UI/API مدیریت عضویت تکمیل؛ اتصال عضویت به ورود، MFA و step-up approval باقی است |
-| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | KPI بازه‌ای، اولویت‌های عملیاتی و KPI سود خالص با انتقال به گزارش همان بازه تکمیل؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه تکمیل؛ تحلیل عمیق‌تر سود/هزینه باقی است |
+| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | KPI بازه‌ای، اولویت‌های عملیاتی و KPI سود خالص با انتقال به گزارش همان بازه تکمیل؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه تکمیل؛ داشبورد اجزای هزینه و اثر ارسال را برای بازهٔ انتخابی نمایش می‌دهد؛ reconciliation/refund و تحلیل‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | tracking و هزینهٔ واقعی موجود؛ فیلتر سفارش‌های تأخیردار تکمیل؛ مناطق، چندآدرسی و split shipment باقی |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
 | #95 | Promotions/campaign engine | P1 | Full-stack | L | جدید |
@@ -309,3 +309,4 @@ Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. 
 - هر ردیف به فیلتر یا ماژول مرتبط می‌رود و از permission همان نشست پیروی می‌کند؛ نقش بدون دسترسی، تعداد آن حوزه را نمی‌بیند.
 - حالت خالی و تست مسیرهای هر پنج اولویت اضافه شد؛ جزئیات کمبود و انقضا همچنان در پنل‌های موجود باقی است.
 - KPI سود خالص از گزارش مجاز همان بازه می‌آید و به همان گزارش هدایت می‌کند؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه اضافه شد؛ تحلیل عمیق‌تر سود/هزینه و مسیرهای دیگر همچنان در #92 باقی است.
+- داشبورد بهای محصول، بسته‌بندی، هزینهٔ جانبی، درآمد/هزینهٔ ارسال و سود ناخالص را کنار KPI سود خالص و فقط برای نقش مجاز نشان می‌دهد؛ جزئیات به گزارش همان بازه می‌رود.

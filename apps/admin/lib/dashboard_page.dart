@@ -277,8 +277,101 @@ class _DashboardPageState extends State<DashboardPage> {
         if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
         if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.corporate))),
       ]),
+      if (data.financialsVisible &&
+          can(AdminPermissions.reportsRead) &&
+          financialAnalytics != null) ...[
+        const SizedBox(height: 12),
+        _profitabilityBreakdown(financialAnalytics!),
+      ],
     ],
   );
+
+  Widget _profitabilityBreakdown(AdminAnalytics analytics) {
+    final components = <(String, num)>[
+      ('بهای محصول', analytics.productCost),
+      ('بسته‌بندی', analytics.packagingCost),
+      ('هزینه‌های جانبی', analytics.additionalCost),
+      ('درآمد ارسال', analytics.shippingRevenue),
+      ('هزینهٔ ارسال', analytics.shippingExpense),
+      ('سود ناخالص', analytics.grossProfit),
+    ];
+    return _DashboardPanel(
+      title: 'ریز سود و هزینه',
+      icon: Icons.account_balance_wallet_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (analytics.orderCount == 0)
+            const AdminEmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'سفارش پرداخت‌شده‌ای نیست',
+              detail: 'در بازهٔ انتخاب‌شده سفارشی برای تحلیل هزینه ثبت نشده است.',
+            )
+          else ...[
+            LayoutBuilder(builder: (context, constraints) {
+              final columns = constraints.maxWidth < 460 ? 2 : 3;
+              final itemWidth =
+                  (constraints.maxWidth - (columns - 1) * 10) / columns;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final item in components)
+                    SizedBox(
+                      width: itemWidth,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF6F8FA),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.$1,
+                                style: const TextStyle(
+                                    color: AdminColors.muted,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 5),
+                            Text(
+                              '${formatPersianNumber(item.$2)} ریال',
+                              style: TextStyle(
+                                color: item.$2 < 0
+                                    ? AdminColors.coral
+                                    : AdminColors.inkDeep,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }),
+            const SizedBox(height: 10),
+            const Text(
+              'سود خالص = سود ناخالص + درآمد ارسال − هزینهٔ ارسال. مالیات پرداختنی در سود محاسبه نمی‌شود.',
+              style: TextStyle(color: AdminColors.muted, fontSize: 11),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: widget.onNavigate == null
+                  ? null
+                  : () => widget.onNavigate!(_periodReportsIntent()),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('جزئیات کامل در گزارش سود'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _quickActionsSection(AdminDashboard data, bool Function(String) can) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
