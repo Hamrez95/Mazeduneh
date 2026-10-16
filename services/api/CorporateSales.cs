@@ -40,11 +40,17 @@ public static class CorporateRequestStatuses
         (string.Equals(current, next, StringComparison.OrdinalIgnoreCase) ||
             AllowedTransitions.TryGetValue(current, out var allowed) && allowed.Contains(next));
 
+    public static bool CanLinkOrder(string? status) =>
+        status is not null && new[] { "Approved", "Preparing", "Shipped", "Finalized" }
+            .Contains(status, StringComparer.OrdinalIgnoreCase);
+
     private static HashSet<string> Set(params string[] statuses) => new(statuses, StringComparer.OrdinalIgnoreCase);
 }
 
 public enum CorporateRequestStatusChangeKind { Updated, NotFound, InvalidTransition }
 public sealed record CorporateRequestStatusChangeResult(CorporateRequestStatusChangeKind Kind, CorporateRequestDetail? Request = null);
+public enum CorporateRequestOrderLinkKind { Linked, AlreadyLinked, OrderAlreadyLinked, NotFound, OrderNotFound, InvalidStage }
+public sealed record CorporateRequestOrderLinkResult(CorporateRequestOrderLinkKind Kind, CorporateRequestDetail? Request = null);
 
 public sealed record CorporateRequestCreate(
     string CustomerName, string CompanyName, string Mobile, string? Email, string City,
@@ -55,6 +61,7 @@ public sealed record CorporateRequestCreate(
 public sealed record CorporateRequestStatusChange(string Status, string? Note);
 public sealed record CorporateRequestAssignment(string? AssignedTo);
 public sealed record CorporateRequestFollowUp(DateTimeOffset? NextFollowUpAt);
+public sealed record CorporateRequestOrderLinkInput(Guid OrderId);
 public sealed record CorporateRequestNoteInput(string Note);
 public sealed record CorporateRequestMessageInput(string Body, string Channel);
 
@@ -70,7 +77,7 @@ public sealed record CorporateRequestDetail(
     string? AssignedTo, DateTimeOffset? NextFollowUpAt, string? InternalNote,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, IReadOnlyCollection<CorporateRequestEvent> Events,
     IReadOnlyCollection<CorporateRequestMessage> Messages, string? PackageCode = null,
-    CorporatePackageSnapshot? PackageSnapshot = null);
+    CorporatePackageSnapshot? PackageSnapshot = null, Guid? OrderId = null);
 
 public sealed record CorporateRequestEvent(Guid Id, string EventType, string? FromStatus, string? ToStatus, string Actor, string? Note, DateTimeOffset CreatedAt);
 public sealed record CorporateRequestMessage(Guid Id, string SenderType, string Body, string Channel, DateTimeOffset CreatedAt);
@@ -185,6 +192,21 @@ public static class CorporateSalesModule
         admin.MapGet("/{id:guid}", async (Guid id, CorporateRequestDatabase database, CancellationToken cancellationToken) =>
             await database.FindAsync(id, cancellationToken) is { } request ? Results.Ok(request) : Results.NotFound(new { message = "درخواست پیدا نشد." }))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
+        admin.MapPost("/{id:guid}/order-link", async (Guid id, CorporateRequestOrderLinkInput input,
+            CorporateRequestDatabase database, AdminAuditLogDatabase audit, HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
+            var result = await database.LinkOrderAsync(id, input.OrderId, actor, context.TraceIdentifier, audit, cancellationToken);
+            return result.Kind switch
+            {
+                CorporateRequestOrderLinkKind.Linked or CorporateRequestOrderLinkKind.AlreadyLinked => Results.Ok(result.Request),
+                CorporateRequestOrderLinkKind.OrderNotFound => Results.NotFound(new { message = "سفارش پیدا نشد." }),
+                CorporateRequestOrderLinkKind.OrderAlreadyLinked => Results.Conflict(new { message = "این سفارش قبلاً به درخواست دیگری متصل شده است." }),
+                CorporateRequestOrderLinkKind.InvalidStage => Results.Conflict(new { message = "برای اتصال سفارش، درخواست باید تأیید شده یا در مرحلهٔ آماده‌سازی و ارسال باشد." }),
+                _ => Results.NotFound(new { message = "درخواست پیدا نشد." })
+            };
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
         admin.MapPatch("/{id:guid}/status", async (Guid id, CorporateRequestStatusChange input, CorporateRequestDatabase database, HttpContext context, CancellationToken cancellationToken) =>
         {
             if (!CorporateRequestStatuses.All.Contains(input.Status, StringComparer.OrdinalIgnoreCase)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["status"] = ["وضعیت درخواست معتبر نیست."] });
@@ -272,6 +294,20 @@ public sealed class CorporateRequestDatabase(
             """;
         await using var connection = new NpgsqlConnection(connectionString); await connection.OpenAsync(cancellationToken);
         await DatabaseMigrationRunner.ApplyAsync(connection, "corporate-sales", "001-bootstrap", sql, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "corporate-sales", "004-order-link", """
+            alter table corporate_requests add column if not exists order_id uuid null;
+            do $migration$
+            begin
+                if not exists (select 1 from pg_constraint where conname='uq_corporate_requests_order_id') then
+                    alter table corporate_requests add constraint uq_corporate_requests_order_id unique(order_id);
+                end if;
+                if not exists (select 1 from pg_constraint where conname='fk_corporate_requests_order_id') then
+                    alter table corporate_requests add constraint fk_corporate_requests_order_id
+                    foreign key(order_id) references checkout_orders(id) on delete set null;
+                end if;
+            end;
+            $migration$;
+            """, cancellationToken);
         logger.LogInformation("Corporate-sales schema is ready.");
     }
 
@@ -392,6 +428,86 @@ public sealed class CorporateRequestDatabase(
     public async Task<CorporateRequestDetail?> FindAsync(Guid id, CancellationToken ct) =>
         await FindCoreAsync(id, null, ct, requireAccessToken: false);
 
+    public async Task<CorporateRequestOrderLinkResult> LinkOrderAsync(
+        Guid corporateRequestId, Guid orderId, string actor, string requestId, AdminAuditLogDatabase audit, CancellationToken ct)
+    {
+        if (!IsConfigured) return new(CorporateRequestOrderLinkKind.NotFound);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var transaction = await connection.BeginTransactionAsync(ct);
+
+        string? status;
+        Guid? currentOrderId;
+        await using (var command = new NpgsqlCommand(
+            "select status,order_id from corporate_requests where id=@id for update", connection, transaction))
+        {
+            command.Parameters.AddWithValue("id", corporateRequestId);
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+            {
+                await transaction.RollbackAsync(ct);
+                return new(CorporateRequestOrderLinkKind.NotFound);
+            }
+            status = reader.GetString(0);
+            currentOrderId = reader.IsDBNull(1) ? null : reader.GetGuid(1);
+        }
+
+        if (currentOrderId is not null)
+        {
+            if (currentOrderId == orderId)
+            {
+                await transaction.CommitAsync(ct);
+                return new(CorporateRequestOrderLinkKind.AlreadyLinked, await FindAsync(corporateRequestId, ct));
+            }
+            await transaction.RollbackAsync(ct);
+            return new(CorporateRequestOrderLinkKind.OrderAlreadyLinked);
+        }
+        if (!CorporateRequestStatuses.CanLinkOrder(status))
+        {
+            await transaction.RollbackAsync(ct);
+            return new(CorporateRequestOrderLinkKind.InvalidStage);
+        }
+
+        await using (var order = new NpgsqlCommand("select id from checkout_orders where id=@id for key share", connection, transaction))
+        {
+            order.Parameters.AddWithValue("id", orderId);
+            if (await order.ExecuteScalarAsync(ct) is null)
+            {
+                await transaction.RollbackAsync(ct);
+                return new(CorporateRequestOrderLinkKind.OrderNotFound);
+            }
+        }
+
+        await using (var update = new NpgsqlCommand(
+            "update corporate_requests set order_id=@order_id,updated_at=now() where id=@id", connection, transaction))
+        {
+            update.Parameters.AddWithValue("order_id", orderId);
+            update.Parameters.AddWithValue("id", corporateRequestId);
+            try
+            {
+                await update.ExecuteNonQueryAsync(ct);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                await transaction.RollbackAsync(ct);
+                return new(CorporateRequestOrderLinkKind.OrderAlreadyLinked);
+            }
+        }
+        await using (var eventCommand = new NpgsqlCommand(
+            "insert into corporate_request_events(request_id,event_type,actor,note) values(@id,'order-linked',@actor,@note)", connection, transaction))
+        {
+            eventCommand.Parameters.AddWithValue("id", corporateRequestId);
+            eventCommand.Parameters.AddWithValue("actor", actor.Trim());
+            eventCommand.Parameters.AddWithValue("note", orderId.ToString("D"));
+            await eventCommand.ExecuteNonQueryAsync(ct);
+        }
+        await audit.RecordAsync(connection, transaction, actor, "corporate-request.order-linked", "CorporateRequest",
+            corporateRequestId.ToString("D"), new { OrderId = (Guid?)null }, new { OrderId = orderId },
+            "پیوند سفارش ثبت‌شده به درخواست سازمانی", requestId, ct);
+        await transaction.CommitAsync(ct);
+        return new(CorporateRequestOrderLinkKind.Linked, await FindAsync(corporateRequestId, ct));
+    }
+
     public async Task<object?> FindPublicAsync(Guid id, string? token, CancellationToken ct) =>
         await FindCoreAsync(id, token, ct, requireAccessToken: true) is { } request
             ? new { request.Id, request.CustomerName, request.CompanyName, request.Status, statusTitle = CorporateRequestStatuses.Title(request.Status), request.CreatedAt, request.UpdatedAt }
@@ -401,7 +517,7 @@ public sealed class CorporateRequestDatabase(
     {
         if (!IsConfigured || (requireAccessToken && string.IsNullOrWhiteSpace(token))) return null;
         const string selectSql = """
-            select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at,package_code,package_snapshot
+            select id,customer_name,company_name,mobile,email,city,occasion,order_quantity,package_type,budget,delivery_date,custom_packaging,description,logo_key,proforma_key,status,assigned_to,next_follow_up_at,internal_note,created_at,updated_at,package_code,package_snapshot,order_id
             from corporate_requests
             where id=@id
             """;
@@ -446,7 +562,7 @@ public sealed class CorporateRequestDatabase(
     private static void Add(NpgsqlCommand command,string name,object value) => command.Parameters.AddWithValue(name,value);
     private static void AddTyped<T>(NpgsqlCommand command, string name, NpgsqlDbType type, T? value) where T : struct { var parameter = command.Parameters.Add(name, type); parameter.Value = value.HasValue ? value.Value : DBNull.Value; }
     private static CorporateRequestSummary ReadSummary(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetString(4),r.GetString(5),r.GetInt32(6),r.GetString(7),r.GetString(8),r.IsDBNull(9)?null:r.GetString(9),r.IsDBNull(10)?null:r.GetFieldValue<DateTimeOffset>(10),r.GetFieldValue<DateTimeOffset>(11),r.GetFieldValue<DateTimeOffset>(12));
-    private static CorporateRequestDetail ReadDetail(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),r.GetString(5),r.GetString(6),r.GetInt32(7),r.GetString(8),r.IsDBNull(9)?null:r.GetDecimal(9),r.IsDBNull(10)?null:r.GetFieldValue<DateOnly>(10),r.GetBoolean(11),r.IsDBNull(12)?null:r.GetString(12),MediaPath(r.IsDBNull(13)?null:r.GetString(13)),MediaPath(r.IsDBNull(14)?null:r.GetString(14)),r.GetString(15),r.IsDBNull(16)?null:r.GetString(16),r.IsDBNull(17)?null:r.GetFieldValue<DateTimeOffset>(17),r.IsDBNull(18)?null:r.GetString(18),r.GetFieldValue<DateTimeOffset>(19),r.GetFieldValue<DateTimeOffset>(20),[],[],r.IsDBNull(21)?null:r.GetString(21),r.IsDBNull(22)?null:JsonSerializer.Deserialize<CorporatePackageSnapshot>(r.GetString(22)));
+    private static CorporateRequestDetail ReadDetail(NpgsqlDataReader r) => new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.IsDBNull(4)?null:r.GetString(4),r.GetString(5),r.GetString(6),r.GetInt32(7),r.GetString(8),r.IsDBNull(9)?null:r.GetDecimal(9),r.IsDBNull(10)?null:r.GetFieldValue<DateOnly>(10),r.GetBoolean(11),r.IsDBNull(12)?null:r.GetString(12),MediaPath(r.IsDBNull(13)?null:r.GetString(13)),MediaPath(r.IsDBNull(14)?null:r.GetString(14)),r.GetString(15),r.IsDBNull(16)?null:r.GetString(16),r.IsDBNull(17)?null:r.GetFieldValue<DateTimeOffset>(17),r.IsDBNull(18)?null:r.GetString(18),r.GetFieldValue<DateTimeOffset>(19),r.GetFieldValue<DateTimeOffset>(20),[],[],r.IsDBNull(21)?null:r.GetString(21),r.IsDBNull(22)?null:JsonSerializer.Deserialize<CorporatePackageSnapshot>(r.GetString(22)),r.IsDBNull(23)?null:r.GetGuid(23));
     private static string? MediaPath(string? key) => string.IsNullOrWhiteSpace(key) ? null : "/media/" + string.Join("/", key.Split('/').Select(Uri.EscapeDataString));
     private static async Task<IReadOnlyCollection<CorporateRequestEvent>> EventsAsync(NpgsqlConnection c,Guid id,CancellationToken ct) { const string sql="select id,event_type,from_status,to_status,actor,note,created_at from corporate_request_events where request_id=@id order by created_at desc"; await using var command=new NpgsqlCommand(sql,c); command.Parameters.AddWithValue("id",id); await using var r=await command.ExecuteReaderAsync(ct); var result=new List<CorporateRequestEvent>(); while(await r.ReadAsync(ct)) result.Add(new(r.GetGuid(0),r.GetString(1),r.IsDBNull(2)?null:r.GetString(2),r.IsDBNull(3)?null:r.GetString(3),r.GetString(4),r.IsDBNull(5)?null:r.GetString(5),r.GetFieldValue<DateTimeOffset>(6))); return result; }
     private static async Task<IReadOnlyCollection<CorporateRequestMessage>> MessagesAsync(NpgsqlConnection c,Guid id,CancellationToken ct) { const string sql="select id,sender_type,body,channel,created_at from corporate_request_messages where request_id=@id order by created_at desc"; await using var command=new NpgsqlCommand(sql,c); command.Parameters.AddWithValue("id",id); await using var r=await command.ExecuteReaderAsync(ct); var result=new List<CorporateRequestMessage>(); while(await r.ReadAsync(ct)) result.Add(new(r.GetGuid(0),r.GetString(1),r.GetString(2),r.GetString(3),r.GetFieldValue<DateTimeOffset>(4))); return result; }

@@ -75,6 +75,7 @@ var adminPermissionRoutes = new (string Method, string Path, string Permission)[
     (HttpMethods.Get, "/api/v1/admin/customers/export.csv", AdminPermissionCatalog.CustomersExport),
     (HttpMethods.Get, "/api/v1/admin/corporate-requests", AdminPermissionCatalog.CorporateRead),
     (HttpMethods.Post, "/api/v1/admin/corporate-requests/00000000-0000-0000-0000-000000000001/notes", AdminPermissionCatalog.CorporateWrite),
+    (HttpMethods.Post, "/api/v1/admin/corporate-requests/00000000-0000-0000-0000-000000000001/order-link", AdminPermissionCatalog.CorporateWrite),
     (HttpMethods.Get, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsRead),
     (HttpMethods.Put, "/api/v1/admin/commerce/settings", AdminPermissionCatalog.SettingsWrite),
     (HttpMethods.Get, "/api/v1/admin/media/metadata/image.png", AdminPermissionCatalog.ContentRead),
@@ -96,6 +97,8 @@ Console.WriteLine($"Admin permission route contract checks passed ({adminPermiss
 Check(CorporateRequestStatuses.CanTransition("New", "Reviewing"), "A new corporate request could not enter review");
 Check(CorporateRequestStatuses.CanTransition("Shipped", "Finalized"), "A shipped corporate request could not be finalized");
 Check(CorporateRequestStatuses.CanTransition("Contacted", "Contacted"), "An idempotent corporate status update was rejected");
+Check(CorporateRequestStatuses.CanLinkOrder("Approved") && CorporateRequestStatuses.CanLinkOrder("Finalized"), "An approved or completed corporate request could not link an order");
+Check(!CorporateRequestStatuses.CanLinkOrder("New") && !CorporateRequestStatuses.CanLinkOrder("Cancelled"), "An unapproved or cancelled corporate request could link an order");
 Check(!CorporateRequestStatuses.CanTransition("New", "Shipped"), "A new corporate request skipped directly to shipped");
 Check(!CorporateRequestStatuses.CanTransition("Finalized", "Reviewing"), "A finalized corporate request could be reopened");
 Check(!CorporateRequestStatuses.CanTransition("Cancelled", "Approved"), "A cancelled corporate request could be reopened");
