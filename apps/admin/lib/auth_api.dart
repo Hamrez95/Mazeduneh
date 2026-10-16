@@ -117,9 +117,16 @@ class AuthApiClient {
     final body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final stepUpToken = body['stepUpToken'] as String?;
-    if (stepUpToken == null || stepUpToken.isEmpty) {
+    final expiresAt = DateTime.tryParse(body['expiresAt'] as String? ?? '');
+    final now = DateTime.now().toUtc();
+    if (stepUpToken == null ||
+        stepUpToken.isEmpty ||
+        expiresAt == null ||
+        !expiresAt.isAfter(now) ||
+        expiresAt.isAfter(now.add(const Duration(minutes: 5)))) {
       throw AuthApiException('پاسخ تأیید هویت از سرور کامل نیست.');
     }
+    OwnerSession.instance.rememberStepUpToken(stepUpToken, expiresAt);
     return stepUpToken;
   }
 

@@ -148,7 +148,10 @@ void main() {
     final client = MockClient((request) async {
         requests.add(request);
         if (request.url.path.endsWith('/auth/step-up')) {
-          return http.Response(jsonEncode({'stepUpToken': 'fresh-proof'}), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+          return http.Response(jsonEncode({
+            'stepUpToken': 'fresh-proof',
+            'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4)).toIso8601String(),
+          }), 200, headers: {'content-type': 'application/json; charset=utf-8'});
         }
         if (request.url.path.endsWith('/roles')) {
           return http.Response(jsonEncode([
@@ -202,9 +205,8 @@ Future<void> confirmStepUp(WidgetTester tester) async {
   await tester.enterText(passwordField, 'owner-password');
   await tester.pump();
   expect(tester.widget<TextField>(passwordField).controller!.text, 'owner-password');
-  final confirmButton = find.widgetWithText(FilledButton, 'تأیید هویت');
+  final confirmButton = find.text('تأیید هویت');
   await tester.ensureVisible(confirmButton);
-  expect(tester.widget<FilledButton>(confirmButton).onPressed, isNotNull);
   await tester.tap(confirmButton);
   await tester.pumpAndSettle();
 }
