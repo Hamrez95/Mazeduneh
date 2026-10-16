@@ -412,6 +412,9 @@ void main() {
             'revenue': 9800000,
             'cost': 5600000,
             'grossProfit': 4200000,
+            'productCost': 5000000,
+            'packagingCost': 400000,
+            'additionalCost': 200000,
           },
         ]),
         200,
@@ -423,6 +426,9 @@ void main() {
     expect(captured.url.queryParameters['days'], '90');
     expect(rows.single.sku, 'PI-AKB-250');
     expect(rows.single.grossProfit, 4200000);
+    expect(rows.single.productCost, 5000000);
+    expect(rows.single.packagingCost, 400000);
+    expect(rows.single.additionalCost, 200000);
   });
 
   test('fetchDashboard sends the selected sales period', () async {

@@ -868,14 +868,18 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                        coalesce(sum(l.line_total),0) as revenue,
                        coalesce(sum(case when o.subtotal > 0
                            then o.discount * l.line_total / o.subtotal else 0 end),0) as discount,
-                       coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost
+                       coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost,
+                        coalesce(sum(l.quantity * l.cost_price),0) as product_cost,
+                        coalesce(sum(l.quantity * l.packaging_cost),0) as packaging_cost,
+                        coalesce(sum(l.quantity * l.additional_cost),0) as additional_cost
                 from checkout_order_lines l
                 join checkout_orders o on o.id=l.order_id
                 where o.created_at >= @from and o.created_at < @to
                   and o.state in ('Paid','Preparing','Shipped','Delivered')
                 group by l.product_title,l.sku,l.variant_label
             )
-            select product_title,sku,variant_label,units_sold,revenue,discount,cost
+            select product_title,sku,variant_label,units_sold,revenue,discount,cost,
+                   product_cost,packaging_cost,additional_cost
             from grouped
             order by (revenue - discount - cost) desc, product_title
             limit 200;
@@ -893,9 +897,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             var revenue = reader.GetDecimal(4);
             var discount = reader.GetDecimal(5);
             var cost = reader.GetDecimal(6);
+            var productCost = reader.GetDecimal(7);
+            var packagingCost = reader.GetDecimal(8);
+            var additionalCost = reader.GetDecimal(9);
             rows.Add(new AdminProductProfitability(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount));
+                reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount,
+                productCost, packagingCost, additionalCost));
         }
         return rows;
     }
@@ -1311,7 +1319,18 @@ public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreferenc
         ? new Dictionary<string, string[]>()
         : new Dictionary<string, string[]> { [nameof(input.Widgets)] = ["ترتیب باید هر پنج بخش داشبورد را دقیقاً یک بار داشته باشد."] };
 }
-public sealed record AdminProductProfitability(string ProductTitle, string Sku, string VariantLabel, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit, decimal Discount = 0);
+public sealed record AdminProductProfitability(
+    string ProductTitle,
+    string Sku,
+    string VariantLabel,
+    int UnitsSold,
+    decimal Revenue,
+    decimal Cost,
+    decimal GrossProfit,
+    decimal Discount = 0,
+    decimal ProductCost = 0,
+    decimal PackagingCost = 0,
+    decimal AdditionalCost = 0);
 public sealed record AdminAnalytics(
     int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
     decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,

@@ -169,8 +169,18 @@ class _ReportsPageState extends State<ReportsPage> {
                             Text('${formatPersianInteger(item.unitsSold)} واحد', style: const TextStyle(color: AdminColors.muted)),
                             Text('فروش ${formatPersianNumber(item.revenue)} ریال', style: const TextStyle(fontSize: 12)),
                             Text('تخفیف ${formatPersianNumber(item.discount)} ریال', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
-                            Text('هزینه ${formatPersianNumber(item.cost)} ریال', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
-                            Text('سود ${formatPersianNumber(item.grossProfit)} ریال', style: TextStyle(fontWeight: FontWeight.w900, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.ink)),
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('هزینه کل ${formatPersianNumber(item.cost)} ریال', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
+                              if (item.hasCostBreakdown)
+                                Text(
+                                  'تفکیک هزینه · محصول ${formatPersianNumber(item.productCost)} · بسته‌بندی ${formatPersianNumber(item.packagingCost)} · جانبی ${formatPersianNumber(item.additionalCost)} ریال',
+                                  style: const TextStyle(fontSize: 11, color: AdminColors.muted),
+                                ),
+                            ]),
+                            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('سود ناخالص ${formatPersianNumber(item.grossProfit)} ریال', style: TextStyle(fontWeight: FontWeight.w900, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.ink)),
+                              Text('حاشیه سود ${formatPersianNumber(_productMargin(item), fractionDigits: 1)}٪', style: TextStyle(fontSize: 11, color: item.grossProfit < 0 ? AdminColors.coral : AdminColors.muted)),
+                            ]),
                             if (!OwnerSession.instance.isAuthenticated ||
                                 OwnerSession.instance.can(AdminPermissions.inventoryRead))
                               OutlinedButton.icon(
@@ -190,6 +200,11 @@ class _ReportsPageState extends State<ReportsPage> {
         ),
       ]);
     });
+  }
+
+  num _productMargin(AdminProductProfitability item) {
+    final netRevenue = item.revenue - item.discount;
+    return netRevenue <= 0 ? 0 : item.grossProfit / netRevenue * 100;
   }
 }
 
