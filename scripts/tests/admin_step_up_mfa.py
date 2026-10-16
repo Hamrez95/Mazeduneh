@@ -126,13 +126,25 @@ with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
         }, token)
         assert replay_status == 403 and replay.get("code") == "mfa_invalid", (replay_status, replay)
 
-        cancel_path = "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/state"
+        order_status, order = request("/api/v1/checkout/orders", "POST", {
+            "customerName": "MFA integration contract",
+            "mobile": "09120000000",
+            "province": "تهران",
+            "city": "تهران",
+            "address": "نشانی تست قرارداد",
+            "postalCode": "1234567890",
+            "lines": [{"sku": "PI-AKB-250", "quantity": 1}],
+        }, extra_headers={"Idempotency-Key": "owner-mfa-stepup-integration"})
+        assert order_status in (200, 201) and order.get("id"), (order_status, order)
+
+        cancel_path = f"/api/v1/admin/orders/{order['id']}/state"
         cancel_body = {"state": "Cancelled", "reason": "MFA integration contract"}
-        assert request(cancel_path, "PATCH", cancel_body, token)[0] == 428
-        authorized_status, _ = request(
+        missing_status, missing = request(cancel_path, "PATCH", cancel_body, token)
+        assert missing_status == 428 and missing.get("code") == "step_up_required", (missing_status, missing)
+        authorized_status, cancelled = request(
             cancel_path, "PATCH", cancel_body, token,
             {"X-Admin-Step-Up": proof["stepUpToken"]})
-        assert authorized_status == 404, authorized_status
+        assert authorized_status == 200 and cancelled.get("state") == "Cancelled", (authorized_status, cancelled)
     finally:
         stop_api(api)
 
