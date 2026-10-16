@@ -145,6 +145,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('dashboard priorities navigate to the exact operational filters', (tester) async {
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(_dashboardHarness(
+      onNavigate: (value) => destination = value,
+      problemOrders: 2,
+      awaitingPayment: 3,
+      corporateRequests: 1,
+      lowStock: const [
+        {'productTitle': 'پسته اکبری', 'sku': 'PI-AKB-250', 'variantLabel': '۲۵۰ گرم', 'availablePackages': 2},
+      ],
+      expiringSoon: const [
+        {
+          'productTitle': 'پسته اکبری',
+          'sku': 'PI-AKB-250',
+          'variantLabel': '۲۵۰ گرم',
+          'batchCode': 'LOT-1405-01',
+          'expiresAt': '2026-01-02T03:04:00',
+          'remainingPackages': 3,
+        },
+      ],
+    ));
+    await tester.pumpAndSettle();
+
+    Future<void> openPriority(String id) async {
+      final target = find.byKey(ValueKey('dashboard-priority-$id'));
+      await tester.scrollUntilVisible(target, 350, maxScrolls: 20);
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+    }
+
+    await openPriority('problem-orders');
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem));
+    await openPriority('awaiting-payment');
+    expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
+    await openPriority('low-stock');
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory));
+    await openPriority('expiring-stock');
+    expect(destination, const AdminNavigationIntent(module: AdminModule.inventory));
+    await openPriority('corporate-requests');
+    expect(destination, const AdminNavigationIntent(module: AdminModule.corporate));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dashboard priority list explains when there is nothing to follow up', (tester) async {
+    await tester.pumpWidget(_dashboardHarness());
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('مورد فوری برای پیگیری ندارید'), 350, maxScrolls: 20);
+    expect(find.text('مورد فوری برای پیگیری ندارید'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('period order KPI carries the selected local day into the orders route', (tester) async {
     final today = DateUtils.dateOnly(DateTime.now());
     AdminNavigationIntent? destination;
@@ -224,9 +277,19 @@ void main() {
 
   testWidgets('dashboard-only role gets an educational empty action state', (tester) async {
     OwnerSession.instance.updateIdentity(role: 'DashboardViewer', permissions: ['dashboard.read']);
-    await tester.pumpWidget(_dashboardHarness());
+    await tester.pumpWidget(_dashboardHarness(
+      problemOrders: 2,
+      awaitingPayment: 3,
+      corporateRequests: 4,
+      lowStock: const [
+        {'productTitle': 'پسته اکبری', 'sku': 'PI-AKB-250', 'variantLabel': '۲۵۰ گرم', 'availablePackages': 2},
+      ],
+    ));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('مسیر عملیاتی برای نقش شما فعال نیست'), 400, maxScrolls: 15);
+    expect(find.byKey(const ValueKey('dashboard-priority-problem-orders')), findsNothing);
+    expect(find.byKey(const ValueKey('dashboard-priority-corporate-requests')), findsNothing);
+    expect(find.text('۲ سفارش مشکل‌دار'), findsNothing);
     expect(find.text('ثبت محصول'), findsNothing);
     expect(find.text('پیگیری سفارش‌ها'), findsNothing);
     expect(find.text('مشاهده موجودی'), findsNothing);
@@ -289,7 +352,7 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], String paymentStatus = 'sandbox-enabled', String storageStatus = 'local'}) {
+Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], int problemOrders = 0, int awaitingPayment = 0, int corporateRequests = 0, String paymentStatus = 'sandbox-enabled', String storageStatus = 'local'}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(
@@ -309,7 +372,9 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
     return http.Response(
       jsonEncode(request.url.path.endsWith('/dashboard')
           ? {
-              'awaitingPayment': 0,
+              'awaitingPayment': awaitingPayment,
+              'problemOrders': problemOrders,
+              'corporateNewRequests': corporateRequests,
               'processing': 0,
               'shipped': 0,
               'delivered': 0,
