@@ -220,7 +220,9 @@ public static class OrderManagementModule
             CancellationToken cancellationToken) =>
         {
             if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
-            return Results.Ok(await database.GetDashboardPreferencesAsync(principal.StoreId, principal.Role, cancellationToken));
+            return Results.Ok(await database.GetDashboardPreferencesAsync(
+                principal.StoreId, principal.Role,
+                principal.UserId?.ToString("N") ?? principal.Email.Trim().ToLowerInvariant(), cancellationToken));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapPut("/dashboard/preferences", async (
@@ -233,7 +235,9 @@ public static class OrderManagementModule
             var errors = DashboardPreferences.Validate(input);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var saved = await database.SaveDashboardPreferencesAsync(
-                principal.StoreId, principal.Role, principal.Email, input.Widgets!, cancellationToken);
+                principal.StoreId, principal.Role,
+                principal.UserId?.ToString("N") ?? principal.Email.Trim().ToLowerInvariant(),
+                principal.Email, input.Widgets!, cancellationToken);
             return Results.Ok(saved);
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
@@ -410,6 +414,18 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             );
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "004-dashboard-role-preferences", dashboardPreferencesSql, cancellationToken);
+        const string dashboardUserPreferencesSql = """
+            create table if not exists admin_dashboard_user_preferences (
+                store_id varchar(120) not null,
+                role varchar(80) not null,
+                user_key text not null,
+                widgets jsonb not null,
+                updated_by varchar(320) not null,
+                updated_at timestamptz not null,
+                primary key (store_id, role, user_key)
+            );
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "005-dashboard-user-preferences", dashboardUserPreferencesSql, cancellationToken);
         logger.LogInformation("Order-management schema constraints are ready.");
     }
 
@@ -741,17 +757,30 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, periodDays, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
     }
 
-    public async Task<DashboardPreferences> GetDashboardPreferencesAsync(string storeId, string role, CancellationToken cancellationToken)
+    public async Task<DashboardPreferences> GetDashboardPreferencesAsync(
+        string storeId, string role, string userKey, CancellationToken cancellationToken)
     {
         if (!IsConfigured) return DashboardPreferences.Default;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var userCommand = new NpgsqlCommand(
+            "select widgets from admin_dashboard_user_preferences where store_id=@store and role=@role and user_key=@userKey;", connection);
+        userCommand.Parameters.AddWithValue("store", storeId);
+        userCommand.Parameters.AddWithValue("role", role);
+        userCommand.Parameters.AddWithValue("userKey", userKey);
+        var userJson = await userCommand.ExecuteScalarAsync(cancellationToken) as string;
+        if (userJson is not null) return ParseDashboardPreferences(userJson);
+
         await using var command = new NpgsqlCommand(
             "select widgets from admin_dashboard_role_preferences where store_id=@store and role=@role;", connection);
         command.Parameters.AddWithValue("store", storeId);
         command.Parameters.AddWithValue("role", role);
         var json = await command.ExecuteScalarAsync(cancellationToken) as string;
-        if (json is null) return DashboardPreferences.Default;
+        return json is null ? DashboardPreferences.Default : ParseDashboardPreferences(json);
+    }
+
+    private static DashboardPreferences ParseDashboardPreferences(string json)
+    {
         try
         {
             var widgets = JsonSerializer.Deserialize<DashboardWidgetPreference[]>(json);
@@ -764,20 +793,22 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
     }
 
     public async Task<DashboardPreferences> SaveDashboardPreferencesAsync(
-        string storeId, string role, string actor, IReadOnlyList<DashboardWidgetPreference> widgets, CancellationToken cancellationToken)
+        string storeId, string role, string userKey, string actor,
+        IReadOnlyList<DashboardWidgetPreference> widgets, CancellationToken cancellationToken)
     {
         var preferences = new DashboardPreferences(widgets.ToArray());
         if (!IsConfigured) return preferences;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
-            insert into admin_dashboard_role_preferences (store_id,role,widgets,updated_by,updated_at)
-            values (@store,@role,@widgets::jsonb,@actor,now())
-            on conflict (store_id,role) do update
+            insert into admin_dashboard_user_preferences (store_id,role,user_key,widgets,updated_by,updated_at)
+            values (@store,@role,@userKey,@widgets::jsonb,@actor,now())
+            on conflict (store_id,role,user_key) do update
               set widgets=excluded.widgets,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
             """, connection);
         command.Parameters.AddWithValue("store", storeId);
         command.Parameters.AddWithValue("role", role);
+        command.Parameters.AddWithValue("userKey", userKey);
         command.Parameters.AddWithValue("widgets", JsonSerializer.Serialize(widgets));
         command.Parameters.AddWithValue("actor", actor);
         await command.ExecuteNonQueryAsync(cancellationToken);
