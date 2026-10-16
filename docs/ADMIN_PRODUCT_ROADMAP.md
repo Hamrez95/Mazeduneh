@@ -56,7 +56,7 @@
 | Corporate | pipeline، package snapshot، پاسخ آماده، پیگیری عقب‌افتاده، conversion metrics و پیوند auditشده به سفارش موجود | ایجاد خودکار سفارش از اقلام package و ارسال واقعی پیام هنوز باقی است |
 | Finance | tax، shipping، purchase/packaging/additional cost، invoice و margin پایه | ناقص در accounting رسمی، reconciliation، refund و net profit کامل |
 | Admin UX | palette، Vazirmatn، Persian formatter، shared request error states و PWA manifest | نیازمند modular architecture، RBAC و QA کامل |
-| Security | bearer امن، rate-limit ورود، logout قابل revoke، Audit Log قابل مشاهده، ماتریس permission، مدیریت session، ثبت‌نام TOTP شخصی و step-up برای عملیات حساس | بازبینی جامع‌تر IDOR/BOLA، پوشش همهٔ مرزهای داده و تکمیل user management باقی است |
+| Security | bearer امن، rate-limit ورود، login دعوت‌شده، ماتریس permission، Audit Log قابل مشاهده، مدیریت session، MFA شخصی اعضا و step-up برای عملیات حساس | بازیابی امن حساب، بازبینی جامع‌تر IDOR/BOLA و پوشش کامل مرزهای داده/store باقی است |
 | CI | workflow برای Storefront، API/PostgreSQL، Flutter analyze/test/build و artifact | سبز روی main؛ release/deploy evidence ناقص |
 
 ### پیگیری اعلان‌ها — چرخهٔ ۴ اکتبر ۲۰۲۶ (#96)
@@ -191,7 +191,7 @@ flowchart TD
 
 ## وضعیت Slice مدیریت کاربران
 
-Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، نقش‌ها، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل Owner-only «امنیت ← کاربران» با فرم کوتاه و حالت‌های آموزشی اضافه شده است. ورود Owner با رمز و TOTP برای عملیات حساس در main پشتیبانی می‌شود؛ ورود مستقل و MFA هر membership و بازیابی امن حساب کارکنان هنوز باقی است.
+Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، نقش‌ها، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل Owner-only «امنیت ← کاربران» با فرم کوتاه و حالت‌های آموزشی اضافه شده است. پذیرش دعوت، ورود مستقل اعضا، نشست‌ها، MFA شخصی و step-up در main پیاده شده‌اند؛ بازیابی امن حساب و بازبینی کامل مرزهای دسترسی/store باقی است.
 
 ## ۹. جدول Issueها
 
