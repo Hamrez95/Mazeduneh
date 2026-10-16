@@ -647,6 +647,9 @@ class AdminProductProfitability {
     required this.cost,
     required this.grossProfit,
     this.discount = 0,
+    this.productCost = 0,
+    this.packagingCost = 0,
+    this.additionalCost = 0,
   });
 
   final String productTitle;
@@ -657,6 +660,10 @@ class AdminProductProfitability {
   final num cost;
   final num grossProfit;
   final num discount;
+  final num productCost;
+  final num packagingCost;
+  final num additionalCost;
+  bool get hasCostBreakdown => productCost != 0 || packagingCost != 0 || additionalCost != 0;
 
   factory AdminProductProfitability.fromJson(Map<String, dynamic> json) => AdminProductProfitability(
         productTitle: json['productTitle'] as String,
@@ -667,6 +674,9 @@ class AdminProductProfitability {
         cost: json['cost'] as num,
         grossProfit: json['grossProfit'] as num,
         discount: (json['discount'] as num?) ?? 0,
+        productCost: (json['productCost'] as num?) ?? 0,
+        packagingCost: (json['packagingCost'] as num?) ?? 0,
+        additionalCost: (json['additionalCost'] as num?) ?? 0,
       );
 }
 

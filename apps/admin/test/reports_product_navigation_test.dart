@@ -50,6 +50,9 @@ void main() {
               'revenue': 500000,
               'cost': 300000,
               'grossProfit': 200000,
+              'productCost': 240000,
+              'packagingCost': 40000,
+              'additionalCost': 20000,
             },
           ]);
         }
@@ -82,6 +85,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('پسته اکبری'), findsOneWidget);
+    expect(find.textContaining('تفکیک هزینه'), findsOneWidget);
+    expect(find.textContaining('حاشیه سود'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
     await tester.ensureVisible(inventoryAction);
     await tester.pumpAndSettle();
