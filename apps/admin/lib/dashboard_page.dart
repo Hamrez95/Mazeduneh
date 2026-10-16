@@ -141,7 +141,7 @@ class _DashboardPageState extends State<DashboardPage> {
     bool can(String permission) => !session.isAuthenticated || session.can(permission);
     final sections = <String, Widget>{
       'metrics': _metricsSection(data, can),
-      'quickActions': _quickActionsSection(),
+      'quickActions': _quickActionsSection(data, can),
       'alerts': _alertsPanel(),
       'lowStock': _lowStockPanel(data, can),
       'expiring': _expiringPanel(data, can),
@@ -233,15 +233,65 @@ class _DashboardPageState extends State<DashboardPage> {
     ],
   );
 
-  Widget _quickActionsSection() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    const _DashboardSectionTitle(
-      eyebrow: 'مسیرهای سریع',
-      title: 'امروز چه کاری انجام دهید؟',
-      detail: 'از همین‌جا به کاری بروید که بیشترین اثر را روی عملیات امروز دارد.',
-    ),
-    const SizedBox(height: 12),
-    _DashboardQuickActions(onNavigate: widget.onNavigate),
-  ]);
+  Widget _quickActionsSection(AdminDashboard data, bool Function(String) can) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _DashboardSectionTitle(
+            eyebrow: 'مسیرهای سریع',
+            title: 'امروز چه کاری انجام دهید؟',
+            detail: 'اول کارهای نیازمند پیگیری را ببینید؛ بعد از مسیرهای سریع وارد بخش موردنظر شوید.',
+          ),
+          const SizedBox(height: 12),
+          if ([AdminPermissions.ordersRead, AdminPermissions.inventoryRead, AdminPermissions.corporateRead].any(can)) ...[
+            _DashboardPriorityActions(actions: _priorityActions(data, can), onNavigate: widget.onNavigate),
+            const SizedBox(height: 12),
+          ],
+          _DashboardQuickActions(onNavigate: widget.onNavigate),
+        ],
+      );
+
+  List<_DashboardPriority> _priorityActions(AdminDashboard data, bool Function(String) can) => [
+        if (can(AdminPermissions.ordersRead) && data.problemOrders > 0)
+          _DashboardPriority(
+            id: 'problem-orders',
+            title: '${formatPersianInteger(data.problemOrders)} سفارش مشکل‌دار',
+            detail: 'وضعیت پرداخت یا ارسال این سفارش‌ها را بررسی کنید.',
+            icon: Icons.report_problem_outlined,
+            destination: const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem),
+          ),
+        if (can(AdminPermissions.ordersRead) && data.awaitingPayment > 0)
+          _DashboardPriority(
+            id: 'awaiting-payment',
+            title: '${formatPersianInteger(data.awaitingPayment)} سفارش در انتظار پرداخت',
+            detail: 'فهرست سفارش‌های پرداخت‌نشده را باز کنید.',
+            icon: Icons.schedule_rounded,
+            destination: const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment),
+          ),
+        if (can(AdminPermissions.inventoryRead) && data.lowStock.isNotEmpty)
+          _DashboardPriority(
+            id: 'low-stock',
+            title: 'کمبود موجودی · ${formatPersianInteger(data.lowStock.length)} کالا',
+            detail: 'فهرست SKUهای پایین‌تر از نقطهٔ سفارش را بررسی کنید.',
+            icon: Icons.inventory_2_outlined,
+            destination: const AdminNavigationIntent(module: AdminModule.inventory),
+          ),
+        if (can(AdminPermissions.inventoryRead) && data.expiringSoon.isNotEmpty)
+          _DashboardPriority(
+            id: 'expiring-stock',
+            title: 'نزدیک انقضا · ${formatPersianInteger(data.expiringSoon.length)} بچ',
+            detail: 'بچ‌های نزدیک به انقضا را برای اقدام باز کنید.',
+            icon: Icons.event_busy_rounded,
+            destination: const AdminNavigationIntent(module: AdminModule.inventory),
+          ),
+        if (can(AdminPermissions.corporateRead) && data.corporateNewRequests > 0)
+          _DashboardPriority(
+            id: 'corporate-requests',
+            title: '${formatPersianInteger(data.corporateNewRequests)} درخواست سازمانی جدید',
+            detail: 'برای هر درخواست مسئول و پیگیری بعدی تعیین کنید.',
+            icon: Icons.business_center_rounded,
+            destination: const AdminNavigationIntent(module: AdminModule.corporate),
+          ),
+      ];
 
   Widget _alertsPanel() {
     final items = notifications?.items ?? const <AdminNotification>[];
@@ -611,6 +661,66 @@ class _DashboardSectionTitle extends StatelessWidget {
         const SizedBox(height: 4),
         Text(detail, style: const TextStyle(color: AdminColors.muted, fontSize: 12)),
       ]);
+}
+
+class _DashboardPriority {
+  const _DashboardPriority({
+    required this.id,
+    required this.title,
+    required this.detail,
+    required this.icon,
+    required this.destination,
+  });
+
+  final String id;
+  final String title;
+  final String detail;
+  final IconData icon;
+  final AdminNavigationIntent destination;
+}
+
+class _DashboardPriorityActions extends StatelessWidget {
+  const _DashboardPriorityActions({required this.actions, required this.onNavigate});
+
+  final List<_DashboardPriority> actions;
+  final ValueChanged<AdminNavigationIntent>? onNavigate;
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) {
+      return const AdminEmptyState(
+        icon: Icons.task_alt_rounded,
+        title: 'مورد فوری برای پیگیری ندارید',
+        detail: 'سفارش، موجودی و درخواست جدیدی برای اقدام در این بازه دیده نمی‌شود.',
+      );
+    }
+
+    return _DashboardPanel(
+      title: 'اولویت‌های پیگیری',
+      icon: Icons.playlist_add_check_circle_outlined,
+      child: Column(
+        children: [
+          for (final action in actions)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                key: ValueKey('dashboard-priority-${action.id}'),
+                onTap: onNavigate == null ? null : () => onNavigate!(action.destination),
+                borderRadius: BorderRadius.circular(16),
+                focusColor: AdminColors.mintSoft,
+                child: ListTile(
+                  leading: Icon(action.icon, color: AdminColors.coral),
+                  title: Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  subtitle: Text(action.detail),
+                  trailing: const Icon(Icons.arrow_back_rounded, size: 20),
+                  minVerticalPadding: 10,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DashboardQuickActions extends StatelessWidget {
