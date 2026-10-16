@@ -247,6 +247,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('dashboard cost breakdown shows period costs and opens its report at 360px', (tester) async {
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final today = DateUtils.dateOnly(DateTime.now());
+    AdminNavigationIntent? destination;
+
+    await tester.pumpWidget(_dashboardHarness(
+      onNavigate: (value) => destination = value,
+      analyticsOrderCount: 2,
+      grossProfit: 430000,
+      productCost: 380000,
+      packagingCost: 25000,
+      additionalCost: 9000,
+      shippingRevenue: 35000,
+      shippingExpense: 8000,
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('ریز سود و هزینه'), 350, maxScrolls: 20);
+    expect(find.text('بهای محصول'), findsOneWidget);
+    expect(find.textContaining('۳۸۰'), findsOneWidget);
+    expect(find.text('بسته‌بندی'), findsOneWidget);
+    expect(find.text('هزینه‌های جانبی'), findsOneWidget);
+    expect(find.textContaining('مالیات پرداختنی در سود محاسبه نمی‌شود'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('جزئیات کامل در گزارش سود'));
+    await tester.tap(find.text('جزئیات کامل در گزارش سود'));
+    expect(destination?.module, AdminModule.reports);
+    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
+    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('expiring stock keeps its Persian-digit date readable on mobile', (tester) async {
     tester.view.physicalSize = const Size(360, 900);
     tester.view.devicePixelRatio = 1;
@@ -331,6 +366,7 @@ void main() {
     expect(find.text('مشاهده موجودی'), findsNothing);
     expect(find.textContaining('با مدیر فروشگاه هماهنگ کنید'), findsOneWidget);
     expect(find.text('سود خالص بازه'), findsNothing);
+    expect(find.text('ریز سود و هزینه'), findsNothing);
     expect(analyticsRequests, isEmpty);
     expect(tester.takeException(), isNull);
   });
@@ -390,7 +426,27 @@ void main() {
 }
 
 
-Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, double textScale = 1, List<Map<String, dynamic>> lowStock = const [], List<Map<String, dynamic>> expiringSoon = const [], int problemOrders = 0, int awaitingPayment = 0, int corporateRequests = 0, String paymentStatus = 'sandbox-enabled', String storageStatus = 'local', bool financialsVisible = true, num netProfit = 275000, List<Uri>? analyticsRequests}) {
+Widget _dashboardHarness({
+  ValueChanged<AdminNavigationIntent>? onNavigate,
+  double textScale = 1,
+  List<Map<String, dynamic>> lowStock = const [],
+  List<Map<String, dynamic>> expiringSoon = const [],
+  int problemOrders = 0,
+  int awaitingPayment = 0,
+  int corporateRequests = 0,
+  String paymentStatus = 'sandbox-enabled',
+  String storageStatus = 'local',
+  bool financialsVisible = true,
+  num netProfit = 275000,
+  num grossProfit = 275000,
+  num productCost = 0,
+  num packagingCost = 0,
+  num additionalCost = 0,
+  num shippingRevenue = 0,
+  num shippingExpense = 0,
+  int analyticsOrderCount = 0,
+  List<Uri>? analyticsRequests,
+}) {
   final client = MockClient((request) async {
     if (request.url.path.endsWith('/dashboard/health')) {
       return http.Response(
@@ -412,15 +468,19 @@ Widget _dashboardHarness({ValueChanged<AdminNavigationIntent>? onNavigate, doubl
       return http.Response(
         jsonEncode({
           'days': 1,
-          'orderCount': 2,
+          'orderCount': analyticsOrderCount,
           'unitsSold': 3,
           'revenue': 850000,
           'cost': 575000,
-          'grossProfit': 275000,
+          'grossProfit': grossProfit,
           'grossMarginPercent': 32.35,
           'tax': 0,
           'netProfit': netProfit,
-          'shippingExpense': 0,
+          'shippingRevenue': shippingRevenue,
+          'shippingExpense': shippingExpense,
+          'productCost': productCost,
+          'packagingCost': packagingCost,
+          'additionalCost': additionalCost,
         }),
         200,
         headers: {'content-type': 'application/json; charset=utf-8'},
