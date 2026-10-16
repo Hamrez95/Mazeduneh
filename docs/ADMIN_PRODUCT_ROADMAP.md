@@ -1,8 +1,8 @@
 # نقشهٔ محصول پنل مدیریت مزه‌دونه
 
-> وضعیت این سند: Audit زندهٔ Repository در ۳۰ سپتامبر ۲۰۲۶  
+> وضعیت این سند: Audit کد و CI در ۱۶ اکتبر ۲۰۲۶
 > منبع حقیقت: کد و migrationهای branch اصلی main، CI و Issue/PRهای واقعی GitHub.  
-> این سند برنامه‌ریزی است؛ در این Slice هیچ کد محصولی تغییر داده نشده است.
+> این سند وضعیت محصول و برنامهٔ توسعه را ثبت می‌کند؛ commit مبنا و نتیجهٔ CI در ادامه مشخص شده‌اند.
 
 ## ۱. چشم‌انداز
 
@@ -24,12 +24,12 @@
 |---|---|
 | Repository | Hamrez95/Mazeduneh |
 | branch پیش‌فرض GitHub | dev؛ این با سیاست release که main را release-ready می‌داند هم‌راستا نیست |
-| main فعلی | bdd386da16afab5c52bed7f7a62b02d809fe2f94 |
-| dev فعلی | 96d16a3e5ed86526e7d15b499ec59b7460339be5 |
-| main | شامل ۱۹۴ path و مجموعهٔ کامل‌تر Storefront/Admin/API است |
+| main در شروع این چرخه | 802d56b8a53a77f13d7dde72c4235add3c977175 |
+| dev هنگام ممیزی | 55c9ffc5fdf6e9beee26135debb113e695d3d403 |
+| main | مبنای کامل‌تر Storefront/Admin/API و release است |
 | dev | عقب‌تر و دارای شاخه‌های feature قدیمی؛ مبنای این Roadmap نیست |
-| PRهای اخیر | PRهای #80 تا #90 برای migration، مشتری، مالیات، batch/FEFO، corporate و shipping merge شده‌اند |
-| CI آخر گزارش‌شده روی main | موفق؛ Storefront، API، Flutter/Admin و artifactهای مرتبط در workflow |
+| PRهای اخیر | PRهای #249 تا #278 برای امنیت، پنل، داشبورد، راه‌انداز محلی و MFA در main ادغام شده‌اند |
+| CI آخر گزارش‌شده روی main | workflowهای API، Storefront، Admin و Graphify روی commit `802d56b` موفق‌اند |
 | CI آخر گزارش‌شده روی dev | یک run اخیر failure داشته است؛ نباید معیار release باشد |
 
 ### سطوح محصول
@@ -53,10 +53,10 @@
 | Orders | لیست Admin، dashboard، analytics، notification پایه، تغییر state و عملیات گروهی تا ۵۰ سفارش | ناقص در stateهای کامل، timeline، Kanban، print، refund و tracking |
 | Inventory | stock_movements، adjustment، batches، expiry و FEFO پایه | ناقص در receiving/supplier/fulfillment/return/waste/reorder |
 | Customer | customer پایدار، mobile normalization، address و لیست/پروفایل Admin | ناقص در OTP، consent، segment و privacy workflow |
-| Corporate | landing، upload logo، pipeline status، assignment، follow-up، notes، messages و proforma | پایهٔ عملیاتی؛ package/analytics/conversion/reminder تکمیلی لازم |
+| Corporate | pipeline، package snapshot، پاسخ آماده، پیگیری عقب‌افتاده، conversion metrics و پیوند auditشده به سفارش موجود | ایجاد خودکار سفارش از اقلام package و ارسال واقعی پیام هنوز باقی است |
 | Finance | tax، shipping، purchase/packaging/additional cost، invoice و margin پایه | ناقص در accounting رسمی، reconciliation، refund و net profit کامل |
 | Admin UX | palette، Vazirmatn، Persian formatter، shared request error states و PWA manifest | نیازمند modular architecture، RBAC و QA کامل |
-| Security | bearer امن، rate-limit ورود، logout قابل revoke، Audit Log قابل مشاهده و ماتریس permission برای نقش‌های عملیاتی | ناقص در user management، MFA و step-up approval |
+| Security | bearer امن، rate-limit ورود، logout قابل revoke، Audit Log قابل مشاهده، ماتریس permission، مدیریت session، ثبت‌نام TOTP شخصی و step-up برای عملیات حساس | بازبینی جامع‌تر IDOR/BOLA، پوشش همهٔ مرزهای داده و تکمیل user management باقی است |
 | CI | workflow برای Storefront، API/PostgreSQL، Flutter analyze/test/build و artifact | سبز روی main؛ release/deploy evidence ناقص |
 
 ### پیگیری اعلان‌ها — چرخهٔ ۴ اکتبر ۲۰۲۶ (#96)
@@ -66,6 +66,10 @@ Component مشترک Dashboard/Notification Center، دکمهٔ مسیر ماژ�
 ### Responsive فروش سازمانی — چرخهٔ ۴ اکتبر ۲۰۲۶ (#97)
 
 عنوان و actionها از ردیف ثابت به چیدمان انعطاف‌پذیر تبدیل شدند؛ جست‌وجو/شهر/وضعیت در موبایل زیر هم و در تبلت در دو ردیف قرار می‌گیرند. label و tooltip دائمی اضافه شد. تست ۳۶۰/۷۶۸/۱۲۸۰، متن ۲۰۰٪، keyboard search و overdue query دارد. راهنما: `docs/CORPORATE_RESPONSIVE_FILTERS.md`.
+
+### اتصال درخواست سازمانی به سفارش — چرخهٔ ۱۶ اکتبر ۲۰۲۶ (#97)
+
+برای درخواست تأییدشده می‌توان شناسهٔ سفارش ثبت‌شده را پیوند داد. هر سفارش فقط به یک درخواست وصل می‌شود؛ retry همان پیوند idempotent است و event و Audit ثبت می‌شوند. ایجاد خودکار سفارش از اقلام package همچنان به تعریف رابطهٔ اقلام package با SKU و موجودی نیاز دارد.
 
 ### اصلاح موجودی اولیهٔ صفر — چرخهٔ ۴ اکتبر ۲۰۲۶ (#2)
 
@@ -79,7 +83,7 @@ Component مشترک Dashboard/Notification Center، دکمهٔ مسیر ماژ�
 - #72 media/catalog را data-driven کرده است؛ کار بعدی حذف fallbackهای ناموجه و تکمیل data contract است.
 - #73 stateهای loading/error/forbidden را shared کرده است؛ کار بعدی پوشش همهٔ صفحات و stale/offline است.
 - #83 تا #88 بخش‌های food/cost/tax/shipping/invoice/batch/FEFO را merge کرده‌اند؛ #82 تکمیل همین مسیر است، نه قابلیت جدید.
-- #89 و #90 core فروش سازمانی را merge کرده‌اند؛ #97 فقط gapهای pipeline، package، reminder و analytics را پوشش می‌دهد.
+- #89 و #90 هستهٔ فروش سازمانی را merge کرده‌اند؛ package، response template، reminder و conversion metrics هم در main هستند؛ ایجاد خودکار order از package هنوز باقی است.
 - #79 و #81 customer operations/address را merge کرده‌اند؛ #75 و #94 هویت پایدار و رشد CRM را جدا می‌کنند.
 
 ## ۴. اولویت نهایی
@@ -126,7 +130,7 @@ Issueها: #4، #5، #77، #92، #101.
 
 خروجی: پنل ماژولار و role-aware، dashboard عملیاتی، سفارش، انبار، batch/FEFO، مسیرهای آموزشی و mobile/PWA قابل استفاده.
 
-#92 همچنان باز است: چیدمان پنج بخش داشبورد به تفکیک store و role ذخیره می‌شود؛ بازهٔ دلخواه، خلاصهٔ سلامت API/دیتابیس و صف‌های قابل‌اقدام برای سفارش‌های مشکل‌دار/منتظر پرداخت، کمبود موجودی، انقضای نزدیک و درخواست سازمانی جدید در دسترس‌اند. وضعیت پرداخت و ذخیره‌سازی رسانه از روی پیکربندی نمایش داده می‌شود و اتصال بیرونی آن‌ها probe نمی‌شود. KPIهای مالی/عملیاتی براساس permission مستقل فیلتر می‌شوند؛ KPI سود خالص هم‌دوره به گزارش هدایت می‌کند. چیدمان اختصاصی هر کاربر با fallback به پیش‌فرض نقش ذخیره می‌شود؛ مسیر سفارش‌های SKU با حفظ بازه به گزارش اضافه شده و تحلیل عمیق‌تر سود/هزینه باقی است.
+#92 همچنان باز است: داشبورد مسیر سفارش‌های جدید/مشکل‌دار، کمبود و انقضای نزدیک، درخواست‌های سازمانی، KPI سود خالص و breakdown هزینه‌ها/اثر ارسال را دارد؛ KPIهای مالی/عملیاتی براساس permission فیلتر می‌شوند و drill-downها بازهٔ انتخابی را نگه می‌دارند. چیدمان هر کاربر با fallback نقش ذخیره می‌شود. reconciliation، refund و تحلیل‌های پیشرفته‌تر باقی‌اند.
 
 ### M4 — Commercial Growth
 
@@ -187,7 +191,7 @@ flowchart TD
 
 ## وضعیت Slice مدیریت کاربران
 
-Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، نقش‌ها، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل Owner-only «امنیت ← کاربران» با فرم کوتاه و حالت‌های آموزشی اضافه شده است؛ اتصال واقعی هر membership به احراز هویت، MFA و step-up approval در Sliceهای بعدی انجام می‌شود.
+Migration افزایشی `admin-users/001-memberships` جدول عضویت‌های store-scoped را می‌سازد، Owner فعلی را بدون ذخیرهٔ رمز یا token seed می‌کند و API فهرست، نقش‌ها، ساخت و فعال/غیرفعال‌سازی کاربر را فراهم می‌کند. UI پنل Owner-only «امنیت ← کاربران» با فرم کوتاه و حالت‌های آموزشی اضافه شده است. ورود Owner با رمز و TOTP برای عملیات حساس در main پشتیبانی می‌شود؛ ورود مستقل و MFA هر membership و بازیابی امن حساب کارکنان هنوز باقی است.
 
 ## ۹. جدول Issueها
 
@@ -214,7 +218,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
 | #95 | Promotions/campaign engine | P1 | Full-stack | L | جدید |
 | #96 | Notifications/automation | P1 | Full-stack/Infra | L | جدید |
-| #97 | Corporate pipeline/packages | P1 | Full-stack | M | pipeline، assignment، follow-up و فیلتر پیگیری عقب‌افتاده تکمیل؛ Package catalog، reminder automation و conversion analytics باقی |
+| #97 | Corporate pipeline/packages | P1 | Full-stack | M | package snapshot، response templates، صف reminder، conversion metrics و order link تکمیل؛ ساخت خودکار order از package و پیام‌رسانی واقعی باقی |
 | #98 | Store settings/theme/onboarding | P1 | Full-stack | L | جدید |
 | #99 | Multi-store/white-label | P2 | Architecture | XL | جدید |
 | #100 | Launch gate/observability | P0 | Infra/QA | L | جدید |
@@ -267,7 +271,7 @@ Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. 
 - نام شخص hard-code از عنوان داشبورد حذف شد؛ empty state نقش بدون مسیر عملیاتی اضافه شد.
 - focus، کنتراست متن کارت‌ها و ارتفاع منعطف KPI برای بزرگ‌نمایی متن بهبود یافت.
 - تست نقش محدود، فعال‌سازی با keyboard، عرض‌های ۳۶۰/۷۶۸/۱۲۸۰ و بزرگ‌نمایی متن اضافه شد.
-- #92 برای drill-down فیلترشده، سود خالص و پیکربندی داشبورد نقش‌ها همچنان باز است.
+- #92 برای reconciliation، refund و تحلیل‌های پیشرفته‌تر همچنان باز است؛ drill-down، سود خالص و چیدمان نقش/کاربر در main هستند.
 
 ## چرخهٔ ۴ اکتبر ۲۰۲۶ — همبستگی درخواست و لاگ (#100)
 
@@ -308,5 +312,5 @@ Issueها با Epic/Milestone پیشنهادی در title/body ثبت شدند. 
 - سفارش مشکل‌دار و منتظر پرداخت، کمبود موجودی، بچ نزدیک انقضا و درخواست سازمانی جدید در یک صف خلاصه و قابل‌کلیک نمایش داده می‌شوند.
 - هر ردیف به فیلتر یا ماژول مرتبط می‌رود و از permission همان نشست پیروی می‌کند؛ نقش بدون دسترسی، تعداد آن حوزه را نمی‌بیند.
 - حالت خالی و تست مسیرهای هر پنج اولویت اضافه شد؛ جزئیات کمبود و انقضا همچنان در پنل‌های موجود باقی است.
-- KPI سود خالص از گزارش مجاز همان بازه می‌آید و به همان گزارش هدایت می‌کند؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه اضافه شد؛ تحلیل عمیق‌تر سود/هزینه و مسیرهای دیگر همچنان در #92 باقی است.
+- KPI سود خالص از گزارش مجاز همان بازه می‌آید و به همان گزارش هدایت می‌کند؛ چیدمان اختصاصی هر کاربر با fallback نقش، مسیر سفارش‌های SKU با حفظ بازه و breakdown هزینه/اثر ارسال تکمیل‌اند؛ reconciliation، refund و تحلیل‌های پیشرفته‌تر در #92 باقی‌اند.
 - داشبورد بهای محصول، بسته‌بندی، هزینهٔ جانبی، درآمد/هزینهٔ ارسال و سود ناخالص را کنار KPI سود خالص و فقط برای نقش مجاز نشان می‌دهد؛ جزئیات به گزارش همان بازه می‌رود.

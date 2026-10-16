@@ -26,10 +26,10 @@ public sealed class DatabaseDeploymentTasks(
         await inventoryBatches.ApplyMigrationsAsync(cancellationToken);
         await inventoryPricing.ApplyMigrationsAsync(cancellationToken);
         await commerce.ApplyMigrationsAsync(cancellationToken);
+        await checkout.ApplyMigrationsAsync(cancellationToken);
         await corporateSales.ApplyMigrationsAsync(cancellationToken);
         await corporatePackages.ApplyMigrationsAsync(cancellationToken);
         await corporateTemplates.ApplyMigrationsAsync(cancellationToken);
-        await checkout.ApplyMigrationsAsync(cancellationToken);
         await customers.ApplyMigrationsAsync(cancellationToken);
         await orders.ApplyMigrationsAsync(cancellationToken);
         await payments.ApplyMigrationsAsync(cancellationToken);
@@ -79,6 +79,7 @@ public static class DatabaseMigrationCatalog
         new("corporate-sales", "001-bootstrap"),
         new("corporate-sales", "002-package-catalog-snapshots"),
         new("corporate-sales", "003-response-templates"),
+        new("corporate-sales", "004-order-link"),
         new("checkout", "001-bootstrap"),
         new("checkout", "002-shipping-expense"),
         new("customers", "001-bootstrap"),

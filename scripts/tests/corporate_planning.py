@@ -142,6 +142,9 @@ with tempfile.TemporaryFile() as log:
         a, b, c, d, e, f, g = fixtures
         detail_status, saved_request = request(ADMIN + '/' + a, token=token)
         assert detail_status == 200 and saved_request['packageCode'] == 'ci-corp-kit'
+        assert saved_request['orderId'] is None
+        assert request(ADMIN + '/' + a + '/order-link', 'POST', {
+            'orderId': '00000000-0000-0000-0000-000000000001'}, token)[0] == 409
         snapshot = saved_request['packageSnapshot']
         assert snapshot['unitPrice'] == 240000 and snapshot['orderQuantity'] == 50
         assert snapshot['estimatedTotal'] == 12000000
@@ -161,6 +164,27 @@ with tempfile.TemporaryFile() as log:
             status, updated = change_status(e, next_status)
             assert status == 200 and updated['status'] == next_status, (next_status, status, updated)
         assert change_status(e, 'Reviewing')[0] == 409  # Terminal requests cannot be reopened.
+        assert request(ADMIN + '/' + e + '/order-link', 'POST', {
+            'orderId': '00000000-0000-0000-0000-000000000001'}, token)[0] == 404
+        checkout_payload = {
+            'customerName': 'CI corporate order', 'mobile': '09123456789',
+            'province': 'تهران', 'city': 'تهران', 'address': 'CI order link fixture',
+            'postalCode': '1234567890', 'lines': [{'sku': 'PI-AKB-250', 'quantity': 1}],
+        }
+        order_status, linked_order = request('/api/v1/checkout/orders', 'POST', checkout_payload,
+                                             extra_headers={'Idempotency-Key': 'corporate-order-link-0001'})
+        assert order_status == 201, (order_status, linked_order)
+        link_status, linked_request = request(ADMIN + '/' + e + '/order-link', 'POST',
+                                              {'orderId': linked_order['id']}, token)
+        assert link_status == 200 and linked_request['orderId'] == linked_order['id']
+        replay_status, replayed_link = request(ADMIN + '/' + e + '/order-link', 'POST',
+                                               {'orderId': linked_order['id']}, token)
+        assert replay_status == 200 and replayed_link['orderId'] == linked_order['id']
+        assert sum(event['eventType'] == 'order-linked' for event in replayed_link['events']) == 1
+        link_audit_status, link_audit = request(
+            '/api/v1/admin/audit-log?entityType=CorporateRequest&entityId=' + e, token=token)
+        assert link_audit_status == 200 and sum(
+            entry['action'] == 'corporate-request.order-linked' for entry in link_audit) == 1
         mutate(f, '/status', {'status': 'Cancelled', 'note': 'CI'}, 'PATCH')
         mutate(g, '/assign', {'assignedTo': '  '})
         mutate(g, '/follow-up', {'nextFollowUpAt': '2099-01-01T00:00:00Z'})

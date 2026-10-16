@@ -230,6 +230,9 @@ class _DetailPanelState extends State<_DetailPanel> {
   final note = TextEditingController();
   late final assignee = TextEditingController(text: widget.item.assignedTo ?? '');
   final message = TextEditingController();
+  final orderId = TextEditingController();
+  late String? linkedOrderId = widget.item.orderId;
+  bool linkingOrder = false;
   List<CorporateResponseTemplate> responseTemplates = [];
   bool responseTemplatesLoading = true;
   Object? responseTemplatesError;
@@ -240,7 +243,7 @@ class _DetailPanelState extends State<_DetailPanel> {
     loadResponseTemplates();
   }
   @override
-  void dispose() { note.dispose(); assignee.dispose(); message.dispose(); super.dispose(); }
+  void dispose() { note.dispose(); assignee.dispose(); message.dispose(); orderId.dispose(); super.dispose(); }
 
   Future<void> loadResponseTemplates() async {
     try {
@@ -261,11 +264,42 @@ class _DetailPanelState extends State<_DetailPanel> {
     try { await widget.api.changeStatus(widget.item.id, status, note: note.text); await widget.api.assign(widget.item.id, assignee.text.trim().isEmpty ? null : assignee.text.trim()); if (note.text.isNotEmpty) await widget.api.addNote(widget.item.id, note.text); if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('درخواست به‌روزرسانی شد.'))); widget.onChanged(); } }
     catch (exception) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString()))); }
   }
+  Future<void> linkOrder() async {
+    final value = orderId.text.trim();
+    if (value.isEmpty || linkingOrder) return;
+    setState(() => linkingOrder = true);
+    try {
+      final updated = await widget.api.linkOrder(widget.item.id, value);
+      if (!mounted) return;
+      setState(() { linkedOrderId = updated.orderId; orderId.clear(); });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('سفارش به درخواست سازمانی پیوند خورد.')));
+      widget.onChanged();
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => linkingOrder = false);
+    }
+  }
   @override
   Widget build(BuildContext context) => Card(margin: const EdgeInsets.fromLTRB(0, 28, 28, 28), child: ListView(padding: const EdgeInsets.all(22), children: [
     Text(widget.item.companyName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)), Text(widget.item.customerName, style: const TextStyle(color: AdminColors.muted)), const Divider(height: 28),
     _line('تماس', widget.item.mobile), _line('شهر و مناسبت', '${widget.item.city} · ${widget.item.occasion}'), _line('تعداد و بسته', '${formatPersianInteger(widget.item.orderQuantity)} · ${widget.item.packageType}'),
     if (widget.item.email != null) _line('ایمیل', widget.item.email!), if (widget.item.description != null) _line('توضیحات', widget.item.description!), const SizedBox(height: 18),
+    if (linkedOrderId != null) ...[
+      const Text('سفارش مرتبط', style: TextStyle(color: AdminColors.muted, fontSize: 12)),
+      SelectableText(linkedOrderId!, style: const TextStyle(fontWeight: FontWeight.w800)),
+    ] else ...[
+      TextField(controller: orderId, decoration: const InputDecoration(labelText: 'شناسهٔ سفارش ثبت‌شده')),
+      const SizedBox(height: 4),
+      const Text('بعد از تأیید درخواست، شناسهٔ سفارش ساخته‌شده را اینجا وارد کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
+      const SizedBox(height: 8),
+      Align(alignment: AlignmentDirectional.centerStart, child: OutlinedButton.icon(
+        onPressed: linkingOrder ? null : linkOrder,
+        icon: linkingOrder ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.link_rounded),
+        label: const Text('پیوند سفارش'),
+      )),
+    ],
+    const SizedBox(height: 14),
     DropdownButtonFormField<String>(value: status, decoration: const InputDecoration(labelText: 'وضعیت درخواست'), items: statuses.entries.map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value))).toList(), onChanged: (value) => setState(() => status = value ?? status)), const SizedBox(height: 12),
     TextField(controller: assignee, decoration: const InputDecoration(labelText: 'مسئول پیگیری / ایمیل ادمین')), const SizedBox(height: 12),
     TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'یادداشت داخلی')), const SizedBox(height: 12),
