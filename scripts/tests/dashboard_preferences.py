@@ -188,9 +188,9 @@ with tempfile.TemporaryFile() as log:
             {"id": "lowStock", "visible": True},
         ]}
         status, first_default = request(endpoint, token=first_user_token)
-        assert status == 200 and first_default == role_default
+        assert status == 200 and first_default == role_default, (status, first_default, role_default)
         status, second_default = request(endpoint, token=second_user_token)
-        assert status == 200 and second_default == role_default
+        assert status == 200 and second_default == role_default, (status, second_default, role_default)
 
         first_custom = {"widgets": [
             {"id": "quickActions", "visible": False},
