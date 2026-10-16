@@ -126,6 +126,39 @@ with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
         }, token)
         assert replay_status == 403 and replay.get("code") == "mfa_invalid", (replay_status, replay)
 
+        test_sku = "CI-MFA-STEPUP-001"
+        product_status, _ = request("/api/v1/products/", "POST", {
+            "title": "MFA integration fixture",
+            "slug": "ci-owner-stepup-mfa",
+            "category": "CI",
+            "origin": "IR",
+            "currency": "IRR",
+            "unitType": "Weight",
+            "isPublished": True,
+            "variants": [{
+                "sku": test_sku,
+                "quantity": 250,
+                "displayLabel": "250g",
+                "price": 5000,
+                "availablePackages": 0,
+            }],
+        }, token, {"X-Admin-Step-Up": proof["stepUpToken"]})
+        assert product_status == 201, product_status
+
+        batch_status, batch = request("/api/v1/admin/inventory/batches", "POST", {
+            "sku": test_sku,
+            "batchCode": "CI-OWNER-MFA-LOT",
+            "receivedPackages": 2,
+            "producedAt": "2025-01-01T00:00:00Z",
+            "expiresAt": "2030-01-01T00:00:00Z",
+            "costPrice": 2000,
+            "packagingCost": 0,
+            "additionalCost": 0,
+            "purchasedAt": "2026-01-01T00:00:00Z",
+            "supplier": "CI MFA fixture",
+        }, token)
+        assert batch_status == 201, (batch_status, batch)
+
         order_status, order = request("/api/v1/checkout/orders", "POST", {
             "customerName": "MFA integration contract",
             "mobile": "09120000000",
@@ -133,7 +166,7 @@ with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
             "city": "تهران",
             "address": "نشانی تست قرارداد",
             "postalCode": "1234567890",
-            "lines": [{"sku": "PI-AKB-250", "quantity": 1}],
+            "lines": [{"sku": test_sku, "quantity": 1}],
         }, extra_headers={"Idempotency-Key": "owner-mfa-stepup-integration"})
         assert order_status in (200, 201) and order.get("id"), (order_status, order)
 
