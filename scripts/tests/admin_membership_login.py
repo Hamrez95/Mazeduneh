@@ -1,9 +1,12 @@
 """Membership invitation, store binding, revocation and authorization regression."""
 import base64
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 import time
 from urllib.error import HTTPError, URLError
@@ -28,6 +31,15 @@ def request(path, method="GET", body=None, token=None, extra_headers=None):
     with response:
         content = response.read()
         return response.status, json.loads(content) if content else None
+
+
+def totp_code(secret, now=None):
+    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8))
+    step = int((time.time() if now is None else now) // 30)
+    digest = hmac.new(key, struct.pack(">Q", step), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return f"{value % 1_000_000:06d}"
 
 
 def start_api(log):
@@ -244,6 +256,55 @@ with tempfile.TemporaryFile() as log:
         assert status == 403, (status, denied)
         assert request("/api/v1/admin/auth/session", token=tenant_token)[0] == 200
 
+        # Reset only the in-memory request limiter before the MFA lifecycle assertions.
+        stop_api(api)
+        api, owner_token = start_api(log)
+
+        # Membership MFA is enrolled per account, encrypted at rest, and required on the next login.
+        status, mfa_status = request("/api/v1/admin/auth/mfa", token=tenant_token)
+        assert status == 200 and mfa_status["enabled"] is False, (status, mfa_status)
+        status, denied = request("/api/v1/admin/auth/mfa/enrollment", "POST",
+                                 {"password": "incorrect-password"}, tenant_token)
+        assert status == 403, (status, denied)
+        status, enrollment = request("/api/v1/admin/auth/mfa/enrollment", "POST",
+                                     {"password": tenant_password}, tenant_token)
+        assert status == 200 and enrollment["secret"] and enrollment["provisioningUri"].startswith("otpauth://totp/"), (
+            status, enrollment)
+        status, denied = request("/api/v1/admin/auth/mfa/confirm", "POST", {"mfaCode": "invalid"}, tenant_token)
+        assert status == 403, (status, denied)
+        enrollment_code = totp_code(enrollment["secret"])
+        # A pending TOTP enrollment remains usable after an API process restart.
+        stop_api(api)
+        api, owner_token = start_api(log)
+        status, verified_session = request("/api/v1/admin/auth/mfa/confirm", "POST",
+                                           {"mfaCode": enrollment_code}, tenant_token)
+        assert status == 200 and verified_session["accessToken"], (status, verified_session)
+        verified_tenant_token = verified_session["accessToken"]
+        status, mfa_status = request("/api/v1/admin/auth/mfa", token=verified_tenant_token)
+        assert status == 200 and mfa_status["enabled"] is True, (status, mfa_status)
+        status, challenge = request("/api/v1/admin/auth/session", token=tenant_token)
+        assert status == 428 and challenge["code"] == "mfa_required", (status, challenge)
+        status, challenge = request("/api/v1/admin/auth/login", "POST", {
+            "email": tenant_email, "password": tenant_password, "storeId": "tenant-a"})
+        assert status == 428 and challenge["code"] == "mfa_required", (status, challenge)
+        time.sleep(max(0, 31 - time.time() % 30))
+        mfa_login_code = totp_code(enrollment["secret"])
+        status, mfa_login = request("/api/v1/admin/auth/login", "POST", {
+            "email": tenant_email, "password": tenant_password, "storeId": "tenant-a",
+            "mfaCode": mfa_login_code})
+        assert status == 200 and mfa_login["mfaVerified"] is True, (status, mfa_login)
+        verified_tenant_token = mfa_login["accessToken"]
+        assert request("/api/v1/admin/auth/session", token=verified_tenant_token)[0] == 200
+        status, challenge = request("/api/v1/admin/auth/step-up", "POST",
+                                    {"password": tenant_password}, verified_tenant_token)
+        assert status == 428 and challenge["code"] == "mfa_required", (status, challenge)
+        status, replay_denied = request("/api/v1/admin/auth/step-up", "POST", {
+            "password": tenant_password, "mfaCode": mfa_login_code}, verified_tenant_token)
+        assert status == 403 and replay_denied["code"] == "mfa_invalid", (status, replay_denied)
+        status, mfa_audit = request("/api/v1/admin/audit-log?entityType=AdminUser&entityId=" + tenant_invitation["user"]["id"],
+                                    token=verified_tenant_token)
+        assert status == 200 and any(item["action"] == "admin-user.mfa-enabled" for item in mfa_audit), (status, mfa_audit)
+
         # Start a fresh in-memory rate-limit window before checking deactivation separately.
         stop_api(api)
         api, owner_token = start_api(log)
@@ -287,4 +348,4 @@ with tempfile.TemporaryFile() as log:
     finally:
         stop_api(api)
 
-print("Membership invitation, one-time use, permissions, store binding, cross-store inventory reads and revocation passed")
+print("Membership invitation, one-time use, permissions, store binding, MFA enrollment/login, cross-store inventory reads and revocation passed")

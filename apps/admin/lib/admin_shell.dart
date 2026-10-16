@@ -9,6 +9,7 @@ import 'auth_session.dart';
 import 'catalog_page.dart';
 import 'catalog_api.dart';
 import 'admin_navigation.dart';
+import 'admin_mfa_settings_dialog.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
 import 'customer_management_page.dart';
@@ -63,6 +64,11 @@ class _AdminShellState extends State<AdminShell> {
       appBar: desktop ? null : AppBar(
         leading: navigationHistory.isEmpty ? null : IconButton(tooltip: 'بازگشت به ${_moduleLabel(navigationHistory.last.module)}', onPressed: _goBack, icon: const Icon(Icons.arrow_back_rounded)),
         title: const Brand(compact: true),
+        actions: [IconButton(
+          tooltip: 'تنظیم تأیید دومرحله‌ای',
+          onPressed: () => showAdminMfaSettingsDialog(context),
+          icon: const Icon(Icons.security_rounded),
+        )],
       ),
       bottomNavigationBar: desktop || visibleModules.isEmpty
           ? null
@@ -178,28 +184,28 @@ class _AdminShellState extends State<AdminShell> {
                         : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
                     style: const TextStyle(color: Color(0xFF9EACA1)),
                   ),
-                  trailing: IconButton(
-                    tooltip: 'خروج از حساب',
-                    onPressed: () async {
-                      try {
-                        await AuthApiClient().logout();
-                      } catch (_) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.',
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    icon: const Icon(
-                      Icons.logout_rounded,
-                      color: Color(0xFFD5DFD6),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                    IconButton(
+                      tooltip: 'تنظیم تأیید دومرحله‌ای',
+                      onPressed: () => showAdminMfaSettingsDialog(context),
+                      icon: const Icon(Icons.security_rounded, color: Color(0xFFD5DFD6)),
                     ),
-                  ),
+                    IconButton(
+                      tooltip: 'خروج از حساب',
+                      onPressed: () async {
+                        try {
+                          await AuthApiClient().logout();
+                        } catch (_) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.')),
+                            );
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.logout_rounded, color: Color(0xFFD5DFD6)),
+                    ),
+                  ]),
                 ),
               ),
             ]),

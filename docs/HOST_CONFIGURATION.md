@@ -12,6 +12,8 @@
 | ورود مدیر | Admin__Email/PasswordHash/TokenSigningKey | زمان اجرای API؛ secret manager |
 | MFA مدیر اصلی | Admin__Mfa__SensitiveActionsRequired، Admin__Mfa__TotpSecret و در صورت نیاز Admin__Mfa__Required | مقدار پیش‌فرض SensitiveActionsRequired=true است؛ seed در secret manager الزامی است؛ Required=true ورود را هم به MFA ملزم می‌کند |
 | مبداهای مجاز مرورگر | Cors__AllowedOrigins__0 و __1 | آدرس دقیق HTTPS فروشگاه و پنل |
+
+کد MFA شخصی اعضای پنل در دیتابیس به‌صورت رمزگذاری‌شده نگه داشته می‌شود. کلید رمزگذاری با جداسازی دامنهٔ رمزنگاری از `Admin__TokenSigningKey` مشتق می‌شود؛ این کلید را بین انتشارها ثابت و پشتیبان‌گیری‌شده نگه دارید. چرخاندن آن، نشست‌های موجود را باطل می‌کند و حساب‌هایی که MFA شخصی فعال دارند باید دوباره آن را ثبت کنند. هر عضو می‌تواند MFA شخصی را از آیکون سپر در پنل فعال کند.
 | فروشگاه → API | NEXT_PUBLIC_MAZEDUNEH_API_URL | هنگام build فروشگاه؛ عمومی |
 | پنل → API | MAZEDUNEH_API_BASE_URL | هنگام build پنل با dart-define؛ عمومی |
 | پنل → زمینهٔ فروشگاه | MAZEDUNEH_ADMIN_STORE_ID | هنگام build پنل؛ عمومی و با مقدار پیش‌فرض `default` |

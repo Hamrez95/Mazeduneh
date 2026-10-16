@@ -60,9 +60,13 @@ public static class AdminSecurityExtensions
                         title: "نشست مدیر اصلی آماده نیست.",
                         detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.",
                         statusCode: StatusCodes.Status503ServiceUnavailable);
-                var mfaFailure = await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
+                var ownerMfaEnabled = ownerUserId is Guid ownerId &&
+                    (await users.GetMfaStatusAsync(ownerId, "default", cancellationToken)).Enabled;
+                var mfaFailure = ownerMfaEnabled
+                    ? await GetMembershipMfaFailureAsync(users, ownerUserId!.Value, "default", request.MfaCode, cancellationToken)
+                    : await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
                 if (mfaFailure is not null) return mfaFailure;
-                var mfaVerified = tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
+                var mfaVerified = ownerMfaEnabled || tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
                 var owner = tokens.Issue(request.Email, ownerUserId, mfaVerified);
                 if (ownerUserId is Guid userId)
                     await users.CreateSessionAsync(userId, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
@@ -81,9 +85,12 @@ public static class AdminSecurityExtensions
 
             var member = await users.AuthenticateAsync(request.Email, request.Password, request.StoreId, cancellationToken);
             if (member is null) return Results.Unauthorized();
-            var memberMfaFailure = await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
+            var memberMfaEnabled = (await users.GetMfaStatusAsync(member.Id, member.StoreId, cancellationToken)).Enabled;
+            var memberMfaFailure = memberMfaEnabled
+                ? await GetMembershipMfaFailureAsync(users, member.Id, member.StoreId, request.MfaCode, cancellationToken)
+                : await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
             if (memberMfaFailure is not null) return memberMfaFailure;
-            var memberMfaVerified = tokens.IsMfaRequiredForRole(member.Role);
+            var memberMfaVerified = memberMfaEnabled || tokens.IsMfaRequiredForRole(member.Role);
             var issued = tokens.Issue(member, memberMfaVerified);
             await users.CreateSessionAsync(member.Id, member.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
             return Results.Ok(new
@@ -99,6 +106,79 @@ public static class AdminSecurityExtensions
             });
         })
         .RequireRateLimiting("admin-login")
+        .WithTags("Admin Auth");
+
+        endpoints.MapGet("/api/v1/admin/auth/mfa", async Task<IResult> (
+            AdminTokenService tokens, AdminUsersDatabase users, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var principal = await GetActiveMfaPrincipalAsync(tokens, users, context, cancellationToken);
+            if (principal is null) return Results.Unauthorized();
+            if (principal.UserId is not Guid userId)
+                return Results.Problem(title: "حساب قابل مدیریت نیست.", statusCode: StatusCodes.Status409Conflict);
+            return Results.Ok(await users.GetMfaStatusAsync(userId, principal.StoreId, cancellationToken));
+        })
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/mfa/enrollment", async Task<IResult> (
+            AdminMfaEnrollmentRequest request, AdminTokenService tokens, AdminUsersDatabase users,
+            HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var principal = await GetActiveMfaPrincipalAsync(tokens, users, context, cancellationToken);
+            if (principal is null) return Results.Unauthorized();
+            if (principal.UserId is not Guid userId) return Results.Problem(title: "حساب قابل مدیریت نیست.", statusCode: StatusCodes.Status409Conflict);
+            if (!await VerifyMfaManagementPasswordAsync(tokens, users, principal, request.Password, cancellationToken))
+                return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+            var status = await users.GetMfaStatusAsync(userId, principal.StoreId, cancellationToken);
+            if (status.Enabled)
+            {
+                var proof = await GetMembershipMfaFailureAsync(users, userId, principal.StoreId, request.MfaCode, cancellationToken);
+                if (proof is not null) return proof;
+            }
+            var secret = await users.BeginMfaEnrollmentAsync(userId, principal.StoreId, cancellationToken);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new
+            {
+                secret,
+                provisioningUri = AdminTotpAuthenticator.CreateProvisioningUri(principal.Email, "Mazeduneh Admin", secret),
+                expiresAt = DateTimeOffset.UtcNow.AddMinutes(10)
+            });
+        })
+        .RequireRateLimiting("admin-step-up")
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/mfa/confirm", async Task<IResult> (
+            AdminMfaCodeRequest request, AdminTokenService tokens, AdminUsersDatabase users,
+            HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var principal = await GetActiveMfaPrincipalAsync(tokens, users, context, cancellationToken);
+            if (principal is null) return Results.Unauthorized();
+            if (principal.UserId is not Guid userId) return Results.Problem(title: "حساب قابل مدیریت نیست.", statusCode: StatusCodes.Status409Conflict);
+            var enabled = await users.CompleteMfaEnrollmentAsync(userId, principal.StoreId, request.MfaCode,
+                principal.Email, context.TraceIdentifier, cancellationToken);
+            if (!enabled) return InvalidMfaResult();
+            var issued = tokens.IssueMfaVerifiedSessionToken(principal);
+            context.Response.Headers.CacheControl = "no-store";
+            return Results.Ok(new { accessToken = issued.Token, expiresAt = issued.ExpiresAt });
+        })
+        .RequireRateLimiting("admin-step-up")
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/mfa/disable", async Task<IResult> (
+            AdminMfaEnrollmentRequest request, AdminTokenService tokens, AdminUsersDatabase users,
+            HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var principal = await GetActiveMfaPrincipalAsync(tokens, users, context, cancellationToken);
+            if (principal is null) return Results.Unauthorized();
+            if (principal.UserId is not Guid userId) return Results.Problem(title: "حساب قابل مدیریت نیست.", statusCode: StatusCodes.Status409Conflict);
+            if (!await VerifyMfaManagementPasswordAsync(tokens, users, principal, request.Password, cancellationToken))
+                return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
+            var proof = await GetMembershipMfaFailureAsync(users, userId, principal.StoreId, request.MfaCode, cancellationToken);
+            if (proof is not null) return proof;
+            var disabled = await users.DisableMfaAsync(userId, principal.StoreId, principal.Email,
+                context.TraceIdentifier, cancellationToken);
+            return disabled ? Results.NoContent() : Results.Conflict(new { message = "تأیید دومرحله‌ای برای این حساب فعال نیست." });
+        })
+        .RequireRateLimiting("admin-step-up")
         .WithTags("Admin Auth");
 
         endpoints.MapPost("/api/v1/admin/auth/accept-invite", async Task<IResult> (
@@ -122,6 +202,9 @@ public static class AdminSecurityExtensions
             if (principal.UserId is Guid userId &&
                 !await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
                 return Results.Unauthorized();
+            if (principal.UserId is Guid mfaUserId && users.IsConfigured &&
+                (await users.GetMfaStatusAsync(mfaUserId, principal.StoreId, cancellationToken)).Enabled && !principal.MfaVerified)
+                return MfaRequiredResult();
             return Results.Ok(new { authenticated = true, email = principal.Email, role = principal.Role, permissions = principal.Permissions, storeId = principal.StoreId, expiresAt = principal.ExpiresAt });
         })
         .WithTags("Admin Auth");
@@ -171,9 +254,12 @@ public static class AdminSecurityExtensions
                 return Results.Json(new { message = "رمز عبور تأیید نشد." }, statusCode: StatusCodes.Status403Forbidden);
             }
 
-            var mfaFailure = await GetMfaFailureAsync(
-                tokens, users, principal.Role, request.MfaCode, cancellationToken,
-                requireSensitiveOwnerMfa: true);
+            var hasMembershipMfa = principal.UserId is Guid mfaUserId && users.IsConfigured &&
+                (await users.GetMfaStatusAsync(mfaUserId, principal.StoreId, cancellationToken)).Enabled;
+            var mfaFailure = hasMembershipMfa
+                ? await GetMembershipMfaFailureAsync(users, principal.UserId!.Value, principal.StoreId, request.MfaCode, cancellationToken)
+                : await GetMfaFailureAsync(tokens, users, principal.Role, request.MfaCode, cancellationToken,
+                    requireSensitiveOwnerMfa: true);
             if (mfaFailure is not null) return mfaFailure;
 
             var issued = tokens.IssueStepUp(principal);
@@ -302,6 +388,43 @@ public static class AdminSecurityExtensions
         return endpoints;
     }
 
+    private static async Task<AdminPrincipal?> GetActiveMfaPrincipalAsync(
+        AdminTokenService tokens, AdminUsersDatabase users, HttpContext context, CancellationToken cancellationToken)
+    {
+        var token = AdminTokenService.ReadBearerToken(context.Request);
+        if (token is null || !tokens.TryValidate(token, out var principal)) return null;
+        if (principal.UserId is Guid userId &&
+            !await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, cancellationToken))
+            return null;
+        return principal;
+    }
+
+    private static async Task<bool> VerifyMfaManagementPasswordAsync(
+        AdminTokenService tokens, AdminUsersDatabase users, AdminPrincipal principal, string password, CancellationToken cancellationToken)
+    {
+        if (principal.StoreId == "default" && string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase) &&
+            tokens.ValidateCredentials(principal.Email, password)) return true;
+        if (principal.UserId is not Guid userId) return false;
+        var member = await users.AuthenticateAsync(principal.Email, password, principal.StoreId, cancellationToken);
+        return member?.Id == userId && string.Equals(member.StoreId, principal.StoreId, StringComparison.Ordinal);
+    }
+
+    private static async Task<IResult?> GetMembershipMfaFailureAsync(
+        AdminUsersDatabase users, Guid userId, string storeId, string? code, CancellationToken cancellationToken)
+    {
+        return await users.VerifyMembershipMfaCodeAsync(userId, storeId, code, cancellationToken) switch
+        {
+            AdminMfaValidationResult.NotRequired => null,
+            AdminMfaValidationResult.Valid => null,
+            AdminMfaValidationResult.Missing => MfaRequiredResult(),
+            AdminMfaValidationResult.NotConfigured => Results.Problem(
+                title: "تأیید دومرحله‌ای پیکربندی نشده است.",
+                detail: "کلید امضای پایدار مدیر برای بازکردن کد امن MFA لازم است.",
+                statusCode: StatusCodes.Status503ServiceUnavailable),
+            _ => InvalidMfaResult()
+        };
+    }
+
     private static async Task<IResult?> GetMfaFailureAsync(
         AdminTokenService tokens,
         AdminUsersDatabase users,
@@ -363,6 +486,8 @@ public static class AdminSecurityExtensions
 public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null, string? MfaCode = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
 public sealed record AdminStepUpRequest(string Password, string? MfaCode = null);
+public sealed record AdminMfaEnrollmentRequest(string Password, string? MfaCode = null);
+public sealed record AdminMfaCodeRequest(string MfaCode);
 public sealed record IssuedAdminToken(string Token, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId);
 public sealed record IssuedAdminStepUpToken(string Token, DateTimeOffset ExpiresAt);
 public sealed record AdminPrincipal(string Email, DateTimeOffset ExpiresAt, string Role, IReadOnlyList<string> Permissions, Guid SessionId, Guid? UserId, string StoreId, bool MfaVerified = false);
@@ -584,6 +709,49 @@ public sealed class AdminTokenService
         return CryptographicOperations.FixedTimeEquals(suppliedHash, _configuredPasswordHash);
     }
 
+    public byte[] ProtectMembershipMfaSecret(Guid userId, string storeId, string secret)
+    {
+        if (!CanIssueTokens) throw new InvalidOperationException("کلید پایدار مدیر برای محافظت از MFA تنظیم نشده است.");
+        // Domain separation prevents key reuse across signing and encryption; rotating this stable key requires MFA re-enrollment.
+        var key = HMACSHA256.HashData(_signingKey, Encoding.UTF8.GetBytes("admin-mfa-secret-encryption-v1"));
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var tag = new byte[16];
+        var plaintext = Encoding.UTF8.GetBytes(secret);
+        var ciphertext = new byte[plaintext.Length];
+        var associatedData = Encoding.UTF8.GetBytes($"{storeId.Trim()}|{userId:N}");
+        try
+        {
+            using var aes = new AesGcm(key, tag.Length);
+            aes.Encrypt(nonce, plaintext, ciphertext, tag, associatedData);
+            return [1, .. nonce, .. tag, .. ciphertext];
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
+    public string UnprotectMembershipMfaSecret(Guid userId, string storeId, byte[] protectedSecret)
+    {
+        if (!CanIssueTokens || protectedSecret.Length < 30 || protectedSecret[0] != 1)
+            throw new CryptographicException("کلید یا مقدار رمزگذاری‌شدهٔ MFA معتبر نیست.");
+        var key = HMACSHA256.HashData(_signingKey, Encoding.UTF8.GetBytes("admin-mfa-secret-encryption-v1"));
+        var plaintext = new byte[protectedSecret.Length - 29];
+        var associatedData = Encoding.UTF8.GetBytes($"{storeId.Trim()}|{userId:N}");
+        try
+        {
+            using var aes = new AesGcm(key, 16);
+            aes.Decrypt(protectedSecret.AsSpan(1, 12), protectedSecret.AsSpan(29), protectedSecret.AsSpan(13, 16), plaintext, associatedData);
+            return Encoding.UTF8.GetString(plaintext);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
     public bool IsMfaRequiredForRole(string role) =>
         _mfaRequired && string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase);
 
@@ -632,6 +800,17 @@ public sealed class AdminTokenService
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var signature = HMACSHA256.HashData(_signingKey, Encoding.UTF8.GetBytes($"step-up|{payload}"));
         return new IssuedAdminStepUpToken($"{Base64Url(payloadBytes)}.{Base64Url(signature)}", expiresAt);
+    }
+
+    public IssuedAdminToken IssueMfaVerifiedSessionToken(AdminPrincipal principal)
+    {
+        if (!CanIssueTokens) throw new InvalidOperationException("کلید امضای نشست تنظیم نشده است.");
+        if (principal.ExpiresAt <= DateTimeOffset.UtcNow) throw new InvalidOperationException("نشست مدیر منقضی شده است.");
+        var payload = $"{principal.Email.Trim().ToLowerInvariant()}|{principal.ExpiresAt.ToUnixTimeSeconds()}|{principal.SessionId:N}|{principal.Role}|{string.Join(',', principal.Permissions)}|{principal.UserId?.ToString("N") ?? string.Empty}|{Base64Url(Encoding.UTF8.GetBytes(principal.StoreId))}|1";
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var signature = HMACSHA256.HashData(_signingKey, payloadBytes);
+        return new IssuedAdminToken($"{Base64Url(payloadBytes)}.{Base64Url(signature)}", principal.ExpiresAt,
+            principal.Role, principal.Permissions, principal.SessionId);
     }
 
     public bool TryValidateStepUp(string token, AdminPrincipal principal)
@@ -763,6 +942,10 @@ public sealed class OwnerAuthorizationFilter(AdminTokenService tokens, AdminUser
         {
             if (!await users.IsSessionActiveAsync(userId, principal.StoreId, principal.SessionId, context.HttpContext.RequestAborted))
                 return Results.Unauthorized();
+            if (users.IsConfigured &&
+                (await users.GetMfaStatusAsync(userId, principal.StoreId, context.HttpContext.RequestAborted)).Enabled &&
+                !principal.MfaVerified)
+                return AdminSecurityExtensions.MfaRequiredResult();
             var configuredOwnerSession = principal.StoreId == "default" &&
                 string.Equals(principal.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase);
             context.HttpContext.Items["ConfiguredOwnerSession"] = configuredOwnerSession;

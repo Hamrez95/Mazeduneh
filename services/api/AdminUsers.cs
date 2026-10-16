@@ -57,8 +57,154 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
                 last_time_step bigint not null
             );
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "005-membership-mfa", """
+            alter table admin_users add column if not exists totp_secret_encrypted bytea null;
+            alter table admin_users add column if not exists totp_pending_secret_encrypted bytea null;
+            alter table admin_users add column if not exists totp_pending_expires_at timestamptz null;
+            alter table admin_users add column if not exists totp_enabled_at timestamptz null;
+            """, cancellationToken);
         logger.LogInformation("Admin user membership schema is ready.");
     }
+
+    public async Task<AdminUserMfaStatus> GetMfaStatusAsync(Guid userId, string? storeId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select totp_enabled_at is not null, totp_pending_expires_at
+            from admin_users where id=@user_id and store_id=@store_id and is_active=true;
+            """, connection);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("عضویت مدیر فعال پیدا نشد.");
+        var pendingExpiresAt = reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1);
+        if (pendingExpiresAt <= DateTimeOffset.UtcNow) pendingExpiresAt = null;
+        return new AdminUserMfaStatus(reader.GetBoolean(0), pendingExpiresAt);
+    }
+
+    public async Task<string> BeginMfaEnrollmentAsync(Guid userId, string? storeId, CancellationToken cancellationToken)
+    {
+        var normalizedStoreId = NormalizeStoreId(storeId);
+        var secret = AdminTotpAuthenticator.CreateSecret();
+        var protectedSecret = tokens.ProtectMembershipMfaSecret(userId, normalizedStoreId, secret);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            update admin_users
+            set totp_pending_secret_encrypted=@secret,totp_pending_expires_at=now()+interval '10 minutes'
+            where id=@user_id and store_id=@store_id and is_active=true
+            returning id;
+            """, connection);
+        command.Parameters.AddWithValue("secret", protectedSecret);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("store_id", normalizedStoreId);
+        if (await command.ExecuteScalarAsync(cancellationToken) is null)
+            throw new InvalidOperationException("عضویت مدیر فعال پیدا نشد.");
+        return secret;
+    }
+
+    public async Task<bool> CompleteMfaEnrollmentAsync(Guid userId, string? storeId, string? code, string actor, string requestId, CancellationToken cancellationToken)
+    {
+        var normalizedStoreId = NormalizeStoreId(storeId);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        byte[] protectedSecret;
+        bool wasMfaEnabled;
+        await using (var find = new NpgsqlCommand("""
+            select totp_pending_secret_encrypted,totp_enabled_at is not null from admin_users
+            where id=@user_id and store_id=@store_id and is_active=true and totp_pending_expires_at>now()
+            for update;
+            """, connection, transaction))
+        {
+            find.Parameters.AddWithValue("user_id", userId);
+            find.Parameters.AddWithValue("store_id", normalizedStoreId);
+            await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken) || reader.IsDBNull(0)) return false;
+            protectedSecret = reader.GetFieldValue<byte[]>(0);
+            wasMfaEnabled = reader.GetBoolean(1);
+        }
+
+        string secret;
+        try { secret = tokens.UnprotectMembershipMfaSecret(userId, normalizedStoreId, protectedSecret); }
+        catch (CryptographicException) { return false; }
+        var timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(secret, code, DateTimeOffset.UtcNow);
+        if (timeStep is not long acceptedStep) return false;
+        await using (var replay = new NpgsqlCommand("""
+            insert into admin_totp_replay_guard(credential_id,last_time_step)
+            values(@credential_id,@time_step)
+            on conflict(credential_id) do update
+                set last_time_step=excluded.last_time_step
+                where admin_totp_replay_guard.last_time_step<excluded.last_time_step
+            returning 1;
+            """, connection, transaction))
+        {
+            replay.Parameters.AddWithValue("credential_id", GetMfaCredentialId(userId, normalizedStoreId));
+            replay.Parameters.AddWithValue("time_step", acceptedStep);
+            if (await replay.ExecuteScalarAsync(cancellationToken) is null) return false;
+        }
+
+        await using (var update = new NpgsqlCommand("""
+            update admin_users
+            set totp_secret_encrypted=totp_pending_secret_encrypted,totp_enabled_at=now(),
+                totp_pending_secret_encrypted=null,totp_pending_expires_at=null
+            where id=@user_id and store_id=@store_id;
+            """, connection, transaction))
+        {
+            update.Parameters.AddWithValue("user_id", userId);
+            update.Parameters.AddWithValue("store_id", normalizedStoreId);
+            if (await update.ExecuteNonQueryAsync(cancellationToken) != 1) return false;
+        }
+        await audit.RecordAsync(connection, transaction, actor, "admin-user.mfa-enabled", "AdminUser", userId.ToString(),
+            new { MfaEnabled = wasMfaEnabled }, new { MfaEnabled = true, StoreId = normalizedStoreId },
+            "فعال‌سازی تأیید دومرحله‌ای مدیر", requestId, cancellationToken, normalizedStoreId);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<AdminMfaValidationResult> VerifyMembershipMfaCodeAsync(Guid userId, string? storeId, string? code, CancellationToken cancellationToken)
+    {
+        var normalizedStoreId = NormalizeStoreId(storeId);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select totp_secret_encrypted from admin_users
+            where id=@user_id and store_id=@store_id and is_active=true and totp_enabled_at is not null;
+            """, connection);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("store_id", normalizedStoreId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        if (value is not byte[] protectedSecret) return AdminMfaValidationResult.NotRequired;
+        if (string.IsNullOrWhiteSpace(code)) return AdminMfaValidationResult.Missing;
+
+        string secret;
+        try { secret = tokens.UnprotectMembershipMfaSecret(userId, normalizedStoreId, protectedSecret); }
+        catch (CryptographicException) { return AdminMfaValidationResult.NotConfigured; }
+        var timeStep = AdminTotpAuthenticator.GetMatchingTimeStep(secret, code, DateTimeOffset.UtcNow);
+        if (timeStep is not long acceptedStep) return AdminMfaValidationResult.Invalid;
+        return await TryConsumeTotpTimeStepAsync(GetMfaCredentialId(userId, normalizedStoreId), acceptedStep, cancellationToken)
+            ? AdminMfaValidationResult.Valid
+            : AdminMfaValidationResult.Invalid;
+    }
+
+    public async Task<bool> DisableMfaAsync(Guid userId, string? storeId, string actor, string requestId, CancellationToken cancellationToken)
+    {
+        var normalizedStoreId = NormalizeStoreId(storeId);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            update admin_users set totp_secret_encrypted=null,totp_enabled_at=null,
+                totp_pending_secret_encrypted=null,totp_pending_expires_at=null
+            where id=@user_id and store_id=@store_id and is_active=true and totp_enabled_at is not null;
+            """, connection, transaction);
+        command.Parameters.AddWithValue("user_id", userId);
+        command.Parameters.AddWithValue("store_id", normalizedStoreId);
+        if (await command.ExecuteNonQueryAsync(cancellationToken) != 1) return false;
+        await audit.RecordAsync(connection, transaction, actor, "admin-user.mfa-disabled", "AdminUser", userId.ToString(),
+            new { MfaEnabled = true, StoreId = normalizedStoreId }, new { MfaEnabled = false },
+            "غیرفعال‌سازی تأیید دومرحله‌ای مدیر", requestId, cancellationToken, normalizedStoreId);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
+    private static string GetMfaCredentialId(Guid userId, string storeId) => $"membership:{storeId}:{userId:N}";
 
     public async Task<bool> TryConsumeTotpTimeStepAsync(string credentialId, long timeStep, CancellationToken cancellationToken)
     {
@@ -485,6 +631,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
 }
 
 public sealed record AdminUserSummary(Guid Id, string StoreId, string Email, string DisplayName, string Role, bool IsActive, IReadOnlyList<string> Permissions, DateTimeOffset CreatedAt, DateTimeOffset? DeactivatedAt, bool HasPassword);
+public sealed record AdminUserMfaStatus(bool Enabled, DateTimeOffset? PendingEnrollmentExpiresAt);
 public sealed record AdminUserSessionSummary(Guid SessionId, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt);
 public sealed record AdminUserInvitation(AdminUserSummary User, string InvitationToken, DateTimeOffset ExpiresAt);
 public sealed record AdminRoleSummary(string Role, IReadOnlyList<string> Permissions, string TitleFa);

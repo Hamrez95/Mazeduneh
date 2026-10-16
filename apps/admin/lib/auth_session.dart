@@ -89,9 +89,25 @@ class OwnerSession {
     _changes.add(true);
   }
 
+  void replaceAccessToken({
+    required String accessToken,
+    required DateTime expiresAt,
+  }) {
+    if (accessToken.isEmpty || !expiresAt.isAfter(DateTime.now().toUtc())) {
+      clear();
+      return;
+    }
+    revision++;
+    _accessToken = accessToken;
+    _expiresAt = expiresAt.toUtc();
+    _clearStepUpToken();
+    _changes.add(true);
+  }
+
   void rememberStepUpToken(String token, DateTime expiresAt) {
     final normalizedExpiry = expiresAt.toUtc();
-    if (token.isEmpty || !isAuthenticated ||
+    if (token.isEmpty ||
+        !isAuthenticated ||
         !normalizedExpiry.isAfter(DateTime.now().toUtc())) {
       _clearStepUpToken();
       return;
@@ -124,7 +140,9 @@ class OwnerSession {
   }
 
   bool _samePermissions(List<String> left, List<String> right) {
-    final normalizedRight = right.where((item) => item.trim().isNotEmpty).toSet();
+    final normalizedRight = right
+        .where((item) => item.trim().isNotEmpty)
+        .toSet();
     final normalizedLeft = left.where((item) => item.trim().isNotEmpty).toSet();
     return normalizedLeft.length == normalizedRight.length &&
         normalizedLeft.containsAll(normalizedRight);

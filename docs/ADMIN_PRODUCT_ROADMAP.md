@@ -208,7 +208,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #76 | Versioned migrations/environments | P0 | Backend/Infra | L | ناقص |
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
-| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI و UI/API مدیریت عضویت تکمیل؛ اتصال عضویت به ورود، MFA و step-up approval باقی است |
+| #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI، session management، MFA شخصی با TOTP رمزگذاری‌شده و step-up تکمیل؛ بازبینی جامع‌تر IDOR/BOLA و پوشش همهٔ مرزهای داده باقی است |
 | #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | KPI بازه‌ای، اولویت‌های عملیاتی و KPI سود خالص با انتقال به گزارش همان بازه تکمیل؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه تکمیل؛ داشبورد اجزای هزینه و اثر ارسال را برای بازهٔ انتخابی نمایش می‌دهد؛ reconciliation/refund و تحلیل‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | tracking و هزینهٔ واقعی موجود؛ فیلتر سفارش‌های تأخیردار تکمیل؛ مناطق، چندآدرسی و split shipment باقی |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |

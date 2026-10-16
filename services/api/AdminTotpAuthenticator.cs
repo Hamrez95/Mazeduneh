@@ -10,6 +10,15 @@ public static class AdminTotpAuthenticator
     private const int CodeDigits = 6;
     private const int AllowedClockDriftSteps = 1;
 
+    public static string CreateSecret() => EncodeSecret(RandomNumberGenerator.GetBytes(20));
+
+    public static string CreateProvisioningUri(string accountName, string issuer, string secret)
+    {
+        var label = Uri.EscapeDataString($"{issuer}:{accountName}");
+        var query = $"secret={Uri.EscapeDataString(secret)}&issuer={Uri.EscapeDataString(issuer)}&algorithm=SHA1&digits=6&period=30";
+        return $"otpauth://totp/{label}?{query}";
+    }
+
     public static bool IsValidSecret(string? base32Secret) => TryDecodeSecret(base32Secret, out _);
 
     public static bool Verify(string? base32Secret, string? code, DateTimeOffset utcNow)
@@ -74,5 +83,24 @@ public static class AdminTotpAuthenticator
         if (output.Count < 16) return false;
         secret = output.ToArray();
         return true;
+    }
+
+    private static string EncodeSecret(byte[] secret)
+    {
+        var output = new StringBuilder((secret.Length * 8 + 4) / 5);
+        var buffer = 0;
+        var bitsInBuffer = 0;
+        foreach (var value in secret)
+        {
+            buffer = (buffer << 8) | value;
+            bitsInBuffer += 8;
+            while (bitsInBuffer >= 5)
+            {
+                bitsInBuffer -= 5;
+                output.Append(Base32Alphabet[(buffer >> bitsInBuffer) & 31]);
+            }
+        }
+        if (bitsInBuffer > 0) output.Append(Base32Alphabet[(buffer << (5 - bitsInBuffer)) & 31]);
+        return output.ToString();
     }
 }
