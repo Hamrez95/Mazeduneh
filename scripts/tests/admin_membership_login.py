@@ -213,11 +213,14 @@ with tempfile.TemporaryFile() as log:
             "/api/v1/admin/inventory/batches?storeId=tenant-a",
             "/api/v1/admin/inventory/batches?storeId=default",
             "/api/v1/admin/customers?storeId=tenant-a",
-            "/api/v1/admin/audit-log?storeId=tenant-a",
+            "/api/v1/admin/audit-log?storeId=default",
             "/api/v1/admin/commerce/settings",
         ]:
             status, denial = request(path, token=tenant_token)
             assert status == 403, (path, status, denial)
+        status, tenant_audit = request("/api/v1/admin/audit-log?storeId=tenant-a", token=tenant_token)
+        assert status == 200 and tenant_audit, (status, tenant_audit)
+        assert all(entry["storeId"] == "tenant-a" for entry in tenant_audit), tenant_audit
         tenant_export_proof = step_up_headers(tenant_token, tenant_password)
         for path in [
             "/api/v1/admin/orders/export.csv?storeId=tenant-a",
