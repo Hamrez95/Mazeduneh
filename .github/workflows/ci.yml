@@ -138,6 +138,8 @@ jobs:
           dotnet "$API_DLL" --migrate
           dotnet "$API_DLL" --seed-admin
           dotnet "$API_DLL" --seed-demo
+      - name: Owner sensitive-action MFA integration
+        run: python3 scripts/tests/admin_step_up_mfa.py
       - name: Durable checkout payment and order operations contract
         shell: bash
         run: |
