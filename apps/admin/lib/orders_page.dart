@@ -224,9 +224,18 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) => LayoutBuilder(
+      builder: (context, pageConstraints) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: pageConstraints.maxHeight.isFinite
+                  ? pageConstraints.maxHeight * 0.55
+                  : double.infinity,
+            ),
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           LayoutBuilder(builder: (context, constraints) {
             final compactControls = constraints.maxWidth < 560;
             Widget filterWidth(Widget child, {double desktopWidth = 240}) =>
@@ -333,9 +342,13 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           ),
           const SizedBox(height: 18),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 12),
           Expanded(child: _body()),
         ]),
-      );
+      ));
 
   Widget _overdueBody() {
     if (overdueShipments.isEmpty) {
