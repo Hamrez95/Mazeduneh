@@ -1,0 +1,185 @@
+"""Exercise Owner TOTP step-up and replay protection against the live API."""
+import base64
+import hashlib
+import hmac
+import json
+import os
+from pathlib import Path
+import struct
+import subprocess
+import sys
+import tempfile
+import time
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+
+ROOT = Path(__file__).resolve().parents[2]
+BASE = "http://127.0.0.1:5111"
+TEST_TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+OWNER_PASSWORD = "Mazeduneh-CI-Owner-Password!"
+
+
+def request(path, method="GET", body=None, token=None, extra_headers=None):
+    headers = {"Content-Type": "application/json"} if body is not None else {}
+    headers.update(extra_headers or {})
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    try:
+        response = urlopen(Request(
+            BASE + path,
+            method=method,
+            headers=headers,
+            data=json.dumps(body).encode() if body is not None else None,
+        ), timeout=10)
+    except HTTPError as error:
+        response = error
+    with response:
+        content = response.read()
+        return response.status, json.loads(content) if content else None
+
+
+def totp_code(counter):
+    secret = base64.b32decode(TEST_TOTP_SECRET)
+    digest = hmac.new(secret, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % 1_000_000
+    return f"{code:06d}"
+
+
+def current_totp_code():
+    return totp_code(int(time.time()) // 30)
+
+
+def invalid_totp_code():
+    current_step = int(time.time()) // 30
+    accepted_codes = {totp_code(current_step + delta) for delta in (-1, 0, 1)}
+    candidate = 0
+    while f"{candidate:06d}" in accepted_codes:
+        candidate += 1
+    return f"{candidate:06d}"
+
+
+def start_api(log):
+    env = os.environ.copy()
+    env["Admin__Mfa__SensitiveActionsRequired"] = "true"
+    env["Admin__Mfa__Required"] = "false"
+    env["Admin__Mfa__TotpSecret"] = TEST_TOTP_SECRET
+    process = subprocess.Popen(
+        ["dotnet", "run", "--project", "services/api/Mazeduneh.Api.csproj",
+         "--configuration", "Release", "--no-build", "--urls", BASE],
+        cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
+    try:
+        for _ in range(40):
+            if process.poll() is not None:
+                raise AssertionError("MFA integration API exited before becoming ready")
+            try:
+                if request("/health/live")[0] == 200:
+                    status, login = request("/api/v1/admin/auth/login", "POST", {
+                        "email": os.environ["Admin__Email"], "password": OWNER_PASSWORD,
+                    })
+                    assert status == 200, login
+                    return process, login["accessToken"]
+            except (URLError, TimeoutError):
+                pass
+            time.sleep(0.5)
+        raise AssertionError("MFA integration API did not start")
+    except BaseException:
+        stop_api(process)
+        log.seek(0)
+        sys.stderr.write(log.read())
+        raise
+
+
+def stop_api(process):
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as log:
+    api, token = start_api(log)
+    try:
+        endpoint = "/api/v1/admin/auth/step-up"
+        status, response = request(endpoint, "POST", {"password": OWNER_PASSWORD}, token)
+        assert status == 428 and response.get("code") == "mfa_required", (status, response)
+
+        status, response = request(endpoint, "POST", {
+            "password": OWNER_PASSWORD, "mfaCode": invalid_totp_code(),
+        }, token)
+        assert status == 403 and response.get("code") == "mfa_invalid", (status, response)
+
+        accepted_code = current_totp_code()
+        status, proof = request(endpoint, "POST", {
+            "password": OWNER_PASSWORD, "mfaCode": accepted_code,
+        }, token)
+        assert status == 200 and proof.get("stepUpToken"), (status, proof)
+        assert proof.get("expiresAt"), proof
+
+        replay_status, replay = request(endpoint, "POST", {
+            "password": OWNER_PASSWORD, "mfaCode": accepted_code,
+        }, token)
+        assert replay_status == 403 and replay.get("code") == "mfa_invalid", (replay_status, replay)
+
+        test_sku = "CI-MFA-STEPUP-001"
+        product_status, _ = request("/api/v1/products/", "POST", {
+            "title": "MFA integration fixture",
+            "slug": "ci-owner-stepup-mfa",
+            "category": "CI",
+            "origin": "IR",
+            "currency": "IRR",
+            "unitType": "Weight",
+            "isPublished": True,
+            "variants": [{
+                "sku": test_sku,
+                "quantity": 250,
+                "displayLabel": "250g",
+                "price": 5000,
+                "availablePackages": 0,
+            }],
+        }, token, {"X-Admin-Step-Up": proof["stepUpToken"]})
+        assert product_status == 201, product_status
+
+        batch_status, batch = request("/api/v1/admin/inventory/batches", "POST", {
+            "sku": test_sku,
+            "batchCode": "CI-OWNER-MFA-LOT",
+            "receivedPackages": 2,
+            "producedAt": "2025-01-01T00:00:00Z",
+            "expiresAt": "2030-01-01T00:00:00Z",
+            "costPrice": 2000,
+            "packagingCost": 0,
+            "additionalCost": 0,
+            "purchasedAt": "2026-01-01T00:00:00Z",
+            "supplier": "CI MFA fixture",
+        }, token)
+        assert batch_status == 201, (batch_status, batch)
+
+        order_status, order = request("/api/v1/checkout/orders", "POST", {
+            "customerName": "MFA integration contract",
+            "mobile": "09120000000",
+            "province": "تهران",
+            "city": "تهران",
+            "address": "نشانی تست قرارداد",
+            "postalCode": "1234567890",
+            "lines": [{"sku": test_sku, "quantity": 1}],
+        }, extra_headers={"Idempotency-Key": "owner-mfa-stepup-integration"})
+        assert order_status in (200, 201) and order.get("id"), (order_status, order)
+
+        cancel_path = f"/api/v1/admin/orders/{order['id']}/state"
+        cancel_body = {"state": "Cancelled", "reason": "MFA integration contract"}
+        missing_status, missing = request(cancel_path, "PATCH", cancel_body, token)
+        assert missing_status == 428 and missing.get("code") == "step_up_required", (missing_status, missing)
+        authorized_status, cancelled = request(
+            cancel_path, "PATCH", cancel_body, token,
+            {"X-Admin-Step-Up": proof["stepUpToken"]})
+        assert authorized_status == 200 and cancelled.get("state") == "Cancelled", (authorized_status, cancelled)
+    finally:
+        stop_api(api)
+
+print("Owner step-up TOTP challenge, validation, replay guard, and sensitive-route proof passed")
+
