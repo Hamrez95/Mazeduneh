@@ -57,24 +57,31 @@ function Test-DockerEngine([string]$DockerPath) {
 
 function Get-RunRoot {
   if ($CurrentBranch) {
-    return (Get-GitText @('rev-parse', '--show-toplevel'))
+    return (Get-GitText @('-C', $SourceRoot, 'rev-parse', '--show-toplevel'))
   }
 
-  Get-GitText @('fetch', 'origin', 'main:refs/remotes/origin/main') | Out-Null
+  try {
+    Get-GitText @('-C', $SourceRoot, 'fetch', 'origin', 'main:refs/remotes/origin/main') | Out-Null
+  } catch {
+    Write-Host 'Could not refresh main from GitHub. Running the current checkout and keeping its local changes.' -ForegroundColor Yellow
+    return (Get-GitText @('-C', $SourceRoot, 'rev-parse', '--show-toplevel'))
+  }
+
   $runDirectory = Join-Path $StateDirectory 'main-worktree'
   if (Test-Path (Join-Path $runDirectory '.git')) {
     $existingStatus = Get-GitText @('-C', $runDirectory, 'status', '--porcelain')
     if ($existingStatus) {
-      throw "The managed main worktree has local changes. Review $runDirectory before running again; it was not changed."
+      Write-Host 'The managed main worktree has local changes. Running the current checkout and leaving that worktree untouched.' -ForegroundColor Yellow
+      return (Get-GitText @('-C', $SourceRoot, 'rev-parse', '--show-toplevel'))
     }
     $existingHead = Get-GitText @('-C', $runDirectory, 'rev-parse', 'HEAD')
-    $latestMain = Get-GitText @('rev-parse', 'origin/main')
+    $latestMain = Get-GitText @('-C', $SourceRoot, 'rev-parse', 'origin/main')
     if ($existingHead -ne $latestMain) {
       Get-GitText @('-C', $runDirectory, 'checkout', '--detach', $latestMain) | Out-Null
     }
   } else {
     New-Item -ItemType Directory -Path $StateDirectory -Force | Out-Null
-    Get-GitText @('worktree', 'add', '--detach', $runDirectory, 'origin/main') | Out-Null
+    Get-GitText @('-C', $SourceRoot, 'worktree', 'add', '--detach', $runDirectory, 'origin/main') | Out-Null
   }
   return $runDirectory
 }
