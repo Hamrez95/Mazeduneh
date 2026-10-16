@@ -23,7 +23,7 @@ void main() {
       expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
       email: 'analyst@example.test',
       role: 'ReadOnlyAnalyst',
-      permissions: const ['reports.read', 'inventory.read'],
+      permissions: const ['reports.read', 'inventory.read', 'orders.read'],
     );
   });
   tearDown(OwnerSession.instance.clear);
@@ -35,11 +35,11 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     AdminNavigationIntent? destination;
-    final requestPaths = <String>[];
+    final requestUris = <Uri>[];
     final api = OrderApiClient(
       baseUrl: 'https://api.test',
       client: MockClient((request) async {
-        requestPaths.add(request.url.path);
+        requestUris.add(request.url);
         if (request.url.path.endsWith('/analytics/products')) {
           return _json([
             {
@@ -74,13 +74,19 @@ void main() {
       home: Scaffold(
         body: Directionality(
           textDirection: TextDirection.rtl,
-          child: ReportsPage(api: api, onNavigate: (intent) => destination = intent),
+          child: ReportsPage(
+            api: api,
+            initialFromUtc: DateTime.utc(2026, 10, 10),
+            initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+            onNavigate: (intent) => destination = intent,
+          ),
         ),
       ),
     ));
     await tester.pumpAndSettle();
 
-    expect(requestPaths, contains('/api/v1/admin/analytics/products'));
+    expect(requestUris.map((uri) => uri.path), contains('/api/v1/admin/analytics/products'));
+    final productRequest = requestUris.firstWhere((uri) => uri.path.endsWith('/analytics/products'));
     await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
     await tester.pumpAndSettle();
 
@@ -94,5 +100,79 @@ void main() {
 
     expect(destination?.module, AdminModule.inventory);
     expect(destination?.sku, 'PI-AKB-250');
+
+    destination = null;
+    final ordersAction = find.text('مشاهده سفارش‌ها');
+    await tester.ensureVisible(ordersAction);
+    await tester.pumpAndSettle();
+    await tester.tap(ordersAction);
+
+    expect(destination?.module, AdminModule.orders);
+    expect(destination?.query, 'PI-AKB-250');
+    expect(destination?.createdFromUtc, DateTime.parse(productRequest.queryParameters['from']!));
+    expect(destination?.createdToUtcExclusive, DateTime.parse(productRequest.queryParameters['to']!));
+  });
+
+  testWidgets('hides product order drilldown without order permission', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    OwnerSession.instance.establish(
+      accessToken: 'report-navigation-without-orders',
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      email: 'analyst@example.test',
+      role: 'ReadOnlyAnalyst',
+      permissions: const ['reports.read', 'inventory.read'],
+    );
+    final api = OrderApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/analytics/products')) {
+          return _json([
+            {
+              'productTitle': 'پسته اکبری',
+              'sku': 'PI-AKB-250',
+              'variantLabel': '۲۵۰ گرم',
+              'unitsSold': 2,
+              'revenue': 500000,
+              'cost': 300000,
+              'grossProfit': 200000,
+            },
+          ]);
+        }
+        return _json({
+          'days': 30,
+          'orderCount': 1,
+          'unitsSold': 2,
+          'revenue': 500000,
+          'cost': 300000,
+          'grossProfit': 200000,
+          'grossMarginPercent': 40,
+          'tax': 0,
+          'netProfit': 200000,
+          'shippingExpense': 0,
+        });
+      }),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ReportsPage(
+            api: api,
+            initialFromUtc: DateTime.utc(2026, 10, 10),
+            initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+
+    expect(find.text('پسته اکبری'), findsOneWidget);
+    expect(find.text('مشاهده سفارش‌ها'), findsNothing);
   });
 }
