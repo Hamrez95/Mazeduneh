@@ -146,7 +146,16 @@ void main() {
       }),
     );
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: Directionality(textDirection: TextDirection.rtl, child: ReportsPage(api: api))),
+      home: Scaffold(
+        body: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ReportsPage(
+            api: api,
+            initialFromUtc: DateTime.utc(2026, 10, 10),
+            initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+          ),
+        ),
+      ),
     ));
     await tester.pumpAndSettle();
     await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
