@@ -190,6 +190,19 @@ class _ReportsPageState extends State<ReportsPage> {
                                 icon: const Icon(Icons.warehouse_outlined, size: 18),
                                 label: const Text('مشاهده در انبار'),
                               ),
+                            if (OwnerSession.instance.can(AdminPermissions.ordersRead))
+                              OutlinedButton.icon(
+                                onPressed: widget.onNavigate == null ? null : () => widget.onNavigate!(
+                                  AdminNavigationIntent(
+                                    module: AdminModule.orders,
+                                    query: item.sku,
+                                    createdFromUtc: _fromUtc,
+                                    createdToUtcExclusive: _toUtcExclusive,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                                label: const Text('مشاهده سفارش‌ها'),
+                              ),
                           ],
                         ),
                       ),
