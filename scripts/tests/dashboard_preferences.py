@@ -225,7 +225,7 @@ with tempfile.TemporaryFile() as log:
         })
         assert first_status == 200 and second_status == 200, (first_status, second_status)
         assert request(endpoint, token=first_login["accessToken"])[1] == first_custom
-        assert request(endpoint, token=second_login["accessToken"])[1] == role_default
+        assert request(endpoint, token=second_login["accessToken"])[1] == second_custom
     finally:
         stop_api(api)
 
