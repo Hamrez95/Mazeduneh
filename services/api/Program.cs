@@ -38,6 +38,7 @@ builder.Services.AddMediaStorage(builder.Configuration);
 builder.Services.AddInventoryBatches();
 builder.Services.AddInventoryPricing();
 builder.Services.AddCommercePricing();
+builder.Services.AddSingleton<PromotionDatabase>();
 builder.Services.AddCorporateSales();
 
 var app = builder.Build();
@@ -55,6 +56,7 @@ app.MapMediaStorage();
 app.MapInventoryBatches();
 app.MapInventoryPricing();
 app.MapCommercePricing();
+app.MapPromotions();
 app.MapCorporateSales();
 
 var catalog = app.Services.GetRequiredService<ProductCatalog>();

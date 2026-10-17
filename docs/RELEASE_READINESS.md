@@ -1,5 +1,9 @@
 # Controlled release runbook
 
+## Current delivery scope — 2026-10-17
+
+Desktop browsers are the first release target for both Storefront and Admin. Native mobile/desktop app packaging and physical-device checks are deferred. The default Windows local path uses portable PostgreSQL and does not require Docker or SQL Server. Follow [browser-first delivery and acceptance](BROWSER_FIRST_DELIVERY.md): local browser testing and owner acceptance precede staging deployment; staging payment, backup recovery, HTTPS and rollback remain required. Container-specific steps below apply only when that deployment option is selected.
+
 Issue: [#100](https://github.com/Hamrez95/Mazeduneh/issues/100)
 
 This runbook separates repeatable CI evidence from checks that require an actual staging account. A green build is necessary, but it is not proof that live payment, database, storage, backup, alerting, or rollback paths work.

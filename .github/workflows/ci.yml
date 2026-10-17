@@ -707,6 +707,9 @@ jobs:
       - name: Corporate planning queue contract
         run: python3 scripts/tests/corporate_planning.py
 
+      - name: Coupons, concurrent usage, immutable totals and sandbox payment
+        run: python3 scripts/tests/promotions.py
+
       - name: Inventory receipt validation units
         run: dotnet run --project services/api.tests/Mazeduneh.Api.Tests.csproj --configuration Release
 
@@ -742,7 +745,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate platform runners
-        run: flutter create --platforms=android,web --project-name mazeduneh_admin .
+        run: flutter create --platforms=web --project-name mazeduneh_admin .
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
@@ -751,8 +754,6 @@ jobs:
         run: flutter test
       - name: Build active admin web
         run: flutter build web --release --target lib/secure_main.dart
-      - name: Verify generated Android runner
-        run: test -f android/app/build.gradle.kts || test -f android/app/build.gradle
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:
