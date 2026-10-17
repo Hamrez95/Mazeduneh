@@ -15,43 +15,24 @@ MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, a
 
 ## Local development
 
-### Run the whole system (Windows, macOS, Linux)
+### Windows: browser apps without Docker or SQL Server
 
-The quick path needs only **PowerShell 7.4+** and **Docker Desktop** (Windows/macOS), or Docker Engine with Compose (Linux). Node.js, .NET, Flutter, PostgreSQL, and app dependencies are installed inside the containers.
+On a fresh Windows PC, double-click `setup-local.cmd` once. It installs missing tools using winget and the official Flutter repository, then starts the system. Subsequent runs use `start-local.cmd`. Internet is required for the first downloads and dependency setup.
 
-```powershell
-git clone https://github.com/Hamrez95/Mazeduneh.git
-cd Mazeduneh
-pwsh -File ./scripts/stack.ps1
-```
-
-On Windows, you can double-click [`start-local.cmd`](start-local.cmd) instead. It starts the same full stack and prints a PowerShell 7.4 install command if PowerShell 7 is missing.
-
-The first run builds all three apps, starts PostgreSQL, applies migrations, and creates a local Admin account. The default addresses are Storefront `http://127.0.0.1:3000`, Admin `http://127.0.0.1:8080`, and API `http://127.0.0.1:5080`; if one is already in use, the launcher selects the next available local port and prints the actual addresses. The generated Admin password is printed once per run and saved under the ignored `.local-dev` folder.
+The launcher runs portable PostgreSQL, applies tracked migrations, seeds a local Owner and sample catalog, then opens the storefront and admin browser apps. The default ports are 3000, 8080 and 5080. Existing unrelated listeners are reported instead of stopped. Credentials and persistent data live under `%LOCALAPPDATA%/Mazeduneh/local`; a different drive can be selected with `-LocalHome` and `-RuntimeHome`.
 
 ```powershell
-pwsh -File ./scripts/stack.ps1 -Action status
-pwsh -File ./scripts/stack.ps1 -Action stop
+pwsh -File ./scripts/local.ps1 -Action status
+pwsh -File ./scripts/local.ps1 -Action stop
+pwsh -File ./scripts/local.ps1 -Action restart
+pwsh -File ./scripts/install-desktop-shortcuts.ps1
 ```
 
-Stopping removes app containers but keeps the PostgreSQL database and uploaded media. To reset demo data, use Docker Desktop to remove the `mazeduneh` volumes explicitly.
+Stopping preserves database and media files. The default `scripts/dev.ps1` path uses this same native browser stack and the current checkout. Admin compiles to web; Android Studio and native app build tools are unnecessary. Local sandbox payment has an explicit confirmation button and does not move money. See [full setup and delivery flow](docs/BROWSER_FIRST_DELIVERY.md).
 
-This stack binds every published port to `127.0.0.1`, uses a local PostgreSQL volume, and enables sandbox payments. It does not connect to a production account or external database. Never reuse its credentials or settings for production.
+### Optional container path (Windows, macOS, Linux)
 
-On Windows, if Docker reports that its engine cannot start, enable **Intel VT-x/Intel Virtualization Technology** (or **AMD-V/SVM**) in BIOS/UEFI, turn on **Windows Subsystem for Linux** and **Virtual Machine Platform**, and restart Windows. The launcher detects disabled firmware virtualization and prints this specific recovery path. macOS and Linux users need a running Docker engine with Compose.
-
-### Host-based development
-
-For faster hot reload while editing, `scripts/dev.ps1` can run the app processes directly on the host. This path also needs Node.js 24, the .NET 10 SDK, Flutter stable, and Docker for PostgreSQL. It uses a detached copy of `origin/main` by default; add `-CurrentBranch` only when you intend to run the current checkout.
-
-```powershell
-pwsh -File ./scripts/dev.ps1 -Status
-pwsh -File ./scripts/dev.ps1 -Stop
-pwsh -File ./scripts/dev.ps1 -CurrentBranch -NoBrowser
-pwsh -File ./scripts/dev.ps1 -Component storefront-preview -NoBrowser
-```
-
-The host-based launcher synchronizes npm and Flutter dependencies from their lockfiles, waits for PostgreSQL and API readiness, and leaves PostgreSQL data intact when app processes stop. `storefront-preview` can browse sample products without Docker/API, but cannot submit real orders or start Admin.
+`pwsh -File ./scripts/stack.ps1` remains available with a working Docker engine and Compose. Its status/stop commands, data volumes and credentials belong to that optional container environment. It is separate from the default native Windows launcher; stop one environment before using the other on the same ports.
 
 ### Storefront order submission
 
@@ -64,8 +45,8 @@ Docker deployment files and the controlled launch checklist are in [`docs/LIARA_
 ## Branching
 
 - `main`: stable and release-ready only.
-- `dev`: integration branch.
-- `feat/*`, `fix/*`, `chore/*`: short-lived branches merged into `dev` by pull request.
+- Feature branches: short-lived changes reviewed and checked, then merged into `main` by pull request.
+- Preserve existing branches until their work is accounted for; branch deletion is deferred by the owner.
 
 ## Delivery loop
 
@@ -87,5 +68,5 @@ Docker deployment files and the controlled launch checklist are in [`docs/LIARA_
 
 ## Status
 
-The platform foundation is on `dev`. `main` remains the stable release branch until production gates pass.
+Implemented slices are merged into `main`. Browser acceptance and the controlled staging/payment/backup gates still determine launch readiness.
 
