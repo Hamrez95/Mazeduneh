@@ -164,6 +164,14 @@ $dotnet=Resolve-Tool 'dotnet' @("$env:ProgramFiles/dotnet/dotnet.exe")
 $node=Resolve-Tool 'node' @("$env:ProgramFiles/nodejs/node.exe")
 $npm=Resolve-Tool 'npm.cmd' @("$env:ProgramFiles/nodejs/npm.cmd")
 $flutter=Resolve-Tool 'flutter' @("$env:USERPROFILE/develop/flutter/bin/flutter.bat","$env:LOCALAPPDATA/flutter/bin/flutter.bat","$env:LOCALAPPDATA/Mazeduneh/flutter/bin/flutter.bat")
+$pubHostedUrls=[Collections.Generic.List[string]]::new()
+if($env:MAZEDUNEH_PUB_HOSTED_URL){$pubHostedUrls.Add($env:MAZEDUNEH_PUB_HOSTED_URL)}
+# This is the package source recorded in apps/admin/pubspec.lock. Do not inherit
+# a machine-wide PUB_HOSTED_URL: it may point at a throttled mirror.
+$pubHostedUrls.Add('https://mirror.sjtu.edu.cn/dart-pub/')
+$pubHostedUrls.Add('https://pub.flutter-io.cn')
+$pubHostedUrls.Add('https://pub.dev')
+$flutterStorageUrl=if($env:MAZEDUNEH_FLUTTER_STORAGE_BASE_URL){$env:MAZEDUNEH_FLUTTER_STORAGE_BASE_URL}elseif($env:FLUTTER_STORAGE_BASE_URL){$env:FLUTTER_STORAGE_BASE_URL}else{'https://storage.googleapis.com'}
 if(-not ((& $dotnet --list-sdks) -match '^10\.')){throw '.NET 10 SDK is required: winget install Microsoft.DotNet.SDK.10'}
 $apiPort=Find-AvailablePort $apiPort 100 'API'
 $webPort=Find-AvailablePort $webPort 100 'storefront'
@@ -243,7 +251,34 @@ if(-not $SkipBuild) {
   Push-Location (Join-Path $root 'apps/storefront')
   try {if(-not(Test-Path node_modules/next)){& $npm ci --no-audit --no-fund;if($LASTEXITCODE -ne 0){throw 'Storefront dependency setup failed.'}}} finally {Pop-Location}
   Push-Location (Join-Path $root 'apps/admin')
-  try {if(-not(Test-Path .dart_tool/package_config.json)){& $flutter --no-version-check pub get; if($LASTEXITCODE -ne 0){throw 'Admin dependency setup failed.'}}; & $flutter --no-version-check build web --no-pub --release --no-web-resources-cdn --target lib/secure_main.dart "--dart-define=MAZEDUNEH_API_BASE_URL=$apiUrl";if($LASTEXITCODE -ne 0){throw 'Admin browser build failed.'}} finally {Pop-Location}
+  $previousPubHostedUrl=$env:PUB_HOSTED_URL
+  $previousFlutterStorageUrl=$env:FLUTTER_STORAGE_BASE_URL
+  try {
+    # Ignore machine-wide Pub mirrors that may be unavailable or rate-limited.
+    # These overrides are scoped to this startup process and can be customized
+    # with MAZEDUNEH_PUB_HOSTED_URL / MAZEDUNEH_FLUTTER_STORAGE_BASE_URL.
+    $env:FLUTTER_STORAGE_BASE_URL=$flutterStorageUrl
+    if(-not(Test-Path .dart_tool/package_config.json)){
+      $pubReady=$false
+      foreach($pubHostedUrl in $pubHostedUrls){
+        $env:PUB_HOSTED_URL=$pubHostedUrl
+        for($attempt=1;$attempt -le 3;$attempt++){
+          Write-Host "Resolving admin browser dependencies from $pubHostedUrl (attempt $attempt/3)..."
+          & $flutter --no-version-check pub get
+          if($LASTEXITCODE -eq 0){$pubReady=$true;break}
+          if($attempt -lt 3){$delaySeconds=5*$attempt;Write-Warning "Flutter package download failed. Retrying in $delaySeconds seconds...";Start-Sleep -Seconds $delaySeconds}
+        }
+        if($pubReady){break}
+      }
+      if(-not $pubReady){throw 'Admin dependency setup failed using the configured Pub mirrors and pub.dev. Check Internet access or set MAZEDUNEH_PUB_HOSTED_URL to a reachable Pub mirror, then retry.'}
+    }
+    & $flutter --no-version-check build web --no-pub --release --no-web-resources-cdn --target lib/secure_main.dart "--dart-define=MAZEDUNEH_API_BASE_URL=$apiUrl"
+    if($LASTEXITCODE -ne 0){throw 'Admin browser build failed.'}
+  } finally {
+    $env:PUB_HOSTED_URL=$previousPubHostedUrl
+    $env:FLUTTER_STORAGE_BASE_URL=$previousFlutterStorageUrl
+    Pop-Location
+  }
 }
 $dll=Join-Path $build 'Mazeduneh.Api.dll'
 function Quote-Arg([string]$s){'"'+$s.Replace('"','\"')+'"'}
