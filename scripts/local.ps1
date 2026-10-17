@@ -68,7 +68,7 @@ function Resolve-Tool([string]$name,[string[]]$fallbacks=@()) {
 $dotnet=Resolve-Tool 'dotnet' @("$env:ProgramFiles/dotnet/dotnet.exe")
 $node=Resolve-Tool 'node' @("$env:ProgramFiles/nodejs/node.exe")
 $npm=Resolve-Tool 'npm.cmd' @("$env:ProgramFiles/nodejs/npm.cmd")
-$flutter=Resolve-Tool 'flutter' @("$env:USERPROFILE/develop/flutter/bin/flutter.bat","$env:LOCALAPPDATA/flutter/bin/flutter.bat")
+$flutter=Resolve-Tool 'flutter' @("$env:USERPROFILE/develop/flutter/bin/flutter.bat","$env:LOCALAPPDATA/flutter/bin/flutter.bat","$env:LOCALAPPDATA/Mazeduneh/flutter/bin/flutter.bat")
 if(-not ((& $dotnet --list-sdks) -match '^10\.')){throw '.NET 10 SDK is required: winget install Microsoft.DotNet.SDK.10'}
 foreach($port in @(5080,3000,8080)) {
   $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
