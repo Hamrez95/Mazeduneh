@@ -293,10 +293,12 @@ export function CheckoutPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim().replace(/\/+$/, "") ?? "";
   const unsupportedLines = cart.filter((line) => !line.sku);
   const [couponCode, setCouponCode] = useState("");
+  const [discountMobile, setDiscountMobile] = useState("");
+  const [discountCity, setDiscountCity] = useState("");
   const [couponBusy, setCouponBusy] = useState(false);
   const [couponError, setCouponError] = useState("");
-  const [couponResult, setCouponResult] = useState<{ key: string; discount: number; shipping: number; tax: number; payable: number } | null>(null);
-  const couponKey = JSON.stringify({ code: couponCode.trim(), shippingMethod, lines: cart.map(line => ({sku: line.sku, quantity: line.quantity})) });
+  const [couponResult, setCouponResult] = useState<{ key: string; discount: number; shipping: number; tax: number; payable: number; code?: string; name?: string; automatic?: boolean } | null>(null);
+  const couponKey = JSON.stringify({ code: couponCode.trim(), mobile: toAsciiDigits(discountMobile), city: discountCity, shippingMethod, lines: cart.map(line => ({sku: line.sku, quantity: line.quantity})) });
   const couponQuote = couponResult?.key === couponKey ? couponResult : null;
   async function applyCoupon() {
     setCouponError(""); setCouponResult(null); setCouponBusy(true);
@@ -309,6 +311,17 @@ export function CheckoutPage() {
     } catch(e) { setCouponError(e instanceof Error ? e.message : "ارتباط با سرویس تخفیف برقرار نشد."); }
     finally { setCouponBusy(false); }
   }
+
+  useEffect(() => {
+    if (!apiBaseUrl || couponCode.trim() || !cart.length || unsupportedLines.length) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`${apiBaseUrl}/api/v1/checkout/coupon-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: couponKey, cache: "no-store", signal: controller.signal })
+        .then(async response => { if (!response.ok) return; const result = await response.json(); if (!controller.signal.aborted) setCouponResult({ ...result, key: couponKey }); })
+        .catch(() => { /* Final checkout still validates discounts on the server. */ });
+    }, 500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [apiBaseUrl, couponKey, couponCode, cart.length, unsupportedLines.length]);
 
   function rememberReceipt(nextReceipt: CheckoutReceipt) {
     window.sessionStorage.setItem(checkoutReceiptStorageKey, JSON.stringify(nextReceipt));
@@ -540,9 +553,9 @@ export function CheckoutPage() {
         <h2>گیرنده و نشانی</h2><p>اطلاعات تحویل فقط برای ثبت سفارش به سرویس فروش ارسال می‌شود.</p>
         <div className={styles.fieldGrid}>
           <div className={styles.field}><label htmlFor="name">نام و نام خانوادگی</label><input id="name" name="name" autoComplete="name" required placeholder="نام گیرنده" /></div>
-          <div className={styles.field}><label htmlFor="phone">شماره موبایل</label><input id="phone" name="phone" autoComplete="tel" inputMode="tel" pattern="09[0-9۰-۹]{9}" required placeholder="۰۹۱۲۱۲۳۴۵۶۷" /></div>
+          <div className={styles.field}><label htmlFor="phone">شماره موبایل</label><input id="phone" name="phone" value={discountMobile} onChange={e => setDiscountMobile(e.target.value)} autoComplete="tel" inputMode="tel" pattern="09[0-9۰-۹]{9}" required placeholder="۰۹۱۲۱۲۳۴۵۶۷" /></div>
           <div className={styles.field}><label htmlFor="province">استان</label><select id="province" name="province" required defaultValue=""><option value="" disabled>انتخاب استان</option><option>تهران</option><option>اصفهان</option><option>خراسان رضوی</option><option>فارس</option></select></div>
-          <div className={styles.field}><label htmlFor="city">شهر</label><input id="city" name="city" autoComplete="address-level2" required placeholder="شهر" /></div>
+          <div className={styles.field}><label htmlFor="city">شهر</label><input id="city" name="city" value={discountCity} onChange={e => setDiscountCity(e.target.value)} autoComplete="address-level2" required placeholder="شهر" /></div>
           <div className={`${styles.field} ${styles.fieldWide}`}><label htmlFor="address">نشانی کامل</label><textarea id="address" name="address" autoComplete="street-address" required placeholder="خیابان، کوچه، پلاک و واحد" /></div>
           <div className={styles.field}><label htmlFor="shippingMethod">روش ارسال</label><select id="shippingMethod" name="shippingMethod" value={shippingMethod} onChange={(event) => setShippingMethod(event.target.value)} required>{shippingMethods.length ? shippingMethods.map((item) => <option key={item.code} value={item.code}>{item.title} · {toman(Math.round(item.price / 10))} تومان</option>) : <option value="post">پست (محاسبه نهایی در سرور)</option>}</select></div>
           <div className={styles.field}><label htmlFor="postal">کد پستی</label><input id="postal" name="postal" inputMode="numeric" autoComplete="postal-code" pattern="[0-9۰-۹]{10}" required placeholder="۱۰ رقم" /></div>
@@ -559,12 +572,12 @@ export function CheckoutPage() {
       </form>
       <aside className={styles.checkoutSummary}><h2>مرور سفارش</h2>
         <div className={styles.field}><label htmlFor="couponCode">کد تخفیف</label><input id="couponCode" value={couponCode} maxLength={40} dir="ltr" autoComplete="off" placeholder="WELCOME10" onChange={e => {setCouponCode(e.target.value); setCouponError("");}} />
-          <button type="button" className={styles.secondaryAction} disabled={couponBusy || !apiBaseUrl || !couponCode.trim() || unsupportedLines.length > 0} onClick={applyCoupon}>{couponBusy ? "در حال بررسی…" : "بررسی کد تخفیف"}</button>
+          <button type="button" className={styles.secondaryAction} disabled={couponBusy || !apiBaseUrl || unsupportedLines.length > 0} onClick={applyCoupon}>{couponBusy ? "در حال بررسی…" : (couponCode.trim() ? "بررسی کد تخفیف" : "بررسی پیشنهادهای خودکار")}</button>
           {couponError && <p role="alert">{couponError}</p>}
-          {couponQuote && <p role="status">کد تأیید شد؛ هنگام ثبت سفارش دوباره بررسی می‌شود.</p>}
+          {couponQuote && <p role="status">{couponQuote.name ? `${couponQuote.name}؛ هنگام ثبت سفارش دوباره بررسی می‌شود.` : "در حال حاضر پیشنهاد خودکار قابل استفاده‌ای وجود ندارد."}</p>}
         </div>{cart.map((line) => <div className={styles.summaryProduct} key={line.id}><span>{line.title} × {toman(line.quantity)}</span><b>{toman(line.price * line.quantity)} تومان</b></div>)}<div className={styles.summaryRow}><span>جمع محصولات</span><strong>{toman(subtotal)} تومان</strong></div><div className={styles.summaryRow}><span>ارسال</span><strong>{couponQuote ? `${toman(couponQuote.shipping / 10)} تومان` : shipping ? `${toman(shipping)} تومان` : "رایگان"}</strong></div>
         {couponQuote && <><div className={styles.summaryRow}><span>تخفیف</span><strong>{toman(couponQuote.discount / 10)} تومان</strong></div><div className={styles.summaryRow}><span>مالیات</span><strong>{toman(couponQuote.tax / 10)} تومان</strong></div></>}
-        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>{couponQuote ? "مبلغ تأییدشدهٔ سبد" : "برآورد اولیه"}</span><strong>{toman(couponQuote ? couponQuote.payable / 10 : total)} تومان</strong></div><p className={styles.summaryNote}>هر سفارش یک کوپن دارد. مبلغ نهایی و موجودی هنگام ثبت در سرور تأیید می‌شود.</p></aside>
+        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>{couponQuote ? "مبلغ تأییدشدهٔ سبد" : "برآورد اولیه"}</span><strong>{toman(couponQuote ? couponQuote.payable / 10 : total)} تومان</strong></div><p className={styles.summaryNote}>هر سفارش یک تخفیف دارد؛ کد واردشده بر پیشنهاد خودکار مقدم است. اقلام هدیه و پک را به سبد اضافه کن. مبلغ نهایی و موجودی هنگام ثبت در سرور تأیید می‌شود.</p></aside>
     </section><StoreFooter />
   </main>;
 }

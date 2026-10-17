@@ -4,11 +4,16 @@ using Npgsql;
 
 public sealed record PromotionInput(string Name, string Kind, decimal Value, bool Active,
     DateTimeOffset StartsAt, DateTimeOffset EndsAt, decimal MinSubtotal = 0,
-    decimal? MaxDiscount = null, int? MaxUses = null, IReadOnlyList<string>? Skus = null, bool AllowLoss = false);
+    decimal? MaxDiscount = null, int? MaxUses = null, IReadOnlyList<string>? Skus = null, bool AllowLoss = false,
+    IReadOnlyList<string>? Categories = null, IReadOnlyList<string>? CustomerMobiles = null, IReadOnlyList<string>? Cities = null,
+    bool FirstOrderOnly = false, int? MaxUsesPerCustomer = null, int BuyQuantity = 1, int GetQuantity = 1,
+    IReadOnlyList<string>? RewardSkus = null, IReadOnlyList<PromotionBundleItem>? BundleItems = null, decimal? BundlePrice = null,
+    int? MaxApplications = null, bool Automatic = false, int Priority = 0, string CombinationPolicy = "Exclusive");
 public sealed record PromotionDefinition(string Code, PromotionInput Rule, string UpdatedBy, DateTimeOffset UpdatedAt, string? LossApprovedBy);
-public sealed record PromotionSummary(string Code, PromotionInput Rule, int Uses, decimal DiscountTotal, string? LossApprovedBy);
-public sealed record PromotionPreviewRequest(PromotionInput Rule, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post");
-public sealed record CouponPreviewRequest(string Code, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post");
+public sealed record PromotionSummary(string Code, PromotionInput Rule, int Uses, decimal DiscountTotal, string? LossApprovedBy, int PaidOrders = 0, decimal Revenue = 0, bool CustomerScopeHidden = false);
+public sealed class PromotionScopePermissionException : Exception;
+public sealed record PromotionPreviewRequest(PromotionInput Rule, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post", string Mobile = "", string City = "");
+public sealed record CouponPreviewRequest(string Code, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post", string Mobile = "", string City = "");
 public sealed record PromotionQuote(decimal Subtotal, decimal Discount, decimal Shipping, decimal ShippingExpense,
     decimal Tax, decimal Payable, decimal Cost, decimal NetProfit, string? Error = null);
 
@@ -20,27 +25,17 @@ public static class PromotionRules
         var errors = new Dictionary<string, string[]>();
         if (!Regex.IsMatch(code, "^[A-Z0-9][A-Z0-9_-]{2,39}$", RegexOptions.CultureInvariant)) errors["code"] = ["کد باید ۳ تا ۴۰ حرف انگلیسی یا عدد، خط تیره یا زیرخط باشد."];
         if (string.IsNullOrWhiteSpace(r.Name) || r.Name.Length > 120) errors["name"] = ["نام تخفیف الزامی و حداکثر ۱۲۰ نویسه است."];
-        if (r.Kind is not ("Percent" or "Fixed" or "FreeShipping")) errors["kind"] = ["نوع تخفیف معتبر نیست."];
-        if (r.Value < 0 || r.Value > 1000000000000m || (r.Kind != "FreeShipping" && r.Value <= 0) || (r.Kind == "Percent" && r.Value > 100) || r.Value != decimal.Round(r.Value, 2)) errors["value"] = ["مقدار تخفیف معتبر نیست؛ درصد حداکثر ۱۰۰ است."];
+        if (r.Kind is not ("Percent" or "Fixed" or "FreeShipping" or "BuyGet" or "Bundle")) errors["kind"] = ["نوع تخفیف معتبر نیست."];
+        if (r.Value < 0 || r.Value > 1000000000000m || (r.Kind is "Percent" or "Fixed" && r.Value <= 0) || (r.Kind == "Percent" && r.Value > 100) || r.Value != decimal.Round(r.Value, 2)) errors["value"] = ["مقدار تخفیف معتبر نیست؛ درصد حداکثر ۱۰۰ است."];
         if (r.EndsAt <= r.StartsAt) errors["endsAt"] = ["پایان باید بعد از شروع باشد."];
         if (r.MinSubtotal < 0 || r.MinSubtotal > 1000000000000m || r.MaxDiscount is <= 0 or > 1000000000000m || r.MaxUses is <= 0 or > 10000000) errors["limits"] = ["حداقل سبد و سقف مبلغ/مصرف معتبر نیستند."];
         if (r.Skus is {Count: > 30} || r.Skus?.Any(s => string.IsNullOrWhiteSpace(s) || s.Length > 100) == true) errors["skus"] = ["دامنهٔ SKU حداکثر ۳۰ قلم معتبر است."];
+        AdvancedPromotionRules.Validate(r,errors);
         return errors;
     }
-    public static PromotionQuote Calculate(PromotionInput rule, IReadOnlyCollection<CheckoutLine> lines, CommerceQuote quote)
-    {
-        var subtotal = lines.Sum(l => l.LineTotal);
-        var eligible = lines.Where(l => rule.Skus is not {Count: > 0} || rule.Skus.Contains(l.Sku, StringComparer.OrdinalIgnoreCase)).Sum(l => l.LineTotal);
-        var discount = rule.Kind == "Fixed" ? Math.Min(rule.Value, eligible) : rule.Kind == "Percent" ? eligible * rule.Value / 100m : 0;
-        if (rule.MaxDiscount is decimal cap) discount = Math.Min(discount, cap);
-        discount = decimal.Round(discount, 2, MidpointRounding.AwayFromZero);
-        var shipping = rule.Kind == "FreeShipping" ? Math.Max(0, quote.Shipping - Math.Min(quote.Shipping, rule.MaxDiscount ?? quote.Shipping)) : quote.Shipping;
-        var tax = decimal.Round((subtotal-discount) * quote.TaxRatePercent/100m, 2, MidpointRounding.AwayFromZero);
-        var cost = lines.Sum(l => l.Quantity*(l.CostPrice+l.PackagingCost+l.AdditionalCost));
-        var profit = subtotal-discount+shipping-cost-quote.ShippingExpense;
-        var error = subtotal < rule.MinSubtotal ? "مبلغ سبد به حداقل این کد تخفیف نرسیده است." : eligible <= 0 ? "این کد برای کالاهای سبد شما قابل استفاده نیست." : null;
-        return new(subtotal, discount, shipping, quote.ShippingExpense, tax, subtotal-discount+shipping+tax, cost, profit, error);
-    }
+    public static PromotionQuote Calculate(PromotionInput rule, IReadOnlyCollection<CheckoutLine> lines, CommerceQuote quote, PromotionContext? context = null)
+        => AdvancedPromotionRules.Calculate(rule,lines,quote,context);
+
 }
 
 public sealed class PromotionDatabase(IConfiguration configuration)
@@ -65,6 +60,9 @@ public sealed class PromotionDatabase(IConfiguration configuration)
             );
             create index if not exists ix_promotion_redemptions_code on promotion_redemptions(code);
             """, ct);
+        await DatabaseMigrationRunner.ApplyAsync(c,"promotions","002-rule-snapshots", """
+            alter table promotion_redemptions add column if not exists rule_snapshot jsonb;
+            """,ct);
     }
     public async Task<PromotionDefinition?> FindAsync(NpgsqlConnection c, NpgsqlTransaction? tx, string code, bool locked, CancellationToken ct)
     {
@@ -78,20 +76,27 @@ public sealed class PromotionDatabase(IConfiguration configuration)
         await using var cmd=new NpgsqlCommand("select count(*)::int from promotion_redemptions r join checkout_orders o on o.id=r.order_id where r.code=@code and o.state not in ('Cancelled','Expired')",c,tx);
         cmd.Parameters.AddWithValue("code",code);return (int)(await cmd.ExecuteScalarAsync(ct))!;
     }
-    public async Task<(PromotionDefinition? Promotion, PromotionQuote? Quote, string? Error)> EvaluateAsync(NpgsqlConnection c,NpgsqlTransaction? tx,string code,IReadOnlyCollection<CheckoutLine> lines,CommerceQuote quote,bool locked,CancellationToken ct)
+    public async Task<(PromotionDefinition? Promotion, PromotionQuote? Quote, string? Error)> EvaluateAsync(NpgsqlConnection c,NpgsqlTransaction? tx,string code,IReadOnlyCollection<CheckoutLine> lines,CommerceQuote quote,bool locked,CancellationToken ct,PromotionContext? context=null)
     {
         var p=await FindAsync(c,tx,code,locked,ct);
         var now=DateTimeOffset.UtcNow;
         if(p is null || !p.Rule.Active || now<p.Rule.StartsAt || now>=p.Rule.EndsAt) return (null,null,"کد تخفیف معتبر یا فعال نیست.");
         if(p.Rule.MaxUses is int limit && await UsesAsync(c,tx,p.Code,ct)>=limit) return(null,null,"سقف مصرف این کد تخفیف تمام شده است.");
-        var result=PromotionRules.Calculate(p.Rule,lines,quote);
+        context ??= new();
+        if(p.Rule.MaxUsesPerCustomer is not null && AdvancedPromotionRules.ValidMobile(context.Mobile))
+        {
+            await using var uses=new NpgsqlCommand("select count(*)::int from promotion_redemptions r join checkout_orders o on o.id=r.order_id join customers cu on cu.id=o.customer_id where r.code=@code and cu.mobile_normalized=@mobile and o.state not in ('Cancelled','Expired')",c,tx);
+            uses.Parameters.AddWithValue("code",p.Code);uses.Parameters.AddWithValue("mobile",AdvancedPromotionRules.Mobile(context.Mobile));
+            context=context with {CustomerUses=(int)(await uses.ExecuteScalarAsync(ct))!};
+        }
+        var result=PromotionRules.Calculate(p.Rule,lines,quote,context);
         if(result.Error is not null)return(null,null,result.Error);
         if(result.NetProfit<0 && (p.LossApprovedBy is null || !p.Rule.AllowLoss))return(null,null,"این تخفیف برای سبد فعلی قابل اعمال نیست؛ با فروشگاه تماس بگیرید.");
         return(p,result,null);
     }
     public async Task RecordAsync(NpgsqlConnection c,NpgsqlTransaction tx,Guid orderId,string code,PromotionQuote quote,decimal originalShipping,CancellationToken ct)
     {
-        await using var cmd=new NpgsqlCommand("insert into promotion_redemptions(order_id,code,discount,shipping_discount) values(@order,@code,@discount,@shipping)",c,tx);
+        await using var cmd=new NpgsqlCommand("insert into promotion_redemptions(order_id,code,discount,shipping_discount,rule_snapshot) select @order,code,@discount,@shipping,rules from promotions where code=@code",c,tx);
         cmd.Parameters.AddWithValue("order",orderId);cmd.Parameters.AddWithValue("code",code);cmd.Parameters.AddWithValue("discount",quote.Discount);cmd.Parameters.AddWithValue("shipping",originalShipping-quote.Shipping);await cmd.ExecuteNonQueryAsync(ct);
     }
     public async Task<IReadOnlyList<PromotionSummary>> ListAsync(CancellationToken ct)
@@ -101,19 +106,25 @@ public sealed class PromotionDatabase(IConfiguration configuration)
         await using var cmd=new NpgsqlCommand("""
             select p.code,p.rules::text,p.loss_approved_by,
                 count(o.id) filter(where o.state not in ('Cancelled','Expired'))::int,
-                coalesce(sum(r.discount+r.shipping_discount) filter(where o.state in ('Paid','Preparing','Shipped','Delivered')),0)
+                coalesce(sum(r.discount+r.shipping_discount) filter(where o.state in ('Paid','Preparing','Shipped','Delivered')),0), count(o.id) filter(where o.state in ('Paid','Preparing','Shipped','Delivered'))::int, coalesce(sum(o.payable) filter(where o.state in ('Paid','Preparing','Shipped','Delivered')),0)
             from promotions p left join promotion_redemptions r on r.code=p.code
             left join checkout_orders o on o.id=r.order_id group by p.code order by p.updated_at desc limit 250
             """,c);
         var result=new List<PromotionSummary>();await using var r=await cmd.ExecuteReaderAsync(ct);
-        while(await r.ReadAsync(ct)) result.Add(new(r.GetString(0),JsonSerializer.Deserialize<PromotionInput>(r.GetString(1))!,r.GetInt32(3),r.GetDecimal(4),r.IsDBNull(2)?null:r.GetString(2)));
+        while(await r.ReadAsync(ct)) result.Add(new(r.GetString(0),JsonSerializer.Deserialize<PromotionInput>(r.GetString(1))!,r.GetInt32(3),r.GetDecimal(4),r.IsDBNull(2)?null:r.GetString(2),r.GetInt32(5),r.GetDecimal(6)));
         return result;
     }
-    public async Task<PromotionDefinition> SaveAsync(string code,PromotionInput input,string actor,AdminAuditLogDatabase audit,string requestId,CancellationToken ct)
+    public async Task<PromotionDefinition> SaveAsync(string code,PromotionInput input,string actor,AdminAuditLogDatabase audit,string requestId,CancellationToken ct,bool canReadCustomers=false)
     {
         await using var c=new NpgsqlConnection(connectionString);await c.OpenAsync(ct);await using var tx=await c.BeginTransactionAsync(ct);
+        await using(var codeLock=new NpgsqlCommand("select pg_advisory_xact_lock(hashtextextended(@code,0))",c,tx))
+        {codeLock.Parameters.AddWithValue("code","promotion-edit:"+code);await codeLock.ExecuteNonQueryAsync(ct);}
         var before=await FindAsync(c,tx,code,true,ct);
-        var normalized=input with {Name=input.Name.Trim(),StartsAt=input.StartsAt.ToUniversalTime(),EndsAt=input.EndsAt.ToUniversalTime(),Skus=input.Skus?.Select(s=>s.Trim().ToUpperInvariant()).Distinct().ToArray()};
+        if(!canReadCustomers && (input.CustomerMobiles is {Count:>0} || before?.Rule.CustomerMobiles is {Count:>0}))throw new PromotionScopePermissionException();
+        var normalized=input with {Name=input.Name.Trim(),StartsAt=input.StartsAt.ToUniversalTime(),EndsAt=input.EndsAt.ToUniversalTime(),Skus=input.Skus?.Select(s=>s.Trim().ToUpperInvariant()).Distinct().ToArray(),
+            Categories=input.Categories?.Select(AdvancedPromotionRules.Text).Distinct().ToArray(), Cities=input.Cities?.Select(AdvancedPromotionRules.Text).Distinct().ToArray(),
+            CustomerMobiles=input.CustomerMobiles?.Select(AdvancedPromotionRules.Mobile).Distinct().ToArray(),RewardSkus=input.RewardSkus?.Select(x=>x.Trim().ToUpperInvariant()).Distinct().ToArray(),
+            BundleItems=input.BundleItems?.Select(x=>x with {Sku=x.Sku.Trim().ToUpperInvariant()}).ToArray()};
         var now=DateTimeOffset.UtcNow;
         await using var cmd=new NpgsqlCommand("""
             insert into promotions(code,rules,updated_by,updated_at,loss_approved_by) values(@code,@rules::jsonb,@actor,@at,@approval)
@@ -125,6 +136,34 @@ public sealed class PromotionDatabase(IConfiguration configuration)
         await audit.RecordAsync(c,tx,actor,"promotion.save","Promotion",code,before,after,"ثبت قوانین کوپن",requestId,ct);
         await tx.CommitAsync(ct);return after;
     }
+    public async Task<PromotionContext> ContextAsync(NpgsqlConnection c,NpgsqlTransaction? tx,string? mobile,string? city,IReadOnlyCollection<CheckoutLine> lines,CancellationToken ct)
+    {
+        var categories=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        await using(var cmd=new NpgsqlCommand("select v.sku,p.category from product_variants v join products p on p.id=v.product_id where upper(v.sku)=any(@skus)",c,tx))
+        {
+            cmd.Parameters.AddWithValue("skus",lines.Select(l=>l.Sku.ToUpperInvariant()).ToArray());
+            await using var reader=await cmd.ExecuteReaderAsync(ct);while(await reader.ReadAsync(ct))categories[reader.GetString(0)]=reader.GetString(1);
+        }
+        var normalized=AdvancedPromotionRules.Mobile(mobile);var orders=0;
+        if(AdvancedPromotionRules.ValidMobile(normalized))
+        {
+            await using var cmd=new NpgsqlCommand("select count(*)::int from checkout_orders o join customers cu on cu.id=o.customer_id where cu.mobile_normalized=@mobile and o.state not in ('Cancelled','Expired')",c,tx);
+            cmd.Parameters.AddWithValue("mobile",normalized);orders=(int)(await cmd.ExecuteScalarAsync(ct))!;
+        }
+        return new(normalized,city??"",categories,orders);
+    }
+    public async Task<(PromotionDefinition? Promotion,PromotionQuote? Quote,string? Error)> SelectAsync(NpgsqlConnection c,NpgsqlTransaction? tx,string? code,IReadOnlyCollection<CheckoutLine> lines,CommerceQuote quote,bool locked,string? mobile,string? city,CancellationToken ct)
+    {
+        var context=await ContextAsync(c,tx,mobile,city,lines,ct);
+        if(!string.IsNullOrWhiteSpace(code))return await EvaluateAsync(c,tx,code,lines,quote,locked,ct,context);
+        var codes=new List<string>();
+        await using(var cmd=new NpgsqlCommand("select code from promotions where coalesce((rules->>'Automatic')::boolean,false)=true order by code"+(locked?" for update":""),c,tx))
+        {await using var reader=await cmd.ExecuteReaderAsync(ct);while(await reader.ReadAsync(ct))codes.Add(reader.GetString(0));}
+        var candidates=new List<(PromotionDefinition Promotion,PromotionQuote Quote)>();
+        foreach(var candidate in codes){var evaluated=await EvaluateAsync(c,tx,candidate,lines,quote,false,ct,context);if(evaluated.Promotion is not null && evaluated.Quote is not null && evaluated.Quote.Discount+quote.Shipping-evaluated.Quote.Shipping>0)candidates.Add((evaluated.Promotion,evaluated.Quote));}
+        var winner=candidates.OrderByDescending(x=>x.Promotion.Rule.Priority).ThenByDescending(x=>x.Quote.Discount+quote.Shipping-x.Quote.Shipping).ThenBy(x=>x.Promotion.Code,StringComparer.Ordinal).FirstOrDefault();
+        return(winner.Promotion,winner.Quote,null);
+    }
     public NpgsqlConnection OpenConnection() => new(connectionString);
 }
 
@@ -132,32 +171,38 @@ public static class PromotionModule
 {
     public static IEndpointRouteBuilder MapPromotions(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/v1/admin/promotions",async(PromotionDatabase db,CancellationToken ct)=>Results.Ok(await db.ListAsync(ct)))
+        app.MapGet("/api/v1/admin/promotions",async(PromotionDatabase db,HttpContext context,CancellationToken ct)=>Results.Ok((await db.ListAsync(ct)).Select(p=>CustomerPrivacy.CanReadPii(context)?p:p with {Rule=p.Rule with {CustomerMobiles=null},CustomerScopeHidden=p.Rule.CustomerMobiles is {Count:>0}})))
             .AddEndpointFilter<OwnerAuthorizationFilter>();
         app.MapPut("/api/v1/admin/promotions/{code}",async Task<IResult>(string code,PromotionInput input,PromotionDatabase db,AdminAuditLogDatabase audit,HttpContext context,CancellationToken ct)=>{
             code=PromotionRules.NormalizeCode(code);var errors=PromotionRules.Validate(code,input);if(errors.Count>0)return Results.ValidationProblem(errors);
             if(!db.IsConfigured)return Results.Problem(statusCode:503,title:"دیتابیس آماده نیست.");
             var principal=(AdminPrincipal)context.Items["AdminPrincipal"]!;
             if(input.AllowLoss && !string.Equals(principal.Role,"Owner",StringComparison.OrdinalIgnoreCase))return Results.Json(new{message="تأیید احتمال سود منفی فقط با مدیر اصلی است."},statusCode:403);
-            return Results.Ok(await db.SaveAsync(code,input,principal.Email,audit,context.TraceIdentifier,ct));
+            try{return Results.Ok(await db.SaveAsync(code,input,principal.Email,audit,context.TraceIdentifier,ct,CustomerPrivacy.CanReadPii(context)));}
+            catch(PromotionScopePermissionException){return Results.Json(new{message="مدیریت دامنهٔ مشتری به مجوز اطلاعات مشتری نیاز دارد."},statusCode:403);}
         }).AddEndpointFilter<OwnerAuthorizationFilter>().AddEndpointFilter<StepUpAuthorizationFilter>().WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.PricingWrite));
-        app.MapPost("/api/v1/admin/promotions/preview",async Task<IResult>(PromotionPreviewRequest request,PromotionDatabase db,CommercePricingDatabase pricing,CancellationToken ct)=>{
+        app.MapPost("/api/v1/admin/promotions/preview",async Task<IResult>(PromotionPreviewRequest request,PromotionDatabase db,CommercePricingDatabase pricing,HttpContext http,CancellationToken ct)=>{
             if(request.Rule is null)return Results.BadRequest(new{message="قوانین تخفیف الزامی است."});
+            if(!CustomerPrivacy.CanReadPii(http) && (!string.IsNullOrWhiteSpace(request.Mobile) || request.Rule.CustomerMobiles is {Count:>0}))return Results.StatusCode(403);
             var errors=PromotionRules.Validate("PREVIEW",request.Rule);if(errors.Count>0)return Results.ValidationProblem(errors);
             if(!db.IsConfigured)return Results.Problem(statusCode:503,title:"دیتابیس آماده نیست.");
             var lines=await BuildLinesAsync(db,request.Lines,ct);if(lines is null)return Results.BadRequest(new{message="کالاها یا تعداد سبد نمونه معتبر نیستند."});
             var quote=await pricing.QuoteAsync(lines.Sum(l=>l.LineTotal),request.ShippingMethod,ct);if(quote.Quote is null)return Results.BadRequest(new{message=quote.Error});
-            return Results.Ok(PromotionRules.Calculate(request.Rule,lines,quote.Quote));
+            await using var c=db.OpenConnection();await c.OpenAsync(ct);
+            var context=await db.ContextAsync(c,null,request.Mobile,request.City,lines,ct);
+            return Results.Ok(PromotionRules.Calculate(request.Rule,lines,quote.Quote,context));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
         app.MapPost("/api/v1/checkout/coupon-preview",async Task<IResult>(CouponPreviewRequest request,PromotionDatabase db,CommercePricingDatabase pricing,HttpContext context,CancellationToken ct)=>{
             context.Response.Headers.CacheControl="no-store";
             if(!db.IsConfigured)return Results.Problem(statusCode:503,title:"دیتابیس آماده نیست.");
-            if(request.Code is null || request.Code.Length>40)return Results.BadRequest(new{message="کد تخفیف معتبر نیست."});
+            if(request.Code is {Length:>40} || request.Mobile?.Length>30 || request.City?.Length>120)return Results.BadRequest(new{message="کد تخفیف معتبر نیست."});
             var lines=await BuildLinesAsync(db,request.Lines,ct);if(lines is null)return Results.BadRequest(new{message="سبد معتبر نیست."});
             var quote=await pricing.QuoteAsync(lines.Sum(l=>l.LineTotal),request.ShippingMethod,ct);if(quote.Quote is null)return Results.BadRequest(new{message=quote.Error});
             await using var c=db.OpenConnection();await c.OpenAsync(ct);
-            var result=await db.EvaluateAsync(c,null,request.Code,lines,quote.Quote,false,ct);
-            return result.Quote is null?Results.BadRequest(new{message=result.Error}):Results.Ok(new{code=result.Promotion!.Code,result.Quote.Subtotal,result.Quote.Discount,result.Quote.Shipping,result.Quote.Tax,result.Quote.Payable});
+            var result=await db.SelectAsync(c,null,request.Code,lines,quote.Quote,false,request.Mobile,request.City,ct);
+            if(result.Error is not null)return Results.BadRequest(new{message=result.Error});
+            var final=result.Quote??new PromotionQuote(lines.Sum(l=>l.LineTotal),0,quote.Quote.Shipping,quote.Quote.ShippingExpense,quote.Quote.Tax,quote.Quote.Payable,0,0);
+            return Results.Ok(new{code=result.Promotion?.Code,name=result.Promotion?.Rule.Name,automatic=result.Promotion?.Rule.Automatic??false,final.Subtotal,final.Discount,final.Shipping,final.Tax,final.Payable});
         }).RequireRateLimiting("coupon-preview");
         return app;
     }

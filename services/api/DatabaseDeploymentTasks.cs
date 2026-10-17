@@ -85,6 +85,7 @@ public static class DatabaseMigrationCatalog
         new("checkout", "001-bootstrap"),
         new("checkout", "002-shipping-expense"),
         new("promotions", "001-coupons"),
+        new("promotions", "002-rule-snapshots"),
         new("customers", "001-bootstrap"),
         new("orders", "001-bootstrap"),
         new("orders", "002-internal-notes"),

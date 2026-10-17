@@ -140,7 +140,7 @@ class _PromotionsPageState extends State<PromotionsPage> {
         child: Padding(
           padding: EdgeInsets.all(18),
           child: Text(
-            'درصدی، مبلغ ثابت یا ارسال رایگان بسازید؛ زمان و سقف مصرف را مشخص کنید و با یک SKU نمونه اثر تخفیف بر سود را ببینید. هر سفارش فقط یک کوپن دارد. مبالغ فرم به تومان هستند.',
+            'درصدی، مبلغ ثابت یا ارسال رایگان بسازید؛ زمان و سقف مصرف را مشخص کنید و با یک SKU نمونه اثر تخفیف بر سود را ببینید. پک، خرید و هدیه، دامنهٔ مشتری/شهر/دسته و کمپین خودکار هم قابل تنظیم‌اند. هر سفارش یک تخفیف دارد. مبالغ فرم به تومان هستند.',
           ),
         ),
       ),
@@ -188,10 +188,12 @@ class _PromotionsPageState extends State<PromotionsPage> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  '$state • مصرف: ${formatPersianInteger(row['uses'] as num)} از ${rule['maxUses'] ?? 'نامحدود'}\nتخفیف سفارش‌های پرداخت‌شده: ${formatToman(row['discountTotal'] as num)} تومان',
+                  '$state • مصرف: ${formatPersianInteger(row['uses'] as num)} از ${rule['maxUses'] == null ? 'نامحدود' : formatPersianInteger(rule['maxUses'] as num)}\nپرداخت‌شده: ${formatPersianInteger(row['paidOrders'] as num? ?? 0)} سفارش • تخفیف: ${formatToman(row['discountTotal'] as num)} تومان\nفروش پرداخت‌شده: ${formatToman(row['revenue'] as num? ?? 0)} تومان${rule['automatic'] == true ? ' • خودکار' : ''}',
                 ),
                 isThreeLine: true,
-                trailing: OwnerSession.instance.can('pricing.write')
+                trailing:
+                    OwnerSession.instance.can('pricing.write') &&
+                        row['customerScopeHidden'] != true
                     ? IconButton(
                         tooltip: 'ویرایش ${row['code']}',
                         onPressed: () => edit(row),
@@ -220,6 +222,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   var kind = 'Percent';
   var active = false;
   var allowLoss = false;
+  var automatic = false;
+  var firstOrderOnly = false;
   var busy = false;
   String? error;
   Map<String, dynamic>? preview;
@@ -254,6 +258,27 @@ class _PromotionEditorState extends State<_PromotionEditor> {
             .substring(0, 16);
     field('quantity').text = '1';
     field('shipping').text = 'post';
+    automatic = rule?['automatic'] == true;
+    firstOrderOnly = rule?['firstOrderOnly'] == true;
+    for (final key in [
+      'categories',
+      'cities',
+      'customerMobiles',
+      'rewardSkus',
+    ]) {
+      field(key).text = (rule?[key] as List? ?? []).join(', ');
+    }
+    field('perCustomer').text = '${rule?['maxUsesPerCustomer'] ?? ''}';
+    field('priority').text = '${rule?['priority'] ?? 0}';
+    field('buy').text = '${rule?['buyQuantity'] ?? 1}';
+    field('get').text = '${rule?['getQuantity'] ?? 1}';
+    field('applications').text = '${rule?['maxApplications'] ?? ''}';
+    field('bundlePrice').text = rule?['bundlePrice'] == null
+        ? ''
+        : '${(rule!['bundlePrice'] as num) / 10}';
+    field('bundleItems').text = (rule?['bundleItems'] as List? ?? [])
+        .map((x) => '${x['sku']}:${x['quantity']}')
+        .join(', ');
   }
 
   @override
@@ -266,10 +291,31 @@ class _PromotionEditorState extends State<_PromotionEditor> {
 
   num number(String key) =>
       num.tryParse(normalizeNumberDigits(field(key).text)) ?? 0;
+  List<String> csv(String key) => field(key).text
+      .replaceAll('،', ',')
+      .split(',')
+      .map((s) => s.trim())
+      .where((s) => s.isNotEmpty)
+      .toList();
+  List<Map<String, dynamic>> basket(String key) => csv(key).map((s) {
+    final parts = s.split(':');
+    final qty = parts.length == 2
+        ? int.tryParse(normalizeNumberDigits(parts[1].trim()))
+        : null;
+    if (parts.length != 2 ||
+        parts[0].trim().isEmpty ||
+        qty == null ||
+        qty < 1 ||
+        qty > 50)
+      throw Exception(
+        'اقلام را به شکل SKU:تعداد وارد کنید؛ مانند A-250:2, B-250:1',
+      );
+    return <String, dynamic>{'sku': parts[0].trim(), 'quantity': qty};
+  }).toList();
   Map<String, dynamic> rule() => {
     'name': field('name').text.trim(),
     'kind': kind,
-    'value': kind == 'FreeShipping'
+    'value': !['Percent', 'Fixed'].contains(kind)
         ? 0
         : number('value') * (kind == 'Fixed' ? 10 : 1),
     'active': active,
@@ -280,10 +326,26 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     'maxUses': field('uses').text.trim().isEmpty
         ? null
         : number('uses').toInt(),
-    'skus': field(
-      'skus',
-    ).text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+    'skus': kind == 'Bundle' ? [] : csv('skus'),
     'allowLoss': allowLoss,
+    'automatic': automatic,
+    'priority': number('priority').toInt(),
+    'combinationPolicy': 'Exclusive',
+    'categories': kind == 'Bundle' ? [] : csv('categories'),
+    'cities': csv('cities'),
+    'customerMobiles': csv('customerMobiles'),
+    'firstOrderOnly': firstOrderOnly,
+    'maxUsesPerCustomer': field('perCustomer').text.trim().isEmpty
+        ? null
+        : number('perCustomer').toInt(),
+    'buyQuantity': number('buy').toInt(),
+    'getQuantity': number('get').toInt(),
+    'rewardSkus': csv('rewardSkus'),
+    'maxApplications': field('applications').text.trim().isEmpty
+        ? null
+        : number('applications').toInt(),
+    'bundleItems': kind == 'Bundle' ? basket('bundleItems') : null,
+    'bundlePrice': kind == 'Bundle' ? number('bundlePrice') * 10 : null,
   };
   Future<void> run(bool save) async {
     if (form.currentState?.validate() != true) return;
@@ -305,7 +367,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         if (mounted) Navigator.pop(context, true);
       } else {
         final quantity = number('quantity');
-        if (field('sku').text.trim().isEmpty ||
+        if (field('basket').text.trim().isEmpty &&
+                field('sku').text.trim().isEmpty ||
             quantity < 1 ||
             quantity != quantity.toInt())
           throw Exception('برای پیش‌نمایش یک SKU و تعداد صحیح وارد کنید.');
@@ -314,9 +377,16 @@ class _PromotionEditorState extends State<_PromotionEditor> {
           '/preview',
           body: {
             'rule': payload,
-            'lines': [
-              {'sku': field('sku').text.trim(), 'quantity': quantity.toInt()},
-            ],
+            'lines': field('basket').text.trim().isNotEmpty
+                ? basket('basket')
+                : [
+                    {
+                      'sku': field('sku').text.trim(),
+                      'quantity': quantity.toInt(),
+                    },
+                  ],
+            'mobile': field('sampleMobile').text.trim(),
+            'city': field('sampleCity').text.trim(),
             'shippingMethod': field('shipping').text.trim(),
           },
         );
@@ -358,13 +428,34 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       validator: (value) {
         if (required && (value?.trim().isEmpty ?? true))
           return 'این فیلد را کامل کنید.';
-        if (['value', 'min', 'max', 'uses', 'quantity'].contains(key) &&
+        if ([
+              'value',
+              'min',
+              'max',
+              'uses',
+              'quantity',
+              'perCustomer',
+              'priority',
+              'buy',
+              'get',
+              'applications',
+              'bundlePrice',
+            ].contains(key) &&
             (value?.trim().isNotEmpty ?? false)) {
           final n = num.tryParse(normalizeNumberDigits(value!));
           if (n == null ||
               !n.isFinite ||
               n < 0 ||
-              (['uses', 'quantity'].contains(key) && n != n.toInt()))
+              ([
+                    'uses',
+                    'quantity',
+                    'perCustomer',
+                    'priority',
+                    'buy',
+                    'get',
+                    'applications',
+                  ].contains(key) &&
+                  n != n.toInt()))
             return 'عدد معتبر وارد کنید.';
         }
         if (date && DateTime.tryParse(value ?? '') == null)
@@ -409,6 +500,14 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                           value: 'FreeShipping',
                           child: Text('ارسال رایگان'),
                         ),
+                        DropdownMenuItem(
+                          value: 'BuyGet',
+                          child: Text('خرید X و هدیه Y'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Bundle',
+                          child: Text('پک با قیمت مشخص'),
+                        ),
                       ],
                       onChanged: busy
                           ? null
@@ -418,7 +517,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                             }),
                     ),
                   ),
-                  if (kind != 'FreeShipping')
+                  if (['Percent', 'Fixed'].contains(kind))
                     input(
                       'value',
                       kind == 'Percent' ? 'درصد تخفیف' : 'مبلغ تخفیف (تومان)',
@@ -427,7 +526,27 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('min', 'حداقل سبد (تومان)'),
                   input('max', 'سقف تخفیف (تومان؛ اختیاری)'),
                   input('uses', 'سقف تعداد مصرف (اختیاری)'),
-                  input('skus', 'SKUهای مجاز با کاما؛ خالی یعنی همه'),
+                  if (kind != 'Bundle')
+                    input('skus', 'SKUهای خرید با کاما؛ خالی یعنی همه'),
+                  if (kind == 'BuyGet') ...[
+                    input('buy', 'تعداد خرید X', required: true),
+                    input('get', 'تعداد هدیه Y', required: true),
+                    input('rewardSkus', 'SKUهای هدیه؛ خالی یعنی کالاهای خرید'),
+                  ],
+                  if (kind == 'Bundle') ...[
+                    input(
+                      'bundleItems',
+                      'اقلام پک؛ A-250:2, B-250:1',
+                      required: true,
+                    ),
+                    input(
+                      'bundlePrice',
+                      'قیمت نهایی یک پک (تومان)',
+                      required: true,
+                    ),
+                  ],
+                  if (['BuyGet', 'Bundle'].contains(kind))
+                    input('applications', 'سقف تکرار پیشنهاد در هر سفارش'),
                   input(
                     'start',
                     'شروع به وقت این سیستم؛ YYYY-MM-DD HH:mm',
@@ -448,6 +567,53 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                     : (v) => setState(() {
                         active = v;
                       }),
+              ),
+              ExpansionTile(
+                title: const Text('دامنه، مشتری و انتخاب کمپین'),
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      'هر سفارش یک تخفیف دارد. کد واردشده مقدم است؛ بدون کد، بالاترین اولویت و سپس بیشترین تخفیف انتخاب می‌شود. هدیه باید در سبد باشد و موجودی آن رزرو می‌شود. محدودیت مشتری بر اساس شمارهٔ تماس سفارش مهمان است و جای تأیید هویت نیست.',
+                    ),
+                  ),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      if (kind != 'Bundle')
+                        input('categories', 'دسته‌های کالا با کاما؛ اختیاری'),
+                      input('cities', 'شهرهای مجاز با کاما؛ اختیاری'),
+                      if (OwnerSession.instance.can('customers.pii.read'))
+                        input(
+                          'customerMobiles',
+                          'موبایل مشتری‌های مجاز با کاما',
+                        ),
+                      input('perCustomer', 'سقف مصرف هر مشتری؛ اختیاری'),
+                      input('priority', 'اولویت کمپین؛ ۰ تا ۱۰۰۰'),
+                    ],
+                  ),
+                  SwitchListTile(
+                    title: const Text('اعمال خودکار بدون نیاز به کد'),
+                    value: automatic,
+                    onChanged: busy
+                        ? null
+                        : (v) => setState(() {
+                            automatic = v;
+                            preview = null;
+                          }),
+                  ),
+                  SwitchListTile(
+                    title: const Text('فقط اولین سفارش این شماره تماس'),
+                    value: firstOrderOnly,
+                    onChanged: busy
+                        ? null
+                        : (v) => setState(() {
+                            firstOrderOnly = v;
+                            preview = null;
+                          }),
+                  ),
+                ],
               ),
               if (OwnerSession.instance.role == 'Owner')
                 CheckboxListTile(
@@ -474,6 +640,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('sku', 'SKU نمونه'),
                   input('quantity', 'تعداد'),
                   input('shipping', 'کد ارسال؛ post یا pickup'),
+                  input('basket', 'سبد چندقلمی؛ A-250:2, B-250:1'),
+                  if (OwnerSession.instance.can('customers.pii.read'))
+                    input('sampleMobile', 'موبایل سبد نمونه'),
+                  input('sampleCity', 'شهر سبد نمونه'),
                 ],
               ),
               const SizedBox(height: 12),

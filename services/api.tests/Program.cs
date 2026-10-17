@@ -19,6 +19,8 @@ static void CheckZibalVerifyPayloads(SequenceHttpMessageHandler handler)
 static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string json) =>
     new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 var now = DateTimeOffset.UtcNow;
+Check(DatabaseMigrationRunner.Checksum("select 1;\r\nselect 2;") == DatabaseMigrationRunner.Checksum("select 1;\nselect 2;"), "Migration checksum changed with platform line endings");
+Check(DatabaseMigrationRunner.Checksum("select 1;") != DatabaseMigrationRunner.Checksum("select 2;"), "Migration checksum ignored a real SQL edit");
 var promoRule = new PromotionInput("Welcome", "Percent", 10, true, now.AddDays(-1), now.AddDays(1));
 CheckoutLine[] promoLines = [new("A", "A-250", "250g", 2, 1000, 2000, 300, 20, 10), new("B", "B-250", "250g", 1, 1000, 1000, 300)];
 var promoBase = new CommerceQuote("post", 200, 150, 10, 300, 3500);
@@ -38,6 +40,32 @@ Check(PromotionRules.Validate("OK1", promoRule with { Value = 101 }).ContainsKey
 Check(PromotionRules.Validate("OK1", promoRule with { MaxUses = 0 }).ContainsKey("limits"), "Zero use cap accepted");
 Check(PromotionRules.Validate("OK1", promoRule with { EndsAt = promoRule.StartsAt }).ContainsKey("endsAt"), "Invalid schedule accepted");
 Console.WriteLine("Promotion arithmetic, caps, costs, scope and validation checks passed");
+var promoContext = new PromotionContext("+989121234567", "تهران", new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase) {["A-250"]="Nuts",["B-250"]="Gifts"});
+Check(PromotionRules.Calculate(promoRule with {Categories=["nuts"]},promoLines,promoBase,promoContext).Discount==200,"Category scope ignored");
+Check(PromotionRules.Calculate(promoRule with {Cities=["شیراز"]},promoLines,promoBase,promoContext).Error!=null,"City scope ignored");
+Check(PromotionRules.Calculate(promoRule with {CustomerMobiles=["۰۹۱۲۱۲۳۴۵۶۷"]},promoLines,promoBase,promoContext).Error==null,"Normalized customer scope rejected");
+Check(PromotionRules.Calculate(promoRule with {FirstOrderOnly=true},promoLines,promoBase,promoContext with {ExistingOrders=1}).Error!=null,"First order history ignored");
+Check(PromotionRules.Calculate(promoRule with {MaxUsesPerCustomer=1},promoLines,promoBase,promoContext with {CustomerUses=1}).Error!=null,"Per-contact cap ignored");
+Check(PromotionRules.Calculate(promoRule with {FirstOrderOnly=true},promoLines,promoBase).Error!=null,"Missing contact accepted for personal campaign");
+var bundleRule = promoRule with {Kind="Bundle",Value=0,BundleItems=[new("A-250",2),new("B-250",1)],BundlePrice=2400};
+Check(PromotionRules.Validate("PACK1",bundleRule).Count==0,"Valid bundle rejected");
+var bundleQuote=PromotionRules.Calculate(bundleRule,promoLines,promoBase);
+Check(bundleQuote.Discount==600 && bundleQuote.Tax==240 && bundleQuote.Payable==2840,"Bundle price/tax incorrect");
+Check(PromotionRules.Calculate(bundleRule,promoLines.Take(1).ToArray(),promoBase).Error!=null,"Incomplete bundle accepted");
+Check(PromotionRules.Calculate(bundleRule with {BundlePrice=4000},promoLines,promoBase).Error!=null,"Non-discounting bundle accepted");
+Check(PromotionRules.Validate("PACK1",bundleRule with {BundleItems=[new("A",1),new("a",2)]}).ContainsKey("bundleItems"),"Duplicate bundle SKU accepted");
+var buyGet = promoRule with {Kind="BuyGet",Value=0,BuyQuantity=2,GetQuantity=1};
+var freeQuote=PromotionRules.Calculate(buyGet,promoLines,promoBase);
+Check(freeQuote.Discount==1000,"Buy two get one basket allocation incorrect");
+Check(PromotionRules.Calculate(buyGet,promoLines.Take(1).ToArray(),promoBase).Error!=null,"Purchase units reused as gift units");
+CheckoutLine[] rewardLines=[new("A","A","A",4,100,400),new("B","B","B",2,90,180)];
+Check(PromotionRules.Calculate(buyGet with {Skus=["A"],RewardSkus=["B"]},rewardLines,promoBase).Discount==180,"Separate reward SKU calculation incorrect");
+Check(PromotionRules.Calculate(buyGet with {Skus=["A"],RewardSkus=["B"],MaxApplications=1},rewardLines,promoBase).Discount==90,"Gift repeat cap ignored");
+Check(PromotionRules.Calculate(buyGet with {MaxDiscount=500},promoLines,promoBase).Discount==500,"Gift monetary cap ignored");
+Check(AdvancedPromotionRules.Mobile("٠٩١٢١٢٣٤٥٦٧")=="09121234567","Arabic mobile normalization incorrect");
+Check(PromotionRules.Validate("RULE1",promoRule with {CombinationPolicy="Stack"}).ContainsKey("combinationPolicy"),"Incompatible stacking accepted");
+Console.WriteLine("Advanced promotion bundle, gifts, category/contact/city, first-order and repeat-cap checks passed");
+
 
 var valid = new InventoryBatchRequest("SKU", "receipt", 2, now.AddDays(-2), now.AddDays(100), 100, 20, 5, now.AddDays(-1), "supplier");
 Check(valid.Validate().Count == 0, "Valid receipt rejected");
