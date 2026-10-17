@@ -127,6 +127,8 @@ def run():
     status, listing = request('/api/v1/admin/promotions', auth=True)
     campaign = next(p for p in check(status, 200, listing) if p['code'] == PREFIX)
     assert campaign['uses'] == 1 and campaign['discountTotal'] == 50000, campaign
+    status, data = request('/api/v1/products/' + PREFIX.lower() + '/publication', 'PATCH', {'isPublished': False}, True)
+    check(status, 200, data)
     print('Promotions: real DB, preview, auth/step-up, concurrent cap, rollback, idempotency, immutable snapshot, sandbox payment and reporting passed')
 
 

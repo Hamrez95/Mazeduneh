@@ -141,7 +141,7 @@ if(-not $SkipBuild) {
   Push-Location (Join-Path $root 'apps/storefront')
   try {if(-not(Test-Path node_modules/next)){& $npm ci --no-audit --no-fund;if($LASTEXITCODE -ne 0){throw 'Storefront dependency setup failed.'}}} finally {Pop-Location}
   Push-Location (Join-Path $root 'apps/admin')
-  try {if(-not(Test-Path .dart_tool/package_config.json)){& $flutter --no-version-check pub get; if($LASTEXITCODE -ne 0){throw 'Admin dependency setup failed.'}}; & $flutter --no-version-check build web --no-pub --release --target lib/secure_main.dart "--dart-define=MAZEDUNEH_API_BASE_URL=$apiUrl";if($LASTEXITCODE -ne 0){throw 'Admin browser build failed.'}} finally {Pop-Location}
+  try {if(-not(Test-Path .dart_tool/package_config.json)){& $flutter --no-version-check pub get; if($LASTEXITCODE -ne 0){throw 'Admin dependency setup failed.'}}; & $flutter --no-version-check build web --no-pub --release --no-web-resources-cdn --target lib/secure_main.dart "--dart-define=MAZEDUNEH_API_BASE_URL=$apiUrl";if($LASTEXITCODE -ne 0){throw 'Admin browser build failed.'}} finally {Pop-Location}
 }
 $dll=Join-Path $build 'Mazeduneh.Api.dll'
 function Quote-Arg([string]$s){'"'+$s.Replace('"','\"')+'"'}
