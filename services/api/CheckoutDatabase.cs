@@ -88,6 +88,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         if (!IsConfigured)
             throw new InvalidOperationException("Checkout database is not configured.");
 
+        if(AdvancedPromotionRules.ValidMobile(request.Mobile))request=request with {Mobile=AdvancedPromotionRules.Mobile(request.Mobile)};
         try
         {
             await using var connection = new NpgsqlConnection(_connectionString);
@@ -103,6 +104,13 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                     : PersistedCheckoutResult.Conflict("این Idempotency-Key قبلاً برای درخواست دیگری استفاده شده است.");
             }
 
+            // Serialize all orders for a contact before stock locks, including orders without coupons.
+            // This makes first-order limits correct across campaigns and different SKUs.
+            await using(var customerLock=new NpgsqlCommand("select pg_advisory_xact_lock(hashtextextended(@contact,0))",connection,transaction))
+            {
+                customerLock.Parameters.AddWithValue("contact","promotion-contact:"+AdvancedPromotionRules.Mobile(request.Mobile));
+                await customerLock.ExecuteNonQueryAsync(cancellationToken);
+            }
             var lines = new List<CheckoutLine>();
             var unavailable = new List<string>();
 
@@ -259,17 +267,13 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             var quote = quoteResult.Quote;
             PromotionQuote? promotionQuote = null;
             string? couponCode = null;
-            if (!string.IsNullOrWhiteSpace(request.CouponCode))
+            var evaluation = await promotions.SelectAsync(connection,transaction,request.CouponCode,lines,quote,true,request.Mobile,request.City,cancellationToken);
+            if(evaluation.Error is not null)
             {
-                var evaluation = await promotions.EvaluateAsync(connection, transaction, request.CouponCode, lines, quote, true, cancellationToken);
-                if (evaluation.Quote is null)
-                {
-                    await transaction.RollbackAsync(cancellationToken);
-                    return PersistedCheckoutResult.Conflict(evaluation.Error ?? "کد تخفیف معتبر نیست.");
-                }
-                promotionQuote = evaluation.Quote;
-                couponCode = evaluation.Promotion!.Code;
+                await transaction.RollbackAsync(cancellationToken);
+                return PersistedCheckoutResult.Conflict(evaluation.Error);
             }
+            promotionQuote=evaluation.Quote;couponCode=evaluation.Promotion?.Code;
             var now = DateTimeOffset.UtcNow;
             var order = new CheckoutOrder(
                 Guid.NewGuid(),

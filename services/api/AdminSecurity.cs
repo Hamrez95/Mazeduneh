@@ -661,7 +661,8 @@ public static class AdminPermissionCatalog
         // An unfiltered audit query can include order snapshots, so it needs the
         // same PII permission as an explicitly filtered order audit query.
         return string.IsNullOrEmpty(entityType) ||
-            string.Equals(entityType, "Order", StringComparison.OrdinalIgnoreCase);
+            string.Equals(entityType, "Order", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(entityType, "Promotion", StringComparison.OrdinalIgnoreCase);
     }
 
 }

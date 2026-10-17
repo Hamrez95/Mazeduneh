@@ -6,6 +6,8 @@ public sealed record DatabaseMigrationInfo(string Component, string Version, Dat
 
 public static class DatabaseMigrationRunner
 {
+    public static string CanonicalSql(string sql) => sql.Replace("\r\n", "\n").Replace('\r', '\n');
+    public static string Checksum(string sql) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CanonicalSql(sql))));
     public static async Task ApplyAsync(
         NpgsqlConnection connection,
         string component,
@@ -16,8 +18,7 @@ public static class DatabaseMigrationRunner
         if (connection.State != System.Data.ConnectionState.Open)
             throw new InvalidOperationException("Migration connection must be open.");
 
-        var checksum = Convert.ToHexString(
-            SHA256.HashData(Encoding.UTF8.GetBytes(sql)));
+        var checksum = Checksum(sql);
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
@@ -62,10 +63,23 @@ public static class DatabaseMigrationRunner
 
         if (appliedChecksum is not null)
         {
-            if (!string.Equals(appliedChecksum, checksum, StringComparison.Ordinal))
+            // Older builds hashed raw C# string line endings. Recognize only exact
+            // LF/CRLF variants of this SQL, then upgrade the ledger to the portable hash.
+            var legacyWindows = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(CanonicalSql(sql).Replace("\n", "\r\n"))));
+            var legacyRaw = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sql)));
+            if (!string.Equals(appliedChecksum, checksum, StringComparison.Ordinal) && appliedChecksum != legacyWindows && appliedChecksum != legacyRaw)
                 throw new InvalidOperationException(
                     $"Migration checksum mismatch for {component}/{version}. " +
                     "The applied migration must not be edited; create a new version instead.");
+
+            if(appliedChecksum != checksum)
+            {
+                await using var normalize = new NpgsqlCommand("update schema_migrations set checksum=@checksum where component=@component and version=@version",connection,transaction);
+                normalize.Parameters.AddWithValue("checksum",checksum);
+                normalize.Parameters.AddWithValue("component",component);
+                normalize.Parameters.AddWithValue("version",version);
+                await normalize.ExecuteNonQueryAsync(cancellationToken);
+            }
 
             await transaction.CommitAsync(cancellationToken);
             return;
