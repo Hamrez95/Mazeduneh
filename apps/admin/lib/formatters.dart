@@ -1,7 +1,49 @@
+import 'package:flutter/services.dart';
+
 String toPersianDigits(Object? value) {
   final text = value?.toString() ?? '';
   const digits = '۰۱۲۳۴۵۶۷۸۹';
   return text.replaceAllMapped(RegExp(r'[0-9]'), (match) => digits[int.parse(match.group(0)!)]);
+}
+
+class PersianDigitsInputFormatter extends TextInputFormatter {
+  const PersianDigitsInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    const arabic = '٠١٢٣٤٥٦٧٨٩';
+    final text = newValue.text.replaceAllMapped(RegExp(r'[0-9٠-٩]'), (match) {
+      final digit = match.group(0)!;
+      return persian[int.tryParse(digit) ?? arabic.indexOf(digit)];
+    });
+    return newValue.copyWith(text: text, composing: TextRange.empty);
+  }
+}
+
+class PersianGroupedIntegerInputFormatter extends TextInputFormatter {
+  const PersianGroupedIntegerInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    // Keep decimal input visible so integer validators can reject it instead of
+    // silently turning e.g. ۱٫۵ into ۱۵.
+    if (RegExp(r'[.٫]').hasMatch(newValue.text)) {
+      return const PersianDigitsInputFormatter().formatEditUpdate(oldValue, newValue);
+    }
+    final digits = normalizeNumberDigits(newValue.text).replaceAll(RegExp(r'[^0-9]'), '');
+    final formatted = toPersianDigits(_groupDigits(digits));
+    final cursorPosition = newValue.selection.extentOffset.clamp(0, newValue.text.length).toInt();
+    final digitsBeforeCursor = normalizeNumberDigits(newValue.text.substring(0, cursorPosition))
+        .replaceAll(RegExp(r'[^0-9]'), '').length;
+    var offset = 0;
+    var digitCount = 0;
+    while (offset < formatted.length && digitCount < digitsBeforeCursor) {
+      if (RegExp(r'[۰-۹]').hasMatch(formatted[offset])) digitCount++;
+      offset++;
+    }
+    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: offset));
+  }
 }
 
 String _normalizeDigitsAndSeparators(String value) {

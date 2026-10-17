@@ -27,7 +27,11 @@ function imageFor(product: DemoProduct) {
 export function getProductArtworkGallery(product: DemoProduct) {
   const primary = imageFor(product);
   const managedGallery = product.galleryImages ?? [];
-  const fallbackGallery = galleryByArt[product.art] ?? [];
+  // Products loaded from the live catalog must show only their own media. The
+  // artwork gallery is a demo fallback and should never leak into live products.
+  const fallbackGallery = managedGallery.length || product.primaryImage?.trim()
+    ? []
+    : galleryByArt[product.art] ?? [];
   return Array.from(new Set([primary, ...managedGallery, ...(managedGallery.length ? [] : fallbackGallery)]));
 }
 

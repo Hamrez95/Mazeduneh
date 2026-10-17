@@ -44,7 +44,9 @@ class _BatchDialogState extends State<BatchDialog> {
     return parsed?.toIso8601String().substring(0, 10) == normalized ? parsed : null;
   }
   Widget dateField(String key, String label) => TextFormField(
-    controller: fields[key], decoration: InputDecoration(labelText: label, helperText: 'میلادی؛ سال-ماه-روز',
+    controller: fields[key],
+    inputFormatters: const [PersianDigitsInputFormatter()],
+    decoration: InputDecoration(labelText: label, helperText: 'میلادی؛ سال-ماه-روز',
       suffixIcon: IconButton(tooltip: 'انتخاب $label', onPressed: saving ? null : () async {
         final now = DateTime.now();
         final selected = await showDatePicker(context: context, initialDate: date(fields[key]!.text) ?? now,
@@ -59,7 +61,7 @@ class _BatchDialogState extends State<BatchDialog> {
       return null;
     });
   Widget money(String key, String label) => TextFormField(controller: fields[key],
-    keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: '$label هر بسته (تومان)'),
+    keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianDigitsInputFormatter()], decoration: InputDecoration(labelText: '$label هر بسته (تومان)'),
     validator: (value) { final n = parsePersianNumber(value); return n == null || !n.isFinite || n < 0 || n > 100000000000 ? 'مبلغ معتبر بین صفر و ۱۰۰ میلیارد تومان وارد کنید.' : null; });
   Future<void> save() async {
     if (!form.currentState!.validate()) return;
@@ -94,12 +96,12 @@ class _BatchDialogState extends State<BatchDialog> {
         TextFormField(controller: fields['supplier'], maxLength: 200, decoration: const InputDecoration(labelText: 'نام تأمین‌کننده'),
           validator: (v) => v == null || v.trim().isEmpty ? 'نام تأمین‌کننده را وارد کنید.' : null),
         TextFormField(controller: fields['supplierContactName'], maxLength: 200, decoration: const InputDecoration(labelText: 'نام شخص تماس (اختیاری)')),
-        TextFormField(controller: fields['supplierPhone'], maxLength: 40, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'شماره تماس تأمین‌کننده (اختیاری)')),
+        TextFormField(controller: fields['supplierPhone'], maxLength: 40, keyboardType: TextInputType.phone, inputFormatters: const [PersianDigitsInputFormatter()], decoration: const InputDecoration(labelText: 'شماره تماس تأمین‌کننده (اختیاری)')),
         TextFormField(controller: fields['supplierEmail'], maxLength: 254, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'ایمیل تأمین‌کننده (اختیاری)'),
           validator: (v) { final email = v?.trim() ?? ''; return email.isEmpty || RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email) ? null : 'ایمیل معتبر وارد کنید.'; }),
         TextFormField(controller: fields['supplierAddress'], maxLength: 500, maxLines: 2, decoration: const InputDecoration(labelText: 'نشانی تأمین‌کننده (اختیاری)')),
         TextFormField(controller: fields['supplierNotes'], maxLength: 1000, maxLines: 2, decoration: const InputDecoration(labelText: 'یادداشت دربارهٔ تأمین‌کننده (اختیاری)')),
-        TextFormField(controller: fields['quantity'], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'تعداد بستهٔ خریداری‌شده'),
+        TextFormField(controller: fields['quantity'], keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'تعداد بستهٔ خریداری‌شده'),
           validator: (v) => parsePersianInteger(v, min: 1, max: maxInventoryAdjustment) == null
               ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.'
               : null),

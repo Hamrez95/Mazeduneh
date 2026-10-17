@@ -238,25 +238,30 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     allowLoss = rule?['allowLoss'] == true;
     field('code').text = widget.item?['code'] as String? ?? '';
     field('name').text = rule?['name'] as String? ?? '';
-    field('value').text =
-        '${((rule?['value'] as num? ?? 10) / (kind == 'Fixed' ? 10 : 1))}';
-    field('min').text = '${(rule?['minSubtotal'] as num? ?? 0) / 10}';
+    final promotionValue = (rule?['value'] as num? ?? 10) /
+        (kind == 'Fixed' ? 10 : 1);
+    field('value').text = kind == 'Fixed'
+        ? formatPersianInteger(promotionValue)
+        : toPersianDigits(promotionValue);
+    field('min').text = formatPersianInteger(
+      (rule?['minSubtotal'] as num? ?? 0) / 10,
+    );
     field('max').text = rule?['maxDiscount'] == null
         ? ''
-        : '${(rule!['maxDiscount'] as num) / 10}';
-    field('uses').text = '${rule?['maxUses'] ?? ''}';
+        : formatPersianInteger((rule!['maxDiscount'] as num) / 10);
+    field('uses').text = toPersianDigits(rule?['maxUses'] ?? '');
     field('skus').text = (rule?['skus'] as List? ?? []).join(', ');
-    field('start').text =
+    field('start').text = toPersianDigits(
         (DateTime.tryParse(rule?['startsAt'] as String? ?? '')?.toLocal() ??
                 DateTime.now().subtract(const Duration(minutes: 1)))
             .toString()
-            .substring(0, 16);
-    field('end').text =
+            .substring(0, 16));
+    field('end').text = toPersianDigits(
         (DateTime.tryParse(rule?['endsAt'] as String? ?? '')?.toLocal() ??
                 DateTime.now().add(const Duration(days: 30)))
             .toString()
-            .substring(0, 16);
-    field('quantity').text = '1';
+            .substring(0, 16));
+    field('quantity').text = '۱';
     field('shipping').text = 'post';
     automatic = rule?['automatic'] == true;
     firstOrderOnly = rule?['firstOrderOnly'] == true;
@@ -319,8 +324,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         ? 0
         : number('value') * (kind == 'Fixed' ? 10 : 1),
     'active': active,
-    'startsAt': DateTime.parse(field('start').text).toUtc().toIso8601String(),
-    'endsAt': DateTime.parse(field('end').text).toUtc().toIso8601String(),
+    'startsAt': DateTime.parse(normalizeNumberDigits(field('start').text)).toUtc().toIso8601String(),
+    'endsAt': DateTime.parse(normalizeNumberDigits(field('end').text)).toUtc().toIso8601String(),
     'minSubtotal': number('min') * 10,
     'maxDiscount': field('max').text.trim().isEmpty ? null : number('max') * 10,
     'maxUses': field('uses').text.trim().isEmpty
@@ -424,6 +429,28 @@ class _PromotionEditorState extends State<_PromotionEditor> {
           });
       },
       enabled: !busy && !(key == 'code' && widget.item != null),
+      inputFormatters: [
+        if (date)
+          const PersianDigitsInputFormatter()
+        else if ([
+          'value',
+          'min',
+          'max',
+          'uses',
+          'quantity',
+          'perCustomer',
+          'priority',
+          'buy',
+          'get',
+          'applications',
+          'bundlePrice',
+        ].contains(key))
+          if (key == 'value' && kind == 'Fixed' ||
+              ['min', 'max', 'bundlePrice'].contains(key))
+            const PersianGroupedIntegerInputFormatter()
+          else
+            const PersianDigitsInputFormatter(),
+      ],
       decoration: InputDecoration(labelText: label),
       validator: (value) {
         if (required && (value?.trim().isEmpty ?? true))
@@ -458,7 +485,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   n != n.toInt()))
             return 'عدد معتبر وارد کنید.';
         }
-        if (date && DateTime.tryParse(value ?? '') == null)
+        if (date && DateTime.tryParse(normalizeNumberDigits(value ?? '')) == null)
           return 'مثال: 2026-10-17 14:30';
         return null;
       },

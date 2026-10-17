@@ -40,7 +40,7 @@ class AuthApiClient {
         'password': password,
         'storeId': storeId,
         if (mfaCode != null && mfaCode.trim().isNotEmpty)
-          'mfaCode': mfaCode.trim(),
+          'mfaCode': _asciiDigits(mfaCode.trim()),
       }),
     );
 

@@ -31,7 +31,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   final _primaryImage = TextEditingController();
   final _galleryImages = TextEditingController();
   late String _category;
-  late final List<ProductVariant> _variants;
+  late final List<_VariantDraft> _variants;
 
   @override
   void initState() {
@@ -50,7 +50,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     _primaryImage.text = product.primaryImage;
     _galleryImages.text = product.galleryImages.join('\n');
     _category = product.category;
-    _variants = product.variants.toList();
+    _variants = product.variants.map(_VariantDraft.new).toList();
   }
 
   @override
@@ -65,6 +65,9 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     _specifications.dispose();
     _primaryImage.dispose();
     _galleryImages.dispose();
+    for (final variant in _variants) {
+      variant.dispose();
+    }
     super.dispose();
   }
 
@@ -72,12 +75,12 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('ویرایش محصول'),
     content: SizedBox(
-      width: MediaQuery.sizeOf(context).width < 600
+      width: MediaQuery.sizeOf(context).width < 920
           ? MediaQuery.sizeOf(context).width - 48
-          : 560,
+          : 820,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .72,
+          maxHeight: MediaQuery.sizeOf(context).height * .78,
         ),
         child: Form(
           key: _formKey,
@@ -231,7 +234,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     widget.product.category,
   }.toList();
 
-  Widget _variantFields(ProductVariant variant) => Padding(
+  Widget _variantFields(_VariantDraft variant) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: Card(
       child: Padding(
@@ -239,25 +242,15 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '${variant.displayLabel} · ${variant.sku}',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'قیمت فروش: ${formatPersianInteger(variant.price)} ریال',
-              style: const TextStyle(color: AdminColors.muted, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'موجودی فعلی: ${formatPersianInteger(variant.availablePackages)} بسته',
-              style: const TextStyle(color: AdminColors.muted, fontSize: 12),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'برای تغییر قیمت از بخش قیمت‌گذاری و برای اصلاح موجودی از بخش انبار استفاده کنید.',
-              style: TextStyle(color: AdminColors.muted, fontSize: 11),
-            ),
+            const Text('بسته و قیمت', style: TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              SizedBox(width: 200, child: TextFormField(controller: variant.sku, enabled: false, textDirection: TextDirection.ltr, decoration: const InputDecoration(labelText: 'کد انبار (SKU)', helperText: 'برای حفظ سوابق انبار ثابت می‌ماند.'))),
+              SizedBox(width: 180, child: TextFormField(controller: variant.label, decoration: const InputDecoration(labelText: 'عنوان بسته'), validator: _required)),
+              SizedBox(width: 150, child: TextFormField(controller: variant.quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianDigitsInputFormatter()], decoration: InputDecoration(labelText: widget.product.unitType == 'Weight' ? 'وزن (گرم)' : 'تعداد'), validator: (value) { final number = parsePersianNumber(value); return number == null || !number.isFinite || number <= 0 || widget.product.unitType == 'Count' && number != number.roundToDouble() ? 'مقدار معتبر وارد کنید.' : null; })),
+              SizedBox(width: 190, child: TextFormField(controller: variant.price, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'قیمت فروش (ریال)'), validator: (value) => parsePersianInteger(value, min: 0) == null ? 'قیمت معتبر وارد کنید.' : null)),
+              SizedBox(width: 150, child: TextFormField(controller: variant.stock, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'موجودی (بسته)'), validator: (value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null ? 'موجودی معتبر وارد کنید.' : null)),
+            ]),
           ],
         ),
       ),
@@ -300,14 +293,14 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
         variants: [
           for (final variant in _variants)
             CreateVariantCommand(
-              sku: variant.sku,
-              quantity: variant.quantity,
-              displayLabel: variant.displayLabel,
-              price: variant.price,
-              availablePackages: variant.availablePackages,
-              costPrice: variant.costPrice,
-              packagingCost: variant.packagingCost,
-              additionalCost: variant.additionalCost,
+              sku: variant.sku.text.trim(),
+              quantity: parsePersianNumber(variant.quantity.text)!,
+              displayLabel: variant.label.text.trim(),
+              price: parsePersianInteger(variant.price.text, min: 0)!,
+              availablePackages: parsePersianInteger(variant.stock.text, min: 0, max: maxApiInteger)!,
+              costPrice: variant.original.costPrice,
+              packagingCost: variant.original.packagingCost,
+              additionalCost: variant.original.additionalCost,
             ),
         ],
       ),
@@ -321,4 +314,28 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
             .substring(line.indexOf('=') + 1)
             .trim(),
   };
+}
+
+class _VariantDraft {
+  _VariantDraft(this.original)
+    : sku = TextEditingController(text: original.sku),
+      label = TextEditingController(text: original.displayLabel),
+      quantity = TextEditingController(text: toPersianDigits(original.quantity)),
+      price = TextEditingController(text: formatPersianInteger(original.price)),
+      stock = TextEditingController(text: formatPersianInteger(original.availablePackages));
+
+  final ProductVariant original;
+  final TextEditingController sku;
+  final TextEditingController label;
+  final TextEditingController quantity;
+  final TextEditingController price;
+  final TextEditingController stock;
+
+  void dispose() {
+    sku.dispose();
+    label.dispose();
+    quantity.dispose();
+    price.dispose();
+    stock.dispose();
+  }
 }

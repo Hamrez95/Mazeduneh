@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'auth_api.dart';
 import 'auth_session.dart';
+import 'formatters.dart';
 
 class AdminAuthGate extends StatefulWidget {
   const AdminAuthGate({
@@ -241,6 +242,7 @@ class _AdminLoginPageState extends State<_AdminLoginPage> {
               autofocus: true,
               textDirection: TextDirection.ltr,
               keyboardType: TextInputType.number,
+              inputFormatters: const [PersianDigitsInputFormatter()],
               textInputAction: TextInputAction.done,
               maxLength: 6,
               onFieldSubmitted: (_) => submit(),

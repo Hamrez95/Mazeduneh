@@ -736,6 +736,7 @@ class _VariantEditor extends StatelessWidget {
                   label: 'قیمت فروش (تومان)',
                   validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
+                  groupThousands: true,
                 ),
                 _Input(
                   width: 170,
@@ -743,6 +744,7 @@ class _VariantEditor extends StatelessWidget {
                   label: 'قیمت خرید/مواد (تومان)',
                   validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
+                  groupThousands: true,
                 ),
                 _Input(
                   width: 170,
@@ -750,6 +752,7 @@ class _VariantEditor extends StatelessWidget {
                   label: 'هزینه بسته‌بندی (تومان)',
                   validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
+                  groupThousands: true,
                 ),
                 _Input(
                   width: 170,
@@ -757,6 +760,7 @@ class _VariantEditor extends StatelessWidget {
                   label: 'هزینه جانبی (تومان)',
                   validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
+                  groupThousands: true,
                 ),
                 _Input(
                   width: 145,
@@ -764,6 +768,7 @@ class _VariantEditor extends StatelessWidget {
                   label: 'تعداد بسته موجود',
                   validator: _nonNegativeInt,
                   keyboardType: TextInputType.number,
+                  groupThousands: true,
                 ),
               ],
             ),
@@ -782,6 +787,7 @@ class _Input extends StatelessWidget {
     this.hint,
     this.validator,
     this.keyboardType,
+    this.groupThousands = false,
     this.textDirection,
     this.maxLines = 1,
   });
@@ -792,6 +798,7 @@ class _Input extends StatelessWidget {
   final String? hint;
   final String? Function(String?)? validator;
   final TextInputType? keyboardType;
+  final bool groupThousands;
   final TextDirection? textDirection;
   final int maxLines;
 
@@ -803,6 +810,11 @@ class _Input extends StatelessWidget {
         controller: controller,
         validator: validator,
         keyboardType: keyboardType,
+        inputFormatters: keyboardType == null
+            ? null
+            : groupThousands
+                ? const [PersianGroupedIntegerInputFormatter()]
+                : const [PersianDigitsInputFormatter()],
         textDirection: textDirection,
         maxLines: maxLines,
         decoration: InputDecoration(labelText: label, hintText: hint),

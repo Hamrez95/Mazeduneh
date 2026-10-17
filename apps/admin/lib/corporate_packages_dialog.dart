@@ -266,6 +266,7 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                                   child: TextField(
                                     controller: quantity,
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: const [PersianDigitsInputFormatter()],
                                     decoration: const InputDecoration(labelText: 'تعداد'),
                                   ),
                                 ),
@@ -281,6 +282,7 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                                   child: TextField(
                                     controller: unitPrice,
                                     keyboardType: TextInputType.number,
+                                    inputFormatters: const [PersianGroupedIntegerInputFormatter()],
                                     decoration: const InputDecoration(labelText: 'قیمت ریالی'),
                                   ),
                                 ),

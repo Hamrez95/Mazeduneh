@@ -78,7 +78,7 @@ class _InventoryPricingDialogState extends State<InventoryPricingDialog> {
     finally { if (mounted) setState(() => busy = false); }
   }
   Widget input(String key, String label, num max, {num min = 0}) => Padding(padding: const EdgeInsets.only(top: 10), child: TextFormField(
-    controller: fields[key], decoration: InputDecoration(labelText: label), keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    controller: fields[key], decoration: InputDecoration(labelText: label), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianDigitsInputFormatter()],
     onChanged: (_) => setState(() => quote = null),
     validator: (value) { final n = parsePersianNumber(value); return n == null || !n.isFinite || n < min || n > max ? 'عدد بین ${toPersianDigits(min)} و ${toPersianDigits(max)} وارد کنید.' : null; }));
   @override

@@ -468,6 +468,7 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
             TextFormField(
               controller: delta,
               keyboardType: TextInputType.number,
+              inputFormatters: const [PersianDigitsInputFormatter()],
               decoration: InputDecoration(
                 labelText: isWaste ? 'تعداد بستهٔ ضایعاتی' : 'تغییر موجودی',
                 hintText: isWaste ? 'تعداد بسته‌های غیرقابل‌فروش' : 'مثبت برای ورود، منفی برای خروج',
