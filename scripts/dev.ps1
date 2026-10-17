@@ -8,6 +8,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The default local experience is the browser stack with native PostgreSQL.
+if ($Component -in @('menu','all') -or $Stop -or $Status) {
+  $action = if($Stop){'stop'} elseif($Status){'status'} else {'start'}
+  & (Join-Path $PSScriptRoot 'local.ps1') -Action $action -NoBrowser:$NoBrowser
+  exit $LASTEXITCODE
+}
 $SourceRoot = Split-Path -Parent $PSScriptRoot
 $StateDirectory = Join-Path $SourceRoot '.local-dev'
 $StateFile = Join-Path $StateDirectory 'processes.json'

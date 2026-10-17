@@ -19,6 +19,7 @@ import 'notifications_page.dart';
 import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
+import 'promotions_page.dart';
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key, this.dashboardApi, this.ordersApi, this.catalogApi});
   final OrderApiClient? dashboardApi;
@@ -308,6 +309,7 @@ class _AdminShellState extends State<AdminShell> {
         AdminModule.pricing => AdminPermissionGate(permission: module.permission, child: const CommerceSettingsPage()),
         AdminModule.corporate => AdminPermissionGate(permission: module.permission, child: const CorporateRequestsPage()),
         AdminModule.audit => AdminPermissionGate(permission: module.permission, child: const AuditLogPage()),
+        AdminModule.promotions => AdminPermissionGate(permission: module.permission, child: const PromotionsPage()),
         AdminModule.users => AdminPermissionGate(permission: module.permission, child: const AdminUsersPage()),
       };
 }

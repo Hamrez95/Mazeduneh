@@ -45,7 +45,7 @@ public static class InventoryExpiryFixture
         var audit = new AdminAuditLogDatabase(configuration, NullLogger<AdminAuditLogDatabase>.Instance);
         var ledger = new InventoryLedgerDatabase(configuration, NullLogger<InventoryLedgerDatabase>.Instance, audit);
         var pricing = new CommercePricingDatabase(configuration, NullLogger<CommercePricingDatabase>.Instance);
-        var checkout = new CheckoutDatabase(configuration, NullLogger<CheckoutDatabase>.Instance, ledger, pricing);
+        var checkout = new CheckoutDatabase(configuration, NullLogger<CheckoutDatabase>.Instance, ledger, pricing, new PromotionDatabase(configuration));
         await checkout.ReleaseExpiredAsync(CancellationToken.None);
 
         await using (var connection = new NpgsqlConnection(connectionString))

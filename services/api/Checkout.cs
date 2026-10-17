@@ -104,12 +104,13 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
         if (idempotencyKey.Length is < 12 or > 100)
             return CheckoutResult.Invalid(new Dictionary<string, string[]> { ["Idempotency-Key"] = ["کلید باید بین ۱۲ تا ۱۰۰ نویسه باشد."] });
 
+        request = request with { CouponCode = string.IsNullOrWhiteSpace(request.CouponCode) ? null : PromotionRules.NormalizeCode(request.CouponCode) };
         var errors = request.Validate();
         if (errors.Count > 0) return CheckoutResult.Invalid(errors);
 
         var fingerprint = Fingerprint(request);
         if (!database.IsConfigured)
-            return CreateInMemory(idempotencyKey, fingerprint, request);
+            return request.CouponCode is not null ? CheckoutResult.Invalid(new Dictionary<string,string[]> { ["CouponCode"] = ["تخفیف فقط با دیتابیس آماده قابل استفاده است."] }) : CreateInMemory(idempotencyKey, fingerprint, request);
 
         var persisted = await database.CreateAsync(idempotencyKey, fingerprint, request, cancellationToken);
         if (persisted.Status == CheckoutStatus.Created && persisted.StockLevels is not null)
@@ -220,11 +221,13 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 
 public sealed record CheckoutRequest(string CustomerName, string Mobile, string Province, string City,
     string Address, string PostalCode, IReadOnlyCollection<CheckoutItemRequest> Lines, string ShippingMethod = "post",
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool MarketingConsent = false)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool MarketingConsent = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CouponCode = null)
 {
     public Dictionary<string, string[]> Validate()
     {
         var errors = new Dictionary<string, string[]>();
+        if (CouponCode is { Length: > 40 }) errors[nameof(CouponCode)] = ["کد تخفیف حداکثر ۴۰ نویسه است."];
         if (string.IsNullOrWhiteSpace(CustomerName)) errors[nameof(CustomerName)] = ["نام تحویل‌گیرنده الزامی است."];
         if (string.IsNullOrWhiteSpace(Mobile) || Mobile.Trim().Length is < 10 or > 15) errors[nameof(Mobile)] = ["شماره موبایل معتبر الزامی است."];
         if (string.IsNullOrWhiteSpace(Province)) errors[nameof(Province)] = ["استان الزامی است."];
@@ -259,7 +262,7 @@ public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string Customer
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
     string ShippingMethod, decimal Subtotal, decimal Shipping, decimal ShippingExpense, decimal Discount, decimal TaxRatePercent, decimal Tax,
     decimal Payable, OrderState State, DateTimeOffset CreatedAt,
-    DateTimeOffset ReservationExpiresAt, IReadOnlyCollection<OrderTransition> Transitions);
+    DateTimeOffset ReservationExpiresAt, IReadOnlyCollection<OrderTransition> Transitions, string? CouponCode = null);
 public sealed record OrderTransition(OrderState State, string Actor, DateTimeOffset At, string Reason);
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum OrderState { AwaitingPayment, Paid, Preparing, Shipped, Delivered, Cancelled, Expired }

@@ -13,7 +13,8 @@ enum AdminModule {
   pricing('pricing', AdminPermissions.settingsRead, 'قیمت و ارسال', Icons.percent_rounded),
   corporate('corporate', AdminPermissions.corporateRead, 'فروش سازمانی', Icons.business_center_rounded),
   audit('audit', AdminPermissions.auditRead, 'امنیت', Icons.shield_outlined),
-  users('users', AdminPermissions.usersRead, 'کاربران', Icons.manage_accounts_outlined);
+  users('users', AdminPermissions.usersRead, 'کاربران', Icons.manage_accounts_outlined),
+  promotions('promotions', AdminPermissions.pricingRead, 'کوپن و تخفیف', Icons.local_offer_outlined);
 
   const AdminModule(this.apiValue, this.permission, this.label, this.icon);
 
@@ -34,6 +35,7 @@ enum AdminModule {
         'corporate' => corporate,
         'audit' => audit,
         'users' => users,
+        'promotions' => promotions,
         _ => null,
       };
 }

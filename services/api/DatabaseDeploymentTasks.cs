@@ -9,6 +9,7 @@ public sealed class DatabaseDeploymentTasks(
     InventoryBatchDatabase inventoryBatches,
     InventoryPricingDatabase inventoryPricing,
     CommercePricingDatabase commerce,
+    PromotionDatabase promotions,
     CorporateRequestDatabase corporateSales,
     CorporatePackageDatabase corporatePackages,
     CorporateResponseTemplateDatabase corporateTemplates,
@@ -27,6 +28,7 @@ public sealed class DatabaseDeploymentTasks(
         await inventoryPricing.ApplyMigrationsAsync(cancellationToken);
         await commerce.ApplyMigrationsAsync(cancellationToken);
         await checkout.ApplyMigrationsAsync(cancellationToken);
+        await promotions.ApplyMigrationsAsync(cancellationToken);
         await corporateSales.ApplyMigrationsAsync(cancellationToken);
         await corporatePackages.ApplyMigrationsAsync(cancellationToken);
         await corporateTemplates.ApplyMigrationsAsync(cancellationToken);
@@ -82,6 +84,7 @@ public static class DatabaseMigrationCatalog
         new("corporate-sales", "004-order-link"),
         new("checkout", "001-bootstrap"),
         new("checkout", "002-shipping-expense"),
+        new("promotions", "001-coupons"),
         new("customers", "001-bootstrap"),
         new("orders", "001-bootstrap"),
         new("orders", "002-internal-notes"),

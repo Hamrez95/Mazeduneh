@@ -19,6 +19,26 @@ static void CheckZibalVerifyPayloads(SequenceHttpMessageHandler handler)
 static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string json) =>
     new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 var now = DateTimeOffset.UtcNow;
+var promoRule = new PromotionInput("Welcome", "Percent", 10, true, now.AddDays(-1), now.AddDays(1));
+CheckoutLine[] promoLines = [new("A", "A-250", "250g", 2, 1000, 2000, 300, 20, 10), new("B", "B-250", "250g", 1, 1000, 1000, 300)];
+var promoBase = new CommerceQuote("post", 200, 150, 10, 300, 3500);
+var promoQuote = PromotionRules.Calculate(promoRule, promoLines, promoBase);
+Check(promoQuote.Discount == 300 && promoQuote.Tax == 270 && promoQuote.Payable == 3170, "Coupon arithmetic/tax incorrect");
+Check(promoQuote.Cost == 960 && promoQuote.NetProfit == 1790, "Coupon profit omitted costs");
+Check(PromotionRules.Calculate(promoRule with { Skus = ["a-250"] }, promoLines, promoBase).Discount == 200, "SKU eligibility is not case insensitive");
+Check(PromotionRules.Calculate(promoRule with { Kind = "Fixed", Value = 5000, Skus = ["B-250"] }, promoLines, promoBase).Discount == 1000, "Fixed coupon exceeded eligible goods");
+Check(PromotionRules.Calculate(promoRule with { MaxDiscount = 100 }, promoLines, promoBase).Discount == 100, "Discount cap ignored");
+Check(PromotionRules.Calculate(promoRule with { Kind = "FreeShipping", MaxDiscount = 50 }, promoLines, promoBase).Shipping == 150, "Shipping discount cap ignored");
+Check(PromotionRules.Calculate(promoRule with { Kind = "FreeShipping" }, promoLines, promoBase).Shipping == 0, "Free shipping incorrect");
+Check(PromotionRules.Calculate(promoRule with { MinSubtotal = 3001 }, promoLines, promoBase).Error != null, "Minimum basket ignored");
+Check(PromotionRules.Calculate(promoRule with { Skus = ["OTHER"] }, promoLines, promoBase).Error != null, "Empty eligible basket accepted");
+Check(PromotionRules.Validate("OK1", promoRule).Count == 0, "Valid coupon rejected");
+Check(PromotionRules.Validate("bad code", promoRule).ContainsKey("code"), "Malformed code accepted");
+Check(PromotionRules.Validate("OK1", promoRule with { Value = 101 }).ContainsKey("value"), "Over 100 percent accepted");
+Check(PromotionRules.Validate("OK1", promoRule with { MaxUses = 0 }).ContainsKey("limits"), "Zero use cap accepted");
+Check(PromotionRules.Validate("OK1", promoRule with { EndsAt = promoRule.StartsAt }).ContainsKey("endsAt"), "Invalid schedule accepted");
+Console.WriteLine("Promotion arithmetic, caps, costs, scope and validation checks passed");
+
 var valid = new InventoryBatchRequest("SKU", "receipt", 2, now.AddDays(-2), now.AddDays(100), 100, 20, 5, now.AddDays(-1), "supplier");
 Check(valid.Validate().Count == 0, "Valid receipt rejected");
 Check((valid with { PurchasedAt = now.AddDays(1) }).Validate().ContainsKey("PurchasedAt"), "Future purchase accepted");

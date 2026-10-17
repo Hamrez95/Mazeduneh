@@ -2,10 +2,14 @@
 
 MAZEDUNEH is a modern commerce platform for premium nuts, dried fruits, gifts, and healthy snacks.
 
+## اجرای محلی و اولویت فعلی
+
+فروشگاه و پنل در **مرورگر دسکتاپ** اولویت نسخهٔ اول هستند. `start-local.cmd` را اجرا کنید؛ PostgreSQL قابل حمل، API و دو رابط وب از همین checkout راه‌اندازی می‌شوند. Docker و ابزار موبایل لازم نیستند. [راهنمای اجرا، ترتیب توسعه و پذیرش سرور](docs/BROWSER_FIRST_DELIVERY.md).
+
 ## Product surfaces
 
 - **Storefront:** SEO-first, responsive Next.js web application for customers.
-- **Admin:** Flutter application targeting Android and installable web/PWA.
+- **Admin:** Flutter browser application; native apps deferred until after the web release.
 - **API:** ASP.NET Core modular monolith.
 - **Data:** PostgreSQL with an auditable stock ledger.
 

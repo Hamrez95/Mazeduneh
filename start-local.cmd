@@ -15,7 +15,7 @@ if not defined PWSH (
   goto finish
 )
 
-"%PWSH%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\stack.ps1" %*
+"%PWSH%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\local.ps1" %*
 set "RESULT=%ERRORLEVEL%"
 
 :finish

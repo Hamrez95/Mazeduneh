@@ -20,6 +20,7 @@ public static class AdminSecurityExtensions
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+            options.AddPolicy("coupon-preview", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit=60, Window=TimeSpan.FromMinutes(1), QueueLimit=0 }));
             options.AddFixedWindowLimiter("admin-login", limiter =>
             {
                 limiter.PermitLimit = 5;
@@ -613,6 +614,7 @@ public static class AdminPermissionCatalog
         if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/customers/export.csv", StringComparison.OrdinalIgnoreCase)) return CustomersExport;
         if (IsUnderPath(context, "/api/v1/admin/customers")) return CustomersRead;
         if (IsUnderPath(context, "/api/v1/admin/corporate-requests")) return HttpMethods.IsGet(method) ? CorporateRead : CorporateWrite;
+        if (IsUnderPath(context, "/api/v1/admin/promotions")) return HttpMethods.IsGet(method) || path.EndsWith("/preview", StringComparison.OrdinalIgnoreCase) ? PricingRead : PricingWrite;
         if (IsUnderPath(context, "/api/v1/admin/commerce/settings")) return HttpMethods.IsGet(method) ? SettingsRead : SettingsWrite;
         if (IsUnderPath(context, "/api/v1/admin/media/metadata")) return ContentRead;
         if (IsUnderPath(context, "/api/v1/admin/media")) return ContentWrite;

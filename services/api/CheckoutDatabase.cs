@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Npgsql;
 
-public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<CheckoutDatabase> logger, InventoryLedgerDatabase ledger, CommercePricingDatabase pricing)
+public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<CheckoutDatabase> logger, InventoryLedgerDatabase ledger, CommercePricingDatabase pricing, PromotionDatabase promotions)
 {
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
@@ -257,16 +257,30 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 return PersistedCheckoutResult.Conflict(quoteResult.Error ?? "روش ارسال معتبر نیست.");
             }
             var quote = quoteResult.Quote;
+            PromotionQuote? promotionQuote = null;
+            string? couponCode = null;
+            if (!string.IsNullOrWhiteSpace(request.CouponCode))
+            {
+                var evaluation = await promotions.EvaluateAsync(connection, transaction, request.CouponCode, lines, quote, true, cancellationToken);
+                if (evaluation.Quote is null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return PersistedCheckoutResult.Conflict(evaluation.Error ?? "کد تخفیف معتبر نیست.");
+                }
+                promotionQuote = evaluation.Quote;
+                couponCode = evaluation.Promotion!.Code;
+            }
             var now = DateTimeOffset.UtcNow;
             var order = new CheckoutOrder(
                 Guid.NewGuid(),
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant(),
                 request.CustomerName.Trim(), request.Mobile.Trim(), request.Province.Trim(), request.City.Trim(),
-                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, quote.Shipping, quote.ShippingExpense, 0,
-                quote.TaxRatePercent, quote.Tax, quote.Payable, OrderState.AwaitingPayment, now, now.AddMinutes(20),
-                [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")]);
+                request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, promotionQuote?.Shipping ?? quote.Shipping, quote.ShippingExpense, promotionQuote?.Discount ?? 0,
+                quote.TaxRatePercent, promotionQuote?.Tax ?? quote.Tax, promotionQuote?.Payable ?? quote.Payable, OrderState.AwaitingPayment, now, now.AddMinutes(20),
+                [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")], couponCode);
 
             await InsertOrderAsync(connection, transaction, order, cancellationToken);
+            if (promotionQuote is not null) await promotions.RecordAsync(connection, transaction, order.Id, couponCode!, promotionQuote, quote.Shipping, cancellationToken);
             if (request.MarketingConsent)
                 await RecordMarketingConsentGrantAsync(connection, transaction, order.Id, now, cancellationToken);
 
@@ -542,9 +556,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
     {
         const string orderSql = """
             insert into checkout_orders
-            (id,receipt_token,customer_name,mobile,province,city,address,postal_code,currency,shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at)
+            (id,receipt_token,customer_name,mobile,province,city,address,postal_code,currency,shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at,coupon_code)
             values
-            (@id,@receipt_token,@customer_name,@mobile,@province,@city,@address,@postal_code,@currency,@shipping_method,@subtotal,@shipping,@shipping_expense,@discount,@tax_rate_percent,@tax,@payable,@state,@created_at,@reservation_expires_at);
+            (@id,@receipt_token,@customer_name,@mobile,@province,@city,@address,@postal_code,@currency,@shipping_method,@subtotal,@shipping,@shipping_expense,@discount,@tax_rate_percent,@tax,@payable,@state,@created_at,@reservation_expires_at,@coupon_code);
             """;
         await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
         {
@@ -562,6 +576,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("shipping", order.Shipping);
             command.Parameters.AddWithValue("shipping_expense", order.ShippingExpense);
             command.Parameters.AddWithValue("discount", order.Discount);
+            command.Parameters.AddWithValue("coupon_code", (object?)order.CouponCode ?? DBNull.Value);
             command.Parameters.AddWithValue("tax_rate_percent", order.TaxRatePercent);
             command.Parameters.AddWithValue("tax", order.Tax);
             command.Parameters.AddWithValue("payable", order.Payable);
@@ -638,11 +653,12 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
     {
         const string orderSql = """
             select id,receipt_token,customer_name,mobile,province,city,address,postal_code,currency,
-                   shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at
+                   shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at,coupon_code
             from checkout_orders where id=@id;
             """;
         Guid id;
         string receiptToken, customerName, mobile, province, city, address, postalCode, currency, shippingMethod;
+        string? couponCode;
         decimal subtotal, shipping, shippingExpense, discount, taxRatePercent, tax, payable;
         OrderState state;
         DateTimeOffset createdAt, expiresAt;
@@ -671,6 +687,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             state = Enum.Parse<OrderState>(reader.GetString(17));
             createdAt = reader.GetFieldValue<DateTimeOffset>(18);
             expiresAt = reader.GetFieldValue<DateTimeOffset>(19);
+            couponCode = reader.IsDBNull(20) ? null : reader.GetString(20);
         }
 
         var lines = new List<CheckoutLine>();
@@ -702,7 +719,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         }
 
         return new CheckoutOrder(id, receiptToken, customerName, mobile, province, city, address, postalCode,
-            currency, lines, shippingMethod, subtotal, shipping, shippingExpense, discount, taxRatePercent, tax, payable, state, createdAt, expiresAt, transitions);
+            currency, lines, shippingMethod, subtotal, shipping, shippingExpense, discount, taxRatePercent, tax, payable, state, createdAt, expiresAt, transitions, couponCode);
     }
 }
 
