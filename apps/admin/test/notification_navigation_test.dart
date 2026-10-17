@@ -41,7 +41,7 @@ void main() {
     await tester.pumpWidget(harness(AdminNotificationTile(item: notice, onNavigate: (value) => destination = value), textScale: 2));
     expect(find.text('۱۲ سفارش در انتظار پرداخت'), findsOneWidget);
     expect(find.text('بررسی ۲ سفارش'), findsOneWidget);
-    final button = find.widgetWithText(TextButton, 'مشاهده سفارش‌ها');
+    final button = find.ancestor(of: find.text('مشاهده سفارش‌ها'), matching: find.byWidgetPredicate((widget) => widget is TextButton));
     expect(tester.getSize(button).height, greaterThanOrEqualTo(44));
     Focus.of(tester.element(find.text('مشاهده سفارش‌ها'))).requestFocus();
     await tester.pump();

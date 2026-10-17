@@ -274,7 +274,7 @@ void main() {
     expect(find.text('هزینه‌های جانبی'), findsOneWidget);
     expect(find.textContaining('مالیات پرداختنی در سود محاسبه نمی‌شود'), findsOneWidget);
 
-    final detailsButton = find.widgetWithText(TextButton, 'جزئیات کامل در گزارش سود');
+    final detailsButton = find.ancestor(of: find.text('جزئیات کامل در گزارش سود'), matching: find.byWidgetPredicate((widget) => widget is TextButton));
     await tester.scrollUntilVisible(detailsButton, 350, maxScrolls: 20);
     await tester.pumpAndSettle();
     await tester.tap(detailsButton);

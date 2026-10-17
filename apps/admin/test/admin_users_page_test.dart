@@ -240,9 +240,9 @@ void main() {
     expect(find.textContaining('نشست‌های کارمند انبار'), findsOneWidget);
     expect(find.textContaining('اعتبار تا:'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'لغو نشست'));
+    await tester.tap(find.ancestor(of: find.text('لغو نشست'), matching: find.byWidgetPredicate((widget) => widget is TextButton)));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'لغو نشست'));
+    await tester.tap(find.ancestor(of: find.text('لغو نشست'), matching: find.byWidgetPredicate((widget) => widget is FilledButton)));
     await tester.pumpAndSettle();
     await confirmStepUp(tester);
     await tester.pumpAndSettle();
