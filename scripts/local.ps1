@@ -24,7 +24,7 @@ $lockName='Local\Mazeduneh-'+[Convert]::ToHexString([Security.Cryptography.SHA25
 $launchLock=[Threading.Mutex]::new($false,$lockName)
 try {$locked=$launchLock.WaitOne(0)} catch [Threading.AbandonedMutexException] {$locked=$true}
 if(-not $locked){$launchLock.Dispose();throw 'Another Mazeduneh startup/stop is still running. Wait for that window to finish.'}
-trap {if($launchLock){$launchLock.Dispose()};throw $_}
+try {
 function Read-State { if(Test-Path $stateFile){ @(Get-Content $stateFile -Raw | ConvertFrom-Json) } else {@()} }
 function Test-Owned($entry) {
   $p=Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$entry.pid)" -ErrorAction SilentlyContinue
@@ -172,3 +172,7 @@ Write-Host "Ready. Storefront: $webUrl    Admin: $adminUrl" -ForegroundColor Gre
 Write-Host "Local login: $($secrets.adminEmail). Password is in $secretsFile" -ForegroundColor Cyan
 Write-Host 'Use -Action status, stop or restart. Database survives stops and upgrades.'
 if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
+} finally {
+  $launchLock.ReleaseMutex()
+  $launchLock.Dispose()
+}
