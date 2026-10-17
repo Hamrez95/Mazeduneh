@@ -340,6 +340,7 @@ export function CheckoutPage() {
       const sandboxReceipt = { ...nextReceipt, sandboxAuthority: body.authority };
       rememberReceipt(sandboxReceipt);
       setReceipt(sandboxReceipt);
+      window.history.replaceState(null, "", `?orderId=${encodeURIComponent(nextReceipt.orderId)}&payment=review`);
       return;
     }
     if (!response.ok || !body.redirectUrl) throw new Error(body.message || body.title || "اتصال به درگاه پرداخت هنوز آماده نیست.");
@@ -519,7 +520,10 @@ export function CheckoutPage() {
       if (!response.ok) throw new Error("order-status");
       const order = await response.json() as CheckoutOrderResponse;
       const paid = order.state === "Paid";
-      setReceipt({ ...nextReceipt, state: order.state, paymentOutcome: paid ? "success" : "review" });
+      const refreshedReceipt: CheckoutReceipt = { ...nextReceipt, state: order.state, paymentOutcome: paid ? "success" : "review" };
+      rememberReceipt(refreshedReceipt);
+      setReceipt(refreshedReceipt);
+      if (nextReceipt.sandboxAuthority) window.history.replaceState(null, "", `?orderId=${encodeURIComponent(nextReceipt.orderId)}&payment=${paid ? "success" : "review"}`);
       setError(paid ? "پرداخت با موفقیت تأیید شد." : "وضعیت پرداخت هنوز قطعی نیست؛ چند لحظه دیگر دوباره بررسی کن.");
     } catch {
       setError("وضعیت پرداخت از سرویس فروش دریافت نشد؛ چند لحظه دیگر دوباره بررسی کن.");
