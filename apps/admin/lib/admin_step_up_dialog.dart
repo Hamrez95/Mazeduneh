@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'auth_api.dart';
 import 'auth_session.dart';
+import 'formatters.dart';
 
 Future<String?> showAdminStepUpDialog(
   BuildContext context, {
@@ -122,6 +123,7 @@ class _AdminStepUpDialogState extends State<_AdminStepUpDialog> {
                 focusNode: mfaFocus,
                 autofocus: true,
                 keyboardType: TextInputType.number,
+                inputFormatters: const [PersianDigitsInputFormatter()],
                 textDirection: TextDirection.ltr,
                 textInputAction: TextInputAction.done,
                 maxLength: 6,

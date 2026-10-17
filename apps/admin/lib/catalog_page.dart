@@ -253,7 +253,7 @@ class ProductCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 child: product.primaryImage.trim().isEmpty
                     ? Container(width: 58, height: 58, color: AdminColors.mintSoft, alignment: Alignment.center, child: Text(product.isWeight ? '⚖' : '●'))
-                    : Image.network(product.primaryImage, width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined)))),
+                    : Image.network(resolveMediaUri(product.primaryImage).toString(), width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined)))),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -321,7 +321,12 @@ class _PublicationBadge extends StatelessWidget {
 }
 
 class ProductDialog extends StatefulWidget {
-  const ProductDialog({super.key, this.mediaApi, this.categories = const [], this.canWriteCosts = false});
+  const ProductDialog({
+    super.key,
+    this.mediaApi,
+    this.categories = const [],
+    this.canWriteCosts = false,
+  });
   final MediaApiClient? mediaApi;
   final List<Category> categories;
   final bool canWriteCosts;
@@ -346,12 +351,13 @@ class _ProductDialogState extends State<ProductDialog> {
   final primaryImage = TextEditingController();
   final galleryImages = TextEditingController();
   final sku = TextEditingController();
+  final quantity = TextEditingController();
   final price = TextEditingController();
   final stock = TextEditingController();
   String unitType = 'Weight';
   String category = 'آجیل و مغزها';
-  num quantity = 250;
   bool uploadingImage = false;
+  bool uploadingGallery = false;
   String? mediaError;
 
   @override
@@ -362,167 +368,491 @@ class _ProductDialogState extends State<ProductDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('محصول جدید'),
-        content: SizedBox(
-          width: 560,
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(children: [
+    title: const Text('محصول جدید'),
+    content: SizedBox(
+      width: MediaQuery.sizeOf(context).width < 920
+          ? MediaQuery.sizeOf(context).width - 64
+          : 820,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .78,
+        ),
+        child: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 const ListTile(
+                  contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.info_outline_rounded),
                   title: Text('محصول ابتدا به‌صورت پیش‌نویس ذخیره می‌شود.'),
-                  subtitle: Text('بعد از تکمیل اطلاعات، آن را جداگانه منتشر کنید.'),
+                  subtitle: Text(
+                    'بعد از تکمیل اطلاعات، آن را جداگانه منتشر کنید.',
+                  ),
                 ),
-                TextFormField(controller: title, decoration: const InputDecoration(labelText: 'نام محصول'), validator: required),
+                TextFormField(
+                  controller: title,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(labelText: 'نام محصول'),
+                  validator: required,
+                ),
                 const SizedBox(height: 10),
-                TextFormField(controller: slug, decoration: const InputDecoration(labelText: 'شناسه انگلیسی URL'), validator: required),
+                TextFormField(
+                  controller: slug,
+                  textDirection: TextDirection.ltr,
+                  decoration: const InputDecoration(
+                    labelText: 'شناسهٔ انگلیسی آدرس',
+                    helperText:
+                        'برای پیوند صفحهٔ محصول استفاده می‌شود؛ مثل premium-cookie.',
+                  ),
+                  validator: required,
+                ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   value: category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
-                  items: (widget.categories.isEmpty
-                      ? const ['آجیل و مغزها', 'میوه خشک', 'لواشک و ترش‌مزه', 'کوکی و شیرینی', 'کم‌شکر و پروتئینی', 'هدیه']
-                      : widget.categories.map((item) => item.name).toList())
-                      .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                      .toList(),
-                  onChanged: (value) => category = value!,
-                ),
-                const SizedBox(height: 10),
-                TextFormField(controller: origin, decoration: const InputDecoration(labelText: 'مبدأ یا برند'), validator: required),
-                const SizedBox(height: 10),
-                TextFormField(controller: shortDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح کوتاه', helperText: 'یک جمله‌ی روشن برای کارت محصول و جست‌وجو.')),
-                const SizedBox(height: 10),
-                TextFormField(controller: description, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'توضیحات کامل', helperText: 'مواد، طعم، روش نگهداری و نکات مهم مشتری.')),
-                const SizedBox(height: 10),
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  title: const Text('اطلاعات SEO و مشخصات', style: TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: const Text('اختیاری، اما برای دیده‌شدن محصول پیشنهاد می‌شود.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
-                  children: [
-                    TextFormField(controller: seoTitle, decoration: const InputDecoration(labelText: 'عنوان SEO')),
-                    const SizedBox(height: 10),
-                    TextFormField(controller: seoDescription, maxLines: 2, decoration: const InputDecoration(labelText: 'توضیح SEO')),
-                    const SizedBox(height: 10),
-                    TextFormField(controller: seoKeywords, decoration: const InputDecoration(labelText: 'کلمات کلیدی', hintText: 'مثلاً پسته، رفسنجان، شور')),
-                    const SizedBox(height: 10),
-                    TextFormField(controller: specifications, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'مشخصات ساختاریافته', hintText: 'هر خط: کلید=مقدار', helperText: 'مثلاً وزن خالص=۲۵۰ گرم')),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: TextFormField(
-                    controller: primaryImage,
-                    keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'تصویر اصلی محصول',
-                      hintText: 'لینک تصویر یا فایل آپلودشده',
-                      helperText: 'در کارت محصول و صفحه‌ی محصول نمایش داده می‌شود.',
-                      prefixIcon: Icon(Icons.image_outlined),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  )),
-                  const SizedBox(width: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: OutlinedButton.icon(
-                      onPressed: uploadingImage ? null : pickImage,
-                      icon: uploadingImage
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.upload_file_rounded),
-                      label: Text(uploadingImage ? 'در حال آپلود' : 'انتخاب فایل'),
-                    ),
-                  ),
-                ]),
-                if (mediaError != null)
-                  Align(alignment: Alignment.centerRight, child: Text(mediaError!, style: const TextStyle(color: AdminColors.coral, fontSize: 11))),
-                const SizedBox(height: 10),
-                if (primaryImage.text.trim().isNotEmpty)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Image.network(
-                      primaryImage.text.trim(),
-                      height: 150,
-                      width: double.infinity,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 80,
-                        alignment: Alignment.center,
-                        color: const Color(0xFFFFF0D9),
-                        child: const Text('پیش‌نمایش تصویر در دسترس نیست؛ لینک را بررسی کنید.'),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 10),
-                TextFormField(
-                  controller: galleryImages,
-                  minLines: 2,
-                  maxLines: 4,
-                  keyboardType: TextInputType.multiline,
-                  decoration: const InputDecoration(
-                    labelText: 'تصاویر گالری',
-                    hintText: 'هر لینک را در یک خط وارد کنید',
-                    helperText: 'تصاویر گالری برای صفحه‌ی جزئیات محصول به‌ترتیب ذخیره می‌شوند.',
-                    prefixIcon: Icon(Icons.collections_outlined),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'Weight', label: Text('وزنی')),
-                    ButtonSegment(value: 'Count', label: Text('عددی')),
-                  ],
-                  selected: {unitType},
-                  onSelectionChanged: (value) => setState(() {
-                    unitType = value.first;
-                    quantity = unitType == 'Weight' ? 250 : 1;
+                  items:
+                      (widget.categories.isEmpty
+                              ? const [
+                                  'آجیل و مغزها',
+                                  'میوه خشک',
+                                  'لواشک و ترش‌مزه',
+                                  'کوکی و شیرینی',
+                                  'کم‌شکر و پروتئینی',
+                                  'هدیه',
+                                ]
+                              : widget.categories
+                                    .map((item) => item.name)
+                                    .toList())
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (value) => setState(() {
+                    if (value != null) category = value;
                   }),
                 ),
                 const SizedBox(height: 10),
-                TextFormField(controller: sku, decoration: const InputDecoration(labelText: 'SKU'), validator: required),
-                const SizedBox(height: 10),
                 TextFormField(
-                  controller: price,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'قیمت فروش ریال'),
-                  validator: numberRequired,
-                ),
-                const SizedBox(height: 10),
-                if (widget.canWriteCosts) TextFormField(
-                  controller: costPrice,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'قیمت تمام‌شده ریال', helperText: 'برای محاسبه سود و حاشیه سود استفاده می‌شود.'),
-                  validator: numberRequired,
+                  controller: origin,
+                  decoration: const InputDecoration(labelText: 'مبدأ یا برند'),
+                  validator: required,
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
-                  controller: stock,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'تعداد بسته موجود'),
-                  validator: stockRequired,
+                  controller: shortDescription,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'توضیح کوتاه',
+                    helperText: 'یک جمله‌ی روشن برای کارت محصول و جست‌وجو.',
+                  ),
                 ),
-              ]),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: description,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'توضیحات کامل',
+                    helperText: 'مواد، طعم، روش نگهداری و نکات مهم مشتری.',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _formSection('تصاویر محصول', Icons.photo_library_outlined, [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: primaryImage,
+                          keyboardType: TextInputType.url,
+                          textDirection: TextDirection.ltr,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'تصویر اصلی',
+                            hintText: 'پیوند تصویر یا بارگذاری فایل',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: uploadingImage ? null : pickImage,
+                        icon: uploadingImage
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.upload_file_rounded),
+                        label: Text(
+                          uploadingImage ? 'در حال آپلود' : 'انتخاب تصویر',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (mediaError != null)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        mediaError!,
+                        style: const TextStyle(
+                          color: AdminColors.coral,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  _productPreview(),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: galleryImages,
+                    minLines: 2,
+                    maxLines: 4,
+                    textDirection: TextDirection.ltr,
+                    decoration: const InputDecoration(
+                      labelText: 'پیوند تصاویر گالری (اختیاری)',
+                      hintText: 'هر پیوند را در یک خط وارد کنید',
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: uploadingGallery ? null : pickGalleryImages,
+                      icon: uploadingGallery
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.add_photo_alternate_outlined),
+                      label: Text(
+                        uploadingGallery
+                            ? 'در حال بارگذاری تصاویر…'
+                            : 'بارگذاری تصاویر گالری',
+                      ),
+                    ),
+                  ),
+                  if (galleryImages.text.trim().isNotEmpty) _galleryPreview(),
+                ]),
+                const SizedBox(height: 14),
+                _formSection('قیمت و موجودی', Icons.sell_outlined, [
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'Weight', label: Text('وزنی')),
+                      ButtonSegment(value: 'Count', label: Text('عددی')),
+                    ],
+                    selected: {unitType},
+                    onSelectionChanged: (value) => setState(() {
+                      unitType = value.first;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: quantity,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: const [PersianDigitsInputFormatter()],
+                    decoration: InputDecoration(
+                      labelText: unitType == 'Weight'
+                          ? 'وزن هر بسته (گرم)'
+                          : 'تعداد هر بسته',
+                    ),
+                    validator: quantityRequired,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: sku,
+                    textDirection: TextDirection.ltr,
+                    decoration: const InputDecoration(
+                      labelText: 'کد انبار (SKU)',
+                      helperText:
+                          'کد یکتای بسته برای انبار و سفارش‌ها؛ مشتری آن را نمی‌بیند. نمونه: KOO-250',
+                    ),
+                    validator: required,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: price,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: const [
+                      PersianGroupedIntegerInputFormatter(),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'قیمت فروش (ریال)',
+                    ),
+                    validator: numberRequired,
+                  ),
+                  if (widget.canWriteCosts) ...[
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: costPrice,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: const [
+                        PersianGroupedIntegerInputFormatter(),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'قیمت تمام‌شده (ریال)',
+                        helperText:
+                            'برای محاسبه سود و حاشیهٔ سود استفاده می‌شود.',
+                      ),
+                      validator: numberRequired,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: stock,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: const [
+                      PersianGroupedIntegerInputFormatter(),
+                    ],
+                    decoration: const InputDecoration(
+                      labelText: 'تعداد بستهٔ موجود',
+                    ),
+                    validator: stockRequired,
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text(
+                    'اطلاعات SEO و مشخصات',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: const Text(
+                    'اختیاری، اما برای دیده‌شدن محصول پیشنهاد می‌شود.',
+                    style: TextStyle(fontSize: 11, color: AdminColors.muted),
+                  ),
+                  children: [
+                    TextFormField(
+                      controller: seoTitle,
+                      decoration: const InputDecoration(labelText: 'عنوان SEO'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: seoDescription,
+                      maxLines: 2,
+                      decoration: const InputDecoration(labelText: 'توضیح SEO'),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: seoKeywords,
+                      decoration: const InputDecoration(
+                        labelText: 'کلمات کلیدی',
+                        hintText: 'مثلاً پسته، رفسنجان، شور',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: specifications,
+                      minLines: 3,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: 'مشخصات ساختاریافته',
+                        hintText: 'هر خط: کلید=مقدار',
+                        helperText: 'مثلاً وزن خالص=۲۵۰ گرم',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
-          FilledButton(onPressed: submit, child: const Text('ذخیره پیش‌نویس')),
-        ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('انصراف'),
+      ),
+      FilledButton(onPressed: submit, child: const Text('ذخیره پیش‌نویس')),
+    ],
+  );
 
-  String? required(String? value) => value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
-  String? numberRequired(String? value) => parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
-  String? stockRequired(String? value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null
+  String? required(String? value) =>
+      value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
+  String? numberRequired(String? value) =>
+      parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
+  String? quantityRequired(String? value) {
+    final parsed = parsePersianNumber(value);
+    if (parsed == null || !parsed.isFinite || parsed <= 0)
+      return 'مقدار هر بسته را وارد کنید.';
+    if (unitType == 'Count' && parsed != parsed.roundToDouble())
+      return 'تعداد هر بسته باید عدد صحیح باشد.';
+    return null;
+  }
+
+  String? stockRequired(String? value) =>
+      parsePersianInteger(value, min: 0, max: maxApiInteger) == null
       ? 'تعداد صحیح صفر یا بیشتر وارد کنید.'
       : null;
 
+  Widget _formSection(String title, IconData icon, List<Widget> children) =>
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: AdminColors.ink),
+                  const SizedBox(width: 8),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ...children,
+            ],
+          ),
+        ),
+      );
+
+  Widget _productPreview() {
+    final image = primaryImage.text.trim();
+    final parsedPrice = parsePersianInteger(price.text);
+    return Card(
+      color: AdminColors.canvas,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 96,
+                height: 96,
+                child: image.isEmpty
+                    ? const ColoredBox(
+                        color: Colors.white,
+                        child: Icon(
+                          Icons.image_outlined,
+                          size: 34,
+                          color: AdminColors.muted,
+                        ),
+                      )
+                    : Image.network(
+                        resolveMediaUri(image).toString(),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Color(0xFFFFF0D9),
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: AdminColors.muted,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'پیش‌نمایش کارت محصول',
+                    style: TextStyle(fontSize: 11, color: AdminColors.muted),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    title.text.trim().isEmpty ? 'نام محصول' : title.text.trim(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    category,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AdminColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    parsedPrice == null
+                        ? 'قیمت پس از ورود نمایش داده می‌شود'
+                        : '${formatPersianInteger(parsedPrice)} ریال',
+                    style: const TextStyle(
+                      color: AdminColors.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _galleryPreview() {
+    final primary = primaryImage.text.trim().isEmpty
+        ? null
+        : resolveMediaUri(primaryImage.text).toString();
+    final urls = galleryImages.text
+        .split('\n')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty);
+    final uniqueUrls = urls
+        .map((value) => resolveMediaUri(value).toString())
+        .where((value) => value != primary)
+        .toSet();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+        for (final url in uniqueUrls)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                resolveMediaUri(url).toString(),
+                width: 72,
+                height: 72,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 72,
+                  height: 72,
+                  color: AdminColors.canvas,
+                  alignment: Alignment.center,
+                  child: const Icon(Icons.broken_image_outlined, size: 20),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> pickImage() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
     if (result == null || result.files.single.bytes == null) return;
     final file = result.files.single;
-    setState(() { uploadingImage = true; mediaError = null; });
+    setState(() {
+      uploadingImage = true;
+      mediaError = null;
+    });
     try {
       final uploaded = await media.uploadImage(
         fileName: file.name,
@@ -534,6 +864,46 @@ class _ProductDialogState extends State<ProductDialog> {
       if (mounted) setState(() => mediaError = exception.toString());
     } finally {
       if (mounted) setState(() => uploadingImage = false);
+    }
+  }
+
+  Future<void> pickGalleryImages() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    setState(() {
+      uploadingGallery = true;
+      mediaError = null;
+    });
+    try {
+      final uploadedUrls = <String>[];
+      for (final file in result.files) {
+        if (file.bytes == null)
+          throw Exception('خواندن فایل ${file.name} ممکن نشد.');
+        if (file.size > 8 * 1024 * 1024)
+          throw Exception('حجم هر تصویر باید کمتر از ۸ مگابایت باشد.');
+        final uploaded = await media.uploadImage(
+          fileName: file.name,
+          bytes: file.bytes!,
+          contentType: _mimeFor(file.name),
+        );
+        uploadedUrls.add(uploaded.url);
+      }
+      if (mounted)
+        setState(() {
+          final existing = galleryImages.text
+              .split('\n')
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty);
+          galleryImages.text = [...existing, ...uploadedUrls].join('\n');
+        });
+    } catch (exception) {
+      if (mounted) setState(() => mediaError = exception.toString());
+    } finally {
+      if (mounted) setState(() => uploadingGallery = false);
     }
   }
 
@@ -562,6 +932,7 @@ class _ProductDialogState extends State<ProductDialog> {
     primaryImage.dispose();
     galleryImages.dispose();
     sku.dispose();
+    quantity.dispose();
     price.dispose();
     stock.dispose();
     super.dispose();
@@ -569,7 +940,10 @@ class _ProductDialogState extends State<ProductDialog> {
 
   void submit() {
     if (!formKey.currentState!.validate()) return;
-    final label = unitType == 'Weight' ? '${formatPersianInteger(quantity.toInt())} گرم' : '${formatPersianInteger(quantity.toInt())} عدد';
+    final packageQuantity = parsePersianNumber(quantity.text)!;
+    final label = unitType == 'Weight'
+        ? '${formatPersianNumber(packageQuantity)} گرم'
+        : '${formatPersianInteger(packageQuantity)} عدد';
     Navigator.pop(
       context,
       CreateProductCommand(
@@ -584,19 +958,28 @@ class _ProductDialogState extends State<ProductDialog> {
         seoKeywords: seoKeywords.text.trim(),
         specifications: {
           for (final line in specifications.text.split('\n'))
-            if (line.contains('=')) line.split('=').first.trim(): line.substring(line.indexOf('=') + 1).trim(),
+            if (line.contains('='))
+              line.split('=').first.trim(): line
+                  .substring(line.indexOf('=') + 1)
+                  .trim(),
         },
         unitType: unitType,
         isPublished: false,
         primaryImage: primaryImage.text.trim(),
-        galleryImages: galleryImages.text.split('\n').map((value) => value.trim()).where((value) => value.isNotEmpty).toList(),
+        galleryImages: galleryImages.text
+            .split('\n')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(),
         variants: [
           CreateVariantCommand(
             sku: sku.text,
-            quantity: quantity,
+            quantity: packageQuantity,
             displayLabel: label,
             price: parsePersianNumber(price.text)!,
-            costPrice: widget.canWriteCosts ? parsePersianNumber(costPrice.text)! : 0,
+            costPrice: widget.canWriteCosts
+                ? parsePersianNumber(costPrice.text)!
+                : 0,
             availablePackages: parsePersianInteger(stock.text)!,
           ),
         ],
@@ -767,6 +1150,7 @@ class _CategoryDialogState extends State<CategoryDialog> {
             TextFormField(
               controller: sortOrder,
               keyboardType: TextInputType.number,
+              inputFormatters: const [PersianGroupedIntegerInputFormatter()],
               decoration: const InputDecoration(labelText: 'ترتیب نمایش'),
               validator: (value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null
                   ? 'عدد صحیح بین صفر و حد مجاز وارد کنید.'

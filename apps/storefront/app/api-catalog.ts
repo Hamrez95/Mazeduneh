@@ -94,9 +94,13 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
   const variant = variants?.find((item) => item.availablePackages > 0) ?? variants?.[0];
   if (!variant || !product.isPublished) return null;
 
-  const galleryImages = (product.galleryImages ?? [])
-    .map(resolveMediaUrl)
-    .filter((image): image is string => Boolean(image));
+  const primaryImage = resolveMediaUrl(product.primaryImage);
+  const galleryImages = Array.from(new Set(
+    (product.galleryImages ?? [])
+      .map(resolveMediaUrl)
+      .filter((image): image is string => Boolean(image)),
+  ))
+    .filter((image) => image !== primaryImage);
 
   return {
     id: product.slug,
@@ -121,7 +125,7 @@ export function mapApiProduct(product: ApiProduct): DemoProduct | null {
     seoTitle: toPersianDigits(product.seoTitle || product.title),
     seoDescription: toPersianDigits(product.seoDescription || product.shortDescription || `${product.title} را از مزه‌دونه تهیه کن.`),
     primaryImage: resolveMediaUrl(product.primaryImage),
-    galleryImages: galleryImages.length ? galleryImages : undefined,
+    galleryImages,
     specifications: product.specifications
       ? Object.fromEntries(Object.entries(product.specifications).map(([key, value]) => [toPersianDigits(key), toPersianDigits(value)]))
       : undefined,

@@ -677,7 +677,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
             Wrap(spacing: 12, runSpacing: 12, children: [
               SizedBox(width: 220, child: TextField(controller: carrierController, decoration: const InputDecoration(labelText: 'شرکت حمل'))),
               SizedBox(width: 220, child: TextField(controller: trackingController, decoration: const InputDecoration(labelText: 'کد رهگیری'))),
-              SizedBox(width: 220, child: TextField(controller: shippingExpenseController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال', suffixText: 'ریال'))),
+              SizedBox(width: 220, child: TextField(controller: shippingExpenseController, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال', suffixText: 'ریال'))),
               SizedBox(width: 320, child: TextField(controller: shippingReasonController, maxLength: 500, decoration: const InputDecoration(labelText: 'دلیل ثبت یا اصلاح ارسال'))),
             ]),
             const SizedBox(height: 10),

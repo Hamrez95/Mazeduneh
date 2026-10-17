@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'auth_api.dart';
+import 'formatters.dart';
 
 Future<void> showAdminMfaSettingsDialog(
   BuildContext context, {
@@ -329,6 +330,7 @@ class _AdminMfaSettingsDialogState extends State<AdminMfaSettingsDialog> {
     autofillHints: const [AutofillHints.oneTimeCode],
     inputFormatters: [
       FilteringTextInputFormatter.allow(RegExp(r'[0-9۰-۹٠-٩]')),
+      const PersianDigitsInputFormatter(),
       LengthLimitingTextInputFormatter(6),
     ],
     textDirection: TextDirection.ltr,

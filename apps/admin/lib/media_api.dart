@@ -4,6 +4,14 @@ import 'package:http_parser/http_parser.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
 
+Uri resolveMediaUri(String value, {String? apiBaseUrl}) {
+  final trimmed = value.trim();
+  final parsed = Uri.tryParse(trimmed);
+  if (parsed != null && parsed.hasScheme) return parsed;
+  final base = Uri.parse((apiBaseUrl ?? defaultApiBaseUrl).replaceFirst(RegExp(r'/$'), ''));
+  return base.resolve(trimmed.startsWith('/') ? trimmed : '/$trimmed');
+}
+
 class MediaApiException implements Exception {
   MediaApiException(this.message, {this.statusCode});
   final String message;

@@ -25,6 +25,10 @@ ThemeData buildAdminTheme() => ThemeData(
           ),
           inputDecorationTheme: const InputDecorationTheme(
             filled: true, fillColor: Colors.white, contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            isDense: true,
+            labelStyle: TextStyle(fontSize: 13, color: AdminColors.muted, fontWeight: FontWeight.w500),
+            helperStyle: TextStyle(fontSize: 11, color: AdminColors.muted, height: 1.5),
+            errorStyle: TextStyle(fontSize: 11, height: 1.35),
             border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.border)),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.border)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.ink, width: 1.5)),

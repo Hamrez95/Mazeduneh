@@ -90,6 +90,7 @@ class _CommerceSettingsPageState extends State<CommerceSettingsPage> {
             SizedBox(width: 260, child: TextFormField(
               controller: tax,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: const [PersianDigitsInputFormatter()],
               decoration: const InputDecoration(labelText: 'نرخ مالیات (%)', suffixText: '٪'),
               validator: (value) {
                 final amount = parsePersianNumber(value);
@@ -140,9 +141,9 @@ class _ShippingEditor extends StatelessWidget {
       child: Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
         SizedBox(width: 170, child: TextFormField(initialValue: method.code, decoration: const InputDecoration(labelText: 'کد انگلیسی'), onChanged: (value) => method.code = value.trim())),
         SizedBox(width: 240, child: TextFormField(initialValue: method.title, decoration: const InputDecoration(labelText: 'عنوان'), onChanged: (value) => method.title = value.trim())),
-        SizedBox(width: 180, child: TextFormField(initialValue: toPersianDigits(method.price), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'مبلغ از مشتری (ریال)'), onChanged: (value) => method.price = parsePersianNumber(value) ?? method.price)),
-        SizedBox(width: 180, child: TextFormField(initialValue: toPersianDigits(method.internalCost), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال (ریال)'), onChanged: (value) => method.internalCost = parsePersianNumber(value) ?? method.internalCost)),
-        SizedBox(width: 180, child: TextFormField(initialValue: toPersianDigits(method.freeAbove), keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'رایگان از (ریال)'), onChanged: (value) => method.freeAbove = parsePersianNumber(value) ?? method.freeAbove)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.price), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'مبلغ از مشتری (ریال)'), onChanged: (value) => method.price = parsePersianInteger(value) ?? method.price)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.internalCost), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال (ریال)'), onChanged: (value) => method.internalCost = parsePersianInteger(value) ?? method.internalCost)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.freeAbove), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'رایگان از (ریال)'), onChanged: (value) => method.freeAbove = parsePersianInteger(value) ?? method.freeAbove)),
         FilterChip(label: Text(method.isActive ? 'فعال' : 'غیرفعال'), selected: method.isActive, onSelected: (value) => method.isActive = value),
         IconButton(onPressed: onRemove, tooltip: 'حذف روش', icon: const Icon(Icons.delete_outline_rounded)),
       ]),
