@@ -11,14 +11,29 @@ $root = Split-Path -Parent $PSScriptRoot
 $localRoot = if($LocalHome) { $LocalHome } else { Join-Path $env:LOCALAPPDATA 'Mazeduneh/local' }
 $runtime = if($RuntimeHome) { $RuntimeHome } else { Join-Path $env:LOCALAPPDATA 'Mazeduneh/runtime' }
 New-Item -ItemType Directory -Force $localRoot,$runtime,(Join-Path $root '.local-dev') | Out-Null
-$stateFile = Join-Path $localRoot 'processes.json'
+$rootKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($root).ToLowerInvariant()))).Substring(0,12).ToLowerInvariant()
+$stateFile = Join-Path $localRoot "processes-$rootKey.json"
+$portsFile = Join-Path $localRoot 'ports.json'
 $secretsFile = Join-Path $localRoot 'credentials.json'
 $pgRoot = Join-Path $runtime 'postgresql-17.11-5'
 $pgBin = Join-Path $pgRoot 'pgsql/bin'
 $pgData = Join-Path $localRoot 'postgres-data'
-$apiUrl = 'http://127.0.0.1:5080'
-$webUrl = 'http://127.0.0.1:3000'
-$adminUrl = 'http://127.0.0.1:8080'
+$apiPort = 5080
+$webPort = 3000
+$adminPort = 8080
+$databasePort = 55432
+if(Test-Path $portsFile) {
+  try {
+    $savedPorts=Get-Content $portsFile -Raw | ConvertFrom-Json
+    if($savedPorts.api -ge 1024 -and $savedPorts.api -le 65535){$apiPort=[int]$savedPorts.api}
+    if($savedPorts.storefront -ge 1024 -and $savedPorts.storefront -le 65535){$webPort=[int]$savedPorts.storefront}
+    if($savedPorts.admin -ge 1024 -and $savedPorts.admin -le 65535){$adminPort=[int]$savedPorts.admin}
+    if($savedPorts.postgres -ge 1024 -and $savedPorts.postgres -le 65535){$databasePort=[int]$savedPorts.postgres}
+  } catch { Write-Warning 'Saved port settings could not be read; using defaults and checking what is available.' }
+}
+$apiUrl = "http://127.0.0.1:$apiPort"
+$webUrl = "http://127.0.0.1:$webPort"
+$adminUrl = "http://127.0.0.1:$adminPort"
 # Prevent overlapping double-clicks from racing migrations/builds or process state.
 $lockName='Local\Mazeduneh-'+[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($localRoot).ToLowerInvariant())))
 $launchLock=[Threading.Mutex]::new($false,$lockName)
@@ -32,6 +47,18 @@ function Test-Owned($entry) {
 }
 function Stop-Apps {
   foreach($entry in (Read-State)) {if(Test-Owned $entry){ & taskkill.exe /PID $entry.pid /T /F 2>$null | Out-Null }}
+  $legacyState=Join-Path $localRoot 'processes.json'
+  if(Test-Path $legacyState) {
+    try {
+      $legacyEntries=@(Get-Content $legacyState -Raw | ConvertFrom-Json)
+      $sameRoot=$false
+      foreach($entry in $legacyEntries) {
+        $process=Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$entry.pid)" -ErrorAction SilentlyContinue
+        if($process -and ([string]$process.CommandLine).Contains($root,[StringComparison]::OrdinalIgnoreCase)){$sameRoot=$true;break}
+      }
+      if($sameRoot) {foreach($entry in $legacyEntries){if(Test-Owned $entry){& taskkill.exe /PID $entry.pid /T /F 2>$null | Out-Null}}}
+    } catch { Write-Warning 'Legacy process state could not be read; leaving those processes untouched.' }
+  }
   Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
 }
 function Check-Ready([string]$url,[bool]$json=$false) {
@@ -41,8 +68,63 @@ function Check-Ready([string]$url,[bool]$json=$false) {
     return $true
   } catch {return $false}
 }
+function Test-PortAvailable([int]$port) {
+  try {if(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop){return $false}} catch {}
+  $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
+  try {$listener.Start();return $true} catch {return $false} finally {$listener.Stop()}
+}
+function Test-PortProcessFromRoot([int]$port,[string]$fragment) {
+  try {
+    $connections=Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop
+    foreach($connection in $connections) {
+      $processId=[int]$connection.OwningProcess
+      for($depth=0;$depth -lt 5 -and $processId -gt 0;$depth++) {
+        $process=Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
+        if(-not $process){break}
+        $processCommand=[string]$process.CommandLine
+        $normalizedFragment=$fragment.Replace('/',[IO.Path]::DirectorySeparatorChar)
+        if($processCommand.Contains($root,[StringComparison]::OrdinalIgnoreCase) -and $processCommand.Contains($normalizedFragment,[StringComparison]::OrdinalIgnoreCase)){return $true}
+        $processId=[int]$process.ParentProcessId
+      }
+    }
+  } catch {}
+  return $false
+}
+function Find-ReadyRootPort([int]$preferred,[int]$count,[string]$fragment) {
+  for($candidate=$preferred;$candidate -lt [Math]::Min(65536,$preferred+$count);$candidate++) {
+    if((Test-PortProcessFromRoot $candidate $fragment) -and (Check-Ready "http://127.0.0.1:$candidate")){return $candidate}
+  }
+  return 0
+}
+function Find-ReadyApiPort([int]$preferred,[int]$count) {
+  for($candidate=$preferred;$candidate -lt [Math]::Min(65536,$preferred+$count);$candidate++) {
+    if(Check-Ready "http://127.0.0.1:$candidate/health/ready" $true){return $candidate}
+  }
+  return 0
+}
+function Find-AvailablePort([int]$preferred,[int]$count,[string]$service) {
+  for($candidate=$preferred;$candidate -lt [Math]::Min(65536,$preferred+$count);$candidate++) {
+    if(Test-PortAvailable $candidate){return $candidate}
+  }
+  throw "No free local port was found for $service in the range $preferred-$($preferred+$count-1). Close one of those services or retry."
+}
+function Save-Ports {
+  @{api=$apiPort;storefront=$webPort;admin=$adminPort;postgres=$databasePort} | ConvertTo-Json | Set-Content -LiteralPath $portsFile -Encoding utf8NoBOM
+}
+function Save-DatabasePort {
+  $saved=@{}
+  if(Test-Path $portsFile){try{$saved=Get-Content $portsFile -Raw|ConvertFrom-Json -AsHashtable}catch{}}
+  if(-not $saved){$saved=@{}}
+  $saved.postgres=$databasePort
+  $saved|ConvertTo-Json|Set-Content -LiteralPath $portsFile -Encoding utf8NoBOM
+}
+function Set-Urls {
+  $script:apiUrl="http://127.0.0.1:$script:apiPort"
+  $script:webUrl="http://127.0.0.1:$script:webPort"
+  $script:adminUrl="http://127.0.0.1:$script:adminPort"
+}
 if($Action -eq 'status') {
-  [pscustomobject]@{Storefront=(Check-Ready $webUrl);Admin=(Check-Ready $adminUrl);ApiDatabase=(Check-Ready "$apiUrl/health/ready" $true);Data=$localRoot}|Format-List
+  [pscustomobject]@{Storefront=(Check-Ready $webUrl);StorefrontUrl=$webUrl;Admin=(Check-Ready $adminUrl);AdminUrl=$adminUrl;ApiDatabase=(Check-Ready "$apiUrl/health/ready" $true);ApiUrl=$apiUrl;PostgresPort=$databasePort;Data=$localRoot}|Format-List
   exit
 }
 if($Action -in @('stop','restart')) {
@@ -53,8 +135,21 @@ if($Action -in @('stop','restart')) {
     exit
   }
 }
-if((Read-State|Where-Object {Test-Owned $_}) -and (Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl)) {
-  Write-Host "Already running: $webUrl and $adminUrl"
+if($Action -eq 'start') {
+  $runningWebPort=Find-ReadyRootPort 3000 100 'apps/storefront'
+  $runningAdminPort=Find-ReadyRootPort 8080 100 'serve-admin.cjs'
+  $runningApiPort=Find-ReadyApiPort 5080 100
+  if($runningWebPort -and $runningAdminPort -and $runningApiPort) {
+    $webPort=$runningWebPort;$adminPort=$runningAdminPort;$apiPort=$runningApiPort
+    Set-Urls
+    Save-Ports
+    Write-Host "Mazeduneh is already healthy: $webUrl and $adminUrl"
+    if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
+    exit
+  }
+}
+if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl) -and (Test-PortProcessFromRoot $webPort 'apps/storefront') -and (Test-PortProcessFromRoot $adminPort 'serve-admin.cjs')) {
+  Write-Host "Mazeduneh is already healthy: $webUrl and $adminUrl"
   if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
   exit
 }
@@ -70,10 +165,10 @@ $node=Resolve-Tool 'node' @("$env:ProgramFiles/nodejs/node.exe")
 $npm=Resolve-Tool 'npm.cmd' @("$env:ProgramFiles/nodejs/npm.cmd")
 $flutter=Resolve-Tool 'flutter' @("$env:USERPROFILE/develop/flutter/bin/flutter.bat","$env:LOCALAPPDATA/flutter/bin/flutter.bat","$env:LOCALAPPDATA/Mazeduneh/flutter/bin/flutter.bat")
 if(-not ((& $dotnet --list-sdks) -match '^10\.')){throw '.NET 10 SDK is required: winget install Microsoft.DotNet.SDK.10'}
-foreach($port in @(5080,3000,8080)) {
-  $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port)
-  try {$listener.Start()} catch {throw "Port $port belongs to another running app. Close the previous Mazeduneh session before starting this checkout."} finally {$listener.Stop()}
-}
+$apiPort=Find-AvailablePort $apiPort 100 'API'
+$webPort=Find-AvailablePort $webPort 100 'storefront'
+$adminPort=Find-AvailablePort $adminPort 100 'admin panel'
+Set-Urls
 function Random-Secret { [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLowerInvariant() }
 if(-not(Test-Path $secretsFile)) {
   @{adminEmail='admin@mazeduneh.local';adminPassword=(Random-Secret);databasePassword=(Random-Secret);signingKey=(Random-Secret)} | ConvertTo-Json | Set-Content $secretsFile -Encoding utf8NoBOM
@@ -108,29 +203,36 @@ if(-not(Test-Path "$pgData/PG_VERSION")) {
   } finally {Remove-Item -LiteralPath $pwFile -Force -ErrorAction SilentlyContinue}
 }
 & "$pgBin/pg_ctl.exe" -D $pgData status *> $null
-if($LASTEXITCODE -ne 0) {
-  $pgStart=Start-Process -FilePath "$pgBin/pg_ctl.exe" -ArgumentList @('-D',('"'+$pgData+'"'),'-l',('"'+(Join-Path $localRoot 'postgres.log')+'"'),'-o','"-h 127.0.0.1 -p 55432"','-w','start') -RedirectStandardOutput (Join-Path $localRoot 'postgres-start.stdout.log') -RedirectStandardError (Join-Path $localRoot 'postgres-start.stderr.log') -WindowStyle Hidden -PassThru
+$databaseRunning=$LASTEXITCODE -eq 0
+if($databaseRunning -and (Test-Path "$pgData/postmaster.opts")) {
+  $postmasterOptions=Get-Content "$pgData/postmaster.opts" -Raw
+  if($postmasterOptions -match '(?i)"-p"\s+"?(\d+)'){ $databasePort=[int]$Matches[1] }
+}
+if(-not $databaseRunning) {
+  $databasePort=Find-AvailablePort $databasePort 100 'PostgreSQL'
+  $pgStart=Start-Process -FilePath "$pgBin/pg_ctl.exe" -ArgumentList @('-D',('"'+$pgData+'"'),'-l',('"'+(Join-Path $localRoot 'postgres.log')+'"'),'-o',('"-h 127.0.0.1 -p '+$databasePort+'"'),'-w','start') -RedirectStandardOutput (Join-Path $localRoot 'postgres-start.stdout.log') -RedirectStandardError (Join-Path $localRoot 'postgres-start.stderr.log') -WindowStyle Hidden -PassThru
   # Start-Process -Wait waits for PostgreSQL descendants too, including the server.
   if(-not $pgStart.WaitForExit(60000)){throw 'PostgreSQL startup timed out. See postgres-start.stderr.log.'}
   if($pgStart.ExitCode -ne 0){throw 'PostgreSQL did not start. See postgres.log in the local data folder.'}
 }
+Save-DatabasePort
 $previousPgPassword=$env:PGPASSWORD
 try {
   $env:PGPASSWORD=$secrets.databasePassword
-  $exists=& "$pgBin/psql.exe" -h 127.0.0.1 -p 55432 -U mazeduneh -d postgres -tAc "select 1 from pg_database where datname='mazeduneh'"
+  $exists=& "$pgBin/psql.exe" -h 127.0.0.1 -p $databasePort -U mazeduneh -d postgres -tAc "select 1 from pg_database where datname='mazeduneh'"
   if($LASTEXITCODE -ne 0){throw 'Cannot authenticate to the local database.'}
-  if($exists -ne '1'){& "$pgBin/createdb.exe" -h 127.0.0.1 -p 55432 -U mazeduneh mazeduneh;if($LASTEXITCODE -ne 0){throw 'Cannot create the local database.'}}
+  if($exists -ne '1'){& "$pgBin/createdb.exe" -h 127.0.0.1 -p $databasePort -U mazeduneh mazeduneh;if($LASTEXITCODE -ne 0){throw 'Cannot create the local database.'}}
 } finally {$env:PGPASSWORD=$previousPgPassword}
 $apiEnv=@{
   ASPNETCORE_ENVIRONMENT='Development';ASPNETCORE_URLS=$apiUrl
   Admin__Email=$secrets.adminEmail
   Admin__PasswordHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($secrets.adminPassword)))
   Admin__TokenSigningKey=$secrets.signingKey;Admin__Mfa__SensitiveActionsRequired='false'
-  ConnectionStrings__Catalog="Host=127.0.0.1;Port=55432;Database=mazeduneh;Username=mazeduneh;Password=$($secrets.databasePassword)"
+  ConnectionStrings__Catalog="Host=127.0.0.1;Port=$databasePort;Database=mazeduneh;Username=mazeduneh;Password=$($secrets.databasePassword)"
   Payments__SandboxEnabled='true';'Cors__AllowedOrigins__0'=$webUrl;'Cors__AllowedOrigins__1'=$adminUrl
   Media__RootPath=(Join-Path $localRoot 'media')
 }
-$build=Join-Path $localRoot 'build/api'
+$build=Join-Path $root '.local-dev/build/api'
 function Run-WithEnv([string]$file,[string[]]$arguments,[hashtable]$environment) {
   $p=Start-Process -FilePath $file -ArgumentList $arguments -WorkingDirectory $root -Environment $environment -NoNewWindow -Wait -PassThru
   if($p.ExitCode -ne 0){throw "Build or database setup failed ($($p.ExitCode))."}
@@ -150,15 +252,15 @@ $records=[Collections.Generic.List[object]]::new()
 function Start-App([string]$name,[string]$exe,[string[]]$arguments,[hashtable]$environment,[string]$fragment) {
   $out=Join-Path $localRoot "$name.stdout.log";$err=Join-Path $localRoot "$name.stderr.log"
   $p=Start-Process -FilePath $exe -ArgumentList (($arguments|ForEach-Object {Quote-Arg $_}) -join ' ') -WorkingDirectory $root -Environment $environment -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru
-  $records.Add(@{name=$name;pid=$p.Id;fragment=$fragment})
+  $records.Add(@{name=$name;pid=$p.Id;fragment=$fragment;root=$root})
   ConvertTo-Json -InputObject @($records.ToArray()) | Set-Content $stateFile -Encoding utf8NoBOM
 }
 try {
   Start-App 'api' $dotnet @($dll) $apiEnv $dll
   $next=Join-Path $root 'apps/storefront/node_modules/next/dist/bin/next'
-  Start-App 'storefront' $node @($next,'dev','--webpack','--hostname','127.0.0.1','--port','3000', (Join-Path $root 'apps/storefront')) @{NEXT_PUBLIC_MAZEDUNEH_API_URL=$apiUrl;NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL=$apiUrl;NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE='false';NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL=$adminUrl;NEXT_PUBLIC_SITE_URL=$webUrl} $next
+  Start-App 'storefront' $node @($next,'dev','--webpack','--hostname','127.0.0.1','--port',"$webPort", (Join-Path $root 'apps/storefront')) @{NEXT_PUBLIC_MAZEDUNEH_API_URL=$apiUrl;NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL=$apiUrl;NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE='false';NEXT_PUBLIC_MAZEDUNEH_ADMIN_URL=$adminUrl;NEXT_PUBLIC_SITE_URL=$webUrl} $next
   $server=Join-Path $root 'scripts/serve-admin.cjs'
-  Start-App 'admin' $node @($server,(Join-Path $root 'apps/admin/build/web'),'8080') @{} $server
+  Start-App 'admin' $node @($server,(Join-Path $root 'apps/admin/build/web'),"$adminPort") @{} $server
   $deadline=[DateTime]::UtcNow.AddMinutes(3)
   do {
     if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl)){break}
@@ -168,7 +270,8 @@ try {
   if(-not(Check-Ready "$apiUrl/health/ready" $true)){throw 'API/database readiness failed. Review api.stdout.log.'}
   if(-not(Check-Ready $webUrl) -or -not(Check-Ready $adminUrl)){throw 'A browser app did not become ready.'}
 } catch {Stop-Apps;throw}
-Write-Host "Ready. Storefront: $webUrl    Admin: $adminUrl" -ForegroundColor Green
+Save-Ports
+Write-Host "Ready. Storefront: $webUrl    Admin: $adminUrl    API: $apiUrl/health/ready" -ForegroundColor Green
 Write-Host "Local login: $($secrets.adminEmail). Password is in $secretsFile" -ForegroundColor Cyan
 Write-Host 'Use -Action status, stop or restart. Database survives stops and upgrades.'
 if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
