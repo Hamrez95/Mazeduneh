@@ -9,7 +9,7 @@ foreach($action in @('start','stop','status')) {
   $link=$shell.CreateShortcut((Join-Path $desktop "Mazeduneh $action.lnk"))
   $link.TargetPath=$pwsh
   $link.WorkingDirectory=$root
-  $link.Arguments="-NoLogo -NoProfile -NoExit -ExecutionPolicy Bypass -File `"$PSScriptRoot/local.ps1`" -Action $action"
+  $link.Arguments="-NoLogo -NoProfile -NoExit -ExecutionPolicy Bypass -File `"$root/Mazeduneh.ps1`" -Action $action"
   if($LocalHome){$link.Arguments+=" -LocalHome `"$LocalHome`""}
   if($RuntimeHome){$link.Arguments+=" -RuntimeHome `"$RuntimeHome`""}
   $link.Description="Mazeduneh browser apps: $action"
