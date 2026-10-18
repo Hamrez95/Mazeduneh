@@ -1,3 +1,5 @@
+import 'admin_table.dart';
+import 'admin_theme.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -162,7 +164,23 @@ class _PromotionsPageState extends State<PromotionsPage> {
             'هنوز کوپنی نساخته‌اید. با «کوپن جدید» اولین تخفیف را آماده کنید.',
           ),
         ),
-      for (final raw in rows ?? [])
+      if (rows?.isNotEmpty == true && MediaQuery.sizeOf(context).width >= 1200)
+        AdminRecordTable<Map<String, dynamic>>(
+          records: rows!.cast<Map<String, dynamic>>(),
+          searchText: (r) => "${r['code']} ${(r['rule'] as Map)['name']}",
+          searchHint: 'جست‌وجوی کمپین یا کوپن…',
+          columns: [
+            AdminColumn('کمپین', (r) => AdminIdentityCell(title: (r['rule'] as Map)['name'] as String, subtitle: r['code'] as String, leading: const CircleAvatar(backgroundColor: AdminColors.primarySoft, child: Icon(Icons.local_offer_outlined, color: AdminColors.primaryLight, size: 20)))),
+            AdminColumn('نوع', (r) => Text(_kindLabel((r['rule'] as Map)['kind'] as String))),
+            AdminColumn('اجرا', (r) => AdminStatusBadge((r['rule'] as Map)['automatic'] == true ? 'خودکار' : 'کد تخفیف')),
+            AdminColumn('وضعیت', (r) => AdminStatusBadge(_promotionState(r), color: _promotionState(r) == 'فعال' ? AdminColors.success : AdminColors.amber, background: _promotionState(r) == 'فعال' ? AdminColors.successSoft : AdminColors.warningSoft)),
+            AdminColumn('مصرف', (r) => Text(formatPersianInteger(r['uses'] as num)), compare: (a,b) => (a['uses'] as num).compareTo(b['uses'] as num)),
+            AdminColumn('تخفیف (تومان)', (r) => Text(formatToman(r['discountTotal'] as num)), compare: (a,b) => (a['discountTotal'] as num).compareTo(b['discountTotal'] as num)),
+            AdminColumn('فروش (تومان)', (r) => Text(formatToman(r['revenue'] as num? ?? 0))),
+            AdminColumn('عملیات', (r) => IconButton(tooltip: "ویرایش ${r['code']}", onPressed: OwnerSession.instance.can('pricing.write') && r['customerScopeHidden'] != true ? () => edit(r) : null, icon: const Icon(Icons.edit_outlined, size: 20))),
+          ],
+        )
+      else for (final raw in rows ?? [])
         Builder(
           builder: (context) {
             final row = raw as Map<String, dynamic>;
@@ -206,6 +224,16 @@ class _PromotionsPageState extends State<PromotionsPage> {
         ),
     ],
   );
+}
+
+String _kindLabel(String kind) => switch(kind) { 'Percent' => 'درصدی', 'Fixed' => 'مبلغ ثابت', 'FreeShipping' => 'ارسال رایگان', 'Bundle' => 'پک', 'BuyGet' => 'خرید و هدیه', _ => kind };
+String _promotionState(Map<String,dynamic> row) {
+  final rule = row['rule'] as Map;
+  final now = DateTime.now();
+  if (rule['active'] != true) return 'غیرفعال';
+  if (now.isBefore(DateTime.parse(rule['startsAt'] as String))) return 'زمان‌بندی‌شده';
+  if (!now.isBefore(DateTime.parse(rule['endsAt'] as String))) return 'پایان‌یافته';
+  return 'فعال';
 }
 
 class _PromotionEditor extends StatefulWidget {

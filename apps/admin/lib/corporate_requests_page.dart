@@ -197,7 +197,7 @@ class _CorporateRequestsPageState extends State<CorporateRequestsPage> {
 
   Widget _metricCard(String label, String value, {bool featured = false}) => Container(
     decoration: BoxDecoration(
-      color: featured ? AdminColors.mintSoft : Colors.white,
+      color: featured ? AdminColors.mintSoft : AdminColors.surface,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: featured ? AdminColors.mintSoft : AdminColors.border),
     ),

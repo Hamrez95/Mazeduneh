@@ -1,3 +1,4 @@
+import 'admin_table.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -168,7 +169,17 @@ class _AuditResults extends StatelessWidget {
   final List<AdminAuditLogEntry> entries;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => MediaQuery.sizeOf(context).width >= 1200
+      ? AdminRecordTable<AdminAuditLogEntry>(records: entries,
+          searchText: (e) => '${e.actor} ${e.actionLabel} ${e.entityId}', searchHint: 'جست‌وجوی فعالیت…',
+          columns: [
+            AdminColumn('فعالیت', (e) => Text(e.actionLabel), compare: (a,b) => a.actionLabel.compareTo(b.actionLabel)),
+            AdminColumn('انجام‌دهنده', (e) => Text(e.actor)),
+            AdminColumn('مورد', (e) => SizedBox(width:180, child:Text('${e.entityLabel}: ${e.entityId}',maxLines:2,overflow:TextOverflow.ellipsis,style:const TextStyle(fontSize:11)))),
+            AdminColumn('زمان', (e) => Text(formatLocalizedDateTime(context,e.occurredAt)), compare:(a,b)=>a.occurredAt.compareTo(b.occurredAt)),
+            AdminColumn('جزئیات', (e) => IconButton(tooltip:'جزئیات تغییر',icon:const Icon(Icons.visibility_outlined,size:20),onPressed:()=>showDialog<void>(context:context,builder:(_)=>AlertDialog(title:Text(e.actionLabel),content:SizedBox(width:650,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[_AuditMetaGrid(entry:e),const SizedBox(height:12),_SnapshotPanel(title:'قبل از تغییر',value:e.beforeJson),const SizedBox(height:12),_SnapshotPanel(title:'بعد از تغییر',value:e.afterJson)]))),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('بستن'))])))),
+          ])
+      : Card(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -221,7 +232,7 @@ class _AuditMetaGrid extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: const Color(0xFFF7F8F4), borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(color: AdminColors.canvas, borderRadius: BorderRadius.circular(6)),
         child: Wrap(runSpacing: 10, spacing: 28, children: [
           _Meta(label: 'انجام‌دهنده', value: entry.actor),
           _Meta(label: 'دلیل ثبت‌شده', value: entry.reason),
@@ -250,7 +261,7 @@ class _SnapshotPanel extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AdminColors.border)),
+      decoration: BoxDecoration(color: AdminColors.surface, borderRadius: BorderRadius.circular(6), border: Border.all(color: AdminColors.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.muted)),
         const SizedBox(height: 6),

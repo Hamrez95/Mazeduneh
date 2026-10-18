@@ -698,7 +698,11 @@ class AdminAnalytics {
     this.productCost = 0,
     this.packagingCost = 0,
     this.additionalCost = 0,
+    this.dailySales = const [],
+    this.orderStates = const [],
   });
+  final List<AdminDailySales> dailySales;
+  final List<AdminOrderStateCount> orderStates;
   final int days;
   final int orderCount;
   final int unitsSold;
@@ -716,6 +720,8 @@ class AdminAnalytics {
   final num packagingCost;
   final num additionalCost;
   factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
+    dailySales: (json['dailySales'] as List? ?? const []).map((x) => AdminDailySales.fromJson(x as Map<String, dynamic>)).toList(),
+    orderStates: (json['orderStates'] as List? ?? const []).map((x) => AdminOrderStateCount(x['state'] as String, x['count'] as int)).toList(),
     days: json['days'] as int,
     orderCount: json['orderCount'] as int,
     unitsSold: json['unitsSold'] as int,
@@ -733,6 +739,21 @@ class AdminAnalytics {
     packagingCost: (json['packagingCost'] as num?) ?? 0,
     additionalCost: (json['additionalCost'] as num?) ?? 0,
   );
+}
+
+class AdminDailySales {
+  const AdminDailySales({required this.day, required this.orderCount, required this.revenue, required this.netProfit});
+  final DateTime day;
+  final int orderCount;
+  final num revenue, netProfit;
+  factory AdminDailySales.fromJson(Map<String, dynamic> json) => AdminDailySales(
+    day: DateTime.parse('${json['day']}T00:00:00Z'), orderCount: json['orderCount'] as int,
+    revenue: json['revenue'] as num, netProfit: json['netProfit'] as num);
+}
+class AdminOrderStateCount {
+  const AdminOrderStateCount(this.state, this.count);
+  final String state;
+  final int count;
 }
 
 class AdminNavigationTarget {

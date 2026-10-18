@@ -1,5 +1,6 @@
 import 'formatters.dart';
 import 'package:flutter/material.dart';
+import 'admin_theme.dart';
 
 import 'admin_step_up_dialog.dart';
 import 'catalog_api.dart';
@@ -125,7 +126,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                   const SizedBox(height: 4),
                   const Text(
                     'محصول وزنی یا عددی بساز، بسته‌ها را تعریف کن و بعد از بازبینی منتشر کن.',
-                    style: TextStyle(color: Colors.grey),
+                    style: TextStyle(color: AdminColors.muted),
                   ),
                 ],
               ),
@@ -192,14 +193,14 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                     Chip(
                                       label: Text(product.isPublished ? 'منتشرشده' : 'پیش‌نویس'),
                                       backgroundColor: product.isPublished
-                                          ? const Color(0xFFE7F1E2)
-                                          : const Color(0xFFFFE8C8),
+                                          ? AdminColors.successSoft
+                                          : AdminColors.warningSoft,
                                     ),
                                   ],
                                 ),
                                 Text(
                                   '${product.category} · ${product.origin}',
-                                  style: const TextStyle(color: Colors.grey),
+                                  style: const TextStyle(color: AdminColors.muted),
                                 ),
                                 const SizedBox(height: 10),
                                 Row(
@@ -207,7 +208,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                     Icon(
                                       product.isWeight ? Icons.scale_rounded : Icons.cookie_rounded,
                                       size: 18,
-                                      color: const Color(0xFF3F6B45),
+                                      color: AdminColors.success,
                                     ),
                                     const SizedBox(width: 6),
                                     Text(product.isWeight ? 'واحد پایه: گرم' : 'واحد پایه: عدد'),
@@ -252,7 +253,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                                           ]);
                                     final status = Text(
                                       product.isPublished ? 'قابل نمایش و سفارش در سایت' : 'فقط در پنل مدیریت دیده می‌شود',
-                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                      style: const TextStyle(fontSize: 11, color: AdminColors.muted),
                                     );
                                     return constraints.maxWidth < 410
                                         ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [status, const SizedBox(height: 8), Align(alignment: AlignmentDirectional.centerEnd, child: actions)])
@@ -643,12 +644,12 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                         Container(
                           padding: const EdgeInsets.all(13),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFECE8),
+                            color: AdminColors.dangerSoft,
                             borderRadius: BorderRadius.circular(13),
                           ),
                           child: Text(
                             errorMessage!,
-                            style: const TextStyle(color: Color(0xFF9A3E36)),
+                            style: const TextStyle(color: AdminColors.coral),
                           ),
                         ),
                       ],
@@ -838,7 +839,7 @@ class _SectionTitle extends StatelessWidget {
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
-        Text(subtitle, style: const TextStyle(color: Colors.grey)),
+        Text(subtitle, style: const TextStyle(color: AdminColors.muted)),
       ],
     );
   }

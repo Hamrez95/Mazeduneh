@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
@@ -20,8 +21,14 @@ import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
 import 'promotions_page.dart';
+
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key, this.dashboardApi, this.ordersApi, this.catalogApi});
+  const AdminShell({
+    super.key,
+    this.dashboardApi,
+    this.ordersApi,
+    this.catalogApi,
+  });
   final OrderApiClient? dashboardApi;
   final OrderApiClient? ordersApi;
   final CatalogApiClient? catalogApi;
@@ -35,6 +42,7 @@ class _AdminShellState extends State<AdminShell> {
   var navigation = const AdminNavigationIntent(module: AdminModule.dashboard);
   final navigationHistory = <AdminNavigationIntent>[];
   final catalogKey = GlobalKey<CatalogPageState>();
+  bool collapsed = false;
 
   @override
   void initState() {
@@ -43,206 +51,579 @@ class _AdminShellState extends State<AdminShell> {
       final firstAllowed = AdminModule.values.indexWhere(
         (module) => OwnerSession.instance.can(module.permission),
       );
-      if (firstAllowed >= 0) index = firstAllowed;
+      if (firstAllowed >= 0) {
+        index = firstAllowed;
+        navigation = AdminNavigationIntent(
+          module: AdminModule.values[firstAllowed],
+        );
+      }
     }
   }
+
+  List<AdminModule> get visibleModules => [
+    for (final module in AdminModule.values)
+      if (!OwnerSession.instance.isAuthenticated ||
+          OwnerSession.instance.can(module.permission))
+        module,
+  ];
 
   @override
   Widget build(BuildContext context) {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
-    final visibleModules = [
-      for (final module in AdminModule.values)
-        if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(module.permission)) module,
-    ];
-    final primaryModules = visibleModules.take(4).toList();
-    final secondaryModules = visibleModules.skip(4).toList();
-    final selectedPrimary = primaryModules.indexWhere((module) => AdminModule.values.indexOf(module) == index);
-    final pages = [for (final module in AdminModule.values) _modulePage(module)];
-    return PopScope<Object?>(
-      canPop: navigationHistory.isEmpty,
-      onPopInvokedWithResult: (didPop, _) { if (!didPop) _goBack(); },
-      child: Scaffold(
-      appBar: desktop ? null : AppBar(
-        leading: navigationHistory.isEmpty ? null : IconButton(tooltip: 'بازگشت به ${_moduleLabel(navigationHistory.last.module)}', onPressed: _goBack, icon: const Icon(Icons.arrow_back_rounded)),
-        title: const Brand(compact: true),
-        actions: [IconButton(
-          tooltip: 'تنظیم تأیید دومرحله‌ای',
-          onPressed: () => showAdminMfaSettingsDialog(context),
-          icon: const Icon(Icons.security_rounded),
-        )],
-      ),
-      bottomNavigationBar: desktop || visibleModules.isEmpty
-          ? null
-          : visibleModules.length == 1
-          ? BottomAppBar(
-              child: SafeArea(
-                child: SizedBox(
-                  height: 56,
-                  child: Center(
-                    child: Semantics(
-                      label: 'بخش فعال: ${visibleModules.single.label}',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            visibleModules.single.icon,
-                            color: AdminColors.ink,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(visibleModules.single.label),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : NavigationBar(
-              selectedIndex: secondaryModules.isNotEmpty ? (selectedPrimary < 0 ? primaryModules.length : selectedPrimary) : (selectedPrimary < 0 ? 0 : selectedPrimary),
-              onDestinationSelected: (value) => secondaryModules.isNotEmpty && value == primaryModules.length
-                  ? _openMoreMenu(secondaryModules)
-                  : _selectModule(AdminModule.values.indexOf(primaryModules[value])),
-              destinations: [
-                for (final module in primaryModules)
-                  NavigationDestination(icon: Icon(module.icon), label: module.label),
-                if (secondaryModules.isNotEmpty)
-                  const NavigationDestination(icon: Icon(Icons.more_horiz_rounded), label: 'بیشتر'),
-              ],
-            ),
-      body: Row(children: [
-        if (desktop)
-          Container(
-            width: 245,
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: AdminColors.inkDeep, borderRadius: BorderRadius.circular(24), boxShadow: const [BoxShadow(color: Color(0x1424463A), blurRadius: 24, offset: Offset(0, 10))]),
-            child: Column(children: [
-              const Padding(padding: EdgeInsets.all(12), child: Brand(dark: true)),
-              const SizedBox(height: 12),
-              Expanded(
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    for (final module in visibleModules)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Material(
-                    color: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: ListTile(
-                      selected: index == AdminModule.values.indexOf(module),
-                      selectedTileColor: AdminColors.ink,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      leading: Icon(
-                        module.icon,
-                        color: index == AdminModule.values.indexOf(module)
-                            ? Colors.white
-                            : const Color(0xFFBFD0C5),
-                      ),
-                      title: Text(
-                        module.label,
-                        style: TextStyle(
-                          color: index == AdminModule.values.indexOf(module)
-                              ? Colors.white
-                              : const Color(0xFFD5DFD6),
+    final modules = visibleModules;
+    final primary = modules.take(4).toList();
+    final secondary = modules.skip(4).toList();
+    final selectedPrimary = primary.indexWhere(
+      (module) => module.index == index,
+    );
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+            _openSearch,
+      },
+      child: PopScope<Object?>(
+        canPop: navigationHistory.isEmpty,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _goBack();
+        },
+        child: Scaffold(
+          appBar: desktop
+              ? null
+              : AppBar(
+                  leading: navigationHistory.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip:
+                              'بازگشت به ${_moduleLabel(navigationHistory.last.module)}',
+                          onPressed: _goBack,
+                          icon: const Icon(Icons.arrow_back_rounded),
                         ),
-                      ),
-                      onTap: () => _selectModule(AdminModule.values.indexOf(module)),
+                  title: const Brand(compact: true),
+                  actions: [
+                    IconButton(
+                      tooltip: 'جست‌وجوی بخش‌ها',
+                      onPressed: _openSearch,
+                      icon: const Icon(Icons.search_rounded),
                     ),
-                  ),
-                ),
+                    _accountMenu(),
                   ],
                 ),
-              ),
-              Material(
-                color: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: const Color(0xFFF7C58B),
-                    child: Text(
-                      (OwnerSession.instance.email ?? 'م')
-                          .substring(0, 1)
-                          .toUpperCase(),
+          bottomNavigationBar: desktop || modules.isEmpty
+              ? null
+              : modules.length == 1
+              ? BottomAppBar(
+                  child: SafeArea(
+                    child: SizedBox(
+                      height: 56,
+                      child: Center(
+                        child: Semantics(
+                          label: 'بخش فعال: ${modules.single.label}',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                modules.single.icon,
+                                color: AdminColors.primaryLight,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(modules.single.label),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  title: Text(
-                    OwnerSession.instance.email ?? 'کاربر فروشگاه',
-                    style: const TextStyle(color: Colors.white),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    OwnerSession.instance.role == 'Owner'
-                        ? 'مدیر اصلی'
-                        : 'عضو فروشگاه · ${OwnerSession.instance.role ?? ''}',
-                    style: const TextStyle(color: Color(0xFF9EACA1)),
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    tooltip: 'تنظیمات حساب',
-                    icon: const Icon(Icons.more_vert_rounded, color: Color(0xFFD5DFD6)),
-                    onSelected: (action) async {
-                      if (action == 'mfa') {
-                        showAdminMfaSettingsDialog(context);
-                      } else if (action == 'logout') {
-                        try {
-                          await AuthApiClient().logout();
-                        } catch (_) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.')),
-                            );
-                          }
-                        }
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'mfa',
-                        child: ListTile(
-                          leading: Icon(Icons.security_rounded),
-                          title: Text('تنظیم تأیید دومرحله‌ای'),
+                )
+              : NavigationBar(
+                  selectedIndex: secondary.isNotEmpty
+                      ? (selectedPrimary < 0 ? primary.length : selectedPrimary)
+                      : (selectedPrimary < 0 ? 0 : selectedPrimary),
+                  onDestinationSelected: (value) =>
+                      secondary.isNotEmpty && value == primary.length
+                      ? _openMoreMenu(secondary)
+                      : _selectModule(primary[value].index),
+                  destinations: [
+                    for (final module in primary)
+                      NavigationDestination(
+                        icon: Icon(module.icon),
+                        label: module.label,
+                      ),
+                    if (secondary.isNotEmpty)
+                      const NavigationDestination(
+                        icon: Icon(Icons.more_horiz_rounded),
+                        label: 'بیشتر',
+                      ),
+                  ],
+                ),
+          body: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (desktop) _sidebar(modules),
+              Expanded(
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      if (desktop) _topbar(),
+                      Expanded(
+                        child: IndexedStack(
+                          index: index,
+                          children: [
+                            for (final module in AdminModule.values)
+                              _modulePage(module),
+                          ],
                         ),
                       ),
-                      PopupMenuItem(
-                        value: 'logout',
-                        child: ListTile(
-                          leading: Icon(Icons.logout_rounded),
-                          title: Text('خروج از حساب'),
+                      if (desktop)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(24, 6, 24, 12),
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            spacing: 24,
+                            runSpacing: 6,
+                            children: [
+                              Text(
+                                'مزه‌دونه · مدیریت فروشگاه',
+                                style: TextStyle(
+                                  color: AdminColors.subtle,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              Text(
+                                'با طعم یک مدیریت بهتر',
+                                style: TextStyle(
+                                  color: AdminColors.subtle,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
               ),
-            ]),
+            ],
           ),
-        Expanded(child: SafeArea(child: IndexedStack(index: index, children: pages))),
-      ]),
-      floatingActionButton: index == AdminModule.products.index
-          ? FloatingActionButton.extended(
-              onPressed: () => catalogKey.currentState?.openCreateDialog(),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('محصول جدید'),
-            )
-      : null,
+          floatingActionButton: !desktop && index == AdminModule.products.index
+              ? FloatingActionButton.extended(
+                  onPressed: () => catalogKey.currentState?.openCreateDialog(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('محصول جدید'),
+                )
+              : null,
+        ),
       ),
     );
   }
 
+  Widget _sidebar(List<AdminModule> modules) => AnimatedContainer(
+    duration: const Duration(milliseconds: 180),
+    width: collapsed ? 76 : 260,
+    decoration: const BoxDecoration(
+      color: AdminColors.surface,
+      border: BorderDirectional(
+        end: BorderSide(color: AdminColors.border, width: 0.5),
+      ),
+    ),
+    child: Column(
+      children: [
+        SizedBox(
+          height: 86,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: collapsed ? 8 : 20),
+            child: Row(
+              children: [
+                if (!collapsed) const Expanded(child: Brand(dark: true)),
+                IconButton(
+                  tooltip: collapsed ? 'بازکردن منو' : 'جمع‌کردن منو',
+                  onPressed: () => setState(() => collapsed = !collapsed),
+                  icon: Icon(
+                    collapsed
+                        ? Icons.menu_open_rounded
+                        : Icons.radio_button_checked_rounded,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            children: [
+              _navGroup('پیشخوان', [AdminModule.dashboard], modules),
+              _navGroup('فروشگاه', [
+                AdminModule.products,
+                AdminModule.orders,
+                AdminModule.customers,
+                AdminModule.promotions,
+                AdminModule.corporate,
+              ], modules),
+              _navGroup('عملیات و گزارش‌ها', [
+                AdminModule.inventory,
+                AdminModule.reports,
+                AdminModule.notifications,
+              ], modules),
+              _navGroup('مدیریت و امنیت', [
+                AdminModule.pricing,
+                AdminModule.users,
+                AdminModule.audit,
+              ], modules),
+            ],
+          ),
+        ),
+        if (!collapsed)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AdminColors.primarySoft,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.verified_user_outlined,
+                    color: AdminColors.primaryLight,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      OwnerSession.instance.role == 'Owner'
+                          ? 'حساب مالک فروشگاه'
+                          : 'دسترسی مطابق نقش شما',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AdminColors.primaryLight,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _navGroup(
+    String title,
+    List<AdminModule> group,
+    List<AdminModule> modules,
+  ) {
+    final allowed = group.where(modules.contains).toList();
+    if (allowed.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (collapsed)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Divider(height: 1),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 20, 12, 8),
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 11, color: AdminColors.subtle),
+            ),
+          ),
+        for (final module in allowed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Tooltip(
+              message: collapsed ? module.label : '',
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  gradient: index == module.index
+                      ? const LinearGradient(
+                          colors: [AdminColors.primary, Color(0xFF9388F5)],
+                        )
+                      : null,
+                ),
+                child: ListTile(
+                  dense: true,
+                  minLeadingWidth: 18,
+                  horizontalTitleGap: 12,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: collapsed ? 14 : 12,
+                  ),
+                  leading: Icon(
+                    module.icon,
+                    color: index == module.index
+                        ? Colors.white
+                        : AdminColors.text,
+                    size: 21,
+                  ),
+                  title: collapsed
+                      ? null
+                      : Text(
+                          module.label,
+                          style: TextStyle(
+                            color: index == module.index
+                                ? Colors.white
+                                : AdminColors.heading,
+                            fontSize: 13,
+                          ),
+                        ),
+                  onTap: () => _selectModule(module.index),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _topbar() => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+    child: Container(
+      height: 62,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AdminColors.surface,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x18000000),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          if (navigationHistory.isNotEmpty)
+            IconButton(
+              tooltip:
+                  'بازگشت به ${_moduleLabel(navigationHistory.last.module)}',
+              onPressed: _goBack,
+              icon: const Icon(Icons.arrow_back_rounded),
+            ),
+          Expanded(
+            child: InkWell(
+              onTap: _openSearch,
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.search_rounded),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'جست‌وجوی بخش‌ها…',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: AdminColors.subtle),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Ctrl + K',
+                      style: TextStyle(color: AdminColors.subtle, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const Tooltip(
+            message: 'فارسی · تقویم شمسی',
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(Icons.translate_rounded, size: 21),
+            ),
+          ),
+          const Tooltip(
+            message: 'تم تیره',
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(Icons.dark_mode_outlined, size: 21),
+            ),
+          ),
+          PopupMenuButton<AdminModule>(
+            tooltip: 'میان‌برها',
+            icon: const Icon(Icons.dashboard_customize_outlined),
+            onSelected: (module) => _selectModule(module.index),
+            itemBuilder: (_) => [
+              for (final module in visibleModules)
+                PopupMenuItem(
+                  value: module,
+                  child: Row(
+                    children: [
+                      Icon(module.icon, size: 18),
+                      const SizedBox(width: 12),
+                      Text(module.label),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          IconButton(
+            tooltip: 'اعلان‌ها',
+            onPressed: visibleModules.contains(AdminModule.notifications)
+                ? () => _selectModule(AdminModule.notifications.index)
+                : null,
+            icon: const Icon(Icons.notifications_outlined),
+          ),
+          _accountMenu(),
+        ],
+      ),
+    ),
+  );
+
+  Widget _accountMenu() => PopupMenuButton<String>(
+    tooltip: 'تنظیمات حساب',
+    onSelected: (action) async {
+      if (action == 'mfa') {
+        showAdminMfaSettingsDialog(context);
+      } else if (action == 'logout') {
+        try {
+          await AuthApiClient().logout();
+        } catch (_) {
+          if (mounted)
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'از این دستگاه خارج شدید؛ ارتباط با سرور قطع بود.',
+                ),
+              ),
+            );
+        }
+      }
+    },
+    itemBuilder: (_) => [
+      PopupMenuItem<String>(
+        enabled: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              OwnerSession.instance.email ?? 'کاربر فروشگاه',
+              textDirection: TextDirection.ltr,
+              style: const TextStyle(color: AdminColors.heading, fontSize: 12),
+            ),
+            Text(
+              OwnerSession.instance.role == 'Owner'
+                  ? 'مدیر اصلی'
+                  : 'عضو فروشگاه',
+              style: const TextStyle(fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'mfa',
+        child: ListTile(
+          leading: Icon(Icons.security_rounded),
+          title: Text('تنظیم تأیید دومرحله‌ای'),
+        ),
+      ),
+      const PopupMenuItem(
+        value: 'logout',
+        child: ListTile(
+          leading: Icon(Icons.logout_rounded),
+          title: Text('خروج از حساب'),
+        ),
+      ),
+    ],
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Badge(
+        isLabelVisible: OwnerSession.instance.isAuthenticated,
+        backgroundColor: AdminColors.success,
+        smallSize: 8,
+        alignment: Alignment.bottomLeft,
+        child: CircleAvatar(
+          radius: 18,
+          backgroundColor: AdminColors.primarySoft,
+          child: Text(
+            (OwnerSession.instance.email ?? 'م').substring(0, 1).toUpperCase(),
+            style: const TextStyle(
+              color: AdminColors.primaryLight,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _openSearch() async {
+    final controller = TextEditingController();
+    final selected = await showDialog<AdminModule>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('جست‌وجوی بخش‌های پنل'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  onChanged: (_) => update(() {}),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    hintText: 'نام بخش را بنویسید',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final module in visibleModules.where(
+                        (item) => item.label.contains(controller.text.trim()),
+                      ))
+                        ListTile(
+                          leading: Icon(module.icon),
+                          title: Text(module.label),
+                          onTap: () => Navigator.pop(dialogContext, module),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('بستن'),
+            ),
+          ],
+        ),
+      ),
+    );
+    // The dialog's removal animation may still read its text controller.
+    if (selected != null && mounted) _selectModule(selected.index);
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    controller.dispose();
+  }
+
   void _navigate(AdminNavigationIntent intent) {
     final session = OwnerSession.instance;
-    if (session.isAuthenticated && !session.can(intent.module.permission)) return;
+    if (session.isAuthenticated && !session.can(intent.module.permission))
+      return;
     final destination = AdminModule.values.indexOf(intent.module);
     if (destination < 0 || intent == navigation) return;
-    setState(() { navigationHistory.add(navigation); navigation = intent; index = destination; });
+    setState(() {
+      navigationHistory.add(navigation);
+      navigation = intent;
+      index = destination;
+    });
   }
 
   void _selectModule(int destination) {
@@ -250,14 +631,19 @@ class _AdminShellState extends State<AdminShell> {
     setState(() {
       navigationHistory.clear();
       index = destination;
-      navigation = AdminNavigationIntent(module: AdminModule.values[destination]);
+      navigation = AdminNavigationIntent(
+        module: AdminModule.values[destination],
+      );
     });
   }
 
   void _goBack() {
     if (navigationHistory.isEmpty) return;
     final previous = navigationHistory.removeLast();
-    setState(() { navigation = previous; index = AdminModule.values.indexOf(previous.module); });
+    setState(() {
+      navigation = previous;
+      index = AdminModule.values.indexOf(previous.module);
+    });
   }
 
   String _moduleLabel(AdminModule module) => module.label;
@@ -273,7 +659,10 @@ class _AdminShellState extends State<AdminShell> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Text('بخش‌های بیشتر', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+              child: Text(
+                'بخش‌های بیشتر',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+              ),
             ),
             for (final module in secondaryModules)
               ListTile(
@@ -288,30 +677,78 @@ class _AdminShellState extends State<AdminShell> {
         ),
       ),
     );
-    if (selected != null && mounted) _selectModule(AdminModule.values.indexOf(selected));
+    if (selected != null && mounted)
+      _selectModule(AdminModule.values.indexOf(selected));
   }
 
   Widget _modulePage(AdminModule module) => switch (module) {
-        AdminModule.dashboard => AdminPermissionGate(permission: module.permission, child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate)),
-        AdminModule.orders => AdminPermissionGate(permission: module.permission, child: OrdersPage(
-          key: ValueKey(navigation), api: widget.ordersApi, initialFilter: navigation.orderFilter,
-          initialQuery: navigation.query ?? '', initialCreatedFromUtc: navigation.createdFromUtc,
-          initialCreatedToUtcExclusive: navigation.createdToUtcExclusive,
-        )),
-        AdminModule.products => AdminPermissionGate(permission: module.permission, child: CatalogPage(key: catalogKey, onNavigate: _navigate)),
-        AdminModule.inventory => AdminPermissionGate(permission: module.permission, child: InventoryPage(key: ValueKey(navigation), catalog: widget.catalogApi, orders: widget.ordersApi, initialSku: navigation.sku, initialBatchCode: navigation.batchCode)),
-        AdminModule.reports => AdminPermissionGate(permission: module.permission, child: ReportsPage(
-          key: ValueKey(navigation), initialFromUtc: navigation.createdFromUtc,
-          initialToUtcExclusive: navigation.createdToUtcExclusive, onNavigate: _navigate,
-        )),
-        AdminModule.notifications => AdminPermissionGate(permission: module.permission, child: NotificationsPage(onNavigate: _navigate)),
-        AdminModule.customers => AdminPermissionGate(permission: module.permission, child: const CustomerManagementPage()),
-        AdminModule.pricing => AdminPermissionGate(permission: module.permission, child: const CommerceSettingsPage()),
-        AdminModule.corporate => AdminPermissionGate(permission: module.permission, child: const CorporateRequestsPage()),
-        AdminModule.audit => AdminPermissionGate(permission: module.permission, child: const AuditLogPage()),
-        AdminModule.promotions => AdminPermissionGate(permission: module.permission, child: const PromotionsPage()),
-        AdminModule.users => AdminPermissionGate(permission: module.permission, child: const AdminUsersPage()),
-      };
+    AdminModule.dashboard => AdminPermissionGate(
+      permission: module.permission,
+      child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate),
+    ),
+    AdminModule.orders => AdminPermissionGate(
+      permission: module.permission,
+      child: OrdersPage(
+        key: ValueKey(navigation),
+        api: widget.ordersApi,
+        initialFilter: navigation.orderFilter,
+        initialQuery: navigation.query ?? '',
+        initialCreatedFromUtc: navigation.createdFromUtc,
+        initialCreatedToUtcExclusive: navigation.createdToUtcExclusive,
+      ),
+    ),
+    AdminModule.products => AdminPermissionGate(
+      permission: module.permission,
+      child: CatalogPage(key: catalogKey, onNavigate: _navigate),
+    ),
+    AdminModule.inventory => AdminPermissionGate(
+      permission: module.permission,
+      child: InventoryPage(
+        key: ValueKey(navigation),
+        catalog: widget.catalogApi,
+        orders: widget.ordersApi,
+        initialSku: navigation.sku,
+        initialBatchCode: navigation.batchCode,
+      ),
+    ),
+    AdminModule.reports => AdminPermissionGate(
+      permission: module.permission,
+      child: ReportsPage(
+        key: ValueKey(navigation),
+        initialFromUtc: navigation.createdFromUtc,
+        initialToUtcExclusive: navigation.createdToUtcExclusive,
+        onNavigate: _navigate,
+      ),
+    ),
+    AdminModule.notifications => AdminPermissionGate(
+      permission: module.permission,
+      child: NotificationsPage(onNavigate: _navigate),
+    ),
+    AdminModule.customers => AdminPermissionGate(
+      permission: module.permission,
+      child: const CustomerManagementPage(),
+    ),
+    AdminModule.pricing => AdminPermissionGate(
+      permission: module.permission,
+      child: const CommerceSettingsPage(),
+    ),
+    AdminModule.corporate => AdminPermissionGate(
+      permission: module.permission,
+      child: const CorporateRequestsPage(),
+    ),
+    AdminModule.audit => AdminPermissionGate(
+      permission: module.permission,
+      child: const AuditLogPage(),
+    ),
+    AdminModule.promotions => AdminPermissionGate(
+      permission: module.permission,
+      child: const PromotionsPage(),
+    ),
+    AdminModule.users => AdminPermissionGate(
+      permission: module.permission,
+      child: const AdminUsersPage(),
+    ),
+  };
 }
 
 class Brand extends StatelessWidget {
@@ -359,12 +796,12 @@ class Brand extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'کاتالوگ زنده فروشگاه',
+                    'پنل مدیریت فروشگاه',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
-                      color: dark ? const Color(0xFFB9C8BC) : Colors.grey,
+                      color: dark ? AdminColors.muted : AdminColors.muted,
                     ),
                   ),
                 ],
@@ -373,4 +810,3 @@ class Brand extends StatelessWidget {
     ],
   );
 }
-

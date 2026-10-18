@@ -10,6 +10,7 @@ import 'auth_api.dart';
 import 'formatters.dart';
 import 'localized_calendar.dart';
 import 'admin_theme.dart';
+import 'admin_table.dart';
 import 'admin_step_up_dialog.dart';
 
 class AdminUsersPage extends StatefulWidget {
@@ -307,7 +308,29 @@ class _UsersList extends StatelessWidget {
   final ValueChanged<AdminUser> onManageSessions;
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
+    if (box.maxWidth < 900 || MediaQuery.textScalerOf(context).scale(1) >= 1.5) return _cards(context);
+    return AdminRecordTable<AdminUser>(records: users,
+      searchText: (u) => '${u.displayName} ${u.email} ${u.roleLabel}', searchHint: 'جست‌وجوی کاربر…',
+      columns: [
+        AdminColumn('کاربر', (u) => AdminIdentityCell(title: u.displayName, subtitle: u.email), compare: (a, b) => a.displayName.compareTo(b.displayName)),
+        AdminColumn('نقش', (u) => AdminStatusBadge(u.roleLabel), compare: (a, b) => a.roleLabel.compareTo(b.roleLabel)),
+        AdminColumn('دسترسی‌ها', (u) => Text('${formatPersianInteger(u.permissions.length)} دسترسی')),
+        AdminColumn('وضعیت', (u) => AdminStatusBadge(u.isActive ? (u.hasPassword ? 'فعال' : 'در انتظار فعال‌سازی') : 'غیرفعال',
+          color: u.isActive && u.hasPassword ? AdminColors.success : AdminColors.amber,
+          background: u.isActive && u.hasPassword ? AdminColors.successSoft : AdminColors.warningSoft)),
+        AdminColumn('عملیات', (u) => changingUserId == u.id ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : u.role == 'Owner' || u.email == OwnerSession.instance.email ? const Tooltip(message: 'مدیر اصلی قابل ویرایش نیست', child: Icon(Icons.lock_outline_rounded, size: 20))
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(tooltip: 'نشست‌ها', onPressed: () => onManageSessions(u), icon: const Icon(Icons.devices_outlined, size: 20)),
+            IconButton(tooltip: 'دسترسی‌ها', onPressed: () => onEditPermissions(u), icon: const Icon(Icons.tune_rounded, size: 20)),
+            IconButton(tooltip: u.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی', onPressed: () => onToggle(u), icon: Icon(u.isActive ? Icons.pause_circle_outline_rounded : Icons.play_circle_outline_rounded, size: 20)),
+          ])),
+      ],
+    );
+  });
+
+  Widget _cards(BuildContext context) => Column(
         children: [
           for (final user in users)
             Padding(
@@ -319,16 +342,16 @@ class _UsersList extends StatelessWidget {
                     builder: (context, constraints) {
                       final compact = constraints.maxWidth < 1024;
                       final identity = Row(children: [
-                        CircleAvatar(backgroundColor: user.isActive ? AdminColors.mintSoft : const Color(0xFFF0ECE8), foregroundColor: AdminColors.inkDeep, child: Text(user.displayName.isEmpty ? '؟' : user.displayName.substring(0, 1))),
+                        CircleAvatar(backgroundColor: user.isActive ? AdminColors.mintSoft : AdminColors.surfaceRaised, foregroundColor: AdminColors.inkDeep, child: Text(user.displayName.isEmpty ? '؟' : user.displayName.substring(0, 1))),
                         const SizedBox(width: 12),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)), const SizedBox(height: 4), Text(user.email, textDirection: TextDirection.ltr, style: const TextStyle(color: AdminColors.muted))])),
                       ]);
                       final details = Wrap(spacing: 8, runSpacing: 8, children: [
                         _Chip(label: user.roleLabel, color: AdminColors.mintSoft),
-                        _Chip(label: user.isActive ? 'فعال' : 'غیرفعال', color: user.isActive ? const Color(0xFFE6F5E8) : const Color(0xFFF0ECE8)),
+                        _Chip(label: user.isActive ? 'فعال' : 'غیرفعال', color: user.isActive ? AdminColors.successSoft : AdminColors.surfaceRaised),
                         if (user.role != 'Owner' && !user.hasPassword)
-                          const _Chip(label: 'در انتظار فعال‌سازی', color: Color(0xFFFFF2D9)),
-                        _Chip(label: '${formatPersianInteger(user.permissions.length)} دسترسی', color: const Color(0xFFF6F3EC)),
+                          const _Chip(label: 'در انتظار فعال‌سازی', color: AdminColors.warningSoft),
+                        _Chip(label: '${formatPersianInteger(user.permissions.length)} دسترسی', color: AdminColors.surfaceRaised),
                       ]);
                       final isOwner = user.role == 'Owner' || user.email == OwnerSession.instance.email;
                       final action = changingUserId == user.id
@@ -448,7 +471,7 @@ class _AdminUserSessionsDialogState extends State<_AdminUserSessionsDialog> {
                               final session = sessions[index];
                               final isRevoking = revokingSessionId == session.sessionId;
                               return Card(
-                                color: const Color(0xFFF9F7F1),
+                                color: AdminColors.canvas,
                                 child: Padding(
                                   padding: const EdgeInsets.all(14),
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -489,7 +512,7 @@ class _Chip extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(18)), child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AdminColors.inkDeep)));
+  Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)), child: Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AdminColors.inkDeep)));
 }
 
 class AdminUserDraft {

@@ -1,3 +1,4 @@
+import 'analytics_panels.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_navigation.dart';
@@ -268,8 +269,8 @@ class _DashboardPageState extends State<DashboardPage> {
                         : '—',
             Icons.account_balance_wallet_rounded,
             tint: financialAnalytics != null && financialAnalytics!.netProfit < 0
-                ? const Color(0xFFFCE6E0)
-                : const Color(0xFFE6EEF8),
+                ? AdminColors.dangerSoft
+                : AdminColors.infoSoft,
             onTap: financialAnalyticsError != null
                 ? load
                 : widget.onNavigate == null
@@ -277,20 +278,22 @@ class _DashboardPageState extends State<DashboardPage> {
                     : () => widget.onNavigate!(_periodReportsIntent()),
           ),
         if (can(AdminPermissions.ordersRead)) ...[
-          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
-          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
-          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: const Color(0xFFFFF0D9), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
-          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
-          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
-          MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: const Color(0xFFFCE6E0), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem))),
+          MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
+          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
+          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
+          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
+          MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem))),
         ],
-        if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: const Color(0xFFE6F5E8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
-        if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: const Color(0xFFE6EEF8), onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.corporate))),
+        if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: AdminColors.successSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
+        if (can(AdminPermissions.corporateRead)) MetricCard('درخواست سازمانی جدید', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.corporate))),
       ]),
       if (data.financialsVisible &&
           can(AdminPermissions.reportsRead) &&
           financialAnalytics != null) ...[
         const SizedBox(height: 12),
+        AdminAnalyticsPanels(analytics: financialAnalytics!),
+        const SizedBox(height: 16),
         _profitabilityBreakdown(financialAnalytics!),
       ],
     ],
@@ -332,7 +335,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF6F8FA),
+                          color: AdminColors.canvas,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
@@ -504,7 +507,7 @@ class _DashboardPageState extends State<DashboardPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: health.ready ? AdminColors.mintSoft : const Color(0xFFFFF0D9),
+        color: health.ready ? AdminColors.mintSoft : AdminColors.warningSoft,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -934,7 +937,7 @@ class _DashboardQuickAction extends StatelessWidget {
             key: ValueKey('dashboard-action-${action.destination.name}'),
             onTap: onPressed,
             focusColor: AdminColors.mintSoft,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(6),
             child: LayoutBuilder(builder: (context, constraints) {
               final compact = constraints.maxWidth < 320;
               final icon = Container(
@@ -991,9 +994,9 @@ class MetricCard extends StatelessWidget {
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 250,
+    width: 224,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 150),
+      constraints: const BoxConstraints(minHeight: 126),
       child: Card(
         clipBehavior: Clip.antiAlias,
         child: InkWell(

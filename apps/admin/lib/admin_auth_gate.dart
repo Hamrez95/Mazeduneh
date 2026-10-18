@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'admin_theme.dart';
 
 import 'auth_api.dart';
 import 'auth_session.dart';
@@ -415,17 +416,17 @@ class _AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7F8F4),
+    backgroundColor: AdminColors.canvas,
     body: Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 460),
           child: Card(
-            color: Colors.white,
+            color: AdminColors.surface,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-              side: const BorderSide(color: Color(0xFFE3E8E1)),
+              borderRadius: BorderRadius.circular(6),
+              side: const BorderSide(color: AdminColors.border),
             ),
             child: Padding(
               padding: const EdgeInsets.all(28),
@@ -434,14 +435,14 @@ class _AuthScaffold extends StatelessWidget {
                 children: [
                   const CircleAvatar(
                     radius: 26,
-                    backgroundColor: Color(0xFFDDEFE5),
-                    child: Icon(Icons.spa_rounded, color: Color(0xFF19352C)),
+                    backgroundColor: AdminColors.primarySoft,
+                    child: Icon(Icons.spa_rounded, color: AdminColors.heading),
                   ),
                   const SizedBox(height: 22),
                   Text(
                     eyebrow,
                     style: const TextStyle(
-                      color: Color(0xFF718078),
+                      color: AdminColors.muted,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -451,14 +452,14 @@ class _AuthScaffold extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF19352C),
+                      color: AdminColors.heading,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     detail,
                     style: const TextStyle(
-                      color: Color(0xFF718078),
+                      color: AdminColors.muted,
                       height: 1.6,
                     ),
                   ),
@@ -483,7 +484,7 @@ class _AuthMessage extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: isError ? const Color(0xFFFFEAE5) : const Color(0xFFE6F5E8),
+      color: isError ? AdminColors.dangerSoft : AdminColors.successSoft,
       borderRadius: BorderRadius.circular(12),
     ),
     child: Semantics(
@@ -491,7 +492,7 @@ class _AuthMessage extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-          color: isError ? const Color(0xFF8F3023) : const Color(0xFF24463A),
+          color: isError ? AdminColors.coral : AdminColors.ink,
         ),
       ),
     ),

@@ -1,3 +1,4 @@
+import 'analytics_panels.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_state.dart';
@@ -117,14 +118,16 @@ class _ReportsPageState extends State<ReportsPage> {
           children: [
             _ReportMetric(title: 'مبلغ پرداخت‌شده با ارسال و مالیات', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.payments_rounded, tint: AdminColors.mintSoft),
             _ReportMetric(title: 'فروش کالا پس از تخفیف', value: '${formatPersianNumber(merchandiseSalesAfterDiscount)} ریال', icon: Icons.trending_up_rounded, tint: AdminColors.mintSoft),
-            _ReportMetric(title: 'هزینهٔ کل محصول و آماده‌سازی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: const Color(0xFFFFF0D9)),
-            _ReportMetric(title: 'درآمد ارسال', value: '${formatPersianNumber(data.shippingRevenue)} ریال', icon: Icons.local_shipping_outlined, tint: const Color(0xFFEAF3EE)),
-            _ReportMetric(title: 'هزینهٔ واقعی ارسال', value: '${formatPersianNumber(data.shippingExpense)} ریال', icon: Icons.local_shipping_rounded, tint: const Color(0xFFEAF3EE)),
-            _ReportMetric(title: 'مالیات پرداختنی', value: '${formatPersianNumber(data.tax)} ریال', icon: Icons.account_balance_rounded, tint: const Color(0xFFFCE6E0)),
-            _ReportMetric(title: 'سود خالص', value: '${formatPersianNumber(data.netProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: const Color(0xFFE6EEF8)),
-            _ReportMetric(title: 'حاشیه سود ناخالص', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: const Color(0xFFFCE6E0)),
+            _ReportMetric(title: 'هزینهٔ کل محصول و آماده‌سازی', value: '${formatPersianNumber(data.cost)} ریال', icon: Icons.inventory_2_rounded, tint: AdminColors.warningSoft),
+            _ReportMetric(title: 'درآمد ارسال', value: '${formatPersianNumber(data.shippingRevenue)} ریال', icon: Icons.local_shipping_outlined, tint: AdminColors.successSoft),
+            _ReportMetric(title: 'هزینهٔ واقعی ارسال', value: '${formatPersianNumber(data.shippingExpense)} ریال', icon: Icons.local_shipping_rounded, tint: AdminColors.successSoft),
+            _ReportMetric(title: 'مالیات پرداختنی', value: '${formatPersianNumber(data.tax)} ریال', icon: Icons.account_balance_rounded, tint: AdminColors.dangerSoft),
+            _ReportMetric(title: 'سود خالص', value: '${formatPersianNumber(data.netProfit)} ریال', icon: Icons.account_balance_wallet_rounded, tint: AdminColors.infoSoft),
+            _ReportMetric(title: 'حاشیه سود ناخالص', value: '${formatPersianNumber(data.grossMarginPercent, fractionDigits: 1)}٪', icon: Icons.percent_rounded, tint: AdminColors.dangerSoft),
           ],
         ),
+        const SizedBox(height: 18),
+        AdminAnalyticsPanels(analytics: data, products: profitability),
         const SizedBox(height: 18),
         Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('خلاصه‌ی تصمیم‌گیری', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),

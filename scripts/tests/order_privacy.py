@@ -168,6 +168,11 @@ with tempfile.TemporaryFile() as log:
         assert request('/api/v1/payments/sandbox/' + intent['authority'] + '/complete', 'POST', {'receiptToken': created['receiptToken']})[0] == 200
         status, ranged_analytics = request('/api/v1/admin/analytics?from=' + range_start + '&to=' + range_end, token=token)
         assert status == 200 and ranged_analytics['orderCount'] == 1 and ranged_analytics['revenue'] > 0, (status, ranged_analytics)
+        assert sum(day['orderCount'] for day in ranged_analytics['dailySales']) == ranged_analytics['orderCount']
+        assert abs(sum(day['revenue'] for day in ranged_analytics['dailySales']) - ranged_analytics['revenue']) < 0.01
+        assert abs(sum(day['netProfit'] for day in ranged_analytics['dailySales']) - ranged_analytics['netProfit']) < 0.01
+        assert ranged_analytics['dailySales'][0]['day'] == order_created_at.date().isoformat()
+        assert sum(row['count'] for row in ranged_analytics['orderStates'] if row['state'] == 'Paid') == 1
         status, ranged_products = request('/api/v1/admin/analytics/products?from=' + range_start + '&to=' + range_end, token=token)
         assert status == 200 and any(row['sku'] == SKU for row in ranged_products), (status, ranged_products)
         assert request('/api/v1/admin/analytics?from=' + range_start, token=token)[0] == 400

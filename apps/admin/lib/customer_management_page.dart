@@ -1,4 +1,6 @@
+import 'admin_table.dart';
 import 'package:flutter/material.dart';
+import 'admin_theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_permissions.dart';
@@ -206,19 +208,18 @@ class _CustomerManagementPageState extends State<CustomerManagementPage> {
               if (items.isEmpty)
                 _EmptyCustomers(hasQuery: searchController.text.trim().isNotEmpty)
               else if (wide)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _CustomerList(items: items, selected: selected, onSelect: _select)),
-                    const SizedBox(width: 18),
-                    SizedBox(
-                      width: 320,
-                      child: selected == null
-                          ? const _SelectCustomerHint()
-                          : _CustomerDetails(customer: selected!),
-                    ),
-                  ],
-                )
+                Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  AdminRecordTable<CustomerSummary>(records: items, onOpen: _select,
+                    columns: [
+                      AdminColumn('مشتری', (c) => AdminIdentityCell(title: c.fullName, subtitle: toPersianDigits(c.mobile)), compare: (a,b) => a.fullName.compareTo(b.fullName)),
+                      AdminColumn('تعداد سفارش', (c) => Text(formatPersianInteger(c.orderCount)), compare: (a,b) => a.orderCount.compareTo(b.orderCount)),
+                      AdminColumn('آخرین فعالیت', (c) => Text(formatLocalizedDateTime(context,c.updatedAt), style: const TextStyle(fontSize:12)), compare: (a,b) => a.updatedAt.compareTo(b.updatedAt)),
+                      AdminColumn('عملیات', (c) => IconButton(tooltip:'مشاهدهٔ ${c.fullName}',onPressed:()=>_select(c),icon:const Icon(Icons.open_in_new_rounded,size:20))),
+                    ],
+                  ),
+                  const SizedBox(height:18),
+                  if(selected != null) _CustomerDetails(customer:selected!) else const _SelectCustomerHint(),
+                ])
               else
                 _CustomerList(items: items, selected: selected, onSelect: _select),
             ],
@@ -283,9 +284,9 @@ class _CustomerList extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: InkWell(
                 onTap: () => onSelect(customer),
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(6),
                 child: Card(
-                  color: selected?.id == customer.id ? _CustomerColors.selected : Colors.white,
+                  color: selected?.id == customer.id ? _CustomerColors.selected : AdminColors.surface,
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
@@ -391,14 +392,14 @@ class _ConsentHistoryRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: event.granted ? const Color(0xFFEAF5EC) : const Color(0xFFFFF1E8),
+        color: event.granted ? AdminColors.successSoft : AdminColors.warningSoft,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(event.granted ? Icons.check_circle_outline : Icons.do_not_disturb_on_outlined,
-              size: 18, color: event.granted ? const Color(0xFF38734A) : const Color(0xFF9A5E37)),
+              size: 18, color: event.granted ? AdminColors.success : AdminColors.amber),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -511,10 +512,10 @@ class _EmptyCustomers extends StatelessWidget {
 }
 
 class _CustomerColors {
-  static const ink = Color(0xFF24463A);
-  static const inkDeep = Color(0xFF19352C);
-  static const mint = Color(0xFFDDEFE5);
-  static const selected = Color(0xFFF0F7F2);
-  static const amber = Color(0xFFF2B866);
-  static const muted = Color(0xFF718078);
+  static const ink = AdminColors.ink;
+  static const inkDeep = AdminColors.heading;
+  static const mint = AdminColors.primarySoft;
+  static const selected = AdminColors.primarySoft;
+  static const amber = AdminColors.amber;
+  static const muted = AdminColors.muted;
 }

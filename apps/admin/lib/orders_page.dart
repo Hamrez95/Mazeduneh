@@ -7,6 +7,7 @@ import 'admin_permissions.dart';
 import 'admin_navigation.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_table.dart';
 import 'admin_step_up_dialog.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
@@ -246,9 +247,9 @@ class _OrdersPageState extends State<OrdersPage> {
                 );
             final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('سفارش‌ها', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-              const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              const Text('فرآیند سفارش را از پرداخت تا تحویل کنترل کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
               if (widget.initialCreatedFromUtc != null && widget.initialCreatedToUtcExclusive != null)
-                const Text('فهرست بر اساس بازهٔ انتخاب‌شده در داشبورد فیلتر شده است.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                const Text('فهرست بر اساس بازهٔ انتخاب‌شده در داشبورد فیلتر شده است.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
             ]);
             final controls = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               FilterChip(
@@ -369,7 +370,7 @@ class _OrdersPageState extends State<OrdersPage> {
         return Card(
           child: InkWell(
             onTap: () => openDetail(shipment.toAdminOrder()),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(6),
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Wrap(
@@ -384,12 +385,12 @@ class _OrdersPageState extends State<OrdersPage> {
                       Text('سفارش ${shipment.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900)),
                       const SizedBox(height: 5),
                       Text(shipment.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      Text('${shipment.province}، ${shipment.city} · ${formatPersianInteger(shipment.lineCount)} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                      Text('${shipment.province}، ${shipment.city} · ${formatPersianInteger(shipment.lineCount)} قلم', style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
                     ]),
                   ),
                   Chip(
                     label: Text('${formatPersianInteger(shipment.daysOverdue)} روز تأخیر'),
-                    backgroundColor: const Color(0xFFFCE6E0),
+                    backgroundColor: AdminColors.dangerSoft,
                   ),
                   Text(
                     shipment.trackingCode?.isNotEmpty == true ? 'رهگیری: ${shipment.trackingCode}' : 'کد رهگیری ثبت نشده',
@@ -434,6 +435,27 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
       );
     }
+    if (MediaQuery.sizeOf(context).width >= 1200 && MediaQuery.textScalerOf(context).scale(1) < 1.5) {
+      return SingleChildScrollView(child: AdminRecordTable<AdminOrder>(
+        records: orders, onOpen: openDetail,
+        isSelected: (order) => selectedOrders.contains(order.id),
+        onSelectionChanged: bulkBusy ? null : (order, selected) => setState(() => selected ? selectedOrders.add(order.id) : selectedOrders.remove(order.id)),
+        columns: [
+          AdminColumn('سفارش', (o) => Text('#${o.id.substring(0, 8)}', style: const TextStyle(color: AdminColors.primaryLight)), compare: (a, b) => a.id.compareTo(b.id)),
+          AdminColumn('مشتری', (o) => AdminIdentityCell(title: o.customerName, subtitle: '${o.province}، ${o.city}'), compare: (a, b) => a.customerName.compareTo(b.customerName)),
+          AdminColumn('تاریخ ثبت', (o) => Text(formatLocalizedDateTime(context, o.createdAt), style: const TextStyle(fontSize: 11)), compare: (a, b) => a.createdAt.compareTo(b.createdAt)),
+          AdminColumn('پرداخت', (o) => AdminStatusBadge(_paymentStateLabel(o.paymentState ?? 'Pending'),
+            color: o.paymentState == 'Succeeded' ? AdminColors.success : AdminColors.amber,
+            background: o.paymentState == 'Succeeded' ? AdminColors.successSoft : AdminColors.warningSoft)),
+          AdminColumn('وضعیت', (o) => AdminStatusBadge(states[o.state] ?? o.state)),
+          AdminColumn('مبلغ', (o) => Text('${formatPersianNumber(o.payable)} ${o.currency}'), compare: (a, b) => a.payable.compareTo(b.payable)),
+          AdminColumn('عملیات', (o) => Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(tooltip: 'جزئیات سفارش', onPressed: () => openDetail(o), icon: const Icon(Icons.visibility_outlined, size: 20)),
+            if (o.nextState != null) IconButton(tooltip: states[o.nextState] ?? 'مرحلهٔ بعد', onPressed: busyOrder == o.id ? null : () => advance(o), icon: const Icon(Icons.arrow_forward_rounded, size: 20)),
+          ])),
+        ],
+      ));
+    }
     return ListView.separated(
       itemCount: orders.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -444,7 +466,7 @@ class _OrdersPageState extends State<OrdersPage> {
         return Card(
           child: InkWell(
             onTap: () => openDetail(order),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(6),
             child: Padding(
             padding: const EdgeInsets.all(18),
             child: Wrap(
@@ -464,12 +486,12 @@ class _OrdersPageState extends State<OrdersPage> {
                     Text('سفارش ${order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900)),
                     const SizedBox(height: 5),
                     Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text('${order.province}، ${order.city} · ${formatPersianInteger(order.lineCount)} قلم', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    Text('${order.province}، ${order.city} · ${formatPersianInteger(order.lineCount)} قلم', style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
                   ]),
                 ),
                 Chip(
                   label: Text(states[order.state] ?? order.state),
-                  backgroundColor: const Color(0xFFE7F1E2),
+                  backgroundColor: AdminColors.successSoft,
                 ),
                 Text('${formatPersianNumber(order.payable)} ${order.currency}', style: const TextStyle(fontWeight: FontWeight.w800)),
                 if (next != null)
@@ -481,7 +503,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     label: Text('مرحله بعد: ${states[next] ?? next}'),
                   )
                 else
-                  const Text('فرآیند تکمیل شده', style: TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700)),
+                  const Text('فرآیند تکمیل شده', style: TextStyle(color: AdminColors.success, fontWeight: FontWeight.w700)),
                 const Icon(Icons.chevron_left_rounded, color: AdminColors.muted),
               ],
             ),

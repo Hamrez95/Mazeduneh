@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'admin_theme.dart';
 
 import 'auth_session.dart';
 import 'catalog_api.dart';
@@ -79,16 +80,16 @@ class AdminErrorState extends StatelessWidget {
               Icon(
                 forbidden ? Icons.lock_outline_rounded : Icons.cloud_off_rounded,
                 size: 56,
-                color: forbidden ? const Color(0xFFF2B866) : const Color(0xFF718078),
+                color: forbidden ? AdminColors.amber : AdminColors.muted,
               ),
               const SizedBox(height: 14),
               Text(
                 forbidden ? 'دسترسی به این بخش محدود است.' : 'بارگذاری اطلاعات انجام نشد.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: Color(0xFF19352C)),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.heading),
               ),
               const SizedBox(height: 8),
-              Text(requestErrorMessage(error), textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF718078), height: 1.6)),
+              Text(requestErrorMessage(error), textAlign: TextAlign.center, style: const TextStyle(color: AdminColors.muted, height: 1.6)),
               const SizedBox(height: 16),
               if (!forbidden)
                 FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('تلاش دوباره')),
@@ -123,11 +124,11 @@ class AdminEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 42, color: const Color(0xFF718078)),
+            Icon(icon, size: 42, color: AdminColors.muted),
             const SizedBox(height: 12),
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF19352C))),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.heading)),
             const SizedBox(height: 5),
-            Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF718078), fontSize: 12, height: 1.6)),
+            Text(detail, textAlign: TextAlign.center, style: const TextStyle(color: AdminColors.muted, fontSize: 12, height: 1.6)),
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 14),
               OutlinedButton.icon(onPressed: onAction, icon: const Icon(Icons.arrow_back_rounded), label: Text(actionLabel!)),
@@ -145,13 +146,13 @@ class AdminStaleBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        color: const Color(0xFFFFF4E3),
+        color: AdminColors.warningSoft,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(children: [
-            const Icon(Icons.sync_problem_rounded, color: Color(0xFF8C5A15)),
+            const Icon(Icons.sync_problem_rounded, color: AdminColors.amber),
             const SizedBox(width: 10),
-            Expanded(child: Text(detail, style: const TextStyle(color: Color(0xFF704A17), fontSize: 12))),
+            Expanded(child: Text(detail, style: const TextStyle(color: AdminColors.amber, fontSize: 12))),
             TextButton(onPressed: onRetry, child: const Text('تلاش دوباره')),
           ]),
         ),
