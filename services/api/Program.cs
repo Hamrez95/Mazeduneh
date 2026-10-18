@@ -245,9 +245,20 @@ products.MapPut("/{slug}", async (
         var publicationErrors = productCatalog.ValidateForPublication(updated);
         if (publicationErrors.Count > 0) return Results.ValidationProblem(publicationErrors);
     }
-    var persisted = await db.UpdateAsync(updated, existing, canWriteCosts, principal.Email, context.TraceIdentifier, cancellationToken);
-    productCatalog.Add(persisted);
-    return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
+    try
+    {
+        var persisted = await db.UpdateAsync(updated, existing, canWriteCosts, principal.Email, context.TraceIdentifier, cancellationToken);
+        productCatalog.Add(persisted);
+        return Results.Ok(ProductCostPrivacy.ProjectFor(persisted, principal));
+    }
+    catch (CatalogPriceConflictException exception)
+    {
+        return Results.Conflict(new { message = exception.Message });
+    }
+    catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+    {
+        return Results.Conflict(new { message = "کد انبار یکی از بسته‌ها تکراری است؛ برای هر بسته کد مستقل وارد کنید." });
+    }
 })
 .AddEndpointFilter<OwnerAuthorizationFilter>()
 .AddEndpointFilter<ProductPriceStepUpAuthorizationFilter>();

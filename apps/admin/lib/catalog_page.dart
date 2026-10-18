@@ -1,3 +1,4 @@
+import 'product_package_editor.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -98,7 +99,11 @@ class CatalogPageState extends State<CatalogPage> {
     if (command == null || !mounted) return;
 
     try {
-      await api.updateProduct(product.slug, command);
+      final previousPrices = {for(final v in product.variants) v.sku.toUpperCase():v.price};
+      final changesPrice = command.variants.any((v)=>previousPrices[v.sku.toUpperCase()]!=v.price);
+      final proof = changesPrice ? await showAdminStepUpDialog(context) : null;
+      if(changesPrice && (proof==null || !mounted)) return;
+      await api.updateProduct(product.slug, command, stepUpToken:proof);
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -365,13 +370,11 @@ class _ProductDialogState extends State<ProductDialog> {
   final seoDescription = TextEditingController();
   final seoKeywords = TextEditingController();
   final specifications = TextEditingController();
-  final costPrice = TextEditingController();
+  final packages = <ProductPackageDraft>[ProductPackageDraft()];
+  final removedPackages = <ProductPackageDraft>[];
   final primaryImage = TextEditingController();
   final galleryImages = TextEditingController();
-  final sku = TextEditingController();
-  final quantity = TextEditingController();
-  final price = TextEditingController();
-  final stock = TextEditingController();
+  TextEditingController get price => packages.first.price;
   String unitType = 'Weight';
   String category = 'آجیل و مغزها';
   bool uploadingImage = false;
@@ -410,6 +413,7 @@ class _ProductDialogState extends State<ProductDialog> {
                   ),
                 ),
                 TextFormField(
+                  key: const ValueKey('create-product-title'),
                   controller: title,
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(labelText: 'نام محصول'),
@@ -417,6 +421,7 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
+                  key: const ValueKey('create-product-slug'),
                   controller: slug,
                   textDirection: TextDirection.ltr,
                   decoration: const InputDecoration(
@@ -428,6 +433,7 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
                   items:
@@ -456,6 +462,7 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
+                  key: const ValueKey('create-product-origin'),
                   controller: origin,
                   decoration: const InputDecoration(labelText: 'مبدأ یا برند'),
                   validator: required,
@@ -571,72 +578,11 @@ class _ProductDialogState extends State<ProductDialog> {
                       unitType = value.first;
                     }),
                   ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: quantity,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: const [PersianDigitsInputFormatter()],
-                    decoration: InputDecoration(
-                      labelText: unitType == 'Weight'
-                          ? 'وزن هر بسته (گرم)'
-                          : 'تعداد هر بسته',
-                    ),
-                    validator: quantityRequired,
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: sku,
-                    textDirection: TextDirection.ltr,
-                    decoration: const InputDecoration(
-                      labelText: 'کد انبار (SKU)',
-                      helperText:
-                          'کد یکتای بسته برای انبار و سفارش‌ها؛ مشتری آن را نمی‌بیند. نمونه: KOO-250',
-                    ),
-                    validator: required,
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: price,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: const [
-                      PersianGroupedIntegerInputFormatter(),
-                    ],
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'قیمت فروش (ریال)',
-                    ),
-                    validator: numberRequired,
-                  ),
-                  if (widget.canWriteCosts) ...[
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: costPrice,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: const [
-                        PersianGroupedIntegerInputFormatter(),
-                      ],
-                      decoration: const InputDecoration(
-                        labelText: 'قیمت تمام‌شده (ریال)',
-                        helperText:
-                            'برای محاسبه سود و حاشیهٔ سود استفاده می‌شود.',
-                      ),
-                      validator: numberRequired,
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: stock,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: const [
-                      PersianGroupedIntegerInputFormatter(),
-                    ],
-                    decoration: const InputDecoration(
-                      labelText: 'تعداد بستهٔ موجود',
-                    ),
-                    validator: stockRequired,
-                  ),
+                  const SizedBox(height: 12),
+                  const Text('همهٔ این بسته‌ها در یک صفحهٔ محصول نمایش داده می‌شوند؛ مشتری اندازه را انتخاب می‌کند و قیمت همان لحظه تغییر می‌کند.',style:TextStyle(color:AdminColors.muted,height:1.7)),
+                  const SizedBox(height: 14),
+                  for(var i=0;i<packages.length;i++) ProductPackageEditor(key:ObjectKey(packages[i]),draft:packages[i],index:i,unitType:unitType,canWriteCosts:widget.canWriteCosts,allDrafts:packages,onChanged:()=>setState((){}),onRemove:packages.length==1?null:()=>setState((){removedPackages.add(packages.removeAt(i));})),
+                  OutlinedButton.icon(onPressed:()=>setState(()=>packages.add(ProductPackageDraft())),icon:const Icon(Icons.add_rounded),label:const Text('افزودن وزن یا تعداد دیگر')),
                 ]),
                 const SizedBox(height: 12),
                 ExpansionTile(
@@ -698,22 +644,6 @@ class _ProductDialogState extends State<ProductDialog> {
 
   String? required(String? value) =>
       value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
-  String? numberRequired(String? value) =>
-      parsePersianNumber(value) == null ? 'عدد معتبر وارد کنید.' : null;
-  String? quantityRequired(String? value) {
-    final parsed = parsePersianNumber(value);
-    if (parsed == null || !parsed.isFinite || parsed <= 0)
-      return 'مقدار هر بسته را وارد کنید.';
-    if (unitType == 'Count' && parsed != parsed.roundToDouble())
-      return 'تعداد هر بسته باید عدد صحیح باشد.';
-    return null;
-  }
-
-  String? stockRequired(String? value) =>
-      parsePersianInteger(value, min: 0, max: maxApiInteger) == null
-      ? 'تعداد صحیح صفر یا بیشتر وارد کنید.'
-      : null;
-
   Widget _formSection(String title, IconData icon, List<Widget> children) =>
       Card(
         child: Padding(
@@ -805,7 +735,7 @@ class _ProductDialogState extends State<ProductDialog> {
                   Text(
                     parsedPrice == null
                         ? 'قیمت پس از ورود نمایش داده می‌شود'
-                        : '${formatPersianInteger(parsedPrice)} ریال',
+                        : '${formatPersianInteger(parsedPrice)} تومان',
                     style: const TextStyle(
                       color: AdminColors.ink,
                       fontWeight: FontWeight.w700,
@@ -946,22 +876,16 @@ class _ProductDialogState extends State<ProductDialog> {
     seoDescription.dispose();
     seoKeywords.dispose();
     specifications.dispose();
-    costPrice.dispose();
+    for(final p in [...packages,...removedPackages]) { p.dispose(); }
     primaryImage.dispose();
     galleryImages.dispose();
-    sku.dispose();
-    quantity.dispose();
-    price.dispose();
-    stock.dispose();
     super.dispose();
   }
 
   void submit() {
     if (!formKey.currentState!.validate()) return;
-    final packageQuantity = parsePersianNumber(quantity.text)!;
-    final label = unitType == 'Weight'
-        ? '${formatPersianNumber(packageQuantity)} گرم'
-        : '${formatPersianInteger(packageQuantity)} عدد';
+    final codes = [for(var i=0;i<packages.length;i++) packages[i].sku.text.trim().isEmpty ? generatedPackageSku(slug.text,packages[i],i) : packages[i].sku.text.trim().toUpperCase()];
+    if(codes.toSet().length != codes.length) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('کد انبار بسته‌ها نباید تکراری باشد.'))); return; }
     Navigator.pop(
       context,
       CreateProductCommand(
@@ -989,18 +913,7 @@ class _ProductDialogState extends State<ProductDialog> {
             .map((value) => value.trim())
             .where((value) => value.isNotEmpty)
             .toList(),
-        variants: [
-          CreateVariantCommand(
-            sku: sku.text,
-            quantity: packageQuantity,
-            displayLabel: label,
-            price: parsePersianNumber(price.text)!,
-            costPrice: widget.canWriteCosts
-                ? parsePersianNumber(costPrice.text)!
-                : 0,
-            availablePackages: parsePersianInteger(stock.text)!,
-          ),
-        ],
+        variants: [for(var i=0;i<packages.length;i++) packages[i].command(unitType,generatedSku:codes[i],canWriteCosts:widget.canWriteCosts)],
       ),
     );
   }

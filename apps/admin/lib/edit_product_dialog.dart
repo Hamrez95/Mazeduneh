@@ -1,8 +1,10 @@
+import 'product_package_editor.dart';
+import 'auth_session.dart';
+import 'admin_permissions.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_theme.dart';
 import 'catalog_api.dart';
-import 'formatters.dart';
 
 class ProductEditDialog extends StatefulWidget {
   const ProductEditDialog({
@@ -31,7 +33,10 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   final _primaryImage = TextEditingController();
   final _galleryImages = TextEditingController();
   late String _category;
-  late final List<_VariantDraft> _variants;
+  late final List<ProductPackageDraft> _variants;
+  final _removed = <ProductPackageDraft>[];
+  bool get _canPrice =>
+      OwnerSession.instance.can(AdminPermissions.pricingWrite);
 
   @override
   void initState() {
@@ -50,7 +55,9 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     _primaryImage.text = product.primaryImage;
     _galleryImages.text = product.galleryImages.join('\n');
     _category = product.category;
-    _variants = product.variants.map(_VariantDraft.new).toList();
+    _variants = product.variants
+        .map((v) => ProductPackageDraft(original: v))
+        .toList();
   }
 
   @override
@@ -65,7 +72,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     _specifications.dispose();
     _primaryImage.dispose();
     _galleryImages.dispose();
-    for (final variant in _variants) {
+    for (final variant in [..._variants, ..._removed]) {
       variant.dispose();
     }
     super.dispose();
@@ -118,6 +125,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: _category,
                   decoration: const InputDecoration(labelText: 'دسته‌بندی'),
                   items: _availableCategories
@@ -205,7 +213,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'موجودی و مشخصات بسته‌ها در این فرم تغییر نمی‌کند؛ برای اصلاح موجودی از بخش انبار استفاده کنید.',
+                  'وزن، کد و موجودی بسته‌های قبلی برای حفظ سوابق ثابت‌اند. می‌توانید قیمت را اصلاح کنید یا بستهٔ جدید اضافه کنید؛ همه در همان صفحهٔ محصول نمایش داده می‌شوند.',
                   style: const TextStyle(
                     color: AdminColors.muted,
                     fontSize: 12,
@@ -213,7 +221,28 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                for (final variant in _variants) _variantFields(variant),
+                for (var i = 0; i < _variants.length; i++)
+                  ProductPackageEditor(
+                    key: ObjectKey(_variants[i]),
+                    draft: _variants[i],
+                    index: i,
+                    unitType: widget.product.unitType,
+                    canWriteCosts: _canPrice,
+                    canChangePrice: _canPrice,
+                    allDrafts: _variants,
+                    onRemove: _variants[i].original != null
+                        ? null
+                        : () => setState(
+                            () => _removed.add(_variants.removeAt(i)),
+                          ),
+                  ),
+                if (_canPrice)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _variants.add(ProductPackageDraft())),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('افزودن وزن یا تعداد دیگر'),
+                  ),
               ],
             ),
           ),
@@ -234,34 +263,23 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     widget.product.category,
   }.toList();
 
-  Widget _variantFields(_VariantDraft variant) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('بسته و قیمت', style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 10),
-            Wrap(spacing: 10, runSpacing: 10, children: [
-              SizedBox(width: 200, child: TextFormField(controller: variant.sku, enabled: false, textDirection: TextDirection.ltr, decoration: const InputDecoration(labelText: 'کد انبار (SKU)', helperText: 'برای حفظ سوابق انبار ثابت می‌ماند.'))),
-              SizedBox(width: 180, child: TextFormField(controller: variant.label, decoration: const InputDecoration(labelText: 'عنوان بسته'), validator: _required)),
-              SizedBox(width: 150, child: TextFormField(controller: variant.quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianDigitsInputFormatter()], decoration: InputDecoration(labelText: widget.product.unitType == 'Weight' ? 'وزن (گرم)' : 'تعداد'), validator: (value) { final number = parsePersianNumber(value); return number == null || !number.isFinite || number <= 0 || widget.product.unitType == 'Count' && number != number.roundToDouble() ? 'مقدار معتبر وارد کنید.' : null; })),
-              SizedBox(width: 190, child: TextFormField(controller: variant.price, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'قیمت فروش (ریال)'), validator: (value) => parsePersianInteger(value, min: 0) == null ? 'قیمت معتبر وارد کنید.' : null)),
-              SizedBox(width: 150, child: TextFormField(controller: variant.stock, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'موجودی (بسته)'), validator: (value) => parsePersianInteger(value, min: 0, max: maxApiInteger) == null ? 'موجودی معتبر وارد کنید.' : null)),
-            ]),
-          ],
-        ),
-      ),
-    ),
-  );
-
   String? _required(String? value) =>
       value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
 
   void _save() {
     if (_formKey.currentState?.validate() != true) return;
+    final codes = [
+      for (var i = 0; i < _variants.length; i++)
+        _variants[i].sku.text.trim().isEmpty
+            ? generatedPackageSku(widget.product.slug, _variants[i], i)
+            : _variants[i].sku.text.trim().toUpperCase(),
+    ];
+    if (codes.toSet().length != codes.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('کد انبار بسته‌ها نباید تکراری باشد.')),
+      );
+      return;
+    }
     Navigator.pop(
       context,
       UpdateProductCommand(
@@ -291,16 +309,15 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
         netWeightUnit: widget.product.netWeightUnit,
         expiryLabel: widget.product.expiryLabel,
         variants: [
-          for (final variant in _variants)
-            CreateVariantCommand(
-              sku: variant.sku.text.trim(),
-              quantity: parsePersianNumber(variant.quantity.text)!,
-              displayLabel: variant.label.text.trim(),
-              price: parsePersianInteger(variant.price.text, min: 0)!,
-              availablePackages: parsePersianInteger(variant.stock.text, min: 0, max: maxApiInteger)!,
-              costPrice: variant.original.costPrice,
-              packagingCost: variant.original.packagingCost,
-              additionalCost: variant.original.additionalCost,
+          for (var i = 0; i < _variants.length; i++)
+            _variants[i].command(
+              widget.product.unitType,
+              generatedSku: generatedPackageSku(
+                widget.product.slug,
+                _variants[i],
+                i,
+              ),
+              canWriteCosts: _canPrice,
             ),
         ],
       ),
@@ -314,28 +331,4 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
             .substring(line.indexOf('=') + 1)
             .trim(),
   };
-}
-
-class _VariantDraft {
-  _VariantDraft(this.original)
-    : sku = TextEditingController(text: original.sku),
-      label = TextEditingController(text: original.displayLabel),
-      quantity = TextEditingController(text: toPersianDigits(original.quantity)),
-      price = TextEditingController(text: formatPersianInteger(original.price)),
-      stock = TextEditingController(text: formatPersianInteger(original.availablePackages));
-
-  final ProductVariant original;
-  final TextEditingController sku;
-  final TextEditingController label;
-  final TextEditingController quantity;
-  final TextEditingController price;
-  final TextEditingController stock;
-
-  void dispose() {
-    sku.dispose();
-    label.dispose();
-    quantity.dispose();
-    price.dispose();
-    stock.dispose();
-  }
 }

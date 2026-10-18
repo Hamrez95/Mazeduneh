@@ -56,7 +56,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
-            widget.decoration?.labelText == 'قیمت تمام‌شده (ریال)',
+            widget.decoration?.labelText == 'قیمت تمام‌شده (تومان)',
       ),
       findsNothing,
     );
@@ -68,7 +68,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is TextField &&
-            widget.decoration?.labelText == 'قیمت تمام‌شده (ریال)',
+            widget.decoration?.labelText == 'قیمت تمام‌شده (تومان)',
       ),
       findsOneWidget,
     );

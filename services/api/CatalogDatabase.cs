@@ -403,6 +403,28 @@ public sealed class CatalogDatabase(
             command.Parameters.AddWithValue("product_id", product.Id);
             command.Parameters.AddWithValue("sku", variant.Sku);
             var variantExists = (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+            var previous = before.Variants.FirstOrDefault(v => v.Sku.Equals(variant.Sku, StringComparison.OrdinalIgnoreCase));
+            if (variantExists && previous is null)
+                throw new CatalogPriceConflictException();
+            if (variantExists && previous is not null && previous.Price != variant.Price)
+            {
+                // Content-only edits must not restore a stale cached selling price.
+                // A deliberate price edit uses compare-and-swap and keeps batch costs,
+                // reservations, stock and historical order snapshots unchanged.
+                await using var priceCommand = new NpgsqlCommand("""
+                    update product_variants set price=@price
+                    where product_id=@product_id and sku=@sku and price=@previous;
+                    """, connection, transaction);
+                priceCommand.Parameters.AddWithValue("product_id", product.Id);
+                priceCommand.Parameters.AddWithValue("sku", variant.Sku);
+                priceCommand.Parameters.AddWithValue("price", variant.Price);
+                priceCommand.Parameters.AddWithValue("previous", previous.Price);
+                if (await priceCommand.ExecuteNonQueryAsync(cancellationToken) != 1)
+                    throw new CatalogPriceConflictException();
+                await audit.RecordAsync(connection, transaction, actor, "product.selling-price-updated", "ProductVariant",
+                    variant.Sku, new { Price = previous.Price }, new { variant.Price, product.Currency },
+                    "اصلاح مستقیم قیمت فروش بسته از فرم محصول", requestId, cancellationToken);
+            }
             if (!variantExists)
             {
                 await InsertVariantAsync(connection, transaction, product.Id, variant, cancellationToken);
@@ -582,3 +604,5 @@ public sealed class CatalogDatabase(
     ];
 }
 
+
+public sealed class CatalogPriceConflictException() : Exception("قیمت این بسته هم‌زمان تغییر کرده است؛ محصول را تازه‌سازی کنید و دوباره قیمت را ثبت کنید.");

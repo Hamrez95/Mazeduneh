@@ -98,10 +98,10 @@ class CatalogApiClient {
     return Product.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
-  Future<Product> updateProduct(String slug, UpdateProductCommand command) async {
+  Future<Product> updateProduct(String slug, UpdateProductCommand command, {String? stepUpToken}) async {
     final response = await _client.put(
       Uri.parse('$baseUrl/api/v1/products/$slug'),
-      headers: _headers(json: true),
+      headers: {..._headers(json: true), if(stepUpToken!=null) 'X-Admin-Step-Up':stepUpToken},
       body: jsonEncode(command.toJson()),
     );
     _guardUnauthorized(response);
