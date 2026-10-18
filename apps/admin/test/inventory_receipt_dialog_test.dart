@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mazeduneh_admin/catalog_api.dart';
 import 'package:mazeduneh_admin/inventory_receipt_dialog.dart';
@@ -11,6 +12,9 @@ void main() {
   testWidgets('fractional receipt quantity is rejected without saving', (tester) async {
     var attempts = 0;
     await tester.pumpWidget(MaterialApp(
+      locale: const Locale('fa'),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('fa'), Locale('en', 'US')],
       home: Directionality(
         textDirection: TextDirection.rtl,
         child: Scaffold(
@@ -44,7 +48,8 @@ void main() {
       tester.view.physicalSize = Size(width, 1100); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       InventoryReceiptCommand? captured;
-      await tester.pumpWidget(MaterialApp(builder: (context, child) => MediaQuery(
+      await tester.pumpWidget(MaterialApp(locale: const Locale('fa'), localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        supportedLocales: const [Locale('fa'), Locale('en', 'US')], builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(width == 360 ? 2 : 1)), child: child!),
         home: Directionality(textDirection: TextDirection.rtl, child: Scaffold(body: BatchDialog(products: const [product], onSave: (c) async {
           captured = c; throw Exception('network unavailable');

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mazeduneh_admin/auth_session.dart';
@@ -304,9 +305,9 @@ void main() {
     ]));
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), 300, maxScrolls: 20);
+    await tester.scrollUntilVisible(find.text('انقضا: جمعه، ۱۲ دی ۱۴۰۴ · ۰۳:۰۴'), 300, maxScrolls: 20);
     expect(find.text('نزدیک به انقضا'), findsOneWidget);
-    expect(find.text('انقضا: ۲۰۲۶/۰۱/۰۲ ۰۳:۰۴'), findsOneWidget);
+    expect(find.text('انقضا: جمعه، ۱۲ دی ۱۴۰۴ · ۰۳:۰۴'), findsOneWidget);
     expect(find.textContaining('۳ بسته'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -509,6 +510,9 @@ Widget _dashboardHarness({
     );
   });
   return MaterialApp(
+    locale: const Locale('fa'),
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+    supportedLocales: const [Locale('fa'), Locale('en', 'US')],
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
       child: child!,

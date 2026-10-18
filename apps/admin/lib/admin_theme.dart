@@ -33,4 +33,25 @@ ThemeData buildAdminTheme() => ThemeData(
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.border)),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(14)), borderSide: BorderSide(color: AdminColors.ink, width: 1.5)),
           ),
+          datePickerTheme: DatePickerThemeData(
+            backgroundColor: const Color(0xFFFFFDF8),
+            surfaceTintColor: Colors.transparent,
+            headerBackgroundColor: AdminColors.inkDeep,
+            headerForegroundColor: Colors.white,
+            weekdayStyle: const TextStyle(color: AdminColors.muted, fontWeight: FontWeight.w800),
+            dayStyle: const TextStyle(fontWeight: FontWeight.w600),
+            yearStyle: const TextStyle(fontWeight: FontWeight.w700),
+            todayForegroundColor: WidgetStatePropertyAll(AdminColors.ink),
+            todayBorder: const BorderSide(color: AdminColors.ink, width: 1),
+            dayForegroundColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected) ? Colors.white : AdminColors.inkDeep),
+            dayBackgroundColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected) ? AdminColors.ink : null),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: const BorderSide(color: AdminColors.border),
+            ),
+            elevation: 10,
+            shadowColor: AdminColors.ink.withValues(alpha: 0.16),
+          ),
         );

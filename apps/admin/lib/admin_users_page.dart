@@ -8,6 +8,7 @@ import 'admin_users_filters.dart';
 import 'auth_session.dart';
 import 'auth_api.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'admin_theme.dart';
 import 'admin_step_up_dialog.dart';
 
@@ -177,7 +178,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           content: SizedBox(
             width: 480,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('پیوند فعال‌سازی برای ${invitation.user.email} فقط یک بار قابل استفاده است و تا ${formatPersianDateTime(invitation.expiresAt)} اعتبار دارد.'),
+              Text('پیوند فعال‌سازی برای ${invitation.user.email} فقط یک بار قابل استفاده است و تا ${formatLocalizedDateTime(context, invitation.expiresAt)} اعتبار دارد.'),
               const SizedBox(height: 14),
               SelectableText(invitation.shareUrl, textDirection: TextDirection.ltr),
             ]),
@@ -288,7 +289,7 @@ class _UsersHeader extends StatelessWidget {
             const Text('همکاران، دسترسی‌ها و نشست‌های فعال را از همین‌جا مدیریت کنید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
             if (lastLoadedAt != null) ...[
               const SizedBox(height: 5),
-              Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+              Text('آخرین به‌روزرسانی: ${formatLocalizedDateTime(context, lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
             ],
           ]);
           return constraints.maxWidth < 620 ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [actions, const SizedBox(height: 12), title]) : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: title), actions]);
@@ -455,9 +456,9 @@ class _AdminUserSessionsDialogState extends State<_AdminUserSessionsDialog> {
                                       const Icon(Icons.devices_outlined, color: AdminColors.ink),
                                       const SizedBox(width: 10),
                                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                        Text('شروع نشست: ${formatPersianDateTime(session.createdAt)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                        Text('شروع نشست: ${formatLocalizedDateTime(context, session.createdAt)}', style: const TextStyle(fontWeight: FontWeight.w800)),
                                         const SizedBox(height: 5),
-                                        Text('اعتبار تا: ${formatPersianDateTime(session.expiresAt)}', style: const TextStyle(color: AdminColors.muted)),
+                                        Text('اعتبار تا: ${formatLocalizedDateTime(context, session.expiresAt)}', style: const TextStyle(color: AdminColors.muted)),
                                       ])),
                                     ]),
                                     const SizedBox(height: 8),

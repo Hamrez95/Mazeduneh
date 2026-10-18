@@ -10,6 +10,7 @@ import 'admin_theme.dart';
 import 'admin_step_up_dialog.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'order_api.dart';
 
 String _paymentStateLabel(String state) => switch (state) {
@@ -398,7 +399,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     shipment.shippingCarrier?.isNotEmpty == true ? shipment.shippingCarrier! : 'شرکت حمل ثبت نشده',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  Text('ارسال: ${formatPersianDateTime(shipment.shippedAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                  Text('ارسال: ${formatLocalizedDateTime(context, shipment.shippedAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                   const Icon(Icons.chevron_left_rounded, color: AdminColors.muted),
                 ],
               ),
@@ -682,7 +683,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
             ]),
             const SizedBox(height: 10),
             Row(children: [
-              Expanded(child: Text(detail.shippedAt == null ? 'هنوز زمان ارسال ثبت نشده است.' : 'ارسال‌شده در ${formatPersianDateTime(detail.shippedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
+              Expanded(child: Text(detail.shippedAt == null ? 'هنوز زمان ارسال ثبت نشده است.' : 'ارسال‌شده در ${formatLocalizedDateTime(context, detail.shippedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
               FilledButton.tonalIcon(onPressed: savingShipping ? null : saveShipping, icon: savingShipping ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined), label: const Text('ذخیره ارسال')),
             ]),
           ])),
@@ -761,13 +762,13 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
 
   Widget _timelineRow(AdminOrderTransition item, {required bool isLast}) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: 28, child: Column(children: [Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: AdminColors.ink)), if (!isLast) Container(width: 1, height: 48, color: AdminColors.border)])),
-        Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_stateLabel(item.state), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text('${formatPersianDateTime(item.occurredAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), if (item.reason.isNotEmpty) Text(item.reason, style: const TextStyle(fontSize: 12, color: AdminColors.muted))]))),
+        Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_stateLabel(item.state), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text('${formatLocalizedDateTime(context, item.occurredAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)), if (item.reason.isNotEmpty) Text(item.reason, style: const TextStyle(fontSize: 12, color: AdminColors.muted))]))),
       ]);
 
   Widget _noteRow(AdminOrderNote item) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(item.note, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5)),
         const SizedBox(height: 4),
-        Text('${formatPersianDateTime(item.createdAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+        Text('${formatLocalizedDateTime(context, item.createdAt)} · ${item.actor}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
       ]);
 
   String _stateLabel(String value) => const {

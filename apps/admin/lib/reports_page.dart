@@ -6,6 +6,7 @@ import 'admin_navigation.dart';
 import 'admin_permissions.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'order_api.dart';
 
 class ReportsPage extends StatefulWidget {
@@ -92,7 +93,7 @@ class _ReportsPageState extends State<ReportsPage> {
           load();
         },
       ) else Row(children: [
-        Expanded(child: Text('بازهٔ داشبورد: ${formatPersianDate(selectedRange!.start)} تا ${formatPersianDate(selectedRange!.end)}')),
+        Expanded(child: Text('${Localizations.localeOf(context).languageCode == 'en' ? 'Dashboard range' : 'بازهٔ داشبورد'}: ${formatCalendarDate(selectedRange!.start, Localizations.localeOf(context))} ${Localizations.localeOf(context).languageCode == 'en' ? 'to' : 'تا'} ${formatCalendarDate(selectedRange!.end, Localizations.localeOf(context))}')),
         TextButton(onPressed: () { setState(() { selectedRange = null; days = 30; }); load(); }, child: const Text('۳۰ روز اخیر')),
       ]),
       const SizedBox(height: 20),

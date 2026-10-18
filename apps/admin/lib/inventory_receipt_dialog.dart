@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'catalog_api.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'order_api.dart';
 
 class InventoryReceiptCommand {
@@ -31,35 +32,72 @@ class _BatchDialogState extends State<BatchDialog> {
   late String sku;
   bool saving = false;
   String? error;
+  bool _purchaseDateInitialized = false;
   @override
   void initState() {
     super.initState();
     sku = widget.products.expand((p) => p.variants).first.sku;
-    fields['purchased']!.text = toPersianDigits(DateTime.now().toIso8601String().substring(0, 10));
   }
-  DateTime? date(String? value) {
-    final normalized = normalizeNumberDigits(value ?? '');
-    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(normalized)) return null;
-    final parsed = DateTime.tryParse(normalized);
-    return parsed?.toIso8601String().substring(0, 10) == normalized ? parsed : null;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_purchaseDateInitialized) return;
+    _purchaseDateInitialized = true;
+    fields['purchased']!.text = formatCalendarDate(DateTime.now(), Localizations.localeOf(context));
   }
-  Widget dateField(String key, String label) => TextFormField(
-    controller: fields[key],
-    inputFormatters: const [PersianDigitsInputFormatter()],
-    decoration: InputDecoration(labelText: label, helperText: 'میلادی؛ سال-ماه-روز',
-      suffixIcon: IconButton(tooltip: 'انتخاب $label', onPressed: saving ? null : () async {
-        final now = DateTime.now();
-        final selected = await showDatePicker(context: context, initialDate: date(fields[key]!.text) ?? now,
-          firstDate: DateTime(2000), lastDate: key == 'purchased' ? now : DateTime(2100));
-        if (selected != null && mounted) fields[key]!.text = toPersianDigits(selected.toIso8601String().substring(0, 10));
-      }, icon: const Icon(Icons.calendar_month_outlined))),
-    validator: (value) {
-      final parsed = date(value);
-      if (parsed == null) return 'تاریخ معتبر وارد کنید.';
-      if (key == 'purchased' && parsed.isAfter(DateTime.now())) return 'تاریخ خرید در آینده نباشد.';
-      if (key == 'expires' && date(fields['produced']!.text) != null && !parsed.isAfter(date(fields['produced']!.text)!)) return 'انقضا بعد از تولید باشد.';
-      return null;
-    });
+
+  DateTime? date(String? value) => parseCalendarDate(value, Localizations.localeOf(context));
+
+  String dateLabel(String key, bool english) => switch ((key, english)) {
+    ('purchased', true) => 'Purchase date',
+    ('produced', true) => 'Production date',
+    ('expires', true) => 'Expiration date',
+    ('purchased', false) => 'تاریخ خرید',
+    ('produced', false) => 'تاریخ تولید',
+    _ => 'تاریخ انقضا',
+  };
+
+  Widget dateField(String key) {
+    final locale = Localizations.localeOf(context);
+    final english = locale.languageCode == 'en';
+    final label = dateLabel(key, english);
+    return TextFormField(
+      controller: fields[key],
+      keyboardType: TextInputType.datetime,
+      inputFormatters: usesJalaliCalendar(locale) ? const [PersianDigitsInputFormatter()] : const [],
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: english ? 'Gregorian calendar · Month DD, YYYY' : 'تقویم شمسی · سال/ماه/روز',
+        suffixIcon: IconButton(
+          tooltip: english ? 'Choose $label' : 'انتخاب $label',
+          onPressed: saving ? null : () async {
+            final now = DateTime.now();
+            final selected = await showLocalizedDatePicker(
+              context: context,
+              initialDate: date(fields[key]!.text) ?? now,
+              firstDate: DateTime(2000),
+              lastDate: key == 'purchased' ? now : DateTime(2100),
+              helpText: label,
+            );
+            if (selected != null && mounted) fields[key]!.text = formatCalendarDate(selected, locale);
+          },
+          icon: const Icon(Icons.calendar_month_outlined),
+        ),
+      ),
+      validator: (value) {
+        final parsed = date(value);
+        if (parsed == null) return english ? 'Enter a valid date.' : 'تاریخ معتبر وارد کنید.';
+        if (key == 'purchased' && parsed.isAfter(DateTime.now())) {
+          return english ? 'Purchase date cannot be in the future.' : 'تاریخ خرید در آینده نباشد.';
+        }
+        if (key == 'expires' && date(fields['produced']!.text) != null && !parsed.isAfter(date(fields['produced']!.text)!)) {
+          return english ? 'Expiration must be after production.' : 'انقضا بعد از تولید باشد.';
+        }
+        return null;
+      },
+    );
+  }
   Widget money(String key, String label) => TextFormField(controller: fields[key],
     keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianDigitsInputFormatter()], decoration: InputDecoration(labelText: '$label هر بسته (تومان)'),
     validator: (value) { final n = parsePersianNumber(value); return n == null || !n.isFinite || n < 0 || n > 100000000000 ? 'مبلغ معتبر بین صفر و ۱۰۰ میلیارد تومان وارد کنید.' : null; });
@@ -105,7 +143,7 @@ class _BatchDialogState extends State<BatchDialog> {
           validator: (v) => parsePersianInteger(v, min: 1, max: maxInventoryAdjustment) == null
               ? 'تعداد صحیح بین ۱ و ۱ میلیون وارد کنید.'
               : null),
-        dateField('purchased', 'تاریخ خرید'), dateField('produced', 'تاریخ تولید'), dateField('expires', 'تاریخ انقضا'),
+        dateField('purchased'), dateField('produced'), dateField('expires'),
         money('cost', 'قیمت خرید / مواد'), money('packaging', 'بسته‌بندی'), money('additional', 'هزینهٔ جانبی'),
         if (saving) const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator()),
         if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),

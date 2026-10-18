@@ -7,6 +7,7 @@ import 'auth_session.dart';
 import 'admin_step_up_dialog.dart';
 import 'customer_api.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 
 class CustomerManagementPage extends StatefulWidget {
   const CustomerManagementPage({super.key, this.api});
@@ -304,7 +305,7 @@ class _CustomerList extends StatelessWidget {
                               Text(customer.mobile, style: const TextStyle(color: _CustomerColors.muted)),
                               const SizedBox(height: 5),
                               Text(
-                                'آخرین فعالیت: ${formatPersianDateTime(customer.updatedAt)}',
+                                'آخرین فعالیت: ${formatLocalizedDateTime(context, customer.updatedAt)}',
                                 style: const TextStyle(fontSize: 11, color: _CustomerColors.muted),
                               ),
                             ],
@@ -349,10 +350,10 @@ class _CustomerDetails extends StatelessWidget {
               _DetailRow('تعداد سفارش', formatPersianInteger(customer.orderCount)),
               _DetailRow('مجموع خرید', '${formatPersianNumber(customer.totalSpend)} ریال'),
               _DetailRow('میانگین سفارش', '${formatPersianNumber(customer.averageOrderValue)} ریال'),
-              _DetailRow('آخرین خرید موفق', customer.lastPurchaseAt == null ? 'هنوز ثبت نشده' : formatPersianDateTime(customer.lastPurchaseAt!)),
+              _DetailRow('آخرین خرید موفق', customer.lastPurchaseAt == null ? 'هنوز ثبت نشده' : formatLocalizedDateTime(context, customer.lastPurchaseAt!)),
               _DetailRow('رضایت ارتباطی', customer.marketingConsent ? 'فعال' : 'ثبت نشده'),
-              _DetailRow('اولین ثبت', formatPersianDateTime(customer.createdAt)),
-              _DetailRow('آخرین فعالیت', formatPersianDateTime(customer.updatedAt)),
+              _DetailRow('اولین ثبت', formatLocalizedDateTime(context, customer.createdAt)),
+              _DetailRow('آخرین فعالیت', formatLocalizedDateTime(context, customer.updatedAt)),
               const SizedBox(height: 8),
               const Text('سوابق رضایت تبلیغاتی', style: TextStyle(fontWeight: FontWeight.w900, color: _CustomerColors.inkDeep)),
               const SizedBox(height: 10),
@@ -406,7 +407,7 @@ class _ConsentHistoryRow extends StatelessWidget {
                 Text(event.granted ? 'رضایت دریافت $channel ثبت شد' : 'رضایت دریافت $channel لغو شد',
                     style: const TextStyle(fontWeight: FontWeight.w800, color: _CustomerColors.inkDeep)),
                 const SizedBox(height: 3),
-                Text('$source · ${formatPersianDateTime(event.recordedAt)}',
+                Text('$source · ${formatLocalizedDateTime(context, event.recordedAt)}',
                     style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
               ],
             ),
@@ -442,7 +443,7 @@ class _AddressRow extends StatelessWidget {
             Text(address.address, style: const TextStyle(color: _CustomerColors.muted, height: 1.5)),
             const SizedBox(height: 4),
             Text('کدپستی: ${address.postalCode}', style: const TextStyle(fontSize: 12, color: _CustomerColors.muted)),
-            Text('آخرین استفاده: ${formatPersianDateTime(address.lastUsedAt)}', style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
+            Text('آخرین استفاده: ${formatLocalizedDateTime(context, address.lastUsedAt)}', style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
           ],
         ),
       );

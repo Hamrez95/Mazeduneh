@@ -10,6 +10,7 @@ import 'admin_theme.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'inventory_pricing_dialog.dart';
 import 'inventory_receipt_dialog.dart';
 import 'order_api.dart';
@@ -302,7 +303,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatPersianDateTime(item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatPersianDateTime(item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
+                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
                 );
               },
             )),

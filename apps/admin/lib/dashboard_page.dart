@@ -6,6 +6,7 @@ import 'admin_state.dart';
 import 'admin_theme.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'notification_tile.dart';
 import 'order_api.dart';
 
@@ -186,7 +187,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const Text('نمای سریع از وضعیت امروز فروشگاه و کارهایی که نیاز به توجه دارند.', style: TextStyle(color: AdminColors.muted)),
               if (lastLoadedAt != null) ...[
                 const SizedBox(height: 5),
-                Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                Text('آخرین به‌روزرسانی: ${formatLocalizedDateTime(context, lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
               ],
             ]);
             final refresh = IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
@@ -219,13 +220,22 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   String _periodLabel(int days, DateTimeRange? range) {
-    if (range != null) return 'فروش ${formatPersianDate(range.start)} تا ${formatPersianDate(range.end)}';
-    return switch (days) {
-        1 => 'فروش امروز',
-        7 => 'فروش ۷ روز اخیر',
-        30 => 'فروش ۳۰ روز اخیر',
-        _ => 'فروش بازهٔ انتخابی',
-      };
+    if (range != null) {
+      final locale = Localizations.localeOf(context);
+      final rangeText = '${formatCalendarDate(range.start, locale)} – ${formatCalendarDate(range.end, locale)}';
+      return locale.languageCode == 'en' ? 'Sales $rangeText' : 'فروش $rangeText';
+    }
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    return switch ((days, english)) {
+      (1, true) => 'Sales today',
+      (7, true) => 'Sales in the last 7 days',
+      (30, true) => 'Sales in the last 30 days',
+      (_, true) => 'Sales in selected range',
+      (1, false) => 'فروش امروز',
+      (7, false) => 'فروش ۷ روز اخیر',
+      (30, false) => 'فروش ۳۰ روز اخیر',
+      (_, false) => 'فروش بازهٔ انتخابی',
+    };
   }
 
   Widget _metricsSection(AdminDashboard data, bool Function(String) can) => Column(
@@ -563,7 +573,7 @@ class _DashboardPageState extends State<DashboardPage> {
             : Column(children: [for (final item in data.expiringSoon.take(5)) LayoutBuilder(
                 builder: (context, constraints) {
                   final compact = constraints.maxWidth < 460;
-                  final expiryDate = formatPersianDateTime(item.expiresAt);
+                  final expiryDate = formatLocalizedDateTime(context, item.expiresAt);
                   final details = '${item.variantLabel} · ${item.sku} · ${formatPersianInteger(item.remainingPackages)} بسته';
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -601,8 +611,10 @@ class _DashboardPeriodSelector extends StatelessWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            const Text('بازهٔ فروش', style: TextStyle(fontWeight: FontWeight.w900)),
-            for (final option in const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
+            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Sales period' : 'بازهٔ فروش', style: const TextStyle(fontWeight: FontWeight.w900)),
+            for (final option in Localizations.localeOf(context).languageCode == 'en'
+                ? const [(1, 'Today'), (7, '7 days'), (30, '30 days')]
+                : const [(1, 'امروز'), (7, '۷ روز'), (30, '۳۰ روز')])
               ChoiceChip(
                 label: Text(option.$2),
                 selected: customRange == null && selectedDays == option.$1,
@@ -613,10 +625,10 @@ class _DashboardPeriodSelector extends StatelessWidget {
               onPressed: onChooseCustomRange,
               icon: const Icon(Icons.date_range_rounded),
               label: Text(customRange == null
-                  ? 'بازهٔ دلخواه'
-                  : '${formatPersianDate(customRange!.start)} تا ${formatPersianDate(customRange!.end)}'),
+                  ? (Localizations.localeOf(context).languageCode == 'en' ? 'Custom range' : 'بازهٔ دلخواه')
+                  : '${formatCalendarDate(customRange!.start, Localizations.localeOf(context))} ${Localizations.localeOf(context).languageCode == 'en' ? 'to' : 'تا'} ${formatCalendarDate(customRange!.end, Localizations.localeOf(context))}'),
             ),
-            const Text('تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.', style: TextStyle(fontSize: 12, color: AdminColors.muted)),
+            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Dates use this device’s time zone.' : 'تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
           ],
         ),
       );
@@ -637,61 +649,65 @@ class _DashboardRangeDialogState extends State<_DashboardRangeDialog> {
   late DateTime end = widget.initialRange?.end ?? widget.today;
 
   Future<void> pickStart() async {
-    final selected = await showDatePicker(
+    final selected = await showLocalizedDatePicker(
       context: context,
       initialDate: start,
       firstDate: DateTime(widget.today.year, widget.today.month, widget.today.day - 365),
       lastDate: end,
-      locale: Localizations.localeOf(context),
+      helpText: Localizations.localeOf(context).languageCode == 'en' ? 'Start date' : 'روز شروع',
     );
     if (selected == null) return;
     setState(() => start = DateUtils.dateOnly(selected));
   }
 
   Future<void> pickEnd() async {
-    final selected = await showDatePicker(
+    final selected = await showLocalizedDatePicker(
       context: context,
       initialDate: end,
       firstDate: start,
       lastDate: widget.today,
-      locale: Localizations.localeOf(context),
+      helpText: Localizations.localeOf(context).languageCode == 'en' ? 'End date' : 'روز پایان',
     );
     if (selected == null) return;
     setState(() => end = DateUtils.dateOnly(selected));
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-        title: const Text('بازهٔ گزارش را انتخاب کنید'),
+  Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context);
+    final english = locale.languageCode == 'en';
+    return AlertDialog(
+        title: Text(english ? 'Choose report range' : 'بازهٔ گزارش را انتخاب کنید'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('روز شروع'),
+            Text(english ? 'Start date' : 'روز شروع'),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: pickStart,
               icon: const Icon(Icons.calendar_today_rounded),
-              label: Text(formatPersianDate(start)),
+              label: Text(formatCalendarDate(start, locale)),
             ),
             const SizedBox(height: 12),
-            const Text('روز پایان'),
+            Text(english ? 'End date' : 'روز پایان'),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: pickEnd,
               icon: const Icon(Icons.event_available_rounded),
-              label: Text(formatPersianDate(end)),
+              label: Text(formatCalendarDate(end, locale)),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(english ? 'Cancel' : 'انصراف')),
           FilledButton(
             onPressed: () => Navigator.pop(context, DateTimeRange(start: start, end: end)),
-            child: const Text('اعمال بازه'),
+            child: Text(english ? 'Apply range' : 'اعمال بازه'),
           ),
         ],
       );
+  }
 }
 
 class DashboardPreferencesDialog extends StatefulWidget {
