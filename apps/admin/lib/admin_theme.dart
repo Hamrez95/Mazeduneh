@@ -74,7 +74,10 @@ ThemeData buildAdminTheme() {
     scaffoldBackgroundColor: AdminColors.canvas,
     canvasColor: AdminColors.surface,
     dividerColor: AdminColors.border,
-    dividerTheme: const DividerThemeData(color: AdminColors.border, thickness: 0.7),
+    dividerTheme: const DividerThemeData(
+      color: AdminColors.border,
+      thickness: 0.7,
+    ),
     disabledColor: AdminColors.subtle,
     textTheme: base.textTheme
         .copyWith(
@@ -233,7 +236,6 @@ ThemeData buildAdminTheme() {
       unselectedLabelColor: AdminColors.muted,
       indicatorColor: AdminColors.primary,
       dividerColor: AdminColors.border,
-    dividerTheme: const DividerThemeData(color: AdminColors.border, thickness: 0.7),
     ),
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: AdminColors.surfaceRaised,
