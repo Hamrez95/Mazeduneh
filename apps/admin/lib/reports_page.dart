@@ -109,11 +109,11 @@ class _ReportsPageState extends State<ReportsPage> {
     if (data.orderCount == 0) return const Center(child: Text('برای این بازه هنوز داده‌ی فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)));
     final merchandiseSalesAfterDiscount = data.merchandiseRevenue - data.discount;
     return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 1050 ? 3 : constraints.maxWidth >= 680 ? 2 : 1;
+      final columns = constraints.maxWidth >= 900 ? 3 : constraints.maxWidth >= 680 ? 2 : 1;
       return ListView(children: [
         GridView.count(
           crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14,
-          childAspectRatio: columns == 1 ? 2.6 : 1.9, shrinkWrap: true,
+          childAspectRatio: ((constraints.maxWidth - (columns - 1) * 14) / columns) / (120 * MediaQuery.textScalerOf(context).scale(1)), shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           children: [
             _ReportMetric(title: 'مبلغ پرداخت‌شده با ارسال و مالیات', value: '${formatPersianNumber(data.revenue)} ریال', icon: Icons.payments_rounded, tint: AdminColors.mintSoft),

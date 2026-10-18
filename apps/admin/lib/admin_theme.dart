@@ -35,6 +35,8 @@ ThemeData buildAdminTheme() {
     primaryContainer: AdminColors.primarySoft,
     onPrimaryContainer: AdminColors.primaryLight,
     secondary: AdminColors.info,
+    secondaryContainer: AdminColors.primarySoft,
+    onSecondaryContainer: AdminColors.primaryLight,
     onSecondary: AdminColors.canvas,
     surface: AdminColors.surface,
     onSurface: AdminColors.text,
