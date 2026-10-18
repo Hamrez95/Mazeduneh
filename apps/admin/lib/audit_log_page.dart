@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'admin_state.dart';
 import 'audit_log_api.dart';
 import 'formatters.dart';
+import 'localized_calendar.dart';
 import 'admin_theme.dart';
 
 class AuditLogPage extends StatefulWidget {
@@ -112,7 +113,7 @@ class _AuditHeader extends StatelessWidget {
           const Text('دعوت‌ها، تغییر دسترسی‌ها و عملیات فروشگاه را با انجام‌دهنده و تصویر قبل و بعد پیگیری کنید.', style: TextStyle(color: AdminColors.muted, height: 1.5)),
           if (lastLoadedAt != null) ...[
             const SizedBox(height: 5),
-            Text('آخرین به‌روزرسانی: ${formatPersianDateTime(lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+            Text('آخرین به‌روزرسانی: ${formatLocalizedDateTime(context, lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
           ],
         ]);
         return constraints.maxWidth < 560 ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: refresh), title]) : Row(children: [Expanded(child: title), refresh]);
@@ -193,7 +194,7 @@ class _AuditEntryTile extends StatelessWidget {
         childrenPadding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
         leading: CircleAvatar(backgroundColor: AdminColors.mintSoft, foregroundColor: AdminColors.ink, child: Icon(_iconFor(entry), size: 19)),
         title: Text(entry.actionLabel, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
-        subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('${entry.entityLabel}: ${entry.entityId}  ·  ${formatPersianDateTime(entry.occurredAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
+        subtitle: Padding(padding: const EdgeInsets.only(top: 4), child: Text('${entry.entityLabel}: ${entry.entityId}  ·  ${formatLocalizedDateTime(context, entry.occurredAt)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
         children: [
           _AuditMetaGrid(entry: entry),
           const SizedBox(height: 10),

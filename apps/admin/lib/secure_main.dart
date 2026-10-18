@@ -12,11 +12,13 @@ import 'auth_session.dart';
 void main() => runApp(const MazedunehSecureAdminApp());
 
 class MazedunehSecureAdminApp extends StatefulWidget {
-  const MazedunehSecureAdminApp({super.key, this.authApi, this.initialUri, this.child});
+  const MazedunehSecureAdminApp({super.key, this.authApi, this.initialUri, this.child,
+    this.locale = const Locale('fa')});
 
   final AuthApiClient? authApi;
   final Uri? initialUri;
   final Widget? child;
+  final Locale locale;
 
   @override
   State<MazedunehSecureAdminApp> createState() => _MazedunehSecureAdminAppState();
@@ -52,13 +54,13 @@ class _MazedunehSecureAdminAppState extends State<MazedunehSecureAdminApp> {
         debugShowCheckedModeBanner: false,
         title: 'مدیریت مزه‌دونه',
         navigatorKey: navigatorKey,
-        locale: const Locale('fa'),
+        locale: widget.locale,
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         supportedLocales: const [Locale('fa'), Locale('en', 'US')],
         theme: buildAdminTheme(),
         home: widget.child ?? const AdminShell(),
         builder: (_, navigator) => Directionality(
-          textDirection: TextDirection.rtl,
+          textDirection: widget.locale.languageCode == 'fa' ? TextDirection.rtl : TextDirection.ltr,
           child: AdminAuthGate(api: widget.authApi, initialUri: widget.initialUri, child: navigator!),
         ),
       );
