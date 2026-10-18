@@ -150,7 +150,7 @@ class _InventoryPageState extends State<InventoryPage> {
       LayoutBuilder(builder: (context, constraints) {
         final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-          const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+          const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
         ]);
         final controls = Wrap(spacing: 8, children: [
         OutlinedButton.icon(onPressed: products.isEmpty ? null : () async {
@@ -210,11 +210,11 @@ class _InventoryPageState extends State<InventoryPage> {
                 final low = variant.availablePackages <= 5;
                 final busy = busySku == variant.sku;
                 return Row(children: [
-                  CircleAvatar(backgroundColor: low ? const Color(0xFFFFE8C8) : const Color(0xFFE7F1E2), child: Text(formatPersianInteger(variant.availablePackages))),
+                  CircleAvatar(backgroundColor: low ? AdminColors.warningSoft : AdminColors.successSoft, child: Text(formatPersianInteger(variant.availablePackages))),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(product.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text('${variant.displayLabel} · ${variant.sku}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    Text('${variant.displayLabel} · ${variant.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
                   ])),
                   FilledButton.tonalIcon(
                     onPressed: busy ? null : () => adjust(variant!),
@@ -238,7 +238,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 return ListTile(
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
-                    backgroundColor: positive ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
+                    backgroundColor: positive ? AdminColors.successSoft : AdminColors.warningSoft,
                     child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
                   ),
                   title: Text('${item.sku} · $sign${formatPersianInteger(item.quantityDelta.abs())}', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -303,7 +303,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? const Color(0xFF9A661D) : AdminColors.muted)),
+                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.muted)),
                 );
               },
             )),
@@ -333,12 +333,12 @@ class _InventoryAttentionBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: expiredCount > 0 ? const Color(0xFFFFECE8) : const Color(0xFFFFF5DF),
+          color: expiredCount > 0 ? AdminColors.dangerSoft : AdminColors.warningSoft,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: expiredCount > 0 ? const Color(0xFFF1C5BB) : const Color(0xFFF0D69A)),
+          border: Border.all(color: expiredCount > 0 ? AdminColors.dangerSoft : AdminColors.warningSoft),
         ),
         child: Row(children: [
-          Icon(expiredCount > 0 ? Icons.priority_high_rounded : Icons.schedule_rounded, color: expiredCount > 0 ? AdminColors.coral : const Color(0xFF9A661D)),
+          Icon(expiredCount > 0 ? Icons.priority_high_rounded : Icons.schedule_rounded, color: expiredCount > 0 ? AdminColors.coral : AdminColors.amber),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(detail, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.4)),

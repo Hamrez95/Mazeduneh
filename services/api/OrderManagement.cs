@@ -823,6 +823,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((to - from).TotalDays), 1, 366);
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
         const string orderSql = """
             select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
                    coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0)
@@ -835,7 +836,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         decimal shippingExpense;
         decimal shippingRevenue;
         decimal discount;
-        await using (var command = new NpgsqlCommand(orderSql, connection))
+        await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
         {
             command.Parameters.AddWithValue("from", from);
             command.Parameters.AddWithValue("to", to);
@@ -863,7 +864,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         decimal packagingCost;
         decimal additionalCost;
         decimal merchandiseRevenue;
-        await using (var command = new NpgsqlCommand(lineSql, connection))
+        await using (var command = new NpgsqlCommand(lineSql, connection, transaction))
         {
             command.Parameters.AddWithValue("from", from);
             command.Parameters.AddWithValue("to", to);
@@ -876,6 +877,48 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             merchandiseRevenue = reader.GetDecimal(4);
         }
 
+        // Aggregate line costs per order before joining to avoid multiplying order totals.
+        const string dailySql = """
+            with line_costs as (
+                select l.order_id, sum(l.line_total) as merchandise,
+                       sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)) as cost
+                from checkout_order_lines l join checkout_orders o on o.id=l.order_id
+                where o.created_at >= @from and o.created_at < @to
+                  and o.state in ('Paid','Preparing','Shipped','Delivered')
+                group by l.order_id
+            )
+            select (o.created_at at time zone 'UTC')::date as day, count(*)::int,
+                   coalesce(sum(o.payable),0),
+                   coalesce(sum(coalesce(l.merchandise,0)-o.discount-coalesce(l.cost,0)+o.shipping-o.shipping_expense),0)
+            from checkout_orders o left join line_costs l on l.order_id=o.id
+            where o.created_at >= @from and o.created_at < @to
+              and o.state in ('Paid','Preparing','Shipped','Delivered')
+            group by day order by day;
+            """;
+        var dailySales = new List<AdminDailySales>();
+        await using (var command = new NpgsqlCommand(dailySql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                dailySales.Add(new AdminDailySales(reader.GetFieldValue<DateOnly>(0), reader.GetInt32(1), reader.GetDecimal(2), reader.GetDecimal(3)));
+        }
+        const string statesSql = """
+            select state,count(*)::int from checkout_orders
+            where created_at >= @from and created_at < @to group by state order by state;
+            """;
+        var orderStates = new List<AdminOrderStateCount>();
+        await using (var command = new NpgsqlCommand(statesSql, connection, transaction))
+        {
+            command.Parameters.AddWithValue("from", from);
+            command.Parameters.AddWithValue("to", to);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                orderStates.Add(new AdminOrderStateCount(reader.GetString(0), reader.GetInt32(1)));
+        }
+        await transaction.CommitAsync(cancellationToken);
+
         var cost = productCost + packagingCost + additionalCost;
         // Customer payments include shipping and tax; tax is payable to the tax authority, not profit.
         var netMerchandiseRevenue = merchandiseRevenue - discount;
@@ -884,7 +927,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var margin = netMerchandiseRevenue <= 0 ? 0 : profit / netMerchandiseRevenue * 100;
         return new AdminAnalytics(
             periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense,
-            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost);
+            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost, dailySales, orderStates);
     }
 
     public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
@@ -1366,7 +1409,11 @@ public sealed record AdminAnalytics(
     int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
     decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,
     decimal MerchandiseRevenue = 0, decimal Discount = 0, decimal ShippingRevenue = 0,
-    decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);
+    decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,
+    IReadOnlyCollection<AdminDailySales>? DailySales = null,
+    IReadOnlyCollection<AdminOrderStateCount>? OrderStates = null);
+public sealed record AdminDailySales(DateOnly Day, int OrderCount, decimal Revenue, decimal NetProfit);
+public sealed record AdminOrderStateCount(string State, int Count);
 public sealed record AdminNotification(
     string Type,
     string Title,

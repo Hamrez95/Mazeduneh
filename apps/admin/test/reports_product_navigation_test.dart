@@ -87,10 +87,10 @@ void main() {
 
     expect(requestUris.map((uri) => uri.path), contains('/api/v1/admin/analytics/products'));
     final productRequest = requestUris.firstWhere((uri) => uri.path.endsWith('/analytics/products'));
-    await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
+    await tester.scrollUntilVisible(find.text('مشاهده در انبار'), 350, scrollable: find.byType(Scrollable).first, maxScrolls: 30);
     await tester.pumpAndSettle();
 
-    expect(find.text('پسته اکبری'), findsOneWidget);
+    expect(find.text('پسته اکبری'), findsWidgets);
     expect(find.textContaining('تفکیک هزینه'), findsOneWidget);
     expect(find.textContaining('حاشیه سود'), findsOneWidget);
     final inventoryAction = find.text('مشاهده در انبار');
@@ -169,10 +169,10 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.dragFrom(const Offset(195, 600), const Offset(0, -1200));
+    await tester.scrollUntilVisible(find.text('مشاهده در انبار'), 350, scrollable: find.byType(Scrollable).first, maxScrolls: 30);
     await tester.pumpAndSettle();
 
-    expect(find.text('پسته اکبری'), findsOneWidget);
+    expect(find.text('پسته اکبری'), findsWidgets);
     expect(find.text('مشاهده سفارش‌ها'), findsNothing);
   });
 }

@@ -91,13 +91,15 @@ function Test-PortProcessFromRoot([int]$port,[string]$fragment) {
   return $false
 }
 function Find-ReadyRootPort([int]$preferred,[int]$count,[string]$fragment) {
-  for($candidate=$preferred;$candidate -lt [Math]::Min(65536,$preferred+$count);$candidate++) {
+  $listeningPorts=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge $preferred -and $_.LocalPort -lt [Math]::Min(65536,$preferred+$count) } | Select-Object -ExpandProperty LocalPort -Unique | Sort-Object)
+  foreach($candidate in $listeningPorts) {
     if((Test-PortProcessFromRoot $candidate $fragment) -and (Check-Ready "http://127.0.0.1:$candidate")){return $candidate}
   }
   return 0
 }
 function Find-ReadyApiPort([int]$preferred,[int]$count) {
-  for($candidate=$preferred;$candidate -lt [Math]::Min(65536,$preferred+$count);$candidate++) {
+  $listeningPorts=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge $preferred -and $_.LocalPort -lt [Math]::Min(65536,$preferred+$count) } | Select-Object -ExpandProperty LocalPort -Unique | Sort-Object)
+  foreach($candidate in $listeningPorts) {
     if(Check-Ready "http://127.0.0.1:$candidate/health/ready" $true){return $candidate}
   }
   return 0

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'admin_state.dart';
 import 'admin_step_up_dialog.dart';
 import 'admin_theme.dart';
+import 'admin_table.dart';
 import 'admin_permissions.dart';
 import 'admin_navigation.dart';
 import 'auth_session.dart';
@@ -154,7 +155,7 @@ class CatalogPageState extends State<CatalogPage> {
           LayoutBuilder(builder: (context, constraints) {
             final title = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('محصولات', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-              const Text('پیش‌نویس‌ها فقط در پنل دیده می‌شوند.', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              const Text('پیش‌نویس‌ها فقط در پنل دیده می‌شوند.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
             ]);
             final categoriesButton = OutlinedButton.icon(
               onPressed: () async {
@@ -172,20 +173,13 @@ class CatalogPageState extends State<CatalogPage> {
               onSelected: (value) => setState(() => showDrafts = value),
             );
             final refreshButton = IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
-            if (constraints.maxWidth < 700) {
-              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Row(children: [Expanded(child: title), refreshButton]),
-                const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 8, children: [categoriesButton, draftsFilter]),
-              ]);
-            }
-            return Row(children: [
-              Expanded(child: title),
-              categoriesButton,
-              const SizedBox(width: 8),
-              draftsFilter,
-              const SizedBox(width: 8),
-              refreshButton,
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [Expanded(child: title), refreshButton]),
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (OwnerSession.instance.can(AdminPermissions.productsWrite)) FilledButton.icon(onPressed: openCreateDialog, icon: const Icon(Icons.add_rounded), label: const Text('افزودن محصول')),
+                categoriesButton, draftsFilter,
+              ]),
             ]);
           }),
           const SizedBox(height: 18),
@@ -199,6 +193,30 @@ class CatalogPageState extends State<CatalogPage> {
     final visible = showDrafts ? products : products.where((item) => item.isPublished).toList();
     if (visible.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'محصولی پیدا نشد', detail: 'با تغییر فیلتر یا ثبت محصول جدید، فهرست را کامل کنید.'));
     return LayoutBuilder(builder: (context, constraints) {
+      if (constraints.maxWidth >= 900 && MediaQuery.textScalerOf(context).scale(1) < 1.5) {
+        num minPrice(Product product) => product.variants.isEmpty ? 0 : product.variants.map((v) => v.price).reduce((a, b) => a < b ? a : b);
+        return SingleChildScrollView(child: AdminRecordTable<Product>(
+          records: visible, searchText: (p) => '${p.title} ${p.category} ${p.origin} ${p.variants.map((v) => v.sku).join(' ')}', searchHint: 'جست‌وجوی محصول…',
+          columns: [
+            AdminColumn('محصول', (p) => AdminIdentityCell(title: p.title, subtitle: p.origin,
+              leading: ClipRRect(borderRadius: BorderRadius.circular(4), child: p.primaryImage.trim().isEmpty
+                ? const SizedBox(width: 38, height: 38, child: Icon(Icons.inventory_2_outlined))
+                : Image.network(resolveMediaUri(p.primaryImage).toString(), width: 38, height: 38, fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox(width: 38, height: 38, child: Icon(Icons.image_not_supported_outlined))))), compare: (a, b) => a.title.compareTo(b.title)),
+            AdminColumn('دسته‌بندی', (p) => Text(p.category), compare: (a, b) => a.category.compareTo(b.category)),
+            AdminColumn('بسته‌ها', (p) => PopupMenuButton<String>(tooltip: 'نمایش سفارش‌های بسته', onSelected: (sku) => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.orders, query: sku)),
+              enabled: OwnerSession.instance.can(AdminPermissions.ordersRead), itemBuilder: (_) => [for (final v in p.variants) PopupMenuItem(value: v.sku, child: Text('${v.displayLabel} · ${v.sku}'))],
+              child: Text('${formatPersianInteger(p.variants.length)} بسته', style: const TextStyle(color: AdminColors.primaryLight)))),
+            AdminColumn('موجودی', (p) => AdminStatusBadge('${formatPersianInteger(p.totalStock)} بسته', color: p.totalStock > 0 ? AdminColors.success : AdminColors.coral, background: p.totalStock > 0 ? AdminColors.successSoft : AdminColors.dangerSoft), compare: (a, b) => a.totalStock.compareTo(b.totalStock)),
+            AdminColumn('قیمت از (تومان)', (p) => Text(formatToman(minPrice(p))), compare: (a, b) => minPrice(a).compareTo(minPrice(b))),
+            AdminColumn('وضعیت', (p) => _PublicationBadge(p.isPublished)),
+            AdminColumn('عملیات', (p) => Row(mainAxisSize: MainAxisSize.min, children: [
+              if (OwnerSession.instance.can(AdminPermissions.productsWrite)) IconButton(tooltip: 'ویرایش ${p.title}', onPressed: () => editProduct(p), icon: const Icon(Icons.edit_outlined, size: 20)),
+              if (OwnerSession.instance.can(AdminPermissions.productsWrite)) IconButton(tooltip: p.isPublished ? 'خروج از فروش' : 'انتشار', onPressed: changingPublication.contains(p.slug) ? null : () => changePublication(p), icon: Icon(p.isPublished ? Icons.visibility_off_outlined : Icons.public_rounded, size: 20)),
+            ])),
+          ],
+        ));
+      }
       final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
       return GridView.builder(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -250,10 +268,10 @@ class ProductCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(6),
                 child: product.primaryImage.trim().isEmpty
                     ? Container(width: 58, height: 58, color: AdminColors.mintSoft, alignment: Alignment.center, child: Text(product.isWeight ? '⚖' : '●'))
-                    : Image.network(resolveMediaUri(product.primaryImage).toString(), width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: const Color(0xFFFFF0D9), alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined)))),
+                    : Image.network(resolveMediaUri(product.primaryImage).toString(), width: 58, height: 58, fit: BoxFit.contain, errorBuilder: (_, __, ___) => Container(width: 58, height: 58, color: AdminColors.warningSoft, alignment: Alignment.center, child: const Icon(Icons.broken_image_outlined)))),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(product.title, style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -263,7 +281,7 @@ class ProductCard extends StatelessWidget {
               _PublicationBadge(product.isPublished),
             ]),
             const SizedBox(height: 8),
-            Text('${product.category} · ${product.origin}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            Text('${product.category} · ${product.origin}', style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
             const Spacer(),
             Wrap(spacing: 5, runSpacing: 5, children: [
               for (final variant in product.variants)
@@ -279,7 +297,7 @@ class ProductCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'موجودی کل: ${formatPersianInteger(product.totalStock)} بسته',
-              style: const TextStyle(color: Color(0xFF31584A), fontWeight: FontWeight.w700),
+              style: const TextStyle(color: AdminColors.success, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
@@ -310,7 +328,7 @@ class _PublicationBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: isPublished ? const Color(0xFFE7F1E2) : const Color(0xFFFFE8C8),
+          color: isPublished ? AdminColors.successSoft : AdminColors.warningSoft,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
@@ -739,7 +757,7 @@ class _ProductDialogState extends State<ProductDialog> {
                 height: 96,
                 child: image.isEmpty
                     ? const ColoredBox(
-                        color: Colors.white,
+                        color: AdminColors.surface,
                         child: Icon(
                           Icons.image_outlined,
                           size: 34,
@@ -750,7 +768,7 @@ class _ProductDialogState extends State<ProductDialog> {
                         resolveMediaUri(image).toString(),
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => const ColoredBox(
-                          color: Color(0xFFFFF0D9),
+                          color: AdminColors.warningSoft,
                           child: Icon(
                             Icons.broken_image_outlined,
                             color: AdminColors.muted,
