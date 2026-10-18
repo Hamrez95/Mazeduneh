@@ -210,8 +210,11 @@ with tempfile.TemporaryFile() as log:
         status, public = request('/api/v1/products/' + SLUG)
         assert status == 200 and public['title'] == product['title'] and public['description'] == product['description']
         public_variants = {item['sku']: item for item in public['variants']}
-        # Product content saves keep the separately managed price and inventory unchanged.
-        assert public_variants[ZERO]['price'] == 1000 and public_variants[ZERO]['availablePackages'] == 5
+        # An explicit, stepped-up catalog price edit persists without changing inventory.
+        assert public_variants[ZERO]['price'] == 43210 and public_variants[ZERO]['availablePackages'] == 5
+        direct_price_event = next(item for item in audit('ProductVariant', ZERO) if item['action'] == 'product.selling-price-updated')
+        assert json.loads(direct_price_event['beforeJson'])['Price'] == 1000
+        assert json.loads(direct_price_event['afterJson'])['Price'] == 43210
         assert public_variants[ADDED]['availablePackages'] == 0  # Sold-out SKU is still an editable catalog entry.
         assert all(item['costPrice'] == 0 for item in public['variants'])
         assert request('/api/v1/products/' + SLUG + '/publication', 'PATCH', {'isPublished': False}, token)[0] == 200
@@ -230,6 +233,7 @@ with tempfile.TemporaryFile() as log:
         persisted = next(item for item in products if item["slug"] == SLUG)
         balances = {item["sku"]: item["availablePackages"] for item in persisted["variants"]}
         assert status == 200 and balances == {ZERO: 5, POSITIVE: 3, ADDED: 0}
+        assert next(v for v in persisted['variants'] if v['sku'] == ZERO)['price'] == 43210
         assert request("/api/v1/products/" + SLUG)[0] == 404  # Draft remains private.
         assert len(movements(ZERO)) == 1 and len(movements(POSITIVE)) == 1
     finally:

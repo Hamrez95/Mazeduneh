@@ -36,6 +36,8 @@ async function ready() {
       const errors = [];
       page.on('pageerror', (error) => errors.push(error.message));
       let records = [product('live-nut', 'پسته پنل'), product('live-almond', 'بادام پنل', 0)];
+      records[0].variants[0].price = 2000000;
+      records[0].variants.push({ sku: 'LIVE-NUT-500', quantity: 500, displayLabel: '۵۰۰ گرم', price: 3800000, availablePackages: 2 });
       let failing = false;
       await context.route(api + '/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
@@ -72,6 +74,20 @@ async function ready() {
       await page.getByRole('heading', { name: records[0].title, exact: true }).waitFor();
       await page.getByRole('heading', { name: 'بادام پنل', exact: true }).waitFor();
       assert.equal(await page.getByText('پسته اکبری ممتاز', { exact: true }).count(), 0);
+      const selectedPrice = page.getByRole('status', { name: 'قیمت بستهٔ انتخاب‌شده', exact: true });
+      assert.match(await selectedPrice.textContent(), /۲۰۰٬۰۰۰/);
+      const bigPack = page.getByRole('option', { name: /۵۰۰ گرم/ });
+      await bigPack.click();
+      assert.equal(await bigPack.getAttribute('aria-selected'), 'true');
+      assert.match(await selectedPrice.textContent(), /۳۸۰٬۰۰۰/);
+      await page.getByRole('button', { name: 'افزودن به سبد خرید', exact: true }).click();
+      await page.getByRole('option', { name: /۲۵۰ گرم/ }).click();
+      assert.match(await selectedPrice.textContent(), /۲۰۰٬۰۰۰/);
+      await page.getByRole('button', { name: 'افزودن به سبد خرید', exact: true }).click();
+      await page.goto(origin + '/cart');
+      await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
+      await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
+
 
       records = [];
       await page.goto(origin);

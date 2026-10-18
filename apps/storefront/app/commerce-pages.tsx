@@ -120,10 +120,10 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
         <div className={styles.breadcrumbs}><a href="/">خانه</a> ← <a href="/shop">فروشگاه</a> ← <a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a></div>
         <span className={styles.detailKicker}>{product.badge ?? "انتخاب مزه‌دونه"}</span>
         <h1>{product.title}</h1>
-        <p className={styles.detailSubtitle}>{product.subtitle}</p>
+        <p className={styles.detailSubtitle}>{product.variants?.length ? product.subtitle.replace(product.packageLabel, selectedVariant.packageLabel) : product.subtitle}</p>
         {product.description && <p className={styles.detailDescription}>{product.description}</p>}
         <div className={styles.rating} aria-label="بدون امتیاز ثبت‌شده">☆☆☆☆☆ <span>هنوز امتیاز تأییدشده‌ای ثبت نشده</span></div>
-        <div className={styles.detailPrice}>{toman(selectedProduct.price)} <small>تومان</small></div>
+        <div className={styles.detailPrice} role="status" aria-label="قیمت بستهٔ انتخاب‌شده" aria-live="polite" aria-atomic="true">{toman(selectedProduct.price)} <small>تومان</small></div>
         <p className={styles.variantTitle}>بستهٔ قابل انتخاب</p>
         <div className={styles.variantChoices} role="listbox" aria-label="انتخاب بسته">
           {variants.map((variant) => (
