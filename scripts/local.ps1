@@ -13,6 +13,7 @@ $runtime = if($RuntimeHome) { $RuntimeHome } else { Join-Path $env:LOCALAPPDATA 
 New-Item -ItemType Directory -Force $localRoot,$runtime,(Join-Path $root '.local-dev') | Out-Null
 $rootKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($root).ToLowerInvariant()))).Substring(0,12).ToLowerInvariant()
 $stateFile = Join-Path $localRoot "processes-$rootKey.json"
+$adminBuildMarkerFile = Join-Path $localRoot "admin-build-$rootKey.sha256"
 $portsFile = Join-Path $localRoot 'ports.json'
 $secretsFile = Join-Path $localRoot 'credentials.json'
 $pgRoot = Join-Path $runtime 'postgresql-17.11-5'
@@ -67,6 +68,28 @@ function Check-Ready([string]$url,[bool]$json=$false) {
     if($json){return $r.Headers['Content-Type'] -match 'application/json' -and ($r.Content|ConvertFrom-Json).status -eq 'ready'}
     return $true
   } catch {return $false}
+}
+function Get-AdminSourceFingerprint {
+  $adminRoot = Join-Path $root 'apps/admin'
+  $files = [Collections.Generic.List[string]]::new()
+  foreach($relative in @('pubspec.yaml','pubspec.lock')) {
+    $path = Join-Path $adminRoot $relative
+    if(Test-Path $path -PathType Leaf){$files.Add($path)}
+  }
+  foreach($directory in @('lib','web','assets')) {
+    $path = Join-Path $adminRoot $directory
+    if(Test-Path $path -PathType Container) {
+      Get-ChildItem -LiteralPath $path -File -Recurse | ForEach-Object {[void]$files.Add($_.FullName)}
+    }
+  }
+  $entries = [Collections.Generic.List[string]]::new()
+  foreach($file in ($files | Sort-Object)) {
+    $relative = [IO.Path]::GetRelativePath($adminRoot,$file).Replace('\','/')
+    $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+    $entries.Add("$relative`0$hash")
+  }
+  $payload = [string]::Join("`n",$entries)
+  return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($payload))).ToLowerInvariant()
 }
 function Test-PortAvailable([int]$port) {
   try {if(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Stop){return $false}} catch {}
@@ -137,11 +160,19 @@ if($Action -in @('stop','restart')) {
     exit
   }
 }
+$adminSourceFingerprint = $null
+$adminBuildCurrent = $false
+if(-not $SkipBuild) {
+  $adminSourceFingerprint = Get-AdminSourceFingerprint
+  if(Test-Path $adminBuildMarkerFile) {
+    try {$adminBuildCurrent = (Get-Content $adminBuildMarkerFile -Raw).Trim() -ceq $adminSourceFingerprint} catch {}
+  }
+}
 if($Action -eq 'start') {
   $runningWebPort=Find-ReadyRootPort 3000 100 'apps/storefront'
   $runningAdminPort=Find-ReadyRootPort 8080 100 'serve-admin.cjs'
   $runningApiPort=Find-ReadyApiPort 5080 100
-  if($runningWebPort -and $runningAdminPort -and $runningApiPort) {
+  if($runningWebPort -and $runningAdminPort -and $runningApiPort -and ($SkipBuild -or $adminBuildCurrent)) {
     $webPort=$runningWebPort;$adminPort=$runningAdminPort;$apiPort=$runningApiPort
     Set-Urls
     Save-Ports
@@ -149,8 +180,11 @@ if($Action -eq 'start') {
     if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
     exit
   }
+  if($runningWebPort -and $runningAdminPort -and $runningApiPort -and -not $SkipBuild) {
+    Write-Host 'The running apps are healthy, but the admin build is out of date. Rebuilding from the current source...' -ForegroundColor Cyan
+  }
 }
-if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl) -and (Test-PortProcessFromRoot $webPort 'apps/storefront') -and (Test-PortProcessFromRoot $adminPort 'serve-admin.cjs')) {
+if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl) -and (Test-PortProcessFromRoot $webPort 'apps/storefront') -and (Test-PortProcessFromRoot $adminPort 'serve-admin.cjs') -and ($SkipBuild -or $adminBuildCurrent)) {
   Write-Host "Mazeduneh is already healthy: $webUrl and $adminUrl"
   if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
   exit
@@ -276,6 +310,7 @@ if(-not $SkipBuild) {
     }
     & $flutter --no-version-check build web --no-pub --release --no-web-resources-cdn --target lib/secure_main.dart "--dart-define=MAZEDUNEH_API_BASE_URL=$apiUrl"
     if($LASTEXITCODE -ne 0){throw 'Admin browser build failed.'}
+    try {[IO.File]::WriteAllText($adminBuildMarkerFile,$adminSourceFingerprint,[Text.Encoding]::ASCII)} catch {Write-Warning 'The admin build succeeded, but its freshness marker could not be saved; the next start will rebuild it.'}
   } finally {
     $env:PUB_HOSTED_URL=$previousPubHostedUrl
     $env:FLUTTER_STORAGE_BASE_URL=$previousFlutterStorageUrl
