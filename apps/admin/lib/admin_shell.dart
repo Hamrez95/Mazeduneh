@@ -346,34 +346,37 @@ class _AdminShellState extends State<AdminShell> {
                         )
                       : null,
                 ),
-                child: ListTile(
-                  dense: true,
-                  minLeadingWidth: 18,
-                  horizontalTitleGap: 12,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: collapsed ? 14 : 12,
-                  ),
-                  leading: Icon(
-                    module.icon,
-                    color: index == module.index
-                        ? Colors.white
-                        : AdminColors.text,
-                    size: 21,
-                  ),
-                  title: collapsed
-                      ? null
-                      : Text(
-                          module.label,
-                          style: TextStyle(
-                            color: index == module.index
-                                ? Colors.white
-                                : AdminColors.heading,
-                            fontSize: 13,
+                child: Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    dense: true,
+                    minLeadingWidth: 18,
+                    horizontalTitleGap: 12,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: collapsed ? 14 : 12,
+                    ),
+                    leading: Icon(
+                      module.icon,
+                      color: index == module.index
+                          ? Colors.white
+                          : AdminColors.text,
+                      size: 21,
+                    ),
+                    title: collapsed
+                        ? null
+                        : Text(
+                            module.label,
+                            style: TextStyle(
+                              color: index == module.index
+                                  ? Colors.white
+                                  : AdminColors.heading,
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                  onTap: () => _selectModule(module.index),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _selectModule(module.index),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                   ),
                 ),
               ),
