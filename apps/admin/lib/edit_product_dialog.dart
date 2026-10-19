@@ -1,6 +1,8 @@
 import 'product_package_editor.dart';
 import 'auth_session.dart';
 import 'admin_permissions.dart';
+import 'admin_form_guard.dart';
+import 'admin_form_drafts.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_theme.dart';
@@ -35,6 +37,9 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   late String _category;
   late final List<ProductPackageDraft> _variants;
   final _removed = <ProductPackageDraft>[];
+  bool _dirty = false;
+  bool _closing = false;
+  bool _restoredDraft = false;
   bool get _canPrice =>
       OwnerSession.instance.can(AdminPermissions.pricingWrite);
 
@@ -58,6 +63,83 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     _variants = product.variants
         .map((v) => ProductPackageDraft(original: v))
         .toList();
+    final draft = readAdminFormDraft('product-edit', product.slug);
+    if (draft != null) {
+      _restoredDraft = true;
+      _dirty = true;
+      for (final entry in <String, TextEditingController>{
+        'title': _title,
+        'origin': _origin,
+        'shortDescription': _shortDescription,
+        'description': _description,
+        'seoTitle': _seoTitle,
+        'seoDescription': _seoDescription,
+        'seoKeywords': _seoKeywords,
+        'specifications': _specifications,
+      }.entries) {
+        if (draft[entry.key] is String) entry.value.text = draft[entry.key] as String;
+      }
+      if (draft['category'] is String) _category = draft['category'] as String;
+      final savedVariants = draft['variants'];
+      if (savedVariants is List) {
+        for (var i = 0; i < _variants.length && i < savedVariants.length; i++) {
+          final value = savedVariants[i];
+          if (value is! Map) continue;
+          final variant = _variants[i];
+          for (final entry in <String, TextEditingController>{
+            'sku': variant.sku,
+            'quantity': variant.quantity,
+            'label': variant.label,
+            'price': variant.price,
+            'cost': variant.cost,
+            'stock': variant.stock,
+          }.entries) {
+            if (value[entry.key] is String) entry.value.text = value[entry.key] as String;
+          }
+          if (value['quantityUnit'] == 'kilogram' || value['quantityUnit'] == 'gram') {
+            variant.quantityUnit = value['quantityUnit'] as String;
+          }
+        }
+      }
+    }
+    for (final controller in [_title, _origin, _shortDescription, _description, _seoTitle, _seoDescription, _seoKeywords, _specifications, _primaryImage, _galleryImages]) {
+      controller.addListener(_markDirty);
+    }
+  }
+
+  void _persistDraft() => writeAdminFormDraft('product-edit', widget.product.slug, {
+    'title': _title.text,
+    'origin': _origin.text,
+    'shortDescription': _shortDescription.text,
+    'description': _description.text,
+    'seoTitle': _seoTitle.text,
+    'seoDescription': _seoDescription.text,
+    'seoKeywords': _seoKeywords.text,
+    'specifications': _specifications.text,
+    'category': _category,
+    'variants': [for (final item in _variants) {
+      'sku': item.sku.text,
+      'quantity': item.quantity.text,
+      'label': item.label.text,
+      'price': item.price.text,
+      'cost': item.cost.text,
+      'stock': item.stock.text,
+      'quantityUnit': item.quantityUnit,
+    }],
+  });
+
+  void _markDirty() {
+    if (!mounted || _closing) return;
+    if (!_dirty) setState(() => _dirty = true);
+    _persistDraft();
+  }
+
+  Future<void> _requestClose() async {
+    if (_dirty && !await confirmDiscardAdminChanges(context)) return;
+    if (!mounted) return;
+    clearAdminFormDraft('product-edit', widget.product.slug);
+    setState(() => _closing = true);
+    Navigator.pop(context);
   }
 
   @override
@@ -79,7 +161,10 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: !_dirty || _closing,
+    onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
+    child: AlertDialog(
     title: const Text('ویرایش محصول'),
     content: SizedBox(
       width: MediaQuery.sizeOf(context).width < 920
@@ -105,6 +190,14 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                     height: 1.6,
                   ),
                 ),
+                if (_restoredDraft)
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.restore_rounded),
+                      title: Text('پیش‌نویس قبلی بازیابی شد.'),
+                      subtitle: Text('متن و مقادیر فرم تا ۷ روز روی همین مرورگر نگه‌داری می‌شوند؛ اطلاعات مشتری و پیوند تصاویر ذخیره نمی‌شود.'),
+                    ),
+                  ),
                 const SizedBox(height: 14),
                 TextFormField(
                   key: const ValueKey('edit-product-title'),
@@ -135,7 +228,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                       )
                       .toList(),
                   onChanged: (value) {
-                    if (value != null) setState(() => _category = value);
+                    if (value != null) { setState(() => _category = value); _markDirty(); }
                   },
                 ),
                 const SizedBox(height: 10),
@@ -230,16 +323,15 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
                     canWriteCosts: _canPrice,
                     canChangePrice: _canPrice,
                     allDrafts: _variants,
+                    onChanged: _markDirty,
                     onRemove: _variants[i].original != null
                         ? null
-                        : () => setState(
-                            () => _removed.add(_variants.removeAt(i)),
-                          ),
+                        : () => setState(() { _removed.add(_variants.removeAt(i)); _dirty = true; _persistDraft(); }),
                   ),
                 if (_canPrice)
                   OutlinedButton.icon(
                     onPressed: () =>
-                        setState(() => _variants.add(ProductPackageDraft())),
+                        setState(() { _variants.add(ProductPackageDraft()); _dirty = true; _persistDraft(); }),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('افزودن وزن یا تعداد دیگر'),
                   ),
@@ -251,12 +343,12 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     ),
     actions: [
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: _requestClose,
         child: const Text('انصراف'),
       ),
       FilledButton(onPressed: _save, child: const Text('ذخیره تغییرات')),
     ],
-  );
+  ));
 
   List<String> get _availableCategories => {
     ...widget.categories.map((category) => category.name),
@@ -280,6 +372,7 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
       );
       return;
     }
+    _closing = true;
     Navigator.pop(
       context,
       UpdateProductCommand(
@@ -332,3 +425,4 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
             .trim(),
   };
 }
+

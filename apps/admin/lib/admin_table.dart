@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'admin_theme.dart';
 import 'formatters.dart';
+import 'admin_form_drafts.dart';
 
 class AdminColumn<T> {
   const AdminColumn(
@@ -28,6 +29,7 @@ class AdminRecordTable<T> extends StatefulWidget {
     this.onOpen,
     this.isSelected,
     this.onSelectionChanged,
+    this.persistenceKey,
   });
   final List<T> records;
   final List<AdminColumn<T>> columns;
@@ -37,6 +39,7 @@ class AdminRecordTable<T> extends StatefulWidget {
   final ValueChanged<T>? onOpen;
   final bool Function(T)? isSelected;
   final void Function(T, bool)? onSelectionChanged;
+  final String? persistenceKey;
   @override
   State<AdminRecordTable<T>> createState() => _AdminRecordTableState<T>();
 }
@@ -46,6 +49,26 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
   int page = 0, pageSize = 10;
   int? sortColumn;
   bool ascending = true;
+
+  String get _paginationKey => widget.persistenceKey ??
+      widget.columns.map((column) => column.label).join('|');
+
+  @override
+  void initState() {
+    super.initState();
+    final saved = readAdminFormDraft('table-pagination', _paginationKey);
+    final savedPage = saved?['page'];
+    final savedPageSize = saved?['pageSize'];
+    if (savedPage is int && savedPage >= 0) page = savedPage;
+    if (savedPageSize is int && [10, 25, 50].contains(savedPageSize)) {
+      pageSize = savedPageSize;
+    }
+  }
+
+  void _persistPagination() => writeAdminFormDraft('table-pagination', _paginationKey, {
+    'page': page,
+    'pageSize': pageSize,
+  });
   @override
   void dispose() {
     search.dispose();
@@ -115,6 +138,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                         onChanged: (value) => setState(() {
                           pageSize = value ?? 10;
                           page = 0;
+                          _persistPagination();
                         }),
                       ),
                     ),
@@ -132,7 +156,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                             : 260,
                         child: TextField(
                           controller: search,
-                          onChanged: (_) => setState(() => page = 0),
+                          onChanged: (_) => setState(() { page = 0; _persistPagination(); }),
                           decoration: InputDecoration(
                             hintText: widget.searchHint,
                             prefixIcon: const Icon(
@@ -233,7 +257,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ اول',
                       onPressed: current == 0
                           ? null
-                          : () => setState(() => page = 0),
+                          : () => setState(() { page = 0; _persistPagination(); }),
                       icon: const Icon(
                         Icons.keyboard_double_arrow_right_rounded,
                         size: 20,
@@ -243,7 +267,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ قبل',
                       onPressed: current == 0
                           ? null
-                          : () => setState(() => page = current - 1),
+                          : () => setState(() { page = current - 1; _persistPagination(); }),
                       icon: const Icon(Icons.chevron_right_rounded, size: 20),
                     ),
                     Container(
@@ -263,14 +287,14 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ بعد',
                       onPressed: current == lastPage
                           ? null
-                          : () => setState(() => page = current + 1),
+                          : () => setState(() { page = current + 1; _persistPagination(); }),
                       icon: const Icon(Icons.chevron_left_rounded, size: 20),
                     ),
                     IconButton(
                       tooltip: 'صفحهٔ آخر',
                       onPressed: current == lastPage
                           ? null
-                          : () => setState(() => page = lastPage),
+                          : () => setState(() { page = lastPage; _persistPagination(); }),
                       icon: const Icon(
                         Icons.keyboard_double_arrow_left_rounded,
                         size: 20,
@@ -364,3 +388,4 @@ class AdminIdentityCell extends StatelessWidget {
     ),
   );
 }
+

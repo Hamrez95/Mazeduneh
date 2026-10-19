@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -52,14 +53,18 @@ class OrdersPage extends StatefulWidget {
   const OrdersPage({
     super.key,
     this.api,
+    this.onNavigationChanged,
     this.initialFilter = AdminOrderFilter.all,
     this.initialQuery = '',
+    this.initialOrderId,
     this.initialCreatedFromUtc,
     this.initialCreatedToUtcExclusive,
   });
   final OrderApiClient? api;
+  final ValueChanged<AdminNavigationIntent>? onNavigationChanged;
   final AdminOrderFilter initialFilter;
   final String initialQuery;
+  final String? initialOrderId;
   final DateTime? initialCreatedFromUtc;
   final DateTime? initialCreatedToUtcExclusive;
 
@@ -311,12 +316,13 @@ class _OrdersPageState extends State<OrdersPage> {
   final selectedOrders = <String>{};
   bool bulkBusy = false;
   String? busyOrder;
+  bool openedInitialOrder = false;
 
   @override
   void initState() {
     super.initState();
-    searchController.text = widget.initialQuery;
-    searchQuery = widget.initialQuery;
+    searchController.text = widget.initialOrderId ?? widget.initialQuery;
+    searchQuery = widget.initialOrderId ?? widget.initialQuery;
     load();
   }
 
@@ -372,6 +378,17 @@ class _OrdersPageState extends State<OrdersPage> {
               (id) => !result.any((order) => order.id == id),
             );
           });
+          final requestedId = widget.initialOrderId;
+          if (!openedInitialOrder && requestedId != null) {
+            final matching = result.where((item) => item.id == requestedId);
+            if (matching.isNotEmpty) {
+              openedInitialOrder = true;
+              final requestedOrder = matching.first;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) unawaited(openDetail(requestedOrder));
+              });
+            }
+          }
         }
       }
     } catch (exception) {
@@ -441,13 +458,32 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  Future<void> openDetail(AdminOrder order) => showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => _OrderDetailSheet(api: api, order: order),
-  );
+  Future<void> openDetail(AdminOrder order) async {
+    _persistNavigation(orderId: order.id);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _OrderDetailSheet(api: api, order: order),
+    );
+    if (mounted) _persistNavigation();
+  }
+
+  void _persistNavigation({String? orderId}) {
+    widget.onNavigationChanged?.call(
+      AdminNavigationIntent(
+        module: AdminModule.orders,
+        orderFilter:
+            AdminOrderFilter.fromApiValue(selectedState) ??
+            AdminOrderFilter.all,
+        orderId: orderId,
+        query: searchQuery,
+        createdFromUtc: widget.initialCreatedFromUtc,
+        createdToUtcExclusive: widget.initialCreatedToUtcExclusive,
+      ),
+    );
+  }
 
   Future<void> createPrivateOrder() async {
     final request = await showDialog<Map<String, dynamic>>(
@@ -680,6 +716,7 @@ class _OrdersPageState extends State<OrdersPage> {
                               onChanged: (value) {
                                 if (value == null) return;
                                 setState(() => selectedState = value);
+                                _persistNavigation();
                                 load();
                               },
                             ),
@@ -775,6 +812,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     textInputAction: TextInputAction.search,
                     onSubmitted: (value) {
                       setState(() => searchQuery = value.trim());
+                      _persistNavigation();
                       load();
                     },
                     decoration: InputDecoration(
@@ -787,6 +825,7 @@ class _OrdersPageState extends State<OrdersPage> {
                               onPressed: () {
                                 searchController.clear();
                                 setState(() => searchQuery = '');
+                                _persistNavigation();
                                 load();
                               },
                               icon: const Icon(Icons.clear_rounded),
@@ -1964,3 +2003,4 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       }[value] ??
       value;
 }
+

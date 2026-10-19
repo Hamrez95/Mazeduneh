@@ -86,16 +86,36 @@ with tempfile.TemporaryFile() as log:
     postgres_container = os.environ.get("READINESS_POSTGRES_CONTAINER")
     postgres_cluster = os.environ.get("READINESS_POSTGRES_CLUSTER")
 
+    def available_postgres_cluster():
+        result = subprocess.run(
+            ["pg_lsclusters", "--no-header"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        clusters = []
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if len(fields) >= 4 and fields[3] == "online":
+                clusters.append(f"{fields[0]}/{fields[1]}")
+        if postgres_cluster in clusters:
+            return postgres_cluster
+        if clusters:
+            return clusters[0]
+        raise AssertionError(
+            "No running PostgreSQL cluster found with pg_lsclusters"
+        )
+
+    selected_cluster = None if postgres_container else available_postgres_cluster()
+
     def set_postgres_running(running):
         if postgres_container:
             action = "start" if running else "stop"
             subprocess.run(["docker", action, postgres_container], check=True, stdout=subprocess.DEVNULL)
-        elif postgres_cluster:
-            action = "start" if running else "stop"
-            version, cluster = postgres_cluster.split("/", maxsplit=1)
-            subprocess.run(["sudo", "pg_ctlcluster", version, cluster, action], check=True, stdout=subprocess.DEVNULL)
         else:
-            raise AssertionError("Set READINESS_POSTGRES_CONTAINER or READINESS_POSTGRES_CLUSTER")
+            action = "start" if running else "stop"
+            version, cluster = selected_cluster.split("/", maxsplit=1)
+            subprocess.run(["sudo", "pg_ctlcluster", version, cluster, action], check=True, stdout=subprocess.DEVNULL)
     try:
         assert_ready(200, database="healthy", migrations="tracked", adminAuthentication="configured")
         try:
@@ -121,3 +141,5 @@ with tempfile.TemporaryFile() as log:
         stop_api(api)
 
 print("API readiness: missing database, missing authentication, outage, liveness, diagnostics and recovery passed")
+
+

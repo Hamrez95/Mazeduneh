@@ -8,6 +8,8 @@ import 'admin_theme.dart';
 import 'admin_table.dart';
 import 'admin_permissions.dart';
 import 'admin_navigation.dart';
+import 'admin_form_guard.dart';
+import 'admin_form_drafts.dart';
 import 'auth_session.dart';
 import 'catalog_api.dart';
 import 'edit_product_dialog.dart';
@@ -15,9 +17,10 @@ import 'formatters.dart';
 import 'media_api.dart';
 
 class CatalogPage extends StatefulWidget {
-  const CatalogPage({super.key, this.api, this.onNavigate});
+  const CatalogPage({super.key, this.api, this.onNavigate, this.initialProductSlug});
   final CatalogApiClient? api;
   final ValueChanged<AdminNavigationIntent>? onNavigate;
+  final String? initialProductSlug;
 
   @override
   State<CatalogPage> createState() => CatalogPageState();
@@ -31,6 +34,7 @@ class CatalogPageState extends State<CatalogPage> {
   bool loading = true;
   Object? error;
   bool showDrafts = true;
+  bool openedInitialProduct = false;
 
   @override
   void initState() {
@@ -48,10 +52,24 @@ class CatalogPageState extends State<CatalogPage> {
         api.fetchProducts(includeDrafts: true),
         api.fetchCategories(),
       ]);
-      if (mounted) setState(() {
-        products = result[0] as List<Product>;
-        categories = result[1] as List<Category>;
-      });
+      if (mounted) {
+        setState(() {
+          products = result[0] as List<Product>;
+          categories = result[1] as List<Category>;
+        });
+        final requestedSlug = widget.initialProductSlug;
+        if (!openedInitialProduct && requestedSlug != null &&
+            OwnerSession.instance.can(AdminPermissions.productsWrite)) {
+          final matching = products.where((item) => item.slug == requestedSlug);
+          if (matching.isNotEmpty) {
+            openedInitialProduct = true;
+            final requestedProduct = matching.first;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) editProduct(requestedProduct);
+            });
+          }
+        }
+      }
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
@@ -68,7 +86,7 @@ class CatalogPageState extends State<CatalogPage> {
       ));
       return;
     }
-    final command = await showDialog<CreateProductCommand>(context: context, builder: (_) => ProductDialog(
+    final command = await showDialog<CreateProductCommand>(context: context, barrierDismissible: false, builder: (_) => ProductDialog(
       mediaApi: MediaApiClient(),
       categories: categories,
       canWriteCosts: OwnerSession.instance.can(AdminPermissions.pricingWrite),
@@ -78,6 +96,7 @@ class CatalogPageState extends State<CatalogPage> {
     if (stepUpToken == null || !mounted) return;
     try {
       await api.createProduct(command, stepUpToken: stepUpToken);
+      clearAdminFormDraft('product-create', 'new');
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌صورت پیش‌نویس ثبت شد.')));
@@ -91,6 +110,7 @@ class CatalogPageState extends State<CatalogPage> {
     if (!OwnerSession.instance.can(AdminPermissions.productsWrite)) return;
     final command = await showDialog<UpdateProductCommand>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => ProductEditDialog(
         product: product,
         categories: categories,
@@ -104,6 +124,7 @@ class CatalogPageState extends State<CatalogPage> {
       final proof = changesPrice ? await showAdminStepUpDialog(context) : null;
       if(changesPrice && (proof==null || !mounted)) return;
       await api.updateProduct(product.slug, command, stepUpToken:proof);
+      clearAdminFormDraft('product-edit', product.slug);
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -377,18 +398,107 @@ class _ProductDialogState extends State<ProductDialog> {
   TextEditingController get price => packages.first.price;
   String unitType = 'Weight';
   String category = 'آجیل و مغزها';
+  bool _dirty = false;
+  bool _closing = false;
   bool uploadingImage = false;
   bool uploadingGallery = false;
   String? mediaError;
+  bool _restoredDraft = false;
 
   @override
   void initState() {
     super.initState();
     if (widget.categories.isNotEmpty) category = widget.categories.first.name;
+    final draft = readAdminFormDraft('product-create', 'new');
+    if (draft != null) {
+      _restoredDraft = true;
+      _dirty = true;
+      for (final controller in [title, slug, origin, shortDescription, description, seoTitle, seoDescription, seoKeywords, specifications]) {
+        final value = draft[_controllerKey(controller)];
+        if (value is String) controller.text = value;
+      }
+      final draftCategory = draft['category'];
+      if (draftCategory is String) category = draftCategory;
+      if (draft['unitType'] == 'Weight' || draft['unitType'] == 'Count') unitType = draft['unitType'] as String;
+      final savedPackages = draft['packages'];
+      if (savedPackages is List && savedPackages.isNotEmpty && savedPackages.length <= 20) {
+        packages.first.dispose();
+        packages
+          ..clear()
+          ..addAll(savedPackages.whereType<Map>().map((value) {
+            final item = ProductPackageDraft();
+            item.sku.text = value['sku'] is String ? value['sku'] as String : '';
+            item.quantity.text = value['quantity'] is String ? value['quantity'] as String : '';
+            item.label.text = value['label'] is String ? value['label'] as String : '';
+            item.price.text = value['price'] is String ? value['price'] as String : '';
+            item.cost.text = value['cost'] is String ? value['cost'] as String : '';
+            item.stock.text = value['stock'] is String ? value['stock'] as String : '۰';
+            item.quantityUnit = value['quantityUnit'] == 'kilogram' ? 'kilogram' : 'gram';
+            return item;
+          }));
+        if (packages.isEmpty) packages.add(ProductPackageDraft());
+      }
+    }
+    for (final controller in [title, slug, origin, shortDescription, description, seoTitle, seoDescription, seoKeywords, specifications, primaryImage, galleryImages]) {
+      controller.addListener(_markDirty);
+    }
+  }
+
+  String _controllerKey(TextEditingController controller) => switch (controller) {
+    _ when identical(controller, title) => 'title',
+    _ when identical(controller, slug) => 'slug',
+    _ when identical(controller, origin) => 'origin',
+    _ when identical(controller, shortDescription) => 'shortDescription',
+    _ when identical(controller, description) => 'description',
+    _ when identical(controller, seoTitle) => 'seoTitle',
+    _ when identical(controller, seoDescription) => 'seoDescription',
+    _ when identical(controller, seoKeywords) => 'seoKeywords',
+    _ when identical(controller, specifications) => 'specifications',
+    _ => '',
+  };
+
+  void _persistDraft() => writeAdminFormDraft('product-create', 'new', {
+    'title': title.text,
+    'slug': slug.text,
+    'origin': origin.text,
+    'shortDescription': shortDescription.text,
+    'description': description.text,
+    'seoTitle': seoTitle.text,
+    'seoDescription': seoDescription.text,
+    'seoKeywords': seoKeywords.text,
+    'specifications': specifications.text,
+    'category': category,
+    'unitType': unitType,
+    'packages': [for (final item in packages) {
+      'sku': item.sku.text,
+      'quantity': item.quantity.text,
+      'label': item.label.text,
+      'price': item.price.text,
+      'cost': item.cost.text,
+      'stock': item.stock.text,
+      'quantityUnit': item.quantityUnit,
+    }],
+  });
+
+  void _markDirty() {
+    if (!mounted || _closing) return;
+    if (!_dirty) setState(() => _dirty = true);
+    _persistDraft();
+  }
+
+  Future<void> _requestClose() async {
+    if (_dirty && !await confirmDiscardAdminChanges(context)) return;
+    if (!mounted) return;
+    clearAdminFormDraft('product-create', 'new');
+    setState(() => _closing = true);
+    Navigator.pop(context);
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: !_dirty || _closing,
+    onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
+    child: AlertDialog(
     title: const Text('محصول جدید'),
     content: SizedBox(
       width: MediaQuery.sizeOf(context).width < 920
@@ -412,6 +522,14 @@ class _ProductDialogState extends State<ProductDialog> {
                     'بعد از تکمیل اطلاعات، آن را جداگانه منتشر کنید.',
                   ),
                 ),
+                if (_restoredDraft)
+                  const Card(
+                    child: ListTile(
+                      leading: Icon(Icons.restore_rounded),
+                      title: Text('پیش‌نویس قبلی بازیابی شد.'),
+                      subtitle: Text('متن و مقادیر فرم تا ۷ روز روی همین مرورگر نگه‌داری می‌شوند؛ اطلاعات مشتری و پیوند تصاویر ذخیره نمی‌شود.'),
+                    ),
+                  ),
                 TextFormField(
                   key: const ValueKey('create-product-title'),
                   controller: title,
@@ -456,9 +574,11 @@ class _ProductDialogState extends State<ProductDialog> {
                             ),
                           )
                           .toList(),
-                  onChanged: (value) => setState(() {
-                    if (value != null) category = value;
-                  }),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => category = value);
+                    _markDirty();
+                  },
                 ),
                 const SizedBox(height: 10),
                 TextFormField(
@@ -574,15 +694,13 @@ class _ProductDialogState extends State<ProductDialog> {
                       ButtonSegment(value: 'Count', label: Text('عددی')),
                     ],
                     selected: {unitType},
-                    onSelectionChanged: (value) => setState(() {
-                      unitType = value.first;
-                    }),
+                    onSelectionChanged: (value) { setState(() => unitType = value.first); _markDirty(); _persistDraft(); },
                   ),
                   const SizedBox(height: 12),
                   const Text('همهٔ این بسته‌ها در یک صفحهٔ محصول نمایش داده می‌شوند؛ مشتری اندازه را انتخاب می‌کند و قیمت همان لحظه تغییر می‌کند.',style:TextStyle(color:AdminColors.muted,height:1.7)),
                   const SizedBox(height: 14),
-                  for(var i=0;i<packages.length;i++) ProductPackageEditor(key:ObjectKey(packages[i]),draft:packages[i],index:i,unitType:unitType,canWriteCosts:widget.canWriteCosts,allDrafts:packages,onChanged:()=>setState((){}),onRemove:packages.length==1?null:()=>setState((){removedPackages.add(packages.removeAt(i));})),
-                  OutlinedButton.icon(onPressed:()=>setState(()=>packages.add(ProductPackageDraft())),icon:const Icon(Icons.add_rounded),label:const Text('افزودن وزن یا تعداد دیگر')),
+                  for(var i=0;i<packages.length;i++) ProductPackageEditor(key:ObjectKey(packages[i]),draft:packages[i],index:i,unitType:unitType,canWriteCosts:widget.canWriteCosts,allDrafts:packages,onChanged:(){setState(() => _dirty = true);_persistDraft();},onRemove:packages.length==1?null:()=>setState((){removedPackages.add(packages.removeAt(i));_dirty=true;_persistDraft();})),
+                  OutlinedButton.icon(onPressed:()=>setState((){packages.add(ProductPackageDraft());_dirty=true;_persistDraft();}),icon:const Icon(Icons.add_rounded),label:const Text('افزودن وزن یا تعداد دیگر')),
                 ]),
                 const SizedBox(height: 12),
                 ExpansionTile(
@@ -635,12 +753,12 @@ class _ProductDialogState extends State<ProductDialog> {
     ),
     actions: [
       TextButton(
-        onPressed: () => Navigator.pop(context),
+        onPressed: _requestClose,
         child: const Text('انصراف'),
       ),
       FilledButton(onPressed: submit, child: const Text('ذخیره پیش‌نویس')),
     ],
-  );
+  ));
 
   String? required(String? value) =>
       value == null || value.trim().isEmpty ? 'این فیلد الزامی است.' : null;
@@ -886,6 +1004,7 @@ class _ProductDialogState extends State<ProductDialog> {
     if (!formKey.currentState!.validate()) return;
     final codes = [for(var i=0;i<packages.length;i++) packages[i].sku.text.trim().isEmpty ? generatedPackageSku(slug.text,packages[i],i) : packages[i].sku.text.trim().toUpperCase()];
     if(codes.toSet().length != codes.length) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('کد انبار بسته‌ها نباید تکراری باشد.'))); return; }
+    _closing = true;
     Navigator.pop(
       context,
       CreateProductCommand(
@@ -1128,4 +1247,6 @@ class _CategoryDialogState extends State<CategoryDialog> {
     super.dispose();
   }
 }
+
+
 
