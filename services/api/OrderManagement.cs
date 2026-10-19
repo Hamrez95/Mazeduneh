@@ -813,10 +813,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         DateTimeOffset? shippedAt;
         await using (var command = new NpgsqlCommand(sql, connection, transaction))
         {
-            command.Parameters.Add("carrier", NpgsqlTypes.NpgsqlDbType.Varchar).Value =
-                (object?)input.Carrier?.Trim() ?? DBNull.Value;
-            command.Parameters.Add("tracking_code", NpgsqlTypes.NpgsqlDbType.Varchar).Value =
-                (object?)input.TrackingCode?.Trim() ?? DBNull.Value;
+            command.Parameters.Add("carrier", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.Carrier?.Trim() ?? DBNull.Value;
+            command.Parameters.Add("tracking_code", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.TrackingCode?.Trim() ?? DBNull.Value;
             command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
             command.Parameters.AddWithValue("update_expense", input.UpdateActualShippingCost);
             command.Parameters.AddWithValue("id", orderId);
@@ -1696,5 +1694,4 @@ public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrde
     public static OrderOperationResult NotFound(string message) => new(OrderOperationStatus.NotFound, Message: message);
     public static OrderOperationResult Conflict(string message) => new(OrderOperationStatus.Conflict, Message: message);
 }
-
 
