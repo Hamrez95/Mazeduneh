@@ -31,9 +31,8 @@ String _fingerprint(String value) {
 String _draftKey(String form, String recordId) {
   final session = OwnerSession.instance;
   final identity = '${session.storeId}\u0000${session.email?.toLowerCase() ?? ''}';
-  final safeForm = form.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-  final safeRecord = recordId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-  return 'mazeduneh.admin.draft.v1.${_fingerprint(identity)}.$safeForm.$safeRecord';
+  return 'mazeduneh.admin.draft.v1.${_fingerprint(identity)}.'
+      '${_fingerprint(form)}.${_fingerprint(recordId)}';
 }
 
 bool _isSensitiveKey(String key) {
