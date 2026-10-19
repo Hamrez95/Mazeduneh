@@ -141,12 +141,13 @@ class _ShippingEditor extends StatelessWidget {
       child: Wrap(spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
         SizedBox(width: 170, child: TextFormField(initialValue: method.code, decoration: const InputDecoration(labelText: 'کد انگلیسی'), onChanged: (value) => method.code = value.trim())),
         SizedBox(width: 240, child: TextFormField(initialValue: method.title, decoration: const InputDecoration(labelText: 'عنوان'), onChanged: (value) => method.title = value.trim())),
-        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.price), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'مبلغ از مشتری (ریال)'), onChanged: (value) => method.price = parsePersianInteger(value) ?? method.price)),
-        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.internalCost), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال (ریال)'), onChanged: (value) => method.internalCost = parsePersianInteger(value) ?? method.internalCost)),
-        SizedBox(width: 180, child: TextFormField(initialValue: formatPersianInteger(method.freeAbove), keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'رایگان از (ریال)'), onChanged: (value) => method.freeAbove = parsePersianInteger(value) ?? method.freeAbove)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatToman(method.price), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'مبلغ از مشتری (تومان)'), onChanged: (value) => method.price = parseTomanToRial(value) ?? method.price)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatToman(method.internalCost), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'هزینه واقعی ارسال (تومان)'), onChanged: (value) => method.internalCost = parseTomanToRial(value) ?? method.internalCost)),
+        SizedBox(width: 180, child: TextFormField(initialValue: formatToman(method.freeAbove), keyboardType: const TextInputType.numberWithOptions(decimal: true), inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'رایگان از (تومان)'), onChanged: (value) => method.freeAbove = parseTomanToRial(value) ?? method.freeAbove)),
         FilterChip(label: Text(method.isActive ? 'فعال' : 'غیرفعال'), selected: method.isActive, onSelected: (value) => method.isActive = value),
         IconButton(onPressed: onRemove, tooltip: 'حذف روش', icon: const Icon(Icons.delete_outline_rounded)),
       ]),
     ),
   );
 }
+

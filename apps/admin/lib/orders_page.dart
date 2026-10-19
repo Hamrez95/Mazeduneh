@@ -1020,7 +1020,7 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
             AdminColumn(
               'مبلغ',
-              (o) => Text('${formatPersianNumber(o.payable)} ${o.currency}'),
+              (o) => Text(formatAdminMoney(o.payable, currency: o.currency)),
               compare: (a, b) => a.payable.compareTo(b.payable),
             ),
             AdminColumn(
@@ -1115,7 +1115,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     states[order.state] ?? order.state,
                   ),
                   Text(
-                    '${formatPersianNumber(order.payable)} ${order.currency}',
+                    formatAdminMoney(order.payable, currency: order.currency),
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   if (next != null)
@@ -1201,7 +1201,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
         trackingController.text = result.trackingCode ?? '';
         shippingExpenseController.text = result.shippingExpense == 0
             ? ''
-            : formatPersianNumber(result.shippingExpense);
+            : formatToman(result.shippingExpense);
         setState(() => detail = result);
       }
     } catch (exception) {
@@ -1247,7 +1247,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
 
   Future<void> addInternalCost() async {
     final title = internalCostTitleController.text.trim();
-    final amount = parsePersianNumber(internalCostAmountController.text);
+    final amount = parseTomanToRial(internalCostAmountController.text);
     if (title.isEmpty || title.length > 160 || amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1311,7 +1311,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   Future<void> saveShipping() async {
     final expense = shippingExpenseController.text.trim().isEmpty
         ? null
-        : parsePersianNumber(shippingExpenseController.text);
+        : parseTomanToRial(shippingExpenseController.text);
     if (shippingExpenseController.text.trim().isNotEmpty &&
         (expense == null || expense < 0)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1486,14 +1486,14 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           runSpacing: 14,
           children: [
             _detailValue('مشتری', detail.order.customerName),
-            _detailValue('تماس', detail.order.mobile),
+            _detailValue('تماس', toPersianDigits(detail.order.mobile)),
             _detailValue(
               'شهر',
               '${detail.order.province}، ${detail.order.city}',
             ),
             _detailValue('روش ارسال', detail.shippingMethod),
             _detailValue('نشانی', detail.address, width: 320),
-            _detailValue('کد پستی', detail.postalCode),
+            _detailValue('کد پستی', toPersianDigits(detail.postalCode)),
           ],
         ),
       ),
@@ -1526,13 +1526,13 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                   width: 220,
                   child: TextField(
                     controller: shippingExpenseController,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: const [
                       PersianGroupedIntegerInputFormatter(),
                     ],
                     decoration: const InputDecoration(
                       labelText: 'هزینه واقعی ارسال',
-                      suffixText: 'ریال',
+                      suffixText: 'تومان',
                     ),
                   ),
                 ),
@@ -1657,7 +1657,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${formatPersianNumber(cost.amount)} ریال',
+                      formatAdminMoney(cost.amount, currency: detail.order.currency),
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     IconButton(
@@ -1700,13 +1700,13 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                   width: 220,
                   child: TextField(
                     controller: internalCostAmountController,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                     inputFormatters: const [
                       PersianGroupedIntegerInputFormatter(),
                     ],
                     decoration: const InputDecoration(
                       labelText: 'مبلغ هزینه',
-                      suffixText: 'ریال',
+                      suffixText: 'تومان',
                     ),
                   ),
                 ),
@@ -1742,7 +1742,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
               ),
               _detailValue(
                 'مبلغ',
-                '${formatPersianNumber(detail.payment!.amount)} ${detail.payment!.currency}',
+                formatAdminMoney(detail.payment!.amount, currency: detail.payment!.currency),
               ),
               if (detail.payment!.reference != null)
                 _detailValue('شناسه پیگیری', detail.payment!.reference!),
@@ -1886,12 +1886,12 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
         ),
       ),
       Text(
-        '${formatPersianInteger(line.quantity)} × ${formatPersianNumber(line.unitPrice)}',
+        '${formatPersianInteger(line.quantity)} × ${formatAdminMoney(line.unitPrice, currency: detail!.order.currency)}',
         style: const TextStyle(fontSize: 12, color: AdminColors.muted),
       ),
       const SizedBox(width: 12),
       Text(
-        '${formatPersianNumber(line.lineTotal)} ریال',
+        formatAdminMoney(line.lineTotal, currency: detail!.order.currency),
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
     ],
@@ -1916,7 +1916,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           ),
         ),
         Text(
-          '${formatPersianNumber(value)} $currency',
+          formatAdminMoney(value, currency: currency),
           style: TextStyle(
             fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
             color: value < 0 ? AdminColors.coral : AdminColors.inkDeep,
@@ -2003,4 +2003,5 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       }[value] ??
       value;
 }
+
 

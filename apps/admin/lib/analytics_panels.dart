@@ -148,7 +148,7 @@ class _DailySalesChartState extends State<_DailySalesChart> {
     final locale = Localizations.localeOf(context);
     return _ChartCard(
       title: 'روند فروش و سود',
-      subtitle: 'از اولین تا آخرین فروش بازه • تفکیک روزانه به وقت UTC • ریال',
+      subtitle: 'از اولین تا آخرین فروش بازه • تفکیک روزانه به وقت UTC • تومان',
       action: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -176,7 +176,7 @@ class _DailySalesChartState extends State<_DailySalesChart> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '${formatCalendarDate(current!.day, locale)} • ${formatPersianInteger(current.orderCount)} سفارش • ${formatPersianNumber(profit ? current.netProfit : current.revenue)} ریال',
+                  '${formatCalendarDate(current!.day, locale)} • ${formatPersianInteger(current.orderCount)} سفارش • ${formatToman(profit ? current.netProfit : current.revenue)} تومان',
                   style: const TextStyle(
                     color: AdminColors.heading,
                     fontSize: 12,
@@ -588,3 +588,4 @@ class _PriceHistoryPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PriceHistoryPainter oldDelegate) => oldDelegate.points != points;
 }
+

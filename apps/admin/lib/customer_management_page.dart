@@ -303,7 +303,7 @@ class _CustomerList extends StatelessWidget {
                             children: [
                               Text(customer.fullName, style: const TextStyle(fontWeight: FontWeight.w800, color: _CustomerColors.inkDeep)),
                               const SizedBox(height: 5),
-                              Text(customer.mobile, style: const TextStyle(color: _CustomerColors.muted)),
+                              Text(toPersianDigits(customer.mobile), style: const TextStyle(color: _CustomerColors.muted)),
                               const SizedBox(height: 5),
                               Text(
                                 'آخرین فعالیت: ${formatLocalizedDateTime(context, customer.updatedAt)}',
@@ -346,11 +346,11 @@ class _CustomerDetails extends StatelessWidget {
               const Text('خلاصه مشتری', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: _CustomerColors.inkDeep)),
               const SizedBox(height: 18),
               _DetailRow('نام', customer.fullName),
-              _DetailRow('موبایل ثبت‌شده', customer.mobile),
+              _DetailRow('موبایل ثبت‌شده', toPersianDigits(customer.mobile)),
               _DetailRow('شناسه نرمال‌شده', customer.normalizedMobile),
               _DetailRow('تعداد سفارش', formatPersianInteger(customer.orderCount)),
-              _DetailRow('مجموع خرید', '${formatPersianNumber(customer.totalSpend)} ریال'),
-              _DetailRow('میانگین سفارش', '${formatPersianNumber(customer.averageOrderValue)} ریال'),
+              _DetailRow('مجموع خرید', '${formatToman(customer.totalSpend)} تومان'),
+              _DetailRow('میانگین سفارش', '${formatToman(customer.averageOrderValue)} تومان'),
               _DetailRow('آخرین خرید موفق', customer.lastPurchaseAt == null ? 'هنوز ثبت نشده' : formatLocalizedDateTime(context, customer.lastPurchaseAt!)),
               _DetailRow('رضایت ارتباطی', customer.marketingConsent ? 'فعال' : 'ثبت نشده'),
               _DetailRow('اولین ثبت', formatLocalizedDateTime(context, customer.createdAt)),
@@ -443,7 +443,7 @@ class _AddressRow extends StatelessWidget {
             const SizedBox(height: 4),
             Text(address.address, style: const TextStyle(color: _CustomerColors.muted, height: 1.5)),
             const SizedBox(height: 4),
-            Text('کدپستی: ${address.postalCode}', style: const TextStyle(fontSize: 12, color: _CustomerColors.muted)),
+            Text('کدپستی: ${toPersianDigits(address.postalCode)}', style: const TextStyle(fontSize: 12, color: _CustomerColors.muted)),
             Text('آخرین استفاده: ${formatLocalizedDateTime(context, address.lastUsedAt)}', style: const TextStyle(fontSize: 11, color: _CustomerColors.muted)),
           ],
         ),
@@ -519,3 +519,4 @@ class _CustomerColors {
   static const amber = AdminColors.amber;
   static const muted = AdminColors.muted;
 }
+

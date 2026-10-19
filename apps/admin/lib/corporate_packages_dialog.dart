@@ -85,8 +85,8 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
   }
 
   void addItem() {
-    final parsedQuantity = num.tryParse(quantity.text.trim());
-    final parsedPrice = num.tryParse(unitPrice.text.trim());
+    final parsedQuantity = parsePersianNumber(quantity.text);
+    final parsedPrice = parseTomanToRial(unitPrice.text);
     if (itemName.text.trim().isEmpty || unit.text.trim().isEmpty ||
         parsedQuantity == null || parsedQuantity <= 0 ||
         parsedPrice == null || parsedPrice < 0) {
@@ -222,7 +222,7 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                             const Divider(),
                             Align(
                               alignment: Alignment.centerRight,
-                              child: Text('اقلام بسته · قیمت‌ها به ریال'),
+                              child: Text('اقلام بسته · قیمت‌ها به تومان'),
                             ),
                             const SizedBox(height: 6),
                             if (items.isEmpty)
@@ -236,7 +236,7 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                                   contentPadding: EdgeInsets.zero,
                                   title: Text(item.name),
                                   subtitle: Text(
-                                    '${formatPersianNumber(item.quantity)} ${item.unit} · ${formatPersianInteger(item.unitPrice.toInt())} ریال',
+                                    '${formatPersianNumber(item.quantity)} ${item.unit} · ${formatToman(item.unitPrice)} تومان',
                                   ),
                                   trailing: IconButton(
                                     tooltip: 'حذف قلم',
@@ -281,9 +281,9 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                                   width: narrow ? 140 : constraints.maxWidth * .18,
                                   child: TextField(
                                     controller: unitPrice,
-                                    keyboardType: TextInputType.number,
                                     inputFormatters: const [PersianGroupedIntegerInputFormatter()],
-                                    decoration: const InputDecoration(labelText: 'قیمت ریالی'),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    decoration: const InputDecoration(labelText: 'قیمت هر واحد (تومان)'),
                                   ),
                                 ),
                                 OutlinedButton.icon(
@@ -297,7 +297,7 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
                             Align(
                               alignment: Alignment.centerRight,
                               child: Text(
-                                'جمع هر بسته: ${formatPersianInteger(items.fold<num>(0, (sum, item) => sum + item.quantity * item.unitPrice).round())} ریال',
+                                'جمع هر بسته: ${formatToman(items.fold<num>(0, (sum, item) => sum + item.quantity * item.unitPrice))} تومان',
                                 style: Theme.of(context).textTheme.titleSmall,
                               ),
                             ),
@@ -319,3 +319,4 @@ class _CorporatePackagesDialogState extends State<CorporatePackagesDialog> {
         ],
       );
 }
+

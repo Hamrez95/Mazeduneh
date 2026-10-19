@@ -87,6 +87,20 @@ int? parsePersianInteger(String? value, {int? min, int? max}) {
   return integer.toInt();
 }
 
+/// Convert a toman entry with at most one decimal digit to the API's integer rials.
+int? parseTomanToRial(String? value) {
+  final normalized = _normalizeDigitsAndSeparators(value?.trim() ?? '');
+  if (!RegExp(r'^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d)?$')
+      .hasMatch(normalized)) {
+    return null;
+  }
+  final toman = num.tryParse(normalized.replaceAll(',', ''));
+  if (toman == null || !toman.isFinite || toman.abs() > maxSafeTomanAmount) {
+    return null;
+  }
+  return (toman * 10).round();
+}
+
 String _groupDigits(String digits) {
   final groups = <String>[];
   for (var end = digits.length; end > 0; end -= 3) {
@@ -113,7 +127,24 @@ String formatPersianNumber(num value, {int fractionDigits = 0}) {
   return toPersianDigits('$sign${_groupDigits(absolute)}$fraction');
 }
 
-String formatToman(num rial) => formatPersianInteger((rial / 10).round());
+/// API amounts remain integer rials. Display the exact amount in tomans,
+/// including one decimal place when the rial amount is not divisible by ten.
+String formatToman(num rial) {
+  if (rial % 10 == 0) return formatPersianInteger(rial / 10);
+  var formatted = formatPersianNumber(rial / 10, fractionDigits: 6);
+  while (formatted.endsWith('۰')) {
+    formatted = formatted.substring(0, formatted.length - 1);
+  }
+  if (formatted.endsWith('٫')) {
+    formatted = formatted.substring(0, formatted.length - 1);
+  }
+  return formatted;
+}
+
+String formatAdminMoney(num amount, {String currency = 'IRR'}) =>
+    currency.toUpperCase() == 'IRR'
+        ? '${formatToman(amount)} تومان'
+        : '${formatPersianNumber(amount)} $currency';
 
 String formatPersianDate(DateTime value) {
   String two(int number) => number.toString().padLeft(2, '0');
@@ -127,3 +158,4 @@ String formatPersianDateTime(DateTime value) {
     '${local.year}/${two(local.month)}/${two(local.day)} ${two(local.hour)}:${two(local.minute)}',
   );
 }
+

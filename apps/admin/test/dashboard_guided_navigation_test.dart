@@ -243,7 +243,7 @@ void main() {
       maxScrolls: 20,
     );
     await tester.ensureVisible(find.text('سود پس از هزینهٔ کالا و ارسال'));
-    expect(find.textContaining('۲۷۵'), findsOneWidget);
+    expect(find.textContaining('۲۷٬۵۰۰'), findsOneWidget);
     await tester.tap(find.text('سود پس از هزینهٔ کالا و ارسال'));
 
     expect(destination?.module, AdminModule.reports);
@@ -274,7 +274,7 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('ریز سود و هزینه'), 350, maxScrolls: 20);
     expect(find.text('بهای محصول'), findsOneWidget);
-    expect(find.textContaining('۳۸۰'), findsOneWidget);
+    expect(find.textContaining('۳۸٬۰۰۰'), findsOneWidget);
     expect(find.text('بسته‌بندی'), findsOneWidget);
     expect(find.text('هزینه‌های جانبی'), findsOneWidget);
     expect(find.textContaining('مالیات پرداختنی در سود محاسبه نمی‌شود'), findsOneWidget);
@@ -527,5 +527,6 @@ Widget _dashboardHarness({
     ),
   );
 }
+
 
 

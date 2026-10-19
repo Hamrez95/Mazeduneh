@@ -283,7 +283,7 @@ class _DetailPanelState extends State<_DetailPanel> {
   @override
   Widget build(BuildContext context) => Card(margin: const EdgeInsets.fromLTRB(0, 28, 28, 28), child: ListView(padding: const EdgeInsets.all(22), children: [
     Text(widget.item.companyName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)), Text(widget.item.customerName, style: const TextStyle(color: AdminColors.muted)), const Divider(height: 28),
-    _line('تماس', widget.item.mobile), _line('شهر و مناسبت', '${widget.item.city} · ${widget.item.occasion}'), _line('تعداد و بسته', '${formatPersianInteger(widget.item.orderQuantity)} · ${widget.item.packageType}'),
+    _line('تماس', toPersianDigits(widget.item.mobile)), _line('شهر و مناسبت', '${widget.item.city} · ${widget.item.occasion}'), _line('تعداد و بسته', '${formatPersianInteger(widget.item.orderQuantity)} · ${widget.item.packageType}'),
     if (widget.item.email != null) _line('ایمیل', widget.item.email!), if (widget.item.description != null) _line('توضیحات', widget.item.description!), const SizedBox(height: 18),
     if (linkedOrderId != null) ...[
       const Text('سفارش مرتبط', style: TextStyle(color: AdminColors.muted, fontSize: 12)),
@@ -336,3 +336,4 @@ class _DetailPanelState extends State<_DetailPanel> {
   ]));
   Widget _line(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 9), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(width: 76, child: Text(label, style: const TextStyle(color: AdminColors.muted, fontSize: 11))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)))]));
 }
+
