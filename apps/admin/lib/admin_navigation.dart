@@ -119,7 +119,7 @@ class AdminNavigationIntent {
         : AdminOrderFilter.all;
     final orderId = _safeRouteToken(params['order']);
     final productSlug = _safeRouteToken(params['product']);
-    final query = _safeRouteToken(params['q']);
+    final query = _safeSearchToken(params['q']);
     final sku = _safeRouteToken(params['sku']);
     final batchCode = _safeRouteToken(params['batch']);
     final from = DateTime.tryParse(params['from'] ?? '')?.toUtc();
@@ -145,7 +145,7 @@ class AdminNavigationIntent {
     }
     final safeOrderId = _safeRouteToken(orderId);
     final safeProductSlug = _safeRouteToken(productSlug);
-    final safeQuery = _safeRouteToken(query);
+    final safeQuery = _safeSearchToken(query);
     final safeSku = _safeRouteToken(sku);
     final safeBatch = _safeRouteToken(batchCode);
     if (module == AdminModule.orders && safeOrderId != null) params['order'] = safeOrderId;
@@ -167,3 +167,15 @@ String? _safeRouteToken(String? value) {
   if (normalized == null || normalized.isEmpty || normalized.length > 80) return null;
   return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(normalized) ? normalized : null;
 }
+
+/// Order searches can contain customer names and phone numbers. Only retain
+/// SKU-like tokens containing letters, digits, and a separator.
+String? _safeSearchToken(String? value) {
+  final normalized = value?.trim();
+  if (normalized == null || normalized.length > 40) return null;
+  return RegExp(r'^(?=.*[A-Za-z])(?=.*[0-9])[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+$')
+          .hasMatch(normalized)
+      ? normalized
+      : null;
+}
+
