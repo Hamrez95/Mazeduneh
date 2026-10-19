@@ -1,0 +1,1 @@
+Uri? currentAdminUri() => null;\n\nvoid replaceAdminUri(Uri uri) {}\n
