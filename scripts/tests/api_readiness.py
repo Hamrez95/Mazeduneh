@@ -142,3 +142,4 @@ with tempfile.TemporaryFile() as log:
 
 print("API readiness: missing database, missing authentication, outage, liveness, diagnostics and recovery passed")
 
+
