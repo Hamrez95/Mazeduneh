@@ -55,8 +55,14 @@ Object? _safeValue(Object? value) {
   return null;
 }
 
-Map<String, dynamic> _safeValues(Map<String, dynamic> values) =>
-    _safeValue(values) as Map<String, dynamic>;
+Map<String, dynamic> _safeValues(Map<String, dynamic> values) {
+  final safe = _safeValue(values);
+  if (safe is! Map) return {};
+  return {
+    for (final entry in safe.entries)
+      if (entry.key is String) entry.key as String: entry.value,
+  };
+}
 
 Map<String, dynamic>? readAdminFormDraft(String form, String recordId) {
   final raw = readAdminBrowserValue(_draftKey(form, recordId));
