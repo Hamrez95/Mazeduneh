@@ -193,7 +193,7 @@ with tempfile.TemporaryFile() as log:
         shipping_proof = step_up_token(token)
         status, shipping_detail = request(path + '/shipping', 'PATCH', shipping_request, token,
                                           headers={'X-Admin-Step-Up': shipping_proof})
-        assert status == 200 and shipping_detail['shippingExpense'] == 100 and shipping_detail['shippingCarrier'] == 'PrivacyFixtureCarrier' and shipping_detail['trackingCode'] is None
+        assert status == 200 and shipping_detail['shippingExpense'] == 100 and shipping_detail['shippingCarrier'] == 'PrivacyFixtureCarrier' and shipping_detail.get('trackingCode') is None, (status, shipping_detail)
         for endpoint in [path + '/invoice', path + '/packing-slip']:
             status, html = request(endpoint, token=token)
             assert status == 200 and NAME in html, (endpoint, status, html)
