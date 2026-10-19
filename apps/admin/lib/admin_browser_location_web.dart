@@ -1,0 +1,1 @@
+// ignore: avoid_web_libraries_in_flutter\nimport 'dart:html' as html;\n\nUri? currentAdminUri() => Uri.tryParse(html.window.location.href);\n\nvoid replaceAdminUri(Uri uri) {\n  html.window.history.replaceState(null, '', uri.toString());\n}\n
