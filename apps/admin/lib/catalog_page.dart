@@ -15,9 +15,10 @@ import 'formatters.dart';
 import 'media_api.dart';
 
 class CatalogPage extends StatefulWidget {
-  const CatalogPage({super.key, this.api, this.onNavigate});
+  const CatalogPage({super.key, this.api, this.onNavigate, this.initialProductSlug});
   final CatalogApiClient? api;
   final ValueChanged<AdminNavigationIntent>? onNavigate;
+  final String? initialProductSlug;
 
   @override
   State<CatalogPage> createState() => CatalogPageState();
@@ -31,6 +32,7 @@ class CatalogPageState extends State<CatalogPage> {
   bool loading = true;
   Object? error;
   bool showDrafts = true;
+  bool openedInitialProduct = false;
 
   @override
   void initState() {
@@ -48,10 +50,24 @@ class CatalogPageState extends State<CatalogPage> {
         api.fetchProducts(includeDrafts: true),
         api.fetchCategories(),
       ]);
-      if (mounted) setState(() {
-        products = result[0] as List<Product>;
-        categories = result[1] as List<Category>;
-      });
+      if (mounted) {
+        setState(() {
+          products = result[0] as List<Product>;
+          categories = result[1] as List<Category>;
+        });
+        final requestedSlug = widget.initialProductSlug;
+        if (!openedInitialProduct && requestedSlug != null &&
+            OwnerSession.instance.can(AdminPermissions.productsWrite)) {
+          final matching = products.where((item) => item.slug == requestedSlug);
+          if (matching.isNotEmpty) {
+            openedInitialProduct = true;
+            final requestedProduct = matching.first;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) editProduct(requestedProduct);
+            });
+          }
+        }
+      }
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
@@ -1128,4 +1144,5 @@ class _CategoryDialogState extends State<CategoryDialog> {
     super.dispose();
   }
 }
+
 
