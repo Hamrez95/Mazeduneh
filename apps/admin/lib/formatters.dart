@@ -129,9 +129,17 @@ String formatPersianNumber(num value, {int fractionDigits = 0}) {
 
 /// API amounts remain integer rials. Display the exact amount in tomans,
 /// including one decimal place when the rial amount is not divisible by ten.
-String formatToman(num rial) => rial % 10 == 0
-    ? formatPersianInteger(rial / 10)
-    : formatPersianNumber(rial / 10, fractionDigits: 1);
+String formatToman(num rial) {
+  if (rial % 10 == 0) return formatPersianInteger(rial / 10);
+  var formatted = formatPersianNumber(rial / 10, fractionDigits: 6);
+  while (formatted.endsWith('۰')) {
+    formatted = formatted.substring(0, formatted.length - 1);
+  }
+  if (formatted.endsWith('٫')) {
+    formatted = formatted.substring(0, formatted.length - 1);
+  }
+  return formatted;
+}
 
 String formatAdminMoney(num amount, {String currency = 'IRR'}) =>
     currency.toUpperCase() == 'IRR'
