@@ -60,7 +60,7 @@ function productFacts(product: DemoProduct) {
 }
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
-  const { add } = useCart();
+  const { add, ready } = useCart();
   const [cartFeedback, setCartFeedback] = useState("");
   const variants = product.variants?.length
     ? product.variants
@@ -78,17 +78,6 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
   function addSelectedProduct() {
     add(selectedProduct);
     setCartFeedback(`${selectedProduct.packageLabel} به سبد خرید اضافه شد.`);
-  }
-  const [reviews, setReviews] = useState<{ name: string; rating: string; text: string }[]>([]);
-  function addReview(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    setReviews((current) => [{
-      name: String(data.get("reviewer") ?? "خریدار"),
-      rating: String(data.get("rating") ?? "۵"),
-      text: String(data.get("review") ?? ""),
-    }, ...current]);
-    event.currentTarget.reset();
   }
   const gallery = getProductArtworkGallery(product);
   const [activeImage, setActiveImage] = useState(gallery[0]);
@@ -140,7 +129,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
             </button>
           ))}
         </div>
-        <div className={styles.detailBuy}><button type="button" disabled={selectedProduct.stock <= 0} onClick={addSelectedProduct}>افزودن به سبد خرید</button><a href="/cart">رفتن به سبد</a></div>
+        <div className={styles.detailBuy}><button type="button" disabled={!ready || selectedProduct.stock <= 0} onClick={addSelectedProduct}>{ready ? "افزودن به سبد خرید" : "در حال آماده‌سازی سبد…"}</button><a href="/cart">رفتن به سبد</a></div>
         {cartFeedback && <p className={styles.cartFeedback} role="status" aria-live="polite">✓ {cartFeedback} <a href="/cart">مشاهدهٔ سبد</a></p>}
         <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
         {(product.ingredients || product.allergens?.length || product.storageInstructions || (product.nutritionFacts && Object.keys(product.nutritionFacts).length) || product.shelfLifeDays || product.earliestAvailableExpiryAt) && (
@@ -160,18 +149,8 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     <section className={styles.detailTabs}>
       <h2>دربارهٔ این محصول</h2><p>{product.description || `${product.subtitle} · ${product.note}.`}</p>
       {product.specifications && Object.keys(product.specifications).length > 0 && <div className={styles.specGrid}>{Object.entries(product.specifications).map(([label, value]) => <div className={styles.specItem} key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>}
-      <div className={styles.reviewHeading}><h2>دیدگاه خریداران</h2><span>{toman(reviews.length)} دیدگاه این نشست</span></div>
-      {reviews.length ? <div className={styles.reviewList}>{reviews.map((review, index) => <article className={styles.reviewCard} key={`${review.name}-${index}`}><div><strong>{review.name}</strong><span>{"★".repeat(Number(review.rating))}{"☆".repeat(5 - Number(review.rating))}</span></div><p>{review.text}</p><small>پیش‌نمایش محلی · برای دیگران ذخیره نمی‌شود</small></article>)}</div> : <div className={styles.reviewEmpty}>هنوز دیدگاه تأییدشده‌ای ثبت نشده است. دیدگاهی که اینجا بنویسی فقط در همین نشست دیده می‌شود.</div>}
-      <form className={styles.reviewForm} onSubmit={addReview}>
-        <h3>تجربه‌ات را بنویس</h3>
-        <p>برای انتشار عمومی، اتصال حساب خریدار و تأیید سفارش لازم است.</p>
-        <div className={styles.reviewFields}>
-          <label>نام نمایشی<input name="reviewer" required maxLength={60} placeholder="مثلاً سارا" /></label>
-          <label>امتیاز<select name="rating" defaultValue="5"><option value="5">۵ · عالی</option><option value="4">۴ · خوب</option><option value="3">۳ · معمولی</option><option value="2">۲ · ضعیف</option><option value="1">۱ · خیلی ضعیف</option></select></label>
-          <label className={styles.reviewText}>دیدگاه<textarea name="review" required minLength={4} maxLength={600} placeholder="از طعم، بسته‌بندی یا تجربه‌ات بگو…" /></label>
-        </div>
-        <button className={styles.primaryAction} type="submit">ثبت دیدگاه در پیش‌نمایش</button>
-      </form>
+      <div className={styles.reviewHeading}><h2>دیدگاه خریداران</h2></div>
+      <div className={styles.reviewEmpty}>هنوز دیدگاه تأییدشده‌ای برای این محصول ثبت نشده است.</div>
     </section>
     <RelatedProducts currentId={product.id} />
     <StoreFooter />
@@ -214,7 +193,8 @@ export function LiveProductPage({ slug }: { slug: string }) {
 }
 
 export function CartPage() {
-  const { cart, subtotal, shipping, total, change, remove } = useCart();
+  const { cart, ready, subtotal, shipping, total, change, remove } = useCart();
+  if (!ready) return <ShopShell kicker="سبد خرید" title="در حال بارگذاری سبد…" description="انتخاب‌های قبلی‌ات را بررسی می‌کنیم."><section className={styles.content} role="status">سبد خرید در حال بازیابی است…</section></ShopShell>;
   return <ShopShell kicker="انتخاب‌های تو" title="سبد خرید" description="قبل از ادامه، تعداد و جمع سبد را بررسی کن.">
     <section className={styles.cartLayout}>
       <div className={styles.cartPanel}>
@@ -281,7 +261,7 @@ function toAsciiDigits(value: string) {
 }
 
 export function CheckoutPage() {
-  const { cart, subtotal, shipping, total, clear } = useCart();
+  const { cart, ready, subtotal, shipping, total, clear } = useCart();
   const [receipt, setReceipt] = useState<CheckoutReceipt | null>(null);
   const [shippingMethods, setShippingMethods] = useState<ShippingMethodOption[]>([]);
   const [shippingMethod, setShippingMethod] = useState("post");
@@ -546,7 +526,8 @@ export function CheckoutPage() {
     }
   }
 
-  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && receipt.sandboxAuthority && <button className={styles.primaryAction} type="button" disabled={couponBusy} onClick={() => completeSandbox(receipt)}>{couponBusy ? "در حال تأیید…" : "تأیید پرداخت آزمایشی (بدون برداشت وجه)"}</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome === "review" && <button className={styles.primaryAction} type="button" onClick={() => refreshPaymentStatus(receipt)}>بررسی دوبارهٔ وضعیت</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome !== "review" && !receipt.sandboxAuthority && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}<button className={styles.secondaryAction} type="button" onClick={revokeMarketingConsent} disabled={revokingConsent || consentRevoked || !receipt.receiptToken}>{consentRevoked ? "پیامک تبلیغاتی لغو شد" : revokingConsent ? "در حال ثبت لغو…" : "لغو رضایت پیامکی"}</button><button className={styles.secondaryAction} type="button" onClick={downloadInvoice} disabled={downloadingInvoice || !receipt.receiptToken}>{downloadingInvoice ? "در حال آماده‌سازی فاکتور…" : "دانلود فاکتور"}</button><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
+  if (receipt) return <main className={styles.page}><StoreHeader /><section className={styles.content}><div className={styles.pageHero}><span>{checkoutStateLabels[receipt.state] ?? "وضعیت سفارش"}</span><h1>{receipt.state === "Paid" ? `ممنون ${receipt.name}، پرداخت سفارش تأیید شد.` : `ممنون ${receipt.name}، سفارش ثبت شد.`}</h1><p>شناسهٔ سفارش: {receipt.orderId}</p><p>مبلغ تأییدشدهٔ سرور: {toman(Math.round(receipt.payable / 10))} تومان · مالیات: {toman(Math.round(receipt.tax / 10))} تومان</p>{error && <p role="status" className={styles.paymentInfo}>{error}</p>}{receipt.state === "AwaitingPayment" && <p>رزرو کالا تا {new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(receipt.expiresAt))} اعتبار دارد. خرید پس از تأیید درگاه کامل می‌شود.</p>}<div className={styles.pageActions}>{receipt.state === "AwaitingPayment" && receipt.sandboxAuthority && <button className={styles.primaryAction} type="button" disabled={couponBusy} onClick={() => completeSandbox(receipt)}>{couponBusy ? "در حال تأیید…" : "تأیید پرداخت آزمایشی (بدون برداشت وجه)"}</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome === "review" && <button className={styles.primaryAction} type="button" onClick={() => refreshPaymentStatus(receipt)}>بررسی دوبارهٔ وضعیت</button>}{receipt.state === "AwaitingPayment" && receipt.paymentOutcome !== "review" && !receipt.sandboxAuthority && <button className={styles.primaryAction} type="button" onClick={() => beginPayment(receipt).catch((paymentError: unknown) => setError(paymentError instanceof Error ? paymentError.message : "شروع دوبارهٔ پرداخت انجام نشد."))}>پرداخت دوباره</button>}{<button className={styles.secondaryAction} type="button" onClick={revokeMarketingConsent} disabled={revokingConsent || consentRevoked || !receipt.receiptToken}>{consentRevoked ? "پیامک تبلیغاتی لغو شد" : revokingConsent ? "در حال ثبت لغو…" : "لغو رضایت پیامکی"}</button>}<button className={styles.secondaryAction} type="button" onClick={downloadInvoice} disabled={downloadingInvoice || !receipt.receiptToken}>{downloadingInvoice ? "در حال آماده‌سازی فاکتور…" : "دانلود فاکتور"}</button><a className={styles.secondaryAction} href="/shop">بازگشت به فروشگاه</a></div></div></section><StoreFooter /></main>;
+  if (!ready) return <ShopShell kicker="تکمیل سفارش" title="در حال بارگذاری سبد…" description="پیش از ثبت سفارش، سبد ذخیره‌شده را بازیابی می‌کنیم."><section className={styles.content} role="status">سبد خرید در حال بازیابی است…</section></ShopShell>;
   if (!cart.length) return <ShopShell kicker="تکمیل سفارش" title="سبد خرید خالی است" description="برای شروع، محصولی از فروشگاه انتخاب کن."><section className={styles.content}><a className={styles.primaryAction} href="/shop">رفتن به فروشگاه</a></section></ShopShell>;
   return <main className={styles.page}><StoreHeader />
     <div className={styles.pageHero}><span>یک قدم تا خوشمزگی</span><h1>اطلاعات تحویل سفارش</h1><p>نشانی را وارد کن؛ سرویس سفارش قیمت و موجودی نهایی را بررسی می‌کند.</p></div>

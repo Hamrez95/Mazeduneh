@@ -7,6 +7,7 @@ import type { DemoProduct } from "./demo/catalog";
 export type CartLine = DemoProduct & { quantity: number };
 type CartValue = {
   cart: CartLine[];
+  ready: boolean;
   count: number;
   subtotal: number;
   shipping: number;
@@ -89,12 +90,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const shipping = subtotal === 0 || subtotal >= freeShippingLimit ? 0 : shippingFee;
     return {
       cart,
+      ready,
       count,
       subtotal,
       shipping,
       total: subtotal + shipping,
       add(product) {
-        if (product.stock <= 0) return;
+        if (!ready || product.stock <= 0) return;
         setCart((current) => {
           const matchesProduct = (line: CartLine) => product.sku
             ? line.sku === product.sku || (!line.sku && line.id === product.id && line.packageLabel === product.packageLabel)
@@ -114,7 +116,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       remove(key) { setCart((current) => current.filter((line) => (line.sku ?? line.id) !== key)); },
       clear,
     };
-  }, [cart, clear]);
+  }, [cart, clear, ready]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
