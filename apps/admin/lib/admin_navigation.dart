@@ -167,6 +167,3 @@ String? _safeRouteToken(String? value) {
   if (normalized == null || normalized.isEmpty || normalized.length > 80) return null;
   return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(normalized) ? normalized : null;
 }
-}
-
-
