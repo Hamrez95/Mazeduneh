@@ -232,50 +232,50 @@ class _ReportsPageState extends State<ReportsPage> {
               children: [
                 _ReportMetric(
                   title: 'مبلغ پرداخت‌شده با ارسال و مالیات',
-                  value: '${formatPersianNumber(data.revenue)} ریال',
+                  value: '${formatToman(data.revenue)} تومان',
                   icon: Icons.payments_rounded,
                   tint: AdminColors.mintSoft,
                 ),
                 _ReportMetric(
                   title: 'فروش کالا پس از تخفیف',
                   value:
-                      '${formatPersianNumber(merchandiseSalesAfterDiscount)} ریال',
+                      '${formatToman(merchandiseSalesAfterDiscount)} تومان',
                   icon: Icons.trending_up_rounded,
                   tint: AdminColors.mintSoft,
                 ),
                 _ReportMetric(
                   title: 'هزینهٔ کالا، آماده‌سازی و اقلام داخلی',
-                  value: '${formatPersianNumber(data.cost)} ریال',
+                  value: '${formatToman(data.cost)} تومان',
                   icon: Icons.inventory_2_rounded,
                   tint: AdminColors.warningSoft,
                 ),
                 _ReportMetric(
                   title: 'هزینه‌های داخلی سفارش',
-                  value: '${formatPersianNumber(data.orderInternalCosts)} ریال',
+                  value: '${formatToman(data.orderInternalCosts)} تومان',
                   icon: Icons.card_giftcard_outlined,
                   tint: AdminColors.warningSoft,
                 ),
                 _ReportMetric(
                   title: 'درآمد ارسال',
-                  value: '${formatPersianNumber(data.shippingRevenue)} ریال',
+                  value: '${formatToman(data.shippingRevenue)} تومان',
                   icon: Icons.local_shipping_outlined,
                   tint: AdminColors.successSoft,
                 ),
                 _ReportMetric(
                   title: 'هزینهٔ واقعی ارسال',
-                  value: '${formatPersianNumber(data.shippingExpense)} ریال',
+                  value: '${formatToman(data.shippingExpense)} تومان',
                   icon: Icons.local_shipping_rounded,
                   tint: AdminColors.successSoft,
                 ),
                 _ReportMetric(
                   title: 'مالیات پرداختنی',
-                  value: '${formatPersianNumber(data.tax)} ریال',
+                  value: '${formatToman(data.tax)} تومان',
                   icon: Icons.account_balance_rounded,
                   tint: AdminColors.dangerSoft,
                 ),
                 _ReportMetric(
                   title: 'سود پس از هزینه‌های ثبت‌شده',
-                  value: '${formatPersianNumber(data.netProfit)} ریال',
+                  value: '${formatToman(data.netProfit)} تومان',
                   icon: Icons.account_balance_wallet_rounded,
                   tint: AdminColors.infoSoft,
                 ),
@@ -410,7 +410,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      formatPersianNumber(item.$2),
+                      formatToman(item.$2),
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
@@ -421,7 +421,7 @@ class _ReportsPageState extends State<ReportsPage> {
                     ),
                     const SizedBox(height: 2),
                     const Text(
-                      'ریال',
+                      'تومان',
                       style: TextStyle(color: AdminColors.subtle, fontSize: 10),
                     ),
                   ],
@@ -715,3 +715,4 @@ class _ReportMetric extends StatelessWidget {
     ),
   );
 }
+
