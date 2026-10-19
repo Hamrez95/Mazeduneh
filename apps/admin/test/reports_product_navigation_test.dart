@@ -28,7 +28,9 @@ void main() {
   });
   tearDown(OwnerSession.instance.clear);
 
-  testWidgets('product profitability opens inventory for that SKU', (tester) async {
+  testWidgets('product profitability opens inventory for that SKU', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -40,6 +42,9 @@ void main() {
       baseUrl: 'https://api.test',
       client: MockClient((request) async {
         requestUris.add(request.url);
+        if (request.url.path.endsWith('/analytics/price-history/skus')) {
+          return _json([]);
+        }
         if (request.url.path.endsWith('/analytics/products')) {
           return _json([
             {
@@ -70,25 +75,39 @@ void main() {
         });
       }),
     );
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: ReportsPage(
-            api: api,
-            initialFromUtc: DateTime.utc(2026, 10, 10),
-            initialToUtcExclusive: DateTime.utc(2026, 10, 17),
-            onNavigate: (intent) => destination = intent,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Directionality(
+            textDirection: TextDirection.rtl,
+            child: ReportsPage(
+              api: api,
+              initialFromUtc: DateTime.utc(2026, 10, 10),
+              initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+              onNavigate: (intent) => destination = intent,
+            ),
           ),
         ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
 
-    expect(requestUris.map((uri) => uri.path), contains('/api/v1/admin/analytics/products'));
-    final productRequest = requestUris.firstWhere((uri) => uri.path.endsWith('/analytics/products'));
-    await tester.scrollUntilVisible(find.text('مشاهده در انبار'), 350, scrollable: find.byType(Scrollable).first, maxScrolls: 30);
-    await tester.pumpAndSettle();
+    expect(
+      requestUris.map((uri) => uri.path),
+      contains('/api/v1/admin/analytics/products'),
+    );
+    final productRequest = requestUris.firstWhere(
+      (uri) => uri.path.endsWith('/analytics/products'),
+    );
+    final reportList = find.byKey(const ValueKey('reports-content'));
+    for (
+      var scroll = 0;
+      scroll < 12 && find.text('مشاهده در انبار').evaluate().isEmpty;
+      scroll++
+    ) {
+      await tester.drag(reportList, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
 
     expect(find.text('پسته اکبری'), findsWidgets);
     expect(find.textContaining('تفکیک هزینه'), findsOneWidget);
@@ -109,11 +128,19 @@ void main() {
 
     expect(destination?.module, AdminModule.orders);
     expect(destination?.query, 'PI-AKB-250');
-    expect(destination?.createdFromUtc, DateTime.parse(productRequest.queryParameters['from']!));
-    expect(destination?.createdToUtcExclusive, DateTime.parse(productRequest.queryParameters['to']!));
+    expect(
+      destination?.createdFromUtc,
+      DateTime.parse(productRequest.queryParameters['from']!),
+    );
+    expect(
+      destination?.createdToUtcExclusive,
+      DateTime.parse(productRequest.queryParameters['to']!),
+    );
   });
 
-  testWidgets('hides product order drilldown without order permission', (tester) async {
+  testWidgets('hides product order drilldown without order permission', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -129,6 +156,9 @@ void main() {
     final api = OrderApiClient(
       baseUrl: 'https://api.test',
       client: MockClient((request) async {
+        if (request.url.path.endsWith('/analytics/price-history/skus')) {
+          return _json([]);
+        }
         if (request.url.path.endsWith('/analytics/products')) {
           return _json([
             {
@@ -156,21 +186,30 @@ void main() {
         });
       }),
     );
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: Directionality(
-          textDirection: TextDirection.rtl,
-          child: ReportsPage(
-            api: api,
-            initialFromUtc: DateTime.utc(2026, 10, 10),
-            initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Directionality(
+            textDirection: TextDirection.rtl,
+            child: ReportsPage(
+              api: api,
+              initialFromUtc: DateTime.utc(2026, 10, 10),
+              initialToUtcExclusive: DateTime.utc(2026, 10, 17),
+            ),
           ),
         ),
       ),
-    ));
+    );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('مشاهده در انبار'), 350, scrollable: find.byType(Scrollable).first, maxScrolls: 30);
-    await tester.pumpAndSettle();
+    final reportList = find.byKey(const ValueKey('reports-content'));
+    for (
+      var scroll = 0;
+      scroll < 12 && find.text('مشاهده در انبار').evaluate().isEmpty;
+      scroll++
+    ) {
+      await tester.drag(reportList, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
 
     expect(find.text('پسته اکبری'), findsWidgets);
     expect(find.text('مشاهده سفارش‌ها'), findsNothing);

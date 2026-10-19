@@ -203,7 +203,7 @@ class _ReportsPageState extends State<ReportsPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final data = analytics!;
     if (data.orderCount == 0)
-      return ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+      return ListView(key: const ValueKey('reports-content'), padding: const EdgeInsets.only(bottom: 24), children: [
         const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('برای این بازه هنوز دادهٔ فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)))),
         const SizedBox(height: 14),
         _priceHistoryPanel(),
@@ -218,14 +218,15 @@ class _ReportsPageState extends State<ReportsPage> {
             ? 2
             : 1;
         return ListView(
+          key: const ValueKey('reports-content'),
           children: [
-            GridView.count(
-              crossAxisCount: columns,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              childAspectRatio:
-                  ((constraints.maxWidth - (columns - 1) * 14) / columns) /
-                  (120 * MediaQuery.textScalerOf(context).scale(1)),
+            GridView(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                mainAxisExtent: 132 * MediaQuery.textScalerOf(context).scale(1),
+              ),
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               children: [

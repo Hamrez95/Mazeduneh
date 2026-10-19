@@ -327,9 +327,9 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     loadingChoices = true;
     try {
       final requests = <Future<dynamic>>[
-        CatalogApiClient(baseUrl: widget.api.baseUrl).fetchProducts(includeDrafts: true),
+        CatalogApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchProducts(includeDrafts: true),
         if (OwnerSession.instance.can('customers.pii.read'))
-          CustomerApiClient(baseUrl: widget.api.baseUrl).fetchCustomers(limit: 200),
+          CustomerApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchCustomers(limit: 200),
       ];
       final result = await Future.wait(requests);
       if (!mounted) return;
@@ -626,6 +626,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   SizedBox(
                     width: 330,
                     child: DropdownButtonFormField<String>(
+                      key: const ValueKey('promotion-kind'),
                       initialValue: kind,
                       decoration: const InputDecoration(labelText: 'نوع تخفیف'),
                       items: const [

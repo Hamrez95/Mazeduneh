@@ -270,7 +270,7 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             supplierContactName, supplierPhone, supplierEmail, supplierAddress, supplierNotes);
         await audit.RecordAsync(connection, transaction, actor,
             request.OpeningStock ? "inventory.opening_batch.registered" : "inventory.purchase.received", "InventoryBatch",
-            id.ToString(), null, new { batch, openingStock = request.OpeningStock, availablePackagesUnchanged = request.OpeningStock },
+            id.ToString(), null, batch,
             request.OpeningStock ? "inventory-opening-batch-registered" : "inventory-purchase-received", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return (batch, null);

@@ -189,7 +189,7 @@ class _BatchDialogState extends State<BatchDialog> {
         if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
       ]))))),
     actions: [TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('انصراف')),
-      FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'در حال ثبت…' : 'ثبت بچ و انقضا'))],
+      FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'در حال ثبت…' : 'ثبت خرید'))],
   ));
   @override
   void dispose() { for (final c in fields.values) { c.dispose(); } super.dispose(); }

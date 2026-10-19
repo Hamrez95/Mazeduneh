@@ -426,7 +426,17 @@ class _OrdersPageState extends State<OrdersPage> {
             ]);
             return constraints.maxWidth < 1120
                 ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [heading, const SizedBox(height: 10), controls])
-                : Row(children: [Expanded(child: heading), controls]);
+                : Row(
+                    children: [
+                      Expanded(child: heading),
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: controls,
+                        ),
+                      ),
+                    ],
+                  );
           }),
           const SizedBox(height: 12),
           TextField(

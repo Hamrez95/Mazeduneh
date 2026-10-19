@@ -34,6 +34,50 @@ void main() {
           expect(r.headers['x-admin-step-up'], 'proof');
           return http.Response('{}', 200);
         }
+        if (r.url.path.endsWith('/products/admin')) {
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'product-a',
+                'title': 'کالای A',
+                'slug': 'product-a',
+                'category': 'خشکبار',
+                'origin': 'IR',
+                'unitType': 'Weight',
+                'isPublished': true,
+                'variants': [
+                  {
+                    'sku': 'A-250',
+                    'quantity': 250,
+                    'displayLabel': '۲۵۰ گرم',
+                    'price': 100000,
+                    'availablePackages': 10,
+                  },
+                ],
+              },
+              {
+                'id': 'product-b',
+                'title': 'کالای B',
+                'slug': 'product-b',
+                'category': 'خشکبار',
+                'origin': 'IR',
+                'unitType': 'Weight',
+                'isPublished': true,
+                'variants': [
+                  {
+                    'sku': 'B-250',
+                    'quantity': 250,
+                    'displayLabel': '۲۵۰ گرم',
+                    'price': 100000,
+                    'availablePackages': 10,
+                  },
+                ],
+              },
+            ]),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }
         return http.Response('[]', 200);
       }),
     );
@@ -53,14 +97,30 @@ void main() {
       find.widgetWithText(TextFormField, 'نام کوپن'),
       'پک هدیه',
     );
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.tap(find.byKey(const ValueKey('promotion-kind')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('پک با قیمت مشخص').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bundle-sku-')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('A-250').last);
+    await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'اقلام پک؛ A-250:2, B-250:1'),
-      'A-250:2, B-250:1',
+      find.widgetWithText(TextFormField, 'تعداد این کالا در پک'),
+      '۲',
     );
+    await tester.tap(find.text('افزودن کالا به پک'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('bundle-sku-A-250')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('B-250').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'تعداد این کالا در پک'),
+      '۱',
+    );
+    await tester.tap(find.text('افزودن کالا به پک'));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, 'قیمت نهایی یک پک (تومان)'),
       '۲۲۰۰۰۰',

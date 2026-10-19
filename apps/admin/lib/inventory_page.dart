@@ -165,7 +165,7 @@ class _InventoryPageState extends State<InventoryPage> {
         const SizedBox(width: 8),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
         ]);
-        return constraints.maxWidth < 720
+        return constraints.maxWidth < 980
           ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, controls])
           : Row(children: [Expanded(child: heading), controls]);
       }),

@@ -198,53 +198,51 @@ class ProductPackageEditor extends StatelessWidget {
               spacing: 12,
               runSpacing: 14,
               children: [
-                SizedBox(
-                  width: width,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          key: ValueKey('package-$index-quantity'),
-                          controller: draft.quantity,
-                          enabled: draft.original == null,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          inputFormatters: const [PersianDigitsInputFormatter()],
-                          onChanged: (_) => onChanged?.call(),
-                          decoration: InputDecoration(
-                            labelText: unitType == 'Weight' ? 'وزن هر بسته' : 'تعداد هر بسته',
-                            helperText: unitType == 'Weight' ? 'مقدار در انبار به گرم تبدیل می‌شود.' : null,
-                          ),
-                          validator: (v) {
-                            final n = parsePersianNumber(v);
-                            return n == null || !n.isFinite || n <= 0 || unitType == 'Count' && n % 1 != 0
-                                ? 'مقدار مثبت${unitType == 'Count' ? ' و صحیح' : ''} وارد کنید.'
-                                : null;
-                          },
-                        ),
+                field(
+                  'quantity',
+                  draft.quantity,
+                  unitType == 'Weight' ? 'وزن هر بسته' : 'تعداد هر بسته',
+                  helper: unitType == 'Weight'
+                      ? 'مقدار در انبار به گرم تبدیل می‌شود.'
+                      : null,
+                  enabled: draft.original == null,
+                  numeric: true,
+                  validator: (v) {
+                    final n = parsePersianNumber(v);
+                    return n == null ||
+                            !n.isFinite ||
+                            n <= 0 ||
+                            unitType == 'Count' && n % 1 != 0
+                        ? 'مقدار مثبت${unitType == 'Count' ? ' و صحیح' : ''} وارد کنید.'
+                        : null;
+                  },
+                ),
+                if (unitType == 'Weight')
+                  SizedBox(
+                    width: width,
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey(
+                        'package-$index-unit-${draft.quantityUnit}',
                       ),
-                      if (unitType == 'Weight') ...[
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 118,
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey('package-$index-unit-${draft.quantityUnit}'),
-                            initialValue: draft.quantityUnit,
-                            decoration: const InputDecoration(labelText: 'واحد'),
-                            items: const [
-                              DropdownMenuItem(value: 'gram', child: Text('گرم')),
-                              DropdownMenuItem(value: 'kilogram', child: Text('کیلوگرم')),
-                            ],
-                            onChanged: draft.original != null ? null : (value) {
+                      initialValue: draft.quantityUnit,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'واحد'),
+                      items: const [
+                        DropdownMenuItem(value: 'gram', child: Text('گرم')),
+                        DropdownMenuItem(
+                          value: 'kilogram',
+                          child: Text('کیلوگرم'),
+                        ),
+                      ],
+                      onChanged: draft.original != null
+                          ? null
+                          : (value) {
                               if (value == null) return;
                               draft.changeWeightUnit(value);
                               onChanged?.call();
                             },
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
                 field(
                   'label',
                   draft.label,
