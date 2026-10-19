@@ -76,6 +76,8 @@ class AdminNavigationIntent {
   const AdminNavigationIntent({
     required this.module,
     this.orderFilter = AdminOrderFilter.all,
+    this.orderId,
+    this.productSlug,
     this.sku,
     this.batchCode,
     this.query,
@@ -85,6 +87,8 @@ class AdminNavigationIntent {
 
   final AdminModule module;
   final AdminOrderFilter orderFilter;
+  final String? orderId;
+  final String? productSlug;
   final String? sku;
   final String? batchCode;
   final String? query;
@@ -96,6 +100,8 @@ class AdminNavigationIntent {
       other is AdminNavigationIntent &&
       other.module == module &&
       other.orderFilter == orderFilter &&
+      other.orderId == orderId &&
+      other.productSlug == productSlug &&
       other.sku == sku &&
       other.batchCode == batchCode &&
       other.query == query &&
@@ -103,6 +109,64 @@ class AdminNavigationIntent {
       other.createdToUtcExclusive == createdToUtcExclusive;
 
   @override
-  int get hashCode => Object.hash(module, orderFilter, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
+  int get hashCode => Object.hash(module, orderFilter, orderId, productSlug, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
+
+  factory AdminNavigationIntent.fromUri(Uri? uri) {
+    final params = uri?.queryParameters ?? const <String, String>{};
+    final module = AdminModule.fromApiValue(params['module']) ?? AdminModule.dashboard;
+    final filter = module == AdminModule.orders
+        ? AdminOrderFilter.fromApiValue(params['status']) ?? AdminOrderFilter.all
+        : AdminOrderFilter.all;
+    final orderId = _safeRouteToken(params['order']);
+    final productSlug = _safeRouteToken(params['product']);
+    final query = _safeRouteToken(params['q']);
+    final sku = _safeRouteToken(params['sku']);
+    final batchCode = _safeRouteToken(params['batch']);
+    final from = DateTime.tryParse(params['from'] ?? '')?.toUtc();
+    final to = DateTime.tryParse(params['to'] ?? '')?.toUtc();
+    final hasRange = from != null && to != null && to.isAfter(from);
+    return AdminNavigationIntent(
+      module: module,
+      orderFilter: filter,
+      orderId: module == AdminModule.orders ? orderId : null,
+      productSlug: module == AdminModule.products ? productSlug : null,
+      query: module == AdminModule.orders ? query : null,
+      sku: module == AdminModule.inventory ? sku : null,
+      batchCode: module == AdminModule.inventory ? batchCode : null,
+      createdFromUtc: hasRange ? from : null,
+      createdToUtcExclusive: hasRange ? to : null,
+    );
+  }
+
+  Uri toUri(Uri current) {
+    final params = <String, String>{'module': module.apiValue};
+    if (module == AdminModule.orders && orderFilter != AdminOrderFilter.all) {
+      params['status'] = orderFilter.apiValue;
+    }
+    final safeOrderId = _safeRouteToken(orderId);
+    final safeProductSlug = _safeRouteToken(productSlug);
+    final safeQuery = _safeRouteToken(query);
+    final safeSku = _safeRouteToken(sku);
+    final safeBatch = _safeRouteToken(batchCode);
+    if (module == AdminModule.orders && safeOrderId != null) params['order'] = safeOrderId;
+    if (module == AdminModule.orders && safeQuery != null) params['q'] = safeQuery;
+    if (module == AdminModule.products && safeProductSlug != null) params['product'] = safeProductSlug;
+    if (module == AdminModule.inventory && safeSku != null) params['sku'] = safeSku;
+    if (module == AdminModule.inventory && safeBatch != null) params['batch'] = safeBatch;
+    if (createdFromUtc != null && createdToUtcExclusive != null &&
+        createdToUtcExclusive!.isAfter(createdFromUtc!)) {
+      params['from'] = createdFromUtc!.toUtc().toIso8601String();
+      params['to'] = createdToUtcExclusive!.toUtc().toIso8601String();
+    }
+    return current.replace(queryParameters: params, fragment: '');
+  }
 }
+
+String? _safeRouteToken(String? value) {
+  final normalized = value?.trim();
+  if (normalized == null || normalized.isEmpty || normalized.length > 80) return null;
+  return RegExp(r'^[A-Za-z0-9._-]+$').hasMatch(normalized) ? normalized : null;
+}
+}
+
 
