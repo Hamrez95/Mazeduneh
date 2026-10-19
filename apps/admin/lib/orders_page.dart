@@ -1504,6 +1504,11 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'اطلاعات ثبت‌شده: شرکت حمل ${detail.shippingCarrier?.trim().isNotEmpty == true ? detail.shippingCarrier : 'ثبت نشده'} · کد رهگیری ${detail.trackingCode?.trim().isNotEmpty == true ? toPersianDigits(detail.trackingCode) : 'ثبت نشده'}',
+              style: const TextStyle(fontSize: 12, color: AdminColors.muted),
+            ),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -2003,5 +2008,6 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       }[value] ??
       value;
 }
+
 
 
