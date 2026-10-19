@@ -11,6 +11,8 @@ import 'catalog_api.dart' show defaultApiBaseUrl, CatalogApiClient, Product;
 import 'customer_api.dart' show CustomerApiClient, CustomerSummary;
 import 'admin_step_up_dialog.dart';
 import 'formatters.dart';
+import 'admin_form_guard.dart';
+import 'admin_form_drafts.dart';
 
 class PromotionsApiClient {
   PromotionsApiClient({http.Client? client, String? baseUrl})
@@ -97,6 +99,7 @@ class _PromotionsPageState extends State<PromotionsPage> {
   Future<void> edit([Map<String, dynamic>? item]) async {
     final saved = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => _PromotionEditor(api: api, item: item),
     );
     if (saved == true && mounted) {
@@ -389,10 +392,44 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   final sampleBasket = <Map<String, dynamic>>[];
   final bundleBasket = <Map<String, dynamic>>[];
   bool loadingChoices = false;
+  bool _dirty = false;
+  bool _closing = false;
+  bool _initializing = true;
+  bool _restoredDraft = false;
+  String get _draftId => widget.item?['code'] as String? ?? 'new';
   late DateTime startsAt;
   late DateTime endsAt;
-  TextEditingController field(String name) =>
-      fields.putIfAbsent(name, () => TextEditingController());
+  TextEditingController field(String name) => fields.putIfAbsent(name, () {
+    final controller = TextEditingController()..addListener(_markDirty);
+    return controller;
+  });
+
+  void _markDirty() {
+    if (!mounted || _initializing || _closing) return;
+    if (!_dirty) setState(() => _dirty = true);
+    _persistDraft();
+  }
+
+  void _persistDraft() => writeAdminFormDraft('promotion', _draftId, {
+    for (final entry in fields.entries) entry.key: entry.value.text,
+    'kind': kind,
+    'active': active,
+    'allowLoss': allowLoss,
+    'automatic': automatic,
+    'firstOrderOnly': firstOrderOnly,
+    'startsAt': startsAt.toIso8601String(),
+    'endsAt': endsAt.toIso8601String(),
+    'bundleBasket': bundleBasket,
+  });
+
+  Future<void> _requestClose() async {
+    if (_dirty && !await confirmDiscardAdminChanges(context)) return;
+    if (!mounted) return;
+    clearAdminFormDraft('promotion', _draftId);
+    setState(() => _closing = true);
+    Navigator.pop(context);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -451,6 +488,27 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       ),
     );
     field('bundleQuantity').text = '۱';
+    final draft = readAdminFormDraft('promotion', _draftId);
+    if (draft != null) {
+      _restoredDraft = true;
+      _dirty = true;
+      for (final entry in draft.entries) {
+        if (entry.value is String) field(entry.key).text = entry.value as String;
+      }
+      const kinds = {'Percent', 'Fixed', 'FreeShipping', 'BuyGet', 'Bundle'};
+      if (draft['kind'] is String && kinds.contains(draft['kind'])) kind = draft['kind'] as String;
+      if (draft['active'] is bool) active = draft['active'] as bool;
+      if (draft['allowLoss'] is bool) allowLoss = draft['allowLoss'] as bool;
+      if (draft['automatic'] is bool) automatic = draft['automatic'] as bool;
+      if (draft['firstOrderOnly'] is bool) firstOrderOnly = draft['firstOrderOnly'] as bool;
+      startsAt = DateTime.tryParse(draft['startsAt'] as String? ?? '')?.toLocal() ?? startsAt;
+      endsAt = DateTime.tryParse(draft['endsAt'] as String? ?? '')?.toLocal() ?? endsAt;
+      final savedBundle = draft['bundleBasket'];
+      if (savedBundle is List) {
+        bundleBasket.addAll(savedBundle.whereType<Map>().where((line) => line['sku'] is String && line['quantity'] is int).map((line) => {'sku': line['sku'] as String, 'quantity': line['quantity'] as int}));
+      }
+    }
+    _initializing = false;
   }
 
   Future<void> _loadChoices() async {
@@ -553,6 +611,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       }
       preview = null;
     });
+    _markDirty();
   }
 
   void addBundleLine() {
@@ -571,6 +630,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       }
       preview = null;
     });
+    _markDirty();
   }
 
   @override
@@ -649,7 +709,11 @@ class _PromotionEditorState extends State<_PromotionEditor> {
           body: payload,
           proof: proof,
         );
-        if (mounted) Navigator.pop(context, true);
+        if (mounted) {
+          clearAdminFormDraft('promotion', _draftId);
+          _closing = true;
+          Navigator.pop(context, true);
+        }
       } else {
         final quantity = number('quantity');
         if ((sampleBasket.isEmpty && field('sku').text.trim().isEmpty) ||
@@ -804,6 +868,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       preview = null;
       error = null;
     });
+    _markDirty();
   }
 
   Widget _dateTimeField({required bool isStart}) => SizedBox(
@@ -823,7 +888,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     ),
   );
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => PopScope<void>(
+    canPop: !_dirty || _closing,
+    onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
+    child: AlertDialog(
     title: Text(widget.item == null ? 'کوپن جدید' : 'ویرایش کوپن'),
     content: SizedBox(
       width: 730,
@@ -834,6 +902,14 @@ class _PromotionEditorState extends State<_PromotionEditor> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (_restoredDraft)
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.restore_rounded),
+                    title: Text('پیش‌نویس قبلی بازیابی شد.'),
+                    subtitle: Text('شماره تماس و شهر سبد نمونه یا اطلاعات مشتری در مرورگر ذخیره نمی‌شود.'),
+                  ),
+                ),
               Wrap(
                 spacing: 16,
                 runSpacing: 18,
@@ -873,6 +949,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                           : (v) => setState(() {
                               kind = v!;
                               preview = null;
+                              _dirty = true;
+                              _persistDraft();
                             }),
                     ),
                   ),
@@ -926,6 +1004,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                             : (value) => setState(() {
                                 field('bundleSku').text = value ?? '';
                                 preview = null;
+                                _dirty = true;
+                                _persistDraft();
                               }),
                       ),
                     ),
@@ -954,6 +1034,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                                   : () => setState(() {
                                       bundleBasket.remove(line);
                                       preview = null;
+                                      _dirty = true;
+                                      _persistDraft();
                                     }),
                             ),
                         ],
@@ -977,6 +1059,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                     ? null
                     : (v) => setState(() {
                         active = v;
+                        _dirty = true;
+                        _persistDraft();
                       }),
               ),
               ExpansionTile(
@@ -1017,6 +1101,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                         : (v) => setState(() {
                             automatic = v;
                             preview = null;
+                            _dirty = true;
+                            _persistDraft();
                           }),
                   ),
                   SwitchListTile(
@@ -1027,6 +1113,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                         : (v) => setState(() {
                             firstOrderOnly = v;
                             preview = null;
+                            _dirty = true;
+                            _persistDraft();
                           }),
                   ),
                 ],
@@ -1041,6 +1129,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                       ? null
                       : (v) => setState(() {
                           allowLoss = v!;
+                          _dirty = true;
+                          _persistDraft();
                         }),
                 ),
               const Divider(height: 32),
@@ -1146,7 +1236,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     ),
     actions: [
       TextButton(
-        onPressed: busy ? null : () => Navigator.pop(context),
+        onPressed: busy ? null : _requestClose,
         child: const Text('انصراف'),
       ),
       FilledButton(
@@ -1154,7 +1244,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         child: const Text('ذخیره کوپن'),
       ),
     ],
-  );
+  ));
 }
 
 String _choiceLabel(
@@ -1309,3 +1399,4 @@ class _MultiSelectField extends StatelessWidget {
     );
   }
 }
+
