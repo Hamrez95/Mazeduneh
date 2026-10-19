@@ -13,6 +13,7 @@ import 'auth_session.dart';
 import 'catalog_page.dart';
 import 'catalog_api.dart';
 import 'admin_navigation.dart';
+import 'admin_browser_location.dart';
 import 'admin_mfa_settings_dialog.dart';
 import 'commerce_settings_page.dart';
 import 'corporate_requests_page.dart';
@@ -56,15 +57,23 @@ class _AdminShellState extends State<AdminShell> {
   void initState() {
     super.initState();
     if (OwnerSession.instance.isAuthenticated) {
+      final requested = AdminNavigationIntent.fromUri(currentAdminUri());
+      if (OwnerSession.instance.can(requested.module.permission)) {
+        navigation = requested;
+        index = AdminModule.values.indexOf(requested.module);
+      }
       final firstAllowed = AdminModule.values.indexWhere(
         (module) => OwnerSession.instance.can(module.permission),
       );
-      if (firstAllowed >= 0) {
+      if (firstAllowed >= 0 &&
+          !OwnerSession.instance.can(navigation.module.permission)) {
         index = firstAllowed;
         navigation = AdminNavigationIntent(
           module: AdminModule.values[firstAllowed],
         );
       }
+      final location = currentAdminUri();
+      if (location != null) replaceAdminUri(navigation.toUri(location));
     }
     if (OwnerSession.instance.isAuthenticated &&
         OwnerSession.instance.can(AdminPermissions.dashboardRead)) {
@@ -740,6 +749,8 @@ class _AdminShellState extends State<AdminShell> {
       index = destination;
       if (intent.module == AdminModule.dashboard) dashboardRefreshRevision++;
     });
+    final location = currentAdminUri();
+    if (location != null) replaceAdminUri(intent.toUri(location));
   }
 
   void _selectModule(int destination) {
@@ -754,6 +765,8 @@ class _AdminShellState extends State<AdminShell> {
         dashboardRefreshRevision++;
       }
     });
+    final location = currentAdminUri();
+    if (location != null) replaceAdminUri(navigation.toUri(location));
   }
 
   void _goBack() {
@@ -764,6 +777,13 @@ class _AdminShellState extends State<AdminShell> {
       index = AdminModule.values.indexOf(previous.module);
       if (previous.module == AdminModule.dashboard) dashboardRefreshRevision++;
     });
+    final location = currentAdminUri();
+    if (location != null) replaceAdminUri(previous.toUri(location));
+  }
+
+  void _persistNavigationUrl(AdminNavigationIntent intent) {
+    final location = currentAdminUri();
+    if (location != null) replaceAdminUri(intent.toUri(location));
   }
 
   String _moduleLabel(AdminModule module) => module.label;
@@ -821,15 +841,21 @@ class _AdminShellState extends State<AdminShell> {
       child: OrdersPage(
         key: ValueKey(navigation),
         api: widget.ordersApi,
+        onNavigationChanged: _persistNavigationUrl,
         initialFilter: navigation.orderFilter,
         initialQuery: navigation.query ?? '',
+        initialOrderId: navigation.orderId,
         initialCreatedFromUtc: navigation.createdFromUtc,
         initialCreatedToUtcExclusive: navigation.createdToUtcExclusive,
       ),
     ),
     AdminModule.products => AdminPermissionGate(
       permission: module.permission,
-      child: CatalogPage(key: catalogKey, onNavigate: _navigate),
+      child: CatalogPage(
+        key: catalogKey,
+        onNavigate: _navigate,
+        initialProductSlug: navigation.productSlug,
+      ),
     ),
     AdminModule.inventory => AdminPermissionGate(
       permission: module.permission,
@@ -940,3 +966,4 @@ class Brand extends StatelessWidget {
     ],
   );
 }
+
