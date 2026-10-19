@@ -181,14 +181,28 @@ with tempfile.TemporaryFile() as log:
         status, sku_orders = request('/api/v1/admin/orders?q=' + SKU, token=token)
         assert status == 200 and any(row['id'] == order_id for row in sku_orders), (status, sku_orders)
         path = '/api/v1/admin/orders/' + order_id
+        status, null_shipping_detail = request(path, token=token)
+        assert status == 200 and null_shipping_detail['shippingCarrier'] is None and null_shipping_detail['trackingCode'] is None, (status, null_shipping_detail)
+        for endpoint in [path + '/invoice', path + '/packing-slip']:
+            status, html = request(endpoint, token=token)
+            assert status == 200 and NAME in html, (endpoint, status, html)
         assert request(path + '/notes', 'POST', {'note': MOBILE + ' ' + ADDRESS}, token)[0] == 201
-        shipping_request = {'carrier': 'PrivacyFixtureCarrier', 'trackingCode': 'PrivacyFixtureTracking',
+        shipping_request = {'carrier': 'PrivacyFixtureCarrier', 'trackingCode': None,
                             'actualShippingCost': 100, 'reason': MOBILE}
         assert request(path + '/shipping', 'PATCH', shipping_request, token)[0] == 428
         shipping_proof = step_up_token(token)
         status, shipping_detail = request(path + '/shipping', 'PATCH', shipping_request, token,
                                           headers={'X-Admin-Step-Up': shipping_proof})
-        assert status == 200 and shipping_detail['shippingExpense'] == 100
+        assert status == 200 and shipping_detail['shippingExpense'] == 100 and shipping_detail['shippingCarrier'] == 'PrivacyFixtureCarrier' and shipping_detail['trackingCode'] is None
+        for endpoint in [path + '/invoice', path + '/packing-slip']:
+            status, html = request(endpoint, token=token)
+            assert status == 200 and NAME in html, (endpoint, status, html)
+        one_null_request = {'carrier': None, 'trackingCode': 'PrivacyFixtureTracking',
+                            'actualShippingCost': 100, 'reason': MOBILE}
+        shipping_proof = step_up_token(token)
+        status, shipping_detail = request(path + '/shipping', 'PATCH', one_null_request, token,
+                                          headers={'X-Admin-Step-Up': shipping_proof})
+        assert status == 200 and shipping_detail['shippingCarrier'] is None and shipping_detail['trackingCode'] == 'PrivacyFixtureTracking'
         for state in ['Preparing', 'Shipped']:
             assert request(path + '/state', 'PATCH', {'state': state, 'reason': MOBILE}, token)[0] == 200
             if state == 'Preparing':
@@ -305,3 +319,4 @@ with tempfile.TemporaryFile() as log:
             stop_api(api)
 
 print('Direct HTTP order and customer privacy, search, document/export role matrix passed')
+
