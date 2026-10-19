@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text;
+using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -61,11 +62,11 @@ public static class OrderManagementModule
                 var text = value?.ToString() ?? string.Empty;
                 return $"\"{text.Replace("\"", "\"\"")}\"";
             }
-            var builder = new StringBuilder("\uFEFFشناسه سفارش,مشتری,موبایل,شهر,وضعیت,مبلغ,ارز,تعداد اقلام,زمان ثبت,وضعیت پرداخت,شناسه پرداخت\n");
+            var builder = new StringBuilder("\uFEFFشناسه سفارش,نوع سفارش,مشتری,موبایل,شهر,وضعیت,مبلغ,ارز,تعداد اقلام,زمان ثبت,وضعیت پرداخت,شناسه پرداخت\n");
             foreach (var rawOrder in orders)
             {
                 var order = OrderPrivacy.Project(rawOrder, context);
-                builder.AppendJoin(',', new[] { Csv(order.Id), Csv(order.CustomerName), Csv(order.Mobile), Csv($"{order.Province}، {order.City}"),
+                builder.AppendJoin(',', new[] { Csv(order.Id), Csv(order.IsPrivate ? "خصوصی" : "سایت"), Csv(order.CustomerName), Csv(order.Mobile), Csv($"{order.Province}، {order.City}"),
                     Csv(order.State), Csv(order.Payable.ToString("0.##")), Csv(order.Currency), Csv(order.LineCount),
                     Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
             }
@@ -120,6 +121,82 @@ public static class OrderManagementModule
             var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
             var note = await database.AddNoteAsync(orderId, input.Note, actor, cancellationToken);
             return note is null ? Results.NotFound(new { message = "سفارش پیدا نشد." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", OrderPrivacy.Project(note, context));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapPost("/orders/private", async (
+            CheckoutRequest request,
+            CheckoutDatabase checkout,
+            AdminAuditLogDatabase audit,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var cleanRequest = request with { CouponCode = null, MarketingConsent = false };
+            var errors = cleanRequest.Validate();
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
+            if (principal is null) return Results.Unauthorized();
+            var idempotencyKey = $"private-order:{Guid.NewGuid():N}";
+            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cleanRequest))));
+            var created = await checkout.CreateAsync(idempotencyKey, fingerprint, cleanRequest, cancellationToken, isPrivate: true);
+            if (created.Status == CheckoutStatus.OutOfStock)
+                return Results.Conflict(new { message = created.Message, unavailableSkus = created.UnavailableSkus });
+            if (created.Status == CheckoutStatus.Conflict)
+                return Results.Conflict(new { message = created.Message });
+            if (created.Status != CheckoutStatus.Created || created.Order is null)
+                return Results.Problem("ثبت سفارش خصوصی انجام نشد.", statusCode: StatusCodes.Status503ServiceUnavailable);
+            var order = created.Order;
+            await audit.RecordAsync(principal.Email, "order.private-created", "Order", order.Id.ToString("D"), null,
+                new { order.Payable, Currency = order.Currency, LineCount = order.Lines.Count, order.ShippingMethod },
+                "ثبت سفارش سفارشی فقط برای عملیات داخلی؛ در سایت و حساب مشتری نمایش داده نمی‌شود.", context.TraceIdentifier,
+                cancellationToken, principal.StoreId);
+            return Results.Created($"/api/v1/admin/orders/{order.Id}", new
+            {
+                id = order.Id,
+                order.Payable,
+                order.Currency,
+                state = order.State,
+                lineCount = order.Lines.Count,
+                createdAt = order.CreatedAt,
+                isPrivate = true
+            });
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapPost("/orders/{orderId:guid}/internal-costs", async (
+            Guid orderId,
+            AdminOrderInternalCostInput input,
+            OrderManagementDatabase database,
+            AdminAuditLogDatabase audit,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var errors = new Dictionary<string, string[]>();
+            if (string.IsNullOrWhiteSpace(input.Title) || input.Title.Trim().Length > 160)
+                errors[nameof(input.Title)] = ["عنوان هزینه باید بین ۱ تا ۱۶۰ نویسه باشد."];
+            if (input.Amount is <= 0 or > 1_000_000_000_000)
+                errors[nameof(input.Amount)] = ["مبلغ هزینه باید بیشتر از صفر و حداکثر یک‌هزار میلیارد ریال باشد."];
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
+            if (principal is null) return Results.Unauthorized();
+            var cost = await database.AddInternalCostAsync(orderId, input, principal.Email,
+                context.TraceIdentifier, principal.StoreId, audit, cancellationToken);
+            return cost is null
+                ? Results.NotFound(new { message = "سفارش پیدا نشد." })
+                : Results.Created($"/api/v1/admin/orders/{orderId}/internal-costs/{cost.Id}", cost);
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapDelete("/orders/{orderId:guid}/internal-costs/{costId:guid}", async (
+            Guid orderId,
+            Guid costId,
+            OrderManagementDatabase database,
+            AdminAuditLogDatabase audit,
+            HttpContext context,
+            CancellationToken cancellationToken) =>
+        {
+            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
+            if (principal is null) return Results.Unauthorized();
+            var removed = await database.RemoveInternalCostAsync(orderId, costId, principal.Email,
+                context.TraceIdentifier, principal.StoreId, audit, cancellationToken);
+            return removed ? Results.NoContent() : Results.NotFound(new { message = "هزینه داخلی پیدا نشد." });
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
         admin.MapPatch("/orders/{orderId:guid}/shipping", async (
@@ -267,6 +344,27 @@ public static class OrderManagementModule
             return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken, period));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
 
+        admin.MapGet("/analytics/price-history", async (
+            string? sku,
+            int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(sku) || sku.Trim().Length > 100)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["sku"] = ["گونهٔ کالا را انتخاب کنید."] });
+            var windowDays = Math.Clamp(days ?? 90, 1, 365);
+            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ زمانی نامعتبر است."] });
+            return Results.Ok(await database.PriceHistoryAsync(sku.Trim(), windowDays, period, cancellationToken));
+        }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapGet("/analytics/price-history/skus", async (
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) => Results.Ok(await database.PriceHistorySkusAsync(cancellationToken)))
+            .AddEndpointFilter<OwnerAuthorizationFilter>();
+
         admin.MapGet("/notifications", async (
             OrderManagementDatabase database, HttpContext context,
             CancellationToken cancellationToken) =>
@@ -403,6 +501,18 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             create index if not exists ix_checkout_orders_tracking_code on checkout_orders(tracking_code);
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "003-shipping-details", shippingDetailsSql, cancellationToken);
+        const string internalCostsSql = """
+            create table if not exists order_internal_costs (
+                id uuid primary key,
+                order_id uuid not null references checkout_orders(id) on delete cascade,
+                title varchar(160) not null check (char_length(title) between 1 and 160),
+                amount numeric(18,2) not null check (amount > 0),
+                actor varchar(180) not null,
+                created_at timestamptz not null
+            );
+            create index if not exists ix_order_internal_costs_order on order_internal_costs(order_id, created_at desc);
+            """;
+        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "006-internal-accounting-costs", internalCostsSql, cancellationToken);
         const string dashboardPreferencesSql = """
             create table if not exists admin_dashboard_role_preferences (
                 store_id varchar(120) not null,
@@ -442,7 +552,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         const string sql = """
             select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
                    o.created_at,o.reservation_expires_at,count(l.id)::int,
-                   coalesce(p.reference,''),coalesce(p.state,'')
+                   coalesce(p.reference,''),coalesce(p.state,''),o.is_private
             from checkout_orders o
             left join checkout_order_lines l on l.order_id=o.id
             left join payments p on p.order_id=o.id
@@ -486,7 +596,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
                 reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
                 reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12))));
+                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)), reader.GetBoolean(13)));
         }
         return result;
     }
@@ -502,7 +612,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                    o.currency,o.subtotal,o.shipping,o.shipping_expense,o.discount,o.payable,
                    o.tax_rate_percent,o.tax,o.shipping_method,o.shipping_carrier,o.tracking_code,o.shipped_at,
                    o.state,o.created_at,o.reservation_expires_at,
-                   count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,'')
+                   count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,''),o.is_private
             from checkout_orders o
             left join checkout_order_lines l on l.order_id=o.id
             left join payments p on p.order_id=o.id
@@ -518,11 +628,12 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
             reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(19)),
             reader.GetFieldValue<DateTimeOffset>(20), reader.GetFieldValue<DateTimeOffset>(21), reader.GetInt32(22),
-            EmptyToNull(reader.GetString(23)), EmptyToNull(reader.GetString(24)));
+            EmptyToNull(reader.GetString(23)), EmptyToNull(reader.GetString(24)), reader.GetBoolean(25));
         var detail = new AdminOrderDetail(
             summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
             reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
-            reader.GetString(15), EmptyToNull(reader.GetString(16)), EmptyToNull(reader.GetString(17)),
+            reader.GetString(15), reader.IsDBNull(16) ? null : EmptyToNull(reader.GetString(16)),
+            reader.IsDBNull(17) ? null : EmptyToNull(reader.GetString(17)),
             reader.IsDBNull(18) ? null : reader.GetFieldValue<DateTimeOffset>(18),
             Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
         await reader.CloseAsync();
@@ -557,6 +668,17 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 notes.Add(new AdminOrderNote(noteReader.GetGuid(0), noteReader.GetString(1), noteReader.GetString(2), noteReader.GetFieldValue<DateTimeOffset>(3)));
         }
 
+        var internalCosts = new List<AdminOrderInternalCost>();
+        const string internalCostsSelectSql = "select id,title,amount,actor,created_at from order_internal_costs where order_id=@id order by created_at desc;";
+        await using (var command = new NpgsqlCommand(internalCostsSelectSql, connection))
+        {
+            command.Parameters.AddWithValue("id", orderId);
+            await using var costReader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await costReader.ReadAsync(cancellationToken))
+                internalCosts.Add(new AdminOrderInternalCost(costReader.GetGuid(0), costReader.GetString(1),
+                    costReader.GetDecimal(2), costReader.GetString(3), costReader.GetFieldValue<DateTimeOffset>(4)));
+        }
+
         AdminPayment? payment = null;
         const string paymentSql = "select provider,amount,currency,state,reference,created_at,completed_at from payments where order_id=@id;";
         await using (var command = new NpgsqlCommand(paymentSql, connection))
@@ -567,7 +689,60 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 payment = new AdminPayment(paymentReader.GetString(0), paymentReader.GetDecimal(1), paymentReader.GetString(2), Enum.Parse<PaymentState>(paymentReader.GetString(3)), EmptyToNull(paymentReader.GetString(4)), paymentReader.GetFieldValue<DateTimeOffset>(5), paymentReader.IsDBNull(6) ? null : paymentReader.GetFieldValue<DateTimeOffset>(6));
         }
 
-        return detail with { Lines = lines, Transitions = transitions, Notes = notes, Payment = payment };
+        return detail with { Lines = lines, Transitions = transitions, Notes = notes, InternalCosts = internalCosts, Payment = payment };
+    }
+
+    public async Task<AdminOrderInternalCost?> AddInternalCostAsync(Guid orderId, AdminOrderInternalCostInput input,
+        string actor, string requestId, string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return null;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        var id = Guid.NewGuid();
+        const string sql = """
+            insert into order_internal_costs(id,order_id,title,amount,actor,created_at)
+            select @id,@order_id,@title,@amount,@actor,now()
+            where exists(select 1 from checkout_orders where id=@order_id)
+            returning id,title,amount,actor,created_at;
+            """;
+        AdminOrderInternalCost? added = null;
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("order_id", orderId);
+            command.Parameters.AddWithValue("title", input.Title.Trim());
+            command.Parameters.AddWithValue("amount", input.Amount);
+            command.Parameters.AddWithValue("actor", actor);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                added = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
+        }
+        if (added is not null)
+            await audit.RecordAsync(actor, "order.internal-cost.added", "order", orderId.ToString("D"), null,
+                added, "هزینه داخلی و غیرقابل‌مشاهده برای مشتری ثبت شد.", requestId, cancellationToken, storeId);
+        return added;
+    }
+
+    public async Task<bool> RemoveInternalCostAsync(Guid orderId, Guid costId, string actor, string requestId,
+        string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return false;
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        AdminOrderInternalCost? removed = null;
+        const string sql = "delete from order_internal_costs where id=@cost and order_id=@order returning id,title,amount,actor,created_at;";
+        await using (var command = new NpgsqlCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("cost", costId);
+            command.Parameters.AddWithValue("order", orderId);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                removed = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
+        }
+        if (removed is not null)
+            await audit.RecordAsync(actor, "order.internal-cost.removed", "order", orderId.ToString("D"),
+                removed, null, "هزینه داخلی از محاسبات حذف شد.", requestId, cancellationToken, storeId);
+        return removed is not null;
     }
 
     public async Task<AdminOrderNote?> AddNoteAsync(Guid orderId, string note, string actor, CancellationToken cancellationToken)
@@ -826,7 +1001,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
         const string orderSql = """
             select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
-                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0)
+                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0),
+                   coalesce(sum((select sum(c.amount) from order_internal_costs c where c.order_id=checkout_orders.id)),0)
             from checkout_orders
             where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
             """;
@@ -836,6 +1012,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         decimal shippingExpense;
         decimal shippingRevenue;
         decimal discount;
+        decimal internalCosts;
         await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
         {
             command.Parameters.AddWithValue("from", from);
@@ -848,6 +1025,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             shippingExpense = reader.GetDecimal(3);
             shippingRevenue = reader.GetDecimal(4);
             discount = reader.GetDecimal(5);
+            internalCosts = reader.GetDecimal(6);
         }
 
         const string lineSql = """
@@ -881,7 +1059,8 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         const string dailySql = """
             with line_costs as (
                 select l.order_id, sum(l.line_total) as merchandise,
-                       sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)) as cost
+                       sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)) as cost,
+                       coalesce((select sum(c.amount) from order_internal_costs c where c.order_id=l.order_id),0) as internal_cost
                 from checkout_order_lines l join checkout_orders o on o.id=l.order_id
                 where o.created_at >= @from and o.created_at < @to
                   and o.state in ('Paid','Preparing','Shipped','Delivered')
@@ -889,7 +1068,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             )
             select (o.created_at at time zone 'UTC')::date as day, count(*)::int,
                    coalesce(sum(o.payable),0),
-                   coalesce(sum(coalesce(l.merchandise,0)-o.discount-coalesce(l.cost,0)+o.shipping-o.shipping_expense),0)
+                   coalesce(sum(coalesce(l.merchandise,0)-o.discount-coalesce(l.cost,0)+o.shipping-o.shipping_expense-coalesce(l.internal_cost,0)),0)
             from checkout_orders o left join line_costs l on l.order_id=o.id
             where o.created_at >= @from and o.created_at < @to
               and o.state in ('Paid','Preparing','Shipped','Delivered')
@@ -919,7 +1098,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         }
         await transaction.CommitAsync(cancellationToken);
 
-        var cost = productCost + packagingCost + additionalCost;
+        var cost = productCost + packagingCost + additionalCost + internalCosts;
         // Customer payments include shipping and tax; tax is payable to the tax authority, not profit.
         var netMerchandiseRevenue = merchandiseRevenue - discount;
         var profit = netMerchandiseRevenue - cost;
@@ -927,7 +1106,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         var margin = netMerchandiseRevenue <= 0 ? 0 : profit / netMerchandiseRevenue * 100;
         return new AdminAnalytics(
             periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense,
-            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost, dailySales, orderStates);
+            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost, dailySales, orderStates, internalCosts);
     }
 
     public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
@@ -945,7 +1124,12 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                        coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost,
                         coalesce(sum(l.quantity * l.cost_price),0) as product_cost,
                         coalesce(sum(l.quantity * l.packaging_cost),0) as packaging_cost,
-                        coalesce(sum(l.quantity * l.additional_cost),0) as additional_cost
+                        coalesce(sum(l.quantity * l.additional_cost),0) as additional_cost,
+                       sum(l.quantity * l.item_quantity) as quantity_sold,
+                       max(l.base_unit) as base_unit,
+                       coalesce(sum(case when o.subtotal > 0 then
+                           (select sum(c.amount) from order_internal_costs c where c.order_id=o.id) * l.line_total / o.subtotal
+                           else 0 end),0) as allocated_internal_cost
                 from checkout_order_lines l
                 join checkout_orders o on o.id=l.order_id
                 where o.created_at >= @from and o.created_at < @to
@@ -953,7 +1137,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 group by l.product_title,l.sku,l.variant_label
             )
             select product_title,sku,variant_label,units_sold,revenue,discount,cost,
-                   product_cost,packaging_cost,additional_cost
+                   product_cost,packaging_cost,additional_cost,quantity_sold,base_unit,allocated_internal_cost
             from grouped
             order by (revenue - discount - cost) desc, product_title
             limit 200;
@@ -970,15 +1154,77 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         {
             var revenue = reader.GetDecimal(4);
             var discount = reader.GetDecimal(5);
-            var cost = reader.GetDecimal(6);
+            var cost = reader.GetDecimal(6) + reader.GetDecimal(12);
             var productCost = reader.GetDecimal(7);
             var packagingCost = reader.GetDecimal(8);
             var additionalCost = reader.GetDecimal(9);
             rows.Add(new AdminProductProfitability(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2),
                 reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount,
-                productCost, packagingCost, additionalCost));
+                productCost, packagingCost, additionalCost,
+                reader.IsDBNull(10) ? null : reader.GetDecimal(10),
+                reader.IsDBNull(11) ? null : reader.GetString(11), reader.GetDecimal(12)));
         }
+        return rows;
+    }
+
+    public async Task<IReadOnlyCollection<AdminPriceHistoryPoint>> PriceHistoryAsync(
+        string sku, int days, DashboardPeriod? period, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<AdminPriceHistoryPoint>();
+        var to = period?.To ?? DateTimeOffset.UtcNow;
+        var from = period?.From ?? to.AddDays(-days);
+        const string sql = """
+            select occurred_at,kind,amount,reference from (
+                select coalesce(purchased_at,created_at) as occurred_at, 'purchase'::text as kind,
+                       cost_price+packaging_cost+additional_cost as amount, batch_code as reference
+                from inventory_batches
+                where upper(sku)=upper(@sku) and coalesce(purchased_at,created_at)>=@from and coalesce(purchased_at,created_at)<@to
+                union all
+                select occurred_at, 'sale'::text,
+                       coalesce(nullif(after_json->>'Price','')::numeric,
+                                nullif(after_json->>'price','')::numeric,
+                                nullif(after_json #>> '{Quote,SellingPrice}','')::numeric,
+                                nullif(after_json #>> '{quote,sellingPrice}','')::numeric),
+                       action
+                from admin_audit_logs
+                where entity_type='ProductVariant' and upper(entity_id)=upper(@sku)
+                  and action in ('product.variant-added','product.selling-price-updated','inventory.price.applied')
+                  and occurred_at>=@from and occurred_at<@to
+            ) history
+            where amount is not null and amount>=0
+            order by occurred_at;
+            """;
+        var rows = new List<AdminPriceHistoryPoint>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("sku", sku);
+        command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", to);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add(new AdminPriceHistoryPoint(reader.GetFieldValue<DateTimeOffset>(0), reader.GetString(1),
+                reader.GetDecimal(2), reader.GetString(3)));
+        return rows;
+    }
+
+    public async Task<IReadOnlyCollection<AdminPriceHistorySku>> PriceHistorySkusAsync(CancellationToken cancellationToken)
+    {
+        if (!IsConfigured) return Array.Empty<AdminPriceHistorySku>();
+        const string sql = """
+            select v.sku,p.title,v.display_label
+            from product_variants v join products p on p.id=v.product_id
+            order by p.title,v.display_label
+            limit 500;
+            """;
+        var rows = new List<AdminPriceHistorySku>();
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add(new AdminPriceHistorySku(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         return rows;
     }
 
@@ -1122,10 +1368,11 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
         const string selectSql = """
-            select state,reservation_expires_at from checkout_orders where id=@id for update;
+            select state,reservation_expires_at,is_private from checkout_orders where id=@id for update;
             """;
         OrderState currentState;
         DateTimeOffset expiresAt;
+        bool isPrivate;
         await using (var command = new NpgsqlCommand(selectSql, connection, transaction))
         {
             command.Parameters.AddWithValue("id", orderId);
@@ -1137,6 +1384,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             }
             currentState = Enum.Parse<OrderState>(reader.GetString(0));
             expiresAt = reader.GetFieldValue<DateTimeOffset>(1);
+            isPrivate = reader.GetBoolean(2);
         }
 
         if (currentState == requestedState)
@@ -1146,7 +1394,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             return OrderOperationResult.Updated(existing);
         }
 
-        if (!IsAllowed(currentState, requestedState))
+        if (isPrivate && currentState == OrderState.AwaitingPayment && requestedState == OrderState.Paid && string.IsNullOrWhiteSpace(reason))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return OrderOperationResult.Conflict("برای تأیید پرداخت سفارش خصوصی، توضیح پرداخت را ثبت کنید.");
+        }
+
+        if (!IsAllowed(currentState, requestedState, isPrivate))
         {
             await transaction.RollbackAsync(cancellationToken);
             return OrderOperationResult.Conflict($"انتقال سفارش از {currentState} به {requestedState} مجاز نیست.");
@@ -1262,7 +1516,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         const string sql = """
             select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
                    o.created_at,o.reservation_expires_at,count(l.id)::int,
-                   coalesce(p.reference,''),coalesce(p.state,'')
+                   coalesce(p.reference,''),coalesce(p.state,''),o.is_private
             from checkout_orders o
             left join checkout_order_lines l on l.order_id=o.id
             left join payments p on p.order_id=o.id
@@ -1276,12 +1530,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         return new AdminOrderSummary(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
             reader.GetString(4), reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
             reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-            EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)));
+            EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)), reader.GetBoolean(13));
     }
 
-    private static bool IsAllowed(OrderState current, OrderState requested) => (current, requested) switch
+    private static bool IsAllowed(OrderState current, OrderState requested, bool isPrivate) => (current, requested) switch
     {
         (OrderState.AwaitingPayment, OrderState.Cancelled) => true,
+        (OrderState.AwaitingPayment, OrderState.Paid) => isPrivate,
         (OrderState.Paid, OrderState.Preparing) => true,
         (OrderState.Preparing, OrderState.Shipped) => true,
         (OrderState.Shipped, OrderState.Delivered) => true,
@@ -1307,12 +1562,13 @@ public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string M
 
 public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
     decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
-    int LineCount, string? PaymentReference, string? PaymentState);
+    int LineCount, string? PaymentReference, string? PaymentState, bool IsPrivate = false);
 public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address, string PostalCode, decimal Subtotal,
     decimal Shipping, decimal ShippingExpense, decimal Discount, decimal Tax, decimal TaxRatePercent, string ShippingMethod,
     string? ShippingCarrier, string? TrackingCode, DateTimeOffset? ShippedAt,
     IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions,
-    IReadOnlyCollection<AdminOrderNote> Notes, AdminPayment? Payment = null)
+    IReadOnlyCollection<AdminOrderNote> Notes, AdminPayment? Payment = null,
+    IReadOnlyCollection<AdminOrderInternalCost>? InternalCosts = null)
 {
     public Guid Id => Summary.Id;
     public string CustomerName => Summary.CustomerName;
@@ -1327,6 +1583,7 @@ public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address,
     public int LineCount => Summary.LineCount;
     public string? PaymentReference => Summary.PaymentReference;
     public string? PaymentState => Summary.PaymentState;
+    public bool IsPrivate => Summary.IsPrivate;
 
     public CheckoutOrder ToCheckoutOrder() => new(
         Id, string.Empty, CustomerName, Mobile, Province, City, Address, PostalCode, Currency,
@@ -1337,6 +1594,8 @@ public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address,
 public sealed record AdminOrderLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
 public sealed record AdminOrderTransition(OrderState State, string Actor, DateTimeOffset OccurredAt, string Reason);
 public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTimeOffset CreatedAt);
+public sealed record AdminOrderInternalCost(Guid Id, string Title, decimal Amount, string Actor, DateTimeOffset CreatedAt);
+public sealed record AdminOrderInternalCostInput(string Title, decimal Amount);
 public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
 public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
 public sealed record ExpiringStockItem(
@@ -1404,16 +1663,22 @@ public sealed record AdminProductProfitability(
     decimal Discount = 0,
     decimal ProductCost = 0,
     decimal PackagingCost = 0,
-    decimal AdditionalCost = 0);
+    decimal AdditionalCost = 0,
+    decimal? QuantitySold = null,
+    string? BaseUnit = null,
+    decimal OrderInternalCost = 0);
 public sealed record AdminAnalytics(
     int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
     decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,
     decimal MerchandiseRevenue = 0, decimal Discount = 0, decimal ShippingRevenue = 0,
     decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,
     IReadOnlyCollection<AdminDailySales>? DailySales = null,
-    IReadOnlyCollection<AdminOrderStateCount>? OrderStates = null);
+    IReadOnlyCollection<AdminOrderStateCount>? OrderStates = null,
+    decimal OrderInternalCosts = 0);
 public sealed record AdminDailySales(DateOnly Day, int OrderCount, decimal Revenue, decimal NetProfit);
 public sealed record AdminOrderStateCount(string State, int Count);
+public sealed record AdminPriceHistoryPoint(DateTimeOffset OccurredAt, string Kind, decimal Amount, string Reference);
+public sealed record AdminPriceHistorySku(string Sku, string ProductTitle, string VariantLabel);
 public sealed record AdminNotification(
     string Type,
     string Title,

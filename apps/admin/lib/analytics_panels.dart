@@ -56,6 +56,12 @@ class _ChartCard extends StatelessWidget {
   final String title, subtitle;
   final Widget child;
   final Widget? action;
+  String get _help => switch (title) {
+    'روند فروش و سود' => 'فروش، مبلغ کالاهای سفارش‌های پرداخت‌شده را نشان می‌دهد. سود پس از کم‌کردن بهای ثبت‌شدهٔ کالا و هزینهٔ ارسال نمایش داده می‌شود؛ اطلاعات نمودار بر پایهٔ روز ثبت سفارش است.',
+    'وضعیت سفارش‌ها' => 'تعداد سفارش‌های بازه را بر اساس آخرین وضعیت هر سفارش نشان می‌دهد. سفارش لغوشده درآمد پرداخت‌شده محسوب نمی‌شود.',
+    'محصولات پرفروش' => 'رتبه‌بندی فعلی بر اساس تعداد بسته‌های فروخته‌شده است؛ تا زمان ثبت وزن هر قلم در snapshot سفارش، این عدد معادل کیلوگرم نیست.',
+    _ => 'مقدارهای این نمودار از سفارش‌های ثبت‌شده در بازهٔ انتخابی محاسبه می‌شوند.',
+  };
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -63,13 +69,21 @@ class _ChartCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w600,
-              color: AdminColors.heading,
-            ),
+          Row(
+            children: [
+              Expanded(child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: AdminColors.heading,
+                ),
+              )),
+              Tooltip(
+                message: _help,
+                child: const Icon(Icons.info_outline_rounded, size: 18, color: AdminColors.subtle),
+              ),
+            ],
           ),
           if (action != null) ...[const SizedBox(height: 12), action!],
           const SizedBox(height: 6),
@@ -490,4 +504,87 @@ class _BestSellers extends StatelessWidget {
       ),
     );
   }
+}
+
+class AdminPriceHistoryChart extends StatelessWidget {
+  const AdminPriceHistoryChart({super.key, required this.points});
+  final List<AdminPriceHistoryPoint> points;
+
+  @override
+  Widget build(BuildContext context) {
+    final sorted = [...points]..sort((a, b) => a.occurredAt.compareTo(b.occurredAt));
+    final first = sorted.first.occurredAt;
+    final last = sorted.last.occurredAt;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Wrap(spacing: 18, runSpacing: 8, children: [
+        _legend('قیمت خرید هر بسته', AdminColors.amber),
+        _legend('قیمت فروش', AdminColors.primary),
+      ]),
+      const SizedBox(height: 12),
+      SizedBox(height: 190, child: CustomPaint(painter: _PriceHistoryPainter(sorted))),
+      const SizedBox(height: 8),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(formatCalendarDate(first, Localizations.localeOf(context)), style: const TextStyle(fontSize: 10, color: AdminColors.muted)),
+        Text(formatCalendarDate(last, Localizations.localeOf(context)), style: const TextStyle(fontSize: 10, color: AdminColors.muted)),
+      ]),
+    ]);
+  }
+
+  Widget _legend(String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
+    Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+    const SizedBox(width: 6),
+    Text(label, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+  ]);
+}
+
+class _PriceHistoryPainter extends CustomPainter {
+  _PriceHistoryPainter(this.points);
+  final List<AdminPriceHistoryPoint> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const inset = 8.0;
+    final rect = Rect.fromLTWH(inset, inset, size.width - inset * 2, size.height - inset * 2);
+    final amounts = points.map((point) => point.amount.toDouble()).toList();
+    var minValue = amounts.reduce(math.min);
+    var maxValue = amounts.reduce(math.max);
+    if (maxValue == minValue) {
+      minValue = math.max(0, minValue * .9);
+      maxValue = maxValue == 0 ? 1 : maxValue * 1.1;
+    } else {
+      final padding = (maxValue - minValue) * .1;
+      minValue = math.max(0, minValue - padding);
+      maxValue += padding;
+    }
+    final gridPaint = Paint()..color = AdminColors.border.withValues(alpha: .75)..strokeWidth = 1;
+    for (var i = 0; i < 4; i++) {
+      final y = rect.top + rect.height * i / 3;
+      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
+    }
+    final first = points.first.occurredAt.millisecondsSinceEpoch.toDouble();
+    final last = points.last.occurredAt.millisecondsSinceEpoch.toDouble();
+    final timeSpan = math.max(1, last - first);
+    Offset offset(AdminPriceHistoryPoint point) {
+      final x = rect.left + ((point.occurredAt.millisecondsSinceEpoch - first) / timeSpan) * rect.width;
+      final y = rect.bottom - ((point.amount.toDouble() - minValue) / (maxValue - minValue)) * rect.height;
+      return Offset(x, y);
+    }
+    for (final kind in ['purchase', 'sale']) {
+      final series = points.where((point) => point.kind == kind).toList();
+      if (series.isEmpty) continue;
+      final color = kind == 'purchase' ? AdminColors.amber : AdminColors.primary;
+      final path = Path()..moveTo(offset(series.first).dx, offset(series.first).dy);
+      for (final point in series.skip(1)) {
+        final pointOffset = offset(point);
+        path.lineTo(pointOffset.dx, pointOffset.dy);
+      }
+      final paint = Paint()..color = color..style = PaintingStyle.stroke..strokeWidth = 2.5..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round;
+      canvas.drawPath(path, paint);
+      final dotPaint = Paint()..color = color;
+      for (final point in series) canvas.drawCircle(offset(point), 4, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PriceHistoryPainter oldDelegate) => oldDelegate.points != points;
 }

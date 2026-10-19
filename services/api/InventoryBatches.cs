@@ -17,7 +17,8 @@ public sealed record InventoryBatchRequest(
     string? SupplierPhone = null,
     string? SupplierEmail = null,
     string? SupplierAddress = null,
-    string? SupplierNotes = null)
+    string? SupplierNotes = null,
+    bool OpeningStock = false)
 {
     public Dictionary<string, string[]> Validate()
     {
@@ -174,10 +175,30 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
         pendingReservation.Parameters.AddWithValue("sku", sku);
         var hasPendingReservation = (bool)(await pendingReservation.ExecuteScalarAsync(cancellationToken) ?? false);
 
-        if (!hasBatchHistory && (availablePackages > 0 || hasPendingReservation))
+        if (request.OpeningStock && hasBatchHistory)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return (null, "موجودی قدیمیِ بدون بچ یا رزرو پرداخت‌نشده باقی مانده است؛ پس از مصرف یا آزادسازی آن، ثبت اولین خرید بچ‌دار را انجام دهید.");
+            return (null, "برای این کالا قبلاً بچ ثبت شده است؛ موجودی جدید را به‌عنوان خرید تازه ثبت کنید.");
+        }
+        if (request.OpeningStock && hasPendingReservation)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, "برای این کالا سفارش در انتظار پرداخت وجود دارد؛ پس از تعیین تکلیف سفارش، موجودی فعلی را ثبت کنید.");
+        }
+        if (request.OpeningStock && availablePackages <= 0)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, "موجودی فعلی برای ثبت بچ افتتاحیه وجود ندارد؛ خرید جدید را ثبت کنید.");
+        }
+        if (request.OpeningStock && request.ReceivedPackages != availablePackages)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, $"تعداد ثبت‌شده باید برابر موجودی فعلی باشد ({availablePackages} بسته) تا موجودی دوباره شمرده نشود.");
+        }
+        if (!request.OpeningStock && !hasBatchHistory && (availablePackages > 0 || hasPendingReservation))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return (null, "موجودی فعلی هنوز بچ و تاریخ انقضا ندارد. ابتدا گزینهٔ ثبت موجودی فعلی را انتخاب کنید؛ سفارش‌های در انتظار پرداخت باید تعیین تکلیف شوند.");
         }
 
         var id = Guid.NewGuid();
@@ -223,13 +244,14 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             }
         }
 
-        const string stockSql = """
-            update product_variants set available_packages=available_packages+@quantity
-            where upper(sku)=upper(@sku)
-            returning available_packages;
-            """;
-        await using (var stock = new NpgsqlCommand(stockSql, connection, transaction))
+        if (!request.OpeningStock)
         {
+            const string stockSql = """
+                update product_variants set available_packages=available_packages+@quantity
+                where upper(sku)=upper(@sku)
+                returning available_packages;
+                """;
+            await using var stock = new NpgsqlCommand(stockSql, connection, transaction);
             stock.Parameters.AddWithValue("quantity", request.ReceivedPackages);
             stock.Parameters.AddWithValue("sku", sku);
             var balance = await stock.ExecuteScalarAsync(cancellationToken);
@@ -246,8 +268,10 @@ public sealed class InventoryBatchDatabase(IConfiguration configuration, ILogger
             request.ReceivedPackages, request.ProducedAt, request.ExpiresAt, request.CostPrice,
             request.PackagingCost, request.AdditionalCost, request.ExpiresAt <= DateTimeOffset.UtcNow, createdAt, purchasedAt, supplier,
             supplierContactName, supplierPhone, supplierEmail, supplierAddress, supplierNotes);
-        await audit.RecordAsync(connection, transaction, actor, "inventory.purchase.received", "InventoryBatch",
-            id.ToString(), null, batch, "inventory-purchase-received", requestId, cancellationToken);
+        await audit.RecordAsync(connection, transaction, actor,
+            request.OpeningStock ? "inventory.opening_batch.registered" : "inventory.purchase.received", "InventoryBatch",
+            id.ToString(), null, new { batch, openingStock = request.OpeningStock, availablePackagesUnchanged = request.OpeningStock },
+            request.OpeningStock ? "inventory-opening-batch-registered" : "inventory-purchase-received", requestId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return (batch, null);
     }

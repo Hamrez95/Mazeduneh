@@ -567,7 +567,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                       const SizedBox(height: 24),
                       const _SectionTitle(
                         title: 'اطلاعات خوراکی و نگهداری',
-                        subtitle: 'این اطلاعات مستقیماً از پنل به صفحه محصول منتقل می‌شود و hard-code نیست.',
+                        subtitle: 'ماندگاری و نوع تاریخ، اطلاعات عمومی صفحه محصول است؛ تاریخ واقعی هر سری خرید را در بخش انبار ثبت کنید.',
                       ),
                       const SizedBox(height: 12),
                       Wrap(spacing: 12, runSpacing: 12, children: [
@@ -577,7 +577,7 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                         _Input(width: 430, controller: storageInstructions, label: 'نحوه نگهداری', hint: 'در جای خشک و خنک نگهداری شود', maxLines: 3),
                         _Input(width: 210, controller: shelfLifeDays, label: 'ماندگاری (روز)', validator: _optionalNonNegativeInt, keyboardType: TextInputType.number),
                         _Input(width: 210, controller: netWeight, label: 'وزن خالص', validator: _optionalNumber, keyboardType: TextInputType.number),
-                        _Input(width: 210, controller: expiryLabel, label: 'نوع تاریخ', hint: 'best-before'),
+                        _Input(width: 210, controller: expiryLabel, label: 'عنوان تاریخ روی بسته', hint: 'بهترین زمان مصرف'),
                       ]),
                       const SizedBox(height: 24),
                       const _SectionTitle(title: 'تصاویر و سئوی محصول', subtitle: 'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.'),
@@ -742,7 +742,7 @@ class _VariantEditor extends StatelessWidget {
                 _Input(
                   width: 170,
                   controller: draft.costPriceToman,
-                  label: 'قیمت خرید/مواد (تومان)',
+                  label: 'هزینه خرید/مواد هر بسته (تومان)',
                   validator: _nonNegativeToman,
                   keyboardType: TextInputType.number,
                   groupThousands: true,
@@ -772,6 +772,15 @@ class _VariantEditor extends StatelessWidget {
                   groupThousands: true,
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'این مقادیر هزینهٔ پایهٔ همین بسته‌اند. برای محاسبهٔ دقیق‌تر سود هر سفارش، بهای واقعی هر خرید را هنگام ثبت دریافت کالا در انبار هم وارد کنید.',
+              style: TextStyle(
+                color: AdminColors.muted,
+                fontSize: 11,
+                height: 1.7,
+              ),
             ),
           ],
         ),

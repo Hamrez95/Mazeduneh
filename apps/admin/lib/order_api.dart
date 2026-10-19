@@ -144,6 +144,28 @@ class OrderApiClient {
     return decoded.map((item) => AdminProductProfitability.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<AdminPriceHistoryPoint>> fetchPriceHistory(String sku, {int days = 90, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    final query = <String, String>{
+      'sku': sku,
+      if (fromUtc == null) 'days': '$days',
+      if (fromUtc != null) 'from': fromUtc.toUtc().toIso8601String(),
+      if (toUtcExclusive != null) 'to': toUtcExclusive.toUtc().toIso8601String(),
+    };
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics/price-history').replace(queryParameters: query), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => AdminPriceHistoryPoint.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<AdminPriceHistorySku>> fetchPriceHistorySkus() async {
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/analytics/price-history/skus'), headers: _headers());
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as List<dynamic>;
+    return decoded.map((item) => AdminPriceHistorySku.fromJson(item as Map<String, dynamic>)).toList();
+  }
+
   Future<AdminNotifications> fetchNotifications() async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/notifications'), headers: _headers());
     _guard(response);
@@ -230,6 +252,7 @@ class OrderApiClient {
     String? supplierEmail,
     String? supplierAddress,
     String? supplierNotes,
+    bool openingStock = false,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/api/v1/admin/inventory/batches'),
@@ -245,6 +268,7 @@ class OrderApiClient {
         if (supplierEmail?.trim().isNotEmpty == true) 'supplierEmail': supplierEmail!.trim(),
         if (supplierAddress?.trim().isNotEmpty == true) 'supplierAddress': supplierAddress!.trim(),
         if (supplierNotes?.trim().isNotEmpty == true) 'supplierNotes': supplierNotes!.trim(),
+        'openingStock': openingStock,
       }),
     );
     _guard(response);
@@ -281,6 +305,17 @@ class OrderApiClient {
     return AdminOrderDetail.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
   }
 
+  Future<String> createPrivateOrder(Map<String, dynamic> request) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/orders/private'),
+      headers: _headers(json: true),
+      body: jsonEncode(request),
+    );
+    _guard(response);
+    if (response.statusCode != 201) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return (jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>)['id'].toString();
+  }
+
   Future<String> fetchInvoiceHtml(String orderId) async {
     final response = await _client.get(Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/invoice'), headers: _headers());
     _guard(response);
@@ -304,6 +339,26 @@ class OrderApiClient {
     _guard(response);
     if (response.statusCode != 201) throw OrderApiException(_message(response), statusCode: response.statusCode);
     return AdminOrderNote.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<AdminOrderInternalCost> addInternalCost(String orderId, String title, num amount) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/internal-costs'),
+      headers: _headers(json: true),
+      body: jsonEncode({'title': title, 'amount': amount}),
+    );
+    _guard(response);
+    if (response.statusCode != 201) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return AdminOrderInternalCost.fromJson(jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>);
+  }
+
+  Future<void> removeInternalCost(String orderId, String costId) async {
+    final response = await _client.delete(
+      Uri.parse('$baseUrl/api/v1/admin/orders/$orderId/internal-costs/$costId'),
+      headers: _headers(),
+    );
+    _guard(response);
+    if (response.statusCode != 204) throw OrderApiException(_message(response), statusCode: response.statusCode);
   }
 
   Future<AdminOrderDetail> updateShipping(String orderId, {String? carrier, String? trackingCode, num? actualShippingCost, bool updateActualShippingCost = true, String? stepUpToken, required String reason}) async {
@@ -334,7 +389,7 @@ class OrderApiClient {
 }
 
 class AdminOrder {
-  const AdminOrder({required this.id, required this.customerName, required this.mobile, required this.province, required this.city, required this.payable, required this.currency, required this.state, required this.createdAt, required this.reservationExpiresAt, required this.lineCount, this.paymentReference, this.paymentState});
+  const AdminOrder({required this.id, required this.customerName, required this.mobile, required this.province, required this.city, required this.payable, required this.currency, required this.state, required this.createdAt, required this.reservationExpiresAt, required this.lineCount, this.paymentReference, this.paymentState, this.isPrivate = false});
   final String id;
   final String customerName;
   final String mobile;
@@ -348,15 +403,16 @@ class AdminOrder {
   final int lineCount;
   final String? paymentReference;
   final String? paymentState;
+  final bool isPrivate;
 
-  String? get nextState => switch (state) {'Paid' => 'Preparing', 'Preparing' => 'Shipped', 'Shipped' => 'Delivered', _ => null};
+  String? get nextState => switch ((state, isPrivate)) { ('AwaitingPayment', true) => 'Paid', ('Paid', _) => 'Preparing', ('Preparing', _) => 'Shipped', ('Shipped', _) => 'Delivered', _ => null};
 
   factory AdminOrder.fromJson(Map<String, dynamic> json) => AdminOrder(
     id: json['id'].toString(), customerName: json['customerName'] as String, mobile: json['mobile'] as String,
     province: json['province'] as String, city: json['city'] as String, payable: json['payable'] as num,
     currency: json['currency'] as String, state: json['state'].toString(), createdAt: DateTime.parse(json['createdAt'] as String),
     reservationExpiresAt: DateTime.parse(json['reservationExpiresAt'] as String), lineCount: json['lineCount'] as int,
-    paymentReference: json['paymentReference'] as String?, paymentState: json['paymentState'] as String?);
+    paymentReference: json['paymentReference'] as String?, paymentState: json['paymentState'] as String?, isPrivate: json['isPrivate'] as bool? ?? false);
 }
 
 class AdminOverdueShipment {
@@ -447,6 +503,7 @@ class AdminOrderDetail {
     required this.lines,
     required this.transitions,
     required this.notes,
+    this.internalCosts = const [],
     this.payment,
   });
 
@@ -466,6 +523,7 @@ class AdminOrderDetail {
   final List<AdminOrderLine> lines;
   final List<AdminOrderTransition> transitions;
   final List<AdminOrderNote> notes;
+  final List<AdminOrderInternalCost> internalCosts;
   final AdminPayment? payment;
 
   factory AdminOrderDetail.fromJson(Map<String, dynamic> json) => AdminOrderDetail(
@@ -485,6 +543,7 @@ class AdminOrderDetail {
         lines: (json['lines'] as List<dynamic>).map((item) => AdminOrderLine.fromJson(item as Map<String, dynamic>)).toList(),
         transitions: (json['transitions'] as List<dynamic>).map((item) => AdminOrderTransition.fromJson(item as Map<String, dynamic>)).toList(),
         notes: (json['notes'] as List<dynamic>? ?? const []).map((item) => AdminOrderNote.fromJson(item as Map<String, dynamic>)).toList(),
+        internalCosts: (json['internalCosts'] as List<dynamic>? ?? const []).map((item) => AdminOrderInternalCost.fromJson(item as Map<String, dynamic>)).toList(),
         payment: json['payment'] is Map<String, dynamic> ? AdminPayment.fromJson(json['payment'] as Map<String, dynamic>) : null,
       );
 }
@@ -536,6 +595,23 @@ class AdminOrderNote {
         actor: json['actor'] as String,
         createdAt: DateTime.parse(json['createdAt'] as String),
       );
+}
+
+class AdminOrderInternalCost {
+  const AdminOrderInternalCost({required this.id, required this.title, required this.amount, required this.actor, required this.createdAt});
+  final String id;
+  final String title;
+  final num amount;
+  final String actor;
+  final DateTime createdAt;
+
+  factory AdminOrderInternalCost.fromJson(Map<String, dynamic> json) => AdminOrderInternalCost(
+    id: json['id'].toString(),
+    title: json['title'] as String,
+    amount: json['amount'] as num,
+    actor: json['actor'] as String,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+  );
 }
 
 class AdminPayment {
@@ -650,6 +726,9 @@ class AdminProductProfitability {
     this.productCost = 0,
     this.packagingCost = 0,
     this.additionalCost = 0,
+    this.quantitySold,
+    this.baseUnit,
+    this.orderInternalCost = 0,
   });
 
   final String productTitle;
@@ -663,7 +742,10 @@ class AdminProductProfitability {
   final num productCost;
   final num packagingCost;
   final num additionalCost;
-  bool get hasCostBreakdown => productCost != 0 || packagingCost != 0 || additionalCost != 0;
+  final num? quantitySold;
+  final String? baseUnit;
+  final num orderInternalCost;
+  bool get hasCostBreakdown => productCost != 0 || packagingCost != 0 || additionalCost != 0 || orderInternalCost != 0;
 
   factory AdminProductProfitability.fromJson(Map<String, dynamic> json) => AdminProductProfitability(
         productTitle: json['productTitle'] as String,
@@ -677,6 +759,9 @@ class AdminProductProfitability {
         productCost: (json['productCost'] as num?) ?? 0,
         packagingCost: (json['packagingCost'] as num?) ?? 0,
         additionalCost: (json['additionalCost'] as num?) ?? 0,
+        quantitySold: json['quantitySold'] as num?,
+        baseUnit: json['baseUnit'] as String?,
+        orderInternalCost: (json['orderInternalCost'] as num?) ?? 0,
       );
 }
 
@@ -698,6 +783,7 @@ class AdminAnalytics {
     this.productCost = 0,
     this.packagingCost = 0,
     this.additionalCost = 0,
+    this.orderInternalCosts = 0,
     this.dailySales = const [],
     this.orderStates = const [],
   });
@@ -719,6 +805,7 @@ class AdminAnalytics {
   final num productCost;
   final num packagingCost;
   final num additionalCost;
+  final num orderInternalCosts;
   factory AdminAnalytics.fromJson(Map<String, dynamic> json) => AdminAnalytics(
     dailySales: (json['dailySales'] as List? ?? const []).map((x) => AdminDailySales.fromJson(x as Map<String, dynamic>)).toList(),
     orderStates: (json['orderStates'] as List? ?? const []).map((x) => AdminOrderStateCount(x['state'] as String, x['count'] as int)).toList(),
@@ -738,6 +825,7 @@ class AdminAnalytics {
     productCost: (json['productCost'] as num?) ?? (json['cost'] as num),
     packagingCost: (json['packagingCost'] as num?) ?? 0,
     additionalCost: (json['additionalCost'] as num?) ?? 0,
+    orderInternalCosts: (json['orderInternalCosts'] as num?) ?? 0,
   );
 }
 
@@ -754,6 +842,33 @@ class AdminOrderStateCount {
   const AdminOrderStateCount(this.state, this.count);
   final String state;
   final int count;
+}
+
+class AdminPriceHistoryPoint {
+  const AdminPriceHistoryPoint({required this.occurredAt, required this.kind, required this.amount, required this.reference});
+  final DateTime occurredAt;
+  final String kind;
+  final num amount;
+  final String reference;
+
+  factory AdminPriceHistoryPoint.fromJson(Map<String, dynamic> json) => AdminPriceHistoryPoint(
+    occurredAt: DateTime.parse(json['occurredAt'] as String),
+    kind: json['kind'] as String,
+    amount: json['amount'] as num,
+    reference: json['reference'] as String,
+  );
+}
+
+class AdminPriceHistorySku {
+  const AdminPriceHistorySku({required this.sku, required this.productTitle, required this.variantLabel});
+  final String sku;
+  final String productTitle;
+  final String variantLabel;
+  factory AdminPriceHistorySku.fromJson(Map<String, dynamic> json) => AdminPriceHistorySku(
+    sku: json['sku'] as String,
+    productTitle: json['productTitle'] as String,
+    variantLabel: json['variantLabel'] as String,
+  );
 }
 
 class AdminNavigationTarget {

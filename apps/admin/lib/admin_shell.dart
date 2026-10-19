@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'admin_state.dart';
 import 'admin_theme.dart';
+import 'admin_permissions.dart';
 import 'admin_users_page.dart';
 import 'audit_log_page.dart';
 import 'auth_api.dart';
@@ -21,6 +24,7 @@ import 'order_api.dart';
 import 'orders_page.dart';
 import 'reports_page.dart';
 import 'promotions_page.dart';
+import 'formatters.dart';
 
 class AdminShell extends StatefulWidget {
   const AdminShell({
@@ -42,7 +46,11 @@ class _AdminShellState extends State<AdminShell> {
   var navigation = const AdminNavigationIntent(module: AdminModule.dashboard);
   final navigationHistory = <AdminNavigationIntent>[];
   final catalogKey = GlobalKey<CatalogPageState>();
+  final navigationBadgeCounts = <AdminModule, int>{};
   bool collapsed = false;
+  int dashboardRefreshRevision = 0;
+  Timer? _navigationBadgeTimer;
+  bool _refreshingNavigationBadges = false;
 
   @override
   void initState() {
@@ -57,6 +65,57 @@ class _AdminShellState extends State<AdminShell> {
           module: AdminModule.values[firstAllowed],
         );
       }
+    }
+    if (OwnerSession.instance.isAuthenticated &&
+        OwnerSession.instance.can(AdminPermissions.dashboardRead)) {
+      unawaited(_refreshNavigationBadges());
+      _navigationBadgeTimer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => unawaited(_refreshNavigationBadges()),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _navigationBadgeTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshNavigationBadges() async {
+    if (_refreshingNavigationBadges ||
+        !OwnerSession.instance.isAuthenticated ||
+        !OwnerSession.instance.can(AdminPermissions.dashboardRead)) {
+      return;
+    }
+    _refreshingNavigationBadges = true;
+    try {
+      final api = widget.dashboardApi ?? widget.ordersApi ?? OrderApiClient();
+      final results = await Future.wait([
+        api.fetchDashboard(),
+        api.fetchNotifications(),
+      ]);
+      if (!mounted) return;
+      final dashboard = results[0] as AdminDashboard;
+      final notifications = results[1] as AdminNotifications;
+      final counts = <AdminModule, int>{
+        AdminModule.orders: dashboard.awaitingPayment + dashboard.processing,
+        AdminModule.inventory:
+            notifications.lowStockItems + dashboard.expiringSoon.length,
+        AdminModule.corporate:
+            dashboard.corporateNewRequests +
+            notifications.corporateOverdueFollowUps,
+        AdminModule.notifications: notifications.count,
+      };
+      setState(() {
+        navigationBadgeCounts
+          ..clear()
+          ..addEntries(counts.entries.where((entry) => entry.value > 0));
+      });
+    } catch (_) {
+      // Keep the last known counts if the API is temporarily unavailable.
+    } finally {
+      _refreshingNavigationBadges = false;
     }
   }
 
@@ -145,7 +204,7 @@ class _AdminShellState extends State<AdminShell> {
                   destinations: [
                     for (final module in primary)
                       NavigationDestination(
-                        icon: Icon(module.icon),
+                        icon: _moduleIcon(module),
                         label: module.label,
                       ),
                     if (secondary.isNotEmpty)
@@ -355,12 +414,12 @@ class _AdminShellState extends State<AdminShell> {
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: collapsed ? 14 : 12,
                     ),
-                    leading: Icon(
-                      module.icon,
+                    leading: _moduleIcon(
+                      module,
                       color: index == module.index
                           ? Colors.white
                           : AdminColors.text,
-                      size: 21,
+                      showBadge: collapsed,
                     ),
                     title: collapsed
                         ? null
@@ -373,6 +432,9 @@ class _AdminShellState extends State<AdminShell> {
                               fontSize: 13,
                             ),
                           ),
+                    trailing: !collapsed && _badgeCount(module) > 0
+                        ? _countPill(_badgeCount(module))
+                        : null,
                     onTap: () => _selectModule(module.index),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(6),
@@ -385,6 +447,56 @@ class _AdminShellState extends State<AdminShell> {
       ],
     );
   }
+
+  int _badgeCount(AdminModule module) => navigationBadgeCounts[module] ?? 0;
+
+  Widget _moduleIcon(
+    AdminModule module, {
+    Color? color,
+    bool showBadge = true,
+  }) {
+    final count = _badgeCount(module);
+    return Semantics(
+      label: count > 0
+          ? '${module.label}، ${formatPersianInteger(count)} مورد نیازمند پیگیری'
+          : module.label,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Icon(module.icon, color: color, size: 21),
+          if (showBadge && count > 0)
+            PositionedDirectional(
+              top: -7,
+              end: -9,
+              child: _countPill(count, compact: true),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _countPill(int count, {bool compact = false}) => Container(
+    constraints: BoxConstraints(
+      minWidth: compact ? 17 : 22,
+      minHeight: compact ? 17 : 20,
+    ),
+    padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 6, vertical: 1),
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: AdminColors.coral,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AdminColors.surface, width: compact ? 1.5 : 0),
+    ),
+    child: Text(
+      count > 99 ? '${formatPersianInteger(99)}+' : formatPersianInteger(count),
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: compact ? 9 : 10,
+        fontWeight: FontWeight.w800,
+        height: 1,
+      ),
+    ),
+  );
 
   Widget _topbar() => Padding(
     padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -626,6 +738,7 @@ class _AdminShellState extends State<AdminShell> {
       navigationHistory.add(navigation);
       navigation = intent;
       index = destination;
+      if (intent.module == AdminModule.dashboard) dashboardRefreshRevision++;
     });
   }
 
@@ -637,6 +750,9 @@ class _AdminShellState extends State<AdminShell> {
       navigation = AdminNavigationIntent(
         module: AdminModule.values[destination],
       );
+      if (AdminModule.values[destination] == AdminModule.dashboard) {
+        dashboardRefreshRevision++;
+      }
     });
   }
 
@@ -646,6 +762,7 @@ class _AdminShellState extends State<AdminShell> {
     setState(() {
       navigation = previous;
       index = AdminModule.values.indexOf(previous.module);
+      if (previous.module == AdminModule.dashboard) dashboardRefreshRevision++;
     });
   }
 
@@ -671,9 +788,15 @@ class _AdminShellState extends State<AdminShell> {
               ListTile(
                 selected: index == AdminModule.values.indexOf(module),
                 selectedTileColor: AdminColors.mintSoft,
-                leading: Icon(module.icon, color: AdminColors.ink),
+                leading: _moduleIcon(
+                  module,
+                  color: AdminColors.ink,
+                  showBadge: false,
+                ),
                 title: Text(module.label),
-                trailing: const Icon(Icons.arrow_back_rounded, size: 18),
+                trailing: _badgeCount(module) > 0
+                    ? _countPill(_badgeCount(module))
+                    : const Icon(Icons.arrow_back_rounded, size: 18),
                 onTap: () => Navigator.pop(context, module),
               ),
           ],
@@ -687,7 +810,11 @@ class _AdminShellState extends State<AdminShell> {
   Widget _modulePage(AdminModule module) => switch (module) {
     AdminModule.dashboard => AdminPermissionGate(
       permission: module.permission,
-      child: DashboardPage(api: widget.dashboardApi, onNavigate: _navigate),
+      child: DashboardPage(
+        api: widget.dashboardApi,
+        onNavigate: _navigate,
+        refreshRevision: dashboardRefreshRevision,
+      ),
     ),
     AdminModule.orders => AdminPermissionGate(
       permission: module.permission,

@@ -173,7 +173,7 @@ public sealed class CheckoutService(ProductCatalog catalog, CheckoutDatabase dat
 
                 lines.Add(new CheckoutLine(item.product.Title, item.variant.Sku, item.variant.DisplayLabel,
                     requested.Quantity, item.variant.Price, item.variant.Price * requested.Quantity, item.variant.CostPrice,
-                    item.variant.PackagingCost, item.variant.AdditionalCost));
+                    item.variant.PackagingCost, item.variant.AdditionalCost, null, item.variant.Quantity, item.variant.BaseUnit));
             }
 
             if (unavailable.Count > 0)
@@ -257,7 +257,8 @@ public sealed record RevokeMarketingConsentRequest(string ReceiptToken);
 public sealed record CheckoutBatchAllocation(string BatchCode, DateTimeOffset ExpiresAt, int Quantity, decimal CostPrice, decimal PackagingCost, decimal AdditionalCost);
 public sealed record CheckoutLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal,
     decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,
-    IReadOnlyCollection<CheckoutBatchAllocation>? BatchAllocations = null);
+    IReadOnlyCollection<CheckoutBatchAllocation>? BatchAllocations = null,
+    decimal? ItemQuantity = null, string? BaseUnit = null);
 public sealed record CheckoutOrder(Guid Id, string ReceiptToken, string CustomerName, string Mobile, string Province,
     string City, string Address, string PostalCode, string Currency, IReadOnlyCollection<CheckoutLine> Lines,
     string ShippingMethod, decimal Subtotal, decimal Shipping, decimal ShippingExpense, decimal Discount, decimal TaxRatePercent, decimal Tax,

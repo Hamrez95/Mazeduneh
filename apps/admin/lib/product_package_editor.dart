@@ -17,6 +17,8 @@ class ProductPackageDraft {
     }
   }
   final ProductVariant? original;
+  /// Weight entered by the operator is converted to the catalog's canonical grams.
+  String quantityUnit = 'gram';
   final sku = TextEditingController(),
       quantity = TextEditingController(),
       label = TextEditingController();
@@ -27,14 +29,28 @@ class ProductPackageDraft {
       formatPersianNumber(rial / 10, fractionDigits: rial % 10 == 0 ? 0 : 3);
   String displayLabel(String unitType) => label.text.trim().isNotEmpty
       ? label.text.trim()
-      : '${formatPersianNumber(parsePersianNumber(quantity.text) ?? 0, fractionDigits: (parsePersianNumber(quantity.text) ?? 0) % 1 == 0 ? 0 : 2)} ${unitType == 'Weight' ? 'گرم' : 'عدد'}';
+      : '${formatPersianNumber(parsePersianNumber(quantity.text) ?? 0, fractionDigits: (parsePersianNumber(quantity.text) ?? 0) % 1 == 0 ? 0 : 2)} ${unitType == 'Weight' ? (quantityUnit == 'kilogram' ? 'کیلوگرم' : 'گرم') : 'عدد'}';
+  num canonicalQuantity(String unitType) {
+    final value = parsePersianNumber(quantity.text)!;
+    return unitType == 'Weight' && quantityUnit == 'kilogram' ? value * 1000 : value;
+  }
+  void changeWeightUnit(String nextUnit) {
+    if (nextUnit == quantityUnit) return;
+    final entered = parsePersianNumber(quantity.text);
+    if (entered != null) {
+      final canonicalGrams = quantityUnit == 'kilogram' ? entered * 1000 : entered;
+      final converted = nextUnit == 'kilogram' ? canonicalGrams / 1000 : canonicalGrams;
+      quantity.text = toPersianDigits(converted);
+    }
+    quantityUnit = nextUnit;
+  }
   CreateVariantCommand command(
     String unitType, {
     required String generatedSku,
     required bool canWriteCosts,
   }) => CreateVariantCommand(
     sku: sku.text.trim().isEmpty ? generatedSku : sku.text.trim().toUpperCase(),
-    quantity: parsePersianNumber(quantity.text)!,
+    quantity: canonicalQuantity(unitType),
     displayLabel: displayLabel(unitType),
     price: num.parse((parsePersianNumber(price.text)! * 10).toStringAsFixed(2)),
     availablePackages:
@@ -62,9 +78,13 @@ String generatedPackageSku(String slug, ProductPackageDraft draft, int index) {
       .toUpperCase()
       .replaceAll(RegExp('[^A-Z0-9-]'), '-')
       .replaceAll(RegExp('-+'), '-');
-  final amount = normalizeNumberDigits(
-    draft.quantity.text,
-  ).replaceAll(RegExp('[^0-9]'), '');
+  final entered = parsePersianNumber(draft.quantity.text);
+  final canonical = entered == null
+      ? null
+      : draft.quantityUnit == 'kilogram' ? entered * 1000 : entered;
+  final amount = canonical == null
+      ? ''
+      : normalizeNumberDigits(canonical.toString()).replaceAll(RegExp('[^0-9]'), '');
   return '${prefix.isEmpty ? 'PRODUCT' : prefix}-${amount.isEmpty ? 'PACK' : amount}-${index + 1}';
 }
 
@@ -159,6 +179,17 @@ class ProductPackageEditor extends StatelessWidget {
                   labelText: title,
                   helperText: helper,
                   helperMaxLines: 3,
+                  suffixIcon: id == 'cost'
+                      ? const Tooltip(
+                          message: 'مجموع هزینهٔ خرید و تولید هر بسته را به تومان وارد کنید؛ این مقدار مبنای محاسبهٔ سود گزارش‌هاست.',
+                          child: Icon(Icons.info_outline_rounded),
+                        )
+                      : id == 'price'
+                      ? const Tooltip(
+                          message: 'قیمت فروش هر بسته به تومان است. API و گزارش‌های مالی مبلغ را به ریال نگه می‌دارند.',
+                          child: Icon(Icons.info_outline_rounded),
+                        )
+                      : null,
                 ),
                 validator: validator,
               ),
@@ -167,21 +198,52 @@ class ProductPackageEditor extends StatelessWidget {
               spacing: 12,
               runSpacing: 14,
               children: [
-                field(
-                  'quantity',
-                  draft.quantity,
-                  unitType == 'Weight' ? 'وزن هر بسته (گرم)' : 'تعداد هر بسته',
-                  enabled: draft.original == null,
-                  numeric: true,
-                  validator: (v) {
-                    final n = parsePersianNumber(v);
-                    return n == null ||
-                            !n.isFinite ||
-                            n <= 0 ||
-                            unitType == 'Count' && n % 1 != 0
-                        ? 'مقدار مثبت${unitType == 'Count' ? ' و صحیح' : ''} وارد کنید.'
-                        : null;
-                  },
+                SizedBox(
+                  width: width,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          key: ValueKey('package-$index-quantity'),
+                          controller: draft.quantity,
+                          enabled: draft.original == null,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: const [PersianDigitsInputFormatter()],
+                          onChanged: (_) => onChanged?.call(),
+                          decoration: InputDecoration(
+                            labelText: unitType == 'Weight' ? 'وزن هر بسته' : 'تعداد هر بسته',
+                            helperText: unitType == 'Weight' ? 'مقدار در انبار به گرم تبدیل می‌شود.' : null,
+                          ),
+                          validator: (v) {
+                            final n = parsePersianNumber(v);
+                            return n == null || !n.isFinite || n <= 0 || unitType == 'Count' && n % 1 != 0
+                                ? 'مقدار مثبت${unitType == 'Count' ? ' و صحیح' : ''} وارد کنید.'
+                                : null;
+                          },
+                        ),
+                      ),
+                      if (unitType == 'Weight') ...[
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 118,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('package-$index-unit-${draft.quantityUnit}'),
+                            initialValue: draft.quantityUnit,
+                            decoration: const InputDecoration(labelText: 'واحد'),
+                            items: const [
+                              DropdownMenuItem(value: 'gram', child: Text('گرم')),
+                              DropdownMenuItem(value: 'kilogram', child: Text('کیلوگرم')),
+                            ],
+                            onChanged: draft.original != null ? null : (value) {
+                              if (value == null) return;
+                              draft.changeWeightUnit(value);
+                              onChanged?.call();
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 field(
                   'label',

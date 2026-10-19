@@ -281,7 +281,7 @@ function toAsciiDigits(value: string) {
 }
 
 export function CheckoutPage() {
-  const { cart, subtotal, shipping, total } = useCart();
+  const { cart, subtotal, shipping, total, clear } = useCart();
   const [receipt, setReceipt] = useState<CheckoutReceipt | null>(null);
   const [shippingMethods, setShippingMethods] = useState<ShippingMethodOption[]>([]);
   const [shippingMethod, setShippingMethod] = useState("post");
@@ -380,6 +380,7 @@ export function CheckoutPage() {
             .then((response) => response.ok ? response.json() as Promise<CheckoutOrderResponse> : Promise.reject(new Error("order-status")))
             .then((order) => {
               const paid = order.state === "Paid";
+              if (paid) clear();
               setReceipt({ ...returnedReceipt, state: order.state, paymentOutcome: paid ? "success" : returnedReceipt.paymentOutcome });
               setError(paid ? "پرداخت با موفقیت تأیید شد." : "وضعیت پرداخت هنوز قطعی نیست. پیش از تلاش دوباره، وضعیت سفارش را بررسی کن.");
             }).catch(() => setError("وضعیت پرداخت هنوز از سرویس فروش دریافت نشده است. چند لحظه دیگر دوباره بررسی کن."));
@@ -390,7 +391,7 @@ export function CheckoutPage() {
     } catch {
       setError("نتیجهٔ پرداخت دریافت شد، اما اطلاعات سفارش در این دستگاه پیدا نشد. با پشتیبانی تماس بگیر.");
     }
-  }, []);
+  }, [apiBaseUrl, clear]);
 
   useEffect(() => {
     if (!apiBaseUrl) return;
@@ -451,6 +452,7 @@ export function CheckoutPage() {
         throw new Error("پاسخ سرویس سفارش کامل نبود؛ وضعیت سفارش را پیش از تلاش دوباره بررسی کن.");
       }
       const nextReceipt = { name, orderId: body.id, receiptToken: body.receiptToken ?? "", payable: body.payable, tax: body.tax ?? 0, shipping: body.shipping ?? 0, expiresAt: body.reservationExpiresAt, state: body.state ?? "AwaitingPayment" };
+      if (nextReceipt.state === "Paid") clear();
       setReceipt(nextReceipt);
       await beginPayment(nextReceipt);
     } catch (submitError) {
@@ -534,6 +536,7 @@ export function CheckoutPage() {
       const order = await response.json() as CheckoutOrderResponse;
       const paid = order.state === "Paid";
       const refreshedReceipt: CheckoutReceipt = { ...nextReceipt, state: order.state, paymentOutcome: paid ? "success" : "review" };
+      if (paid) clear();
       rememberReceipt(refreshedReceipt);
       setReceipt(refreshedReceipt);
       if (nextReceipt.sandboxAuthority) window.history.replaceState(null, "", `?orderId=${encodeURIComponent(nextReceipt.orderId)}&payment=${paid ? "success" : "review"}`);
@@ -574,10 +577,10 @@ export function CheckoutPage() {
         <div className={styles.field}><label htmlFor="couponCode">کد تخفیف</label><input id="couponCode" value={couponCode} maxLength={40} dir="ltr" autoComplete="off" placeholder="WELCOME10" onChange={e => {setCouponCode(e.target.value); setCouponError("");}} />
           <button type="button" className={styles.secondaryAction} disabled={couponBusy || !apiBaseUrl || unsupportedLines.length > 0} onClick={applyCoupon}>{couponBusy ? "در حال بررسی…" : (couponCode.trim() ? "بررسی کد تخفیف" : "بررسی پیشنهادهای خودکار")}</button>
           {couponError && <p role="alert">{couponError}</p>}
-          {couponQuote && <p role="status">{couponQuote.name ? `${couponQuote.name}؛ هنگام ثبت سفارش دوباره بررسی می‌شود.` : "در حال حاضر پیشنهاد خودکار قابل استفاده‌ای وجود ندارد."}</p>}
+          {couponQuote?.name && <p role="status">{couponQuote.name}؛ هنگام ثبت سفارش دوباره بررسی می‌شود.</p>}
         </div>{cart.map((line) => <div className={styles.summaryProduct} key={line.id}><span>{line.title} × {toman(line.quantity)}</span><b>{toman(line.price * line.quantity)} تومان</b></div>)}<div className={styles.summaryRow}><span>جمع محصولات</span><strong>{toman(subtotal)} تومان</strong></div><div className={styles.summaryRow}><span>ارسال</span><strong>{couponQuote ? `${toman(couponQuote.shipping / 10)} تومان` : shipping ? `${toman(shipping)} تومان` : "رایگان"}</strong></div>
         {couponQuote && <><div className={styles.summaryRow}><span>تخفیف</span><strong>{toman(couponQuote.discount / 10)} تومان</strong></div><div className={styles.summaryRow}><span>مالیات</span><strong>{toman(couponQuote.tax / 10)} تومان</strong></div></>}
-        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>{couponQuote ? "مبلغ تأییدشدهٔ سبد" : "برآورد اولیه"}</span><strong>{toman(couponQuote ? couponQuote.payable / 10 : total)} تومان</strong></div><p className={styles.summaryNote}>هر سفارش یک تخفیف دارد؛ کد واردشده بر پیشنهاد خودکار مقدم است. اقلام هدیه و پک را به سبد اضافه کن. مبلغ نهایی و موجودی هنگام ثبت در سرور تأیید می‌شود.</p></aside>
+        <div className={`${styles.summaryRow} ${styles.summaryTotal}`}><span>{couponQuote ? "مبلغ تأییدشدهٔ سبد" : "برآورد اولیه"}</span><strong>{toman(couponQuote ? couponQuote.payable / 10 : total)} تومان</strong></div></aside>
     </section><StoreFooter />
   </main>;
 }

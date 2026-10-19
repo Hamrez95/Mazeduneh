@@ -76,6 +76,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         await DatabaseMigrationRunner.ApplyAsync(connection, "checkout", "001-bootstrap", sql, cancellationToken);
         const string shippingExpenseMigration = "alter table checkout_orders add column if not exists shipping_expense numeric(18,2) not null default 0 check (shipping_expense >= 0);";
         await DatabaseMigrationRunner.ApplyAsync(connection, "checkout", "002-shipping-expense", shippingExpenseMigration, cancellationToken);
+        const string lineUnitSnapshotMigration = "alter table checkout_order_lines add column if not exists item_quantity numeric(12,3); alter table checkout_order_lines add column if not exists base_unit varchar(16);";
+        await DatabaseMigrationRunner.ApplyAsync(connection, "checkout", "003-line-unit-snapshot", lineUnitSnapshotMigration, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "checkout", "004-private-orders", "alter table checkout_orders add column if not exists is_private boolean not null default false;", cancellationToken);
         logger.LogInformation("Checkout PostgreSQL schema is ready.");
     }
 
@@ -83,7 +86,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         string idempotencyKey,
         string fingerprint,
         CheckoutRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isPrivate = false)
     {
         if (!IsConfigured)
             throw new InvalidOperationException("Checkout database is not configured.");
@@ -119,14 +123,15 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 .ThenBy(item => item.Sku.Trim(), StringComparer.Ordinal))
             {
                 const string selectSql = """
-                    select p.title, v.sku, v.display_label, v.price, v.available_packages, v.cost_price, v.packaging_cost, v.additional_cost
+                    select p.title, v.sku, v.display_label, v.price, v.available_packages, v.cost_price, v.packaging_cost, v.additional_cost, v.quantity, v.base_unit
                     from product_variants v
                     join products p on p.id = v.product_id
-                    where upper(v.sku) = upper(@sku) and p.is_published = true
+                    where upper(v.sku) = upper(@sku) and (@is_private or p.is_published = true)
                     for update of v;
                     """;
                 await using var select = new NpgsqlCommand(selectSql, connection, transaction);
                 select.Parameters.AddWithValue("sku", requested.Sku.Trim());
+                select.Parameters.AddWithValue("is_private", isPrivate);
                 await using var reader = await select.ExecuteReaderAsync(cancellationToken);
                 if (!await reader.ReadAsync(cancellationToken))
                 {
@@ -142,6 +147,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 var fallbackCost = reader.GetDecimal(5);
                 var fallbackPackaging = reader.GetDecimal(6);
                 var fallbackAdditional = reader.GetDecimal(7);
+                var itemQuantity = reader.GetDecimal(8);
+                var baseUnit = reader.GetString(9);
                 await reader.CloseAsync();
 
                 const string batchSql = """
@@ -170,7 +177,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                     }
 
                     lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity,
-                        fallbackCost, fallbackPackaging, fallbackAdditional));
+                        fallbackCost, fallbackPackaging, fallbackAdditional, null, itemQuantity, baseUnit));
                     continue;
                 }
 
@@ -196,7 +203,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 var packagingCost = allocations.Sum(item => item.Quantity * item.PackagingCost) / requested.Quantity;
                 var additionalCost = allocations.Sum(item => item.Quantity * item.AdditionalCost) / requested.Quantity;
                 lines.Add(new CheckoutLine(productTitle, sku, label, requested.Quantity, price, price * requested.Quantity,
-                    costPrice, packagingCost, additionalCost, allocations));
+                    costPrice, packagingCost, additionalCost, allocations, itemQuantity, baseUnit));
             }
 
             if (unavailable.Count > 0)
@@ -267,7 +274,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             var quote = quoteResult.Quote;
             PromotionQuote? promotionQuote = null;
             string? couponCode = null;
-            var evaluation = await promotions.SelectAsync(connection,transaction,request.CouponCode,lines,quote,true,request.Mobile,request.City,cancellationToken);
+            (PromotionDefinition? Promotion, PromotionQuote? Quote, string? Error) evaluation = isPrivate
+                ? (null, null, null)
+                : await promotions.SelectAsync(connection,transaction,request.CouponCode,lines,quote,true,request.Mobile,request.City,cancellationToken);
             if(evaluation.Error is not null)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -280,12 +289,14 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant(),
                 request.CustomerName.Trim(), request.Mobile.Trim(), request.Province.Trim(), request.City.Trim(),
                 request.Address.Trim(), request.PostalCode.Trim(), "IRR", lines, request.ShippingMethod.Trim(), subtotal, promotionQuote?.Shipping ?? quote.Shipping, quote.ShippingExpense, promotionQuote?.Discount ?? 0,
-                quote.TaxRatePercent, promotionQuote?.Tax ?? quote.Tax, promotionQuote?.Payable ?? quote.Payable, OrderState.AwaitingPayment, now, now.AddMinutes(20),
-                [new OrderTransition(OrderState.AwaitingPayment, "customer", now, "checkout-created")], couponCode);
+                quote.TaxRatePercent, promotionQuote?.Tax ?? quote.Tax, promotionQuote?.Payable ?? quote.Payable, OrderState.AwaitingPayment, now,
+                isPrivate ? now.AddDays(7) : now.AddMinutes(20),
+                [new OrderTransition(OrderState.AwaitingPayment, isPrivate ? "admin" : "customer", now,
+                    isPrivate ? "admin-private-order-created" : "checkout-created")], couponCode);
 
-            await InsertOrderAsync(connection, transaction, order, cancellationToken);
+            await InsertOrderAsync(connection, transaction, order, cancellationToken, isPrivate);
             if (promotionQuote is not null) await promotions.RecordAsync(connection, transaction, order.Id, couponCode!, promotionQuote, quote.Shipping, cancellationToken);
-            if (request.MarketingConsent)
+            if (request.MarketingConsent && !isPrivate)
                 await RecordMarketingConsentGrantAsync(connection, transaction, order.Id, now, cancellationToken);
 
             const string idempotencySql = """
@@ -322,6 +333,12 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         if (!IsConfigured) return null;
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
+        await using (var visibility = new NpgsqlCommand("select is_private from checkout_orders where id=@id;", connection))
+        {
+            visibility.Parameters.AddWithValue("id", orderId);
+            var privateOrder = await visibility.ExecuteScalarAsync(cancellationToken);
+            if (privateOrder is null || privateOrder is DBNull || Convert.ToBoolean(privateOrder)) return null;
+        }
         var order = await LoadOrderAsync(connection, null, orderId, cancellationToken);
         if (order is null) return null;
 
@@ -343,7 +360,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         const string orderSql = """
             select customer_id, receipt_token
             from checkout_orders
-            where id = @order_id
+            where id = @order_id and is_private=false
             for update;
             """;
         Guid? customerId;
@@ -556,13 +573,14 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         CheckoutOrder order,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool isPrivate)
     {
         const string orderSql = """
             insert into checkout_orders
-            (id,receipt_token,customer_name,mobile,province,city,address,postal_code,currency,shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at,coupon_code)
+            (id,receipt_token,customer_name,mobile,province,city,address,postal_code,currency,shipping_method,subtotal,shipping,shipping_expense,discount,tax_rate_percent,tax,payable,state,created_at,reservation_expires_at,coupon_code,is_private)
             values
-            (@id,@receipt_token,@customer_name,@mobile,@province,@city,@address,@postal_code,@currency,@shipping_method,@subtotal,@shipping,@shipping_expense,@discount,@tax_rate_percent,@tax,@payable,@state,@created_at,@reservation_expires_at,@coupon_code);
+            (@id,@receipt_token,@customer_name,@mobile,@province,@city,@address,@postal_code,@currency,@shipping_method,@subtotal,@shipping,@shipping_expense,@discount,@tax_rate_percent,@tax,@payable,@state,@created_at,@reservation_expires_at,@coupon_code,@is_private);
             """;
         await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
         {
@@ -581,6 +599,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("shipping_expense", order.ShippingExpense);
             command.Parameters.AddWithValue("discount", order.Discount);
             command.Parameters.AddWithValue("coupon_code", (object?)order.CouponCode ?? DBNull.Value);
+            command.Parameters.AddWithValue("is_private", isPrivate);
             command.Parameters.AddWithValue("tax_rate_percent", order.TaxRatePercent);
             command.Parameters.AddWithValue("tax", order.Tax);
             command.Parameters.AddWithValue("payable", order.Payable);
@@ -594,8 +613,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
         {
             const string lineSql = """
                 insert into checkout_order_lines
-                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations)
-                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total,@cost_price,@packaging_cost,@additional_cost,@batch_allocations);
+                (id,order_id,product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations,item_quantity,base_unit)
+                values (@id,@order_id,@product_title,@sku,@variant_label,@quantity,@unit_price,@line_total,@cost_price,@packaging_cost,@additional_cost,@batch_allocations,@item_quantity,@base_unit);
                 """;
             await using var command = new NpgsqlCommand(lineSql, connection, transaction);
             command.Parameters.AddWithValue("id", Guid.NewGuid());
@@ -610,6 +629,8 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
             command.Parameters.AddWithValue("packaging_cost", line.PackagingCost);
             command.Parameters.AddWithValue("additional_cost", line.AdditionalCost);
             command.Parameters.Add("batch_allocations", NpgsqlTypes.NpgsqlDbType.Jsonb).Value = JsonSerializer.Serialize(line.BatchAllocations ?? Array.Empty<CheckoutBatchAllocation>());
+            command.Parameters.AddWithValue("item_quantity", (object?)line.ItemQuantity ?? DBNull.Value);
+            command.Parameters.AddWithValue("base_unit", (object?)line.BaseUnit ?? DBNull.Value);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -696,7 +717,7 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
 
         var lines = new List<CheckoutLine>();
         await using (var command = new NpgsqlCommand(
-            "select product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations from checkout_order_lines where order_id=@id order by id;",
+            "select product_title,sku,variant_label,quantity,unit_price,line_total,cost_price,packaging_cost,additional_cost,batch_allocations,item_quantity,base_unit from checkout_order_lines where order_id=@id order by id;",
             connection, transaction))
         {
             command.Parameters.AddWithValue("id", orderId);
@@ -706,7 +727,9 @@ public sealed class CheckoutDatabase(IConfiguration configuration, ILogger<Check
                 var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(reader.GetString(9))
                     ?? Array.Empty<CheckoutBatchAllocation>();
                 lines.Add(new CheckoutLine(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                    reader.GetInt32(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), allocations));
+                    reader.GetInt32(3), reader.GetDecimal(4), reader.GetDecimal(5), reader.GetDecimal(6), reader.GetDecimal(7), reader.GetDecimal(8), allocations,
+                    reader.IsDBNull(10) || reader.IsDBNull(11) ? null : reader.GetDecimal(10),
+                    reader.IsDBNull(11) ? null : reader.GetString(11)));
             }
         }
 

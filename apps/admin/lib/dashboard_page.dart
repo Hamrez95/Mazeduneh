@@ -21,9 +21,15 @@ List<String> _healthRecommendations(AdminDashboardHealth health) => [
 ];
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, this.api, this.onNavigate});
+  const DashboardPage({
+    super.key,
+    this.api,
+    this.onNavigate,
+    this.refreshRevision = 0,
+  });
   final OrderApiClient? api;
   final ValueChanged<AdminNavigationIntent>? onNavigate;
+  final int refreshRevision;
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
@@ -45,6 +51,12 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void initState() { super.initState(); load(); }
+
+  @override
+  void didUpdateWidget(covariant DashboardPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshRevision != widget.refreshRevision) load();
+  }
 
   Future<void> load() async {
     final session = OwnerSession.instance;
@@ -259,7 +271,7 @@ class _DashboardPageState extends State<DashboardPage> {
         if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
         if (data.financialsVisible && can(AdminPermissions.reportsRead))
           MetricCard(
-            'سود خالص بازه',
+            'سود پس از هزینهٔ کالا و ارسال',
             financialAnalytics != null
                 ? '${formatPersianNumber(financialAnalytics!.netProfit)} ریال'
                 : financialAnalyticsError != null
@@ -366,7 +378,7 @@ class _DashboardPageState extends State<DashboardPage> {
             }),
             const SizedBox(height: 10),
             const Text(
-              'سود خالص = سود ناخالص + درآمد ارسال − هزینهٔ ارسال. مالیات پرداختنی در سود محاسبه نمی‌شود.',
+              'سود پس از هزینهٔ کالا و ارسال = سود ناخالص + درآمد ارسال − هزینهٔ ارسال. مالیات در سود محاسبه نمی‌شود و هزینه‌های ثابت مثل اجاره و دستمزد هم در این شاخص نیست.',
               style: TextStyle(color: AdminColors.muted, fontSize: 11),
             ),
           ],

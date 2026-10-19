@@ -1,6 +1,7 @@
 abstract final class AdminPermissions {
   static const dashboardRead = 'dashboard.read';
   static const ordersRead = 'orders.read';
+  static const ordersWrite = 'orders.write';
   static const ordersExport = 'orders.export';
   static const ordersDocumentsRead = 'orders.documents.read';
   static const customersPiiRead = 'customers.pii.read';
@@ -39,7 +40,7 @@ abstract final class AdminPermissions {
         'دیدن جزئیات و وضعیت سفارش‌ها.',
       ),
       AdminPermissionOption(
-        'orders.write',
+        ordersWrite,
         'مدیریت سفارش‌ها',
         'تغییر وضعیت و پردازش سفارش‌ها.',
       ),
