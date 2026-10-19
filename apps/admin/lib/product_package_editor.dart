@@ -25,8 +25,7 @@ class ProductPackageDraft {
   final price = TextEditingController(),
       cost = TextEditingController(),
       stock = TextEditingController(text: '۰');
-  static String _toman(num rial) =>
-      formatPersianNumber(rial / 10, fractionDigits: rial % 10 == 0 ? 0 : 3);
+  static String _toman(num rial) => formatToman(rial);
   String displayLabel(String unitType) => label.text.trim().isNotEmpty
       ? label.text.trim()
       : '${formatPersianNumber(parsePersianNumber(quantity.text) ?? 0, fractionDigits: (parsePersianNumber(quantity.text) ?? 0) % 1 == 0 ? 0 : 2)} ${unitType == 'Weight' ? (quantityUnit == 'kilogram' ? 'کیلوگرم' : 'گرم') : 'عدد'}';
@@ -312,3 +311,4 @@ class ProductPackageEditor extends StatelessWidget {
     ),
   );
 }
+
