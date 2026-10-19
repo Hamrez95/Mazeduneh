@@ -1,1 +1,3 @@
-Uri? currentAdminUri() => null;\n\nvoid replaceAdminUri(Uri uri) {}\n
+Uri? currentAdminUri() => null;
+
+void replaceAdminUri(Uri uri) {}
