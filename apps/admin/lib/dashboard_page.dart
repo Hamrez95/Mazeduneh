@@ -268,12 +268,12 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       const SizedBox(height: 14),
       Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatPersianNumber(data.periodRevenue)} ریال', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
+        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatToman(data.periodRevenue)} تومان', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
         if (data.financialsVisible && can(AdminPermissions.reportsRead))
           MetricCard(
             'سود پس از هزینهٔ کالا و ارسال',
             financialAnalytics != null
-                ? '${formatPersianNumber(financialAnalytics!.netProfit)} ریال'
+                ? '${formatToman(financialAnalytics!.netProfit)} تومان'
                 : financialAnalyticsError != null
                     ? 'بارگذاری نشد'
                     : loading
@@ -291,7 +291,7 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         if (can(AdminPermissions.ordersRead)) ...[
           MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
-          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatPersianNumber(data.averageOrderValue)} ریال', Icons.insights_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
+          if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatToman(data.averageOrderValue)} تومان', Icons.insights_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
           MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
           MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
           MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
@@ -360,7 +360,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                     fontWeight: FontWeight.w700)),
                             const SizedBox(height: 5),
                             Text(
-                              '${formatPersianNumber(item.$2)} ریال',
+                              '${formatToman(item.$2)} تومان',
                               style: TextStyle(
                                 color: item.$2 < 0
                                     ? AdminColors.coral
@@ -1025,6 +1025,7 @@ class MetricCard extends StatelessWidget {
     ),
   );
 }
+
 
 
 
