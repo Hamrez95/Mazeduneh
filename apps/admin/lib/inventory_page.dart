@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'admin_permissions.dart';
+import 'admin_mobile_list_controls.dart';
 import 'admin_step_up_dialog.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
@@ -16,7 +17,13 @@ import 'inventory_receipt_dialog.dart';
 import 'order_api.dart';
 
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key, this.catalog, this.orders, this.initialSku, this.initialBatchCode});
+  const InventoryPage({
+    super.key,
+    this.catalog,
+    this.orders,
+    this.initialSku,
+    this.initialBatchCode,
+  });
   final CatalogApiClient? catalog;
   final OrderApiClient? orders;
   final String? initialSku;
@@ -38,22 +45,41 @@ class _InventoryPageState extends State<InventoryPage> {
   String? purchaseBatchCode;
   bool loadingPurchases = false;
   int purchaseGeneration = 0;
+  String inventoryQuery = '';
+  int inventoryPage = 0;
+  int inventoryPageSize = 5;
+  String movementQuery = '';
+  int movementPage = 0;
+  int movementPageSize = 5;
 
   @override
-  void initState() { super.initState(); purchaseSku = widget.initialSku; purchaseBatchCode = widget.initialBatchCode; load(); }
+  void initState() {
+    super.initState();
+    purchaseSku = widget.initialSku;
+    purchaseBatchCode = widget.initialBatchCode;
+    load();
+  }
 
   @override
   void didUpdateWidget(covariant InventoryPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialSku != widget.initialSku || oldWidget.initialBatchCode != widget.initialBatchCode) {
+    if (oldWidget.initialSku != widget.initialSku ||
+        oldWidget.initialBatchCode != widget.initialBatchCode) {
       purchaseSku = widget.initialSku;
       purchaseBatchCode = widget.initialBatchCode;
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) load(); });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) load();
+      });
     }
   }
 
   Future<void> load() async {
-    setState(() { loading = true; error = null; purchaseGeneration++; loadingPurchases = false; });
+    setState(() {
+      loading = true;
+      error = null;
+      purchaseGeneration++;
+      loadingPurchases = false;
+    });
     final generation = purchaseGeneration;
     final sku = purchaseSku;
     try {
@@ -62,33 +88,62 @@ class _InventoryPageState extends State<InventoryPage> {
         orders.fetchInventoryMovements(limit: 30),
         orders.fetchInventoryPurchases(sku: sku, batchCode: purchaseBatchCode),
       ]);
-      if (mounted && generation == purchaseGeneration) setState(() {
-        products = result[0] as List<Product>;
-        movements = result[1] as List<StockMovement>;
-        final purchases = result[2] as InventoryPurchasePage;
-        batches = purchases.items; purchaseCursor = purchases.nextCursor; purchaseError = null;
-      });
+      if (mounted && generation == purchaseGeneration)
+        setState(() {
+          products = result[0] as List<Product>;
+          movements = result[1] as List<StockMovement>;
+          final purchases = result[2] as InventoryPurchasePage;
+          batches = purchases.items;
+          purchaseCursor = purchases.nextCursor;
+          purchaseError = null;
+        });
     } catch (exception) {
-      if (mounted && generation == purchaseGeneration) setState(() => error = exception);
+      if (mounted && generation == purchaseGeneration)
+        setState(() => error = exception);
     } finally {
-      if (mounted && generation == purchaseGeneration) setState(() => loading = false);
+      if (mounted && generation == purchaseGeneration)
+        setState(() => loading = false);
     }
   }
 
   Future<void> loadMorePurchases() async {
     if (purchaseCursor == null || loadingPurchases) return;
     final generation = purchaseGeneration;
-    setState(() { loadingPurchases = true; purchaseError = null; });
+    setState(() {
+      loadingPurchases = true;
+      purchaseError = null;
+    });
     try {
-      final page = await orders.fetchInventoryPurchases(sku: purchaseSku, batchCode: purchaseBatchCode, cursor: purchaseCursor);
-      if (mounted && generation == purchaseGeneration) setState(() { batches = [...batches, ...page.items.where((item) => !batches.any((b) => b.id == item.id))]; purchaseCursor = page.nextCursor; });
+      final page = await orders.fetchInventoryPurchases(
+        sku: purchaseSku,
+        batchCode: purchaseBatchCode,
+        cursor: purchaseCursor,
+      );
+      if (mounted && generation == purchaseGeneration)
+        setState(() {
+          batches = [
+            ...batches,
+            ...page.items.where((item) => !batches.any((b) => b.id == item.id)),
+          ];
+          purchaseCursor = page.nextCursor;
+        });
     } catch (exception) {
-      if (mounted && generation == purchaseGeneration) setState(() {
-        if (exception is OrderApiException && (exception.statusCode == 401 || exception.statusCode == 403)) {
-          batches = []; purchaseCursor = null; error = exception;
-        } else { purchaseError = 'خریدهای قدیمی دریافت نشد: $exception. دوباره تلاش کنید.'; }
-      });
-    } finally { if (mounted && generation == purchaseGeneration) setState(() => loadingPurchases = false); }
+      if (mounted && generation == purchaseGeneration)
+        setState(() {
+          if (exception is OrderApiException &&
+              (exception.statusCode == 401 || exception.statusCode == 403)) {
+            batches = [];
+            purchaseCursor = null;
+            error = exception;
+          } else {
+            purchaseError =
+                'خریدهای قدیمی دریافت نشد: $exception. دوباره تلاش کنید.';
+          }
+        });
+    } finally {
+      if (mounted && generation == purchaseGeneration)
+        setState(() => loadingPurchases = false);
+    }
   }
 
   Future<void> adjust(ProductVariant variant) async {
@@ -96,11 +151,19 @@ class _InventoryPageState extends State<InventoryPage> {
     setState(() => busySku = variant.sku);
     late final List<InventoryBatch> variantBatches;
     try {
-      variantBatches = await orders.fetchInventoryBatches(sku: variant.sku, limit: 250);
-    } catch (exception) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('بچ‌های این کالا دریافت نشدند؛ اصلاح انجام نشد. ${requestErrorMessage(exception)}')),
+      variantBatches = await orders.fetchInventoryBatches(
+        sku: variant.sku,
+        limit: 250,
       );
+    } catch (exception) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'بچ‌های این کالا دریافت نشدند؛ اصلاح انجام نشد. ${requestErrorMessage(exception)}',
+            ),
+          ),
+        );
       return;
     } finally {
       if (mounted) setState(() => busySku = null);
@@ -115,11 +178,22 @@ class _InventoryPageState extends State<InventoryPage> {
           final stepUpToken = await showAdminStepUpDialog(context);
           if (stepUpToken == null || !mounted) return false;
           if (command.isWaste) {
-            await orders.writeOffStock(variant.sku, command.batchCode!, command.delta, command.reason,
-              operationKey: operationKey, stepUpToken: stepUpToken);
+            await orders.writeOffStock(
+              variant.sku,
+              command.batchCode!,
+              command.delta,
+              command.reason,
+              operationKey: operationKey,
+              stepUpToken: stepUpToken,
+            );
           } else {
-            await orders.adjustStock(variant.sku, command.delta, command.reason,
-              operationKey: operationKey, stepUpToken: stepUpToken);
+            await orders.adjustStock(
+              variant.sku,
+              command.delta,
+              command.reason,
+              operationKey: operationKey,
+              stepUpToken: stepUpToken,
+            );
           }
           return true;
         },
@@ -127,208 +201,643 @@ class _InventoryPageState extends State<InventoryPage> {
     );
     if (result == null) return;
     await load();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.isWaste ? 'ضایعات ثبت و از موجودی قابل‌فروش خارج شد.' : 'موجودی با موفقیت ثبت شد.')));
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isWaste
+                ? 'ضایعات ثبت و از موجودی قابل‌فروش خارج شد.'
+                : 'موجودی با موفقیت ثبت شد.',
+          ),
+        ),
+      );
   }
 
   Future<void> receiveBatch() async {
-    final result = await showDialog<InventoryBatch>(context: context, builder: (_) => BatchDialog(products: products,
-      onSave: (receipt) => orders.receiveInventoryBatch(sku: receipt.sku, batchCode: receipt.batchCode,
-        receivedPackages: receipt.receivedPackages, producedAt: receipt.producedAt, expiresAt: receipt.expiresAt,
-        costPrice: receipt.costPrice, packagingCost: receipt.packagingCost, additionalCost: receipt.additionalCost,
-        openingStock: receipt.openingStock,
-        purchasedAt: receipt.purchasedAt, supplier: receipt.supplier,
-        supplierContactName: receipt.supplierContactName, supplierPhone: receipt.supplierPhone,
-        supplierEmail: receipt.supplierEmail, supplierAddress: receipt.supplierAddress, supplierNotes: receipt.supplierNotes)));
+    final result = await showDialog<InventoryBatch>(
+      context: context,
+      builder: (_) => BatchDialog(
+        products: products,
+        onSave: (receipt) => orders.receiveInventoryBatch(
+          sku: receipt.sku,
+          batchCode: receipt.batchCode,
+          receivedPackages: receipt.receivedPackages,
+          producedAt: receipt.producedAt,
+          expiresAt: receipt.expiresAt,
+          costPrice: receipt.costPrice,
+          packagingCost: receipt.packagingCost,
+          additionalCost: receipt.additionalCost,
+          openingStock: receipt.openingStock,
+          purchasedAt: receipt.purchasedAt,
+          supplier: receipt.supplier,
+          supplierContactName: receipt.supplierContactName,
+          supplierPhone: receipt.supplierPhone,
+          supplierEmail: receipt.supplierEmail,
+          supplierAddress: receipt.supplierAddress,
+          supplierNotes: receipt.supplierNotes,
+        ),
+      ),
+    );
     if (result == null) return;
     await load();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('بچ، موجودی و تاریخ انقضا ثبت شد؛ تاریخ در فهرست بچ‌های انبار دیده می‌شود.')));
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'بچ، موجودی و تاریخ انقضا ثبت شد؛ تاریخ در فهرست بچ‌های انبار دیده می‌شود.',
+          ),
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(24),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      LayoutBuilder(builder: (context, constraints) {
-        final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-          const Text('موجودی و تاریخ انقضای هر سری کالا را ثبت و پیگیری کنید. تاریخ واقعی هر بار خرید در انبار ثبت می‌شود.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
-        ]);
-        final controls = Wrap(spacing: 8, children: [
-        OutlinedButton.icon(onPressed: products.isEmpty ? null : () async {
-          final applied = await showDialog<bool>(context: context, builder: (_) => InventoryPricingDialog(products: products, orders: orders));
-          if (applied == true) {
-            await load();
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.')));
-          }
-        }, icon: const Icon(Icons.calculate_outlined), label: const Text('محاسبه قیمت فروش')),
-        OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید و تاریخ انقضا')),
-        const SizedBox(width: 8),
-        IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
-        ]);
-        return constraints.maxWidth < 980
-          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, controls])
-          : Row(children: [Expanded(child: heading), controls]);
-      }),
-      const SizedBox(height: 18),
-      Expanded(child: _body()),
-    ]),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final heading = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'مدیریت انبار',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Text(
+                  'موجودی و تاریخ انقضای هر سری کالا را ثبت و پیگیری کنید. تاریخ واقعی هر بار خرید در انبار ثبت می‌شود.',
+                  style: TextStyle(color: AdminColors.muted, fontSize: 11),
+                ),
+              ],
+            );
+            final controls = Wrap(
+              spacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: products.isEmpty
+                      ? null
+                      : () async {
+                          final applied = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => InventoryPricingDialog(
+                              products: products,
+                              orders: orders,
+                            ),
+                          );
+                          if (applied == true) {
+                            await load();
+                            if (context.mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.',
+                                  ),
+                                ),
+                              );
+                          }
+                        },
+                  icon: const Icon(Icons.calculate_outlined),
+                  label: const Text('محاسبه قیمت فروش'),
+                ),
+                OutlinedButton.icon(
+                  onPressed:
+                      products.isEmpty ||
+                          !OwnerSession.instance.can(
+                            AdminPermissions.inventoryWrite,
+                          )
+                      ? null
+                      : receiveBatch,
+                  icon: const Icon(Icons.event_available_rounded),
+                  label: const Text('ثبت خرید و تاریخ انقضا'),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: load,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: 'بارگذاری مجدد',
+                ),
+              ],
+            );
+            return constraints.maxWidth < 980
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [heading, controls],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: heading),
+                      controls,
+                    ],
+                  );
+          },
+        ),
+        const SizedBox(height: 18),
+        Expanded(child: _body()),
+      ],
+    ),
   );
 
   Widget _body() {
     if (loading) return const Center(child: CircularProgressIndicator());
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
-    return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 1100 ? 2 : 1;
-      final expiredCount = batches.where((item) => item.isExpired && item.remainingPackages > 0).length;
-      final expiringCount = batches.where((item) => item.isExpiringSoon && item.remainingPackages > 0).length;
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (expiredCount > 0 || expiringCount > 0) ...[
-          _InventoryAttentionBanner(expiredCount: expiredCount, expiringCount: expiringCount),
-          const SizedBox(height: 14),
-        ],
-        Expanded(child: GridView.custom(
-          key: const ValueKey('inventory-sections'),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns, mainAxisSpacing: 14, crossAxisSpacing: 14,
-            mainAxisExtent: (constraints.maxWidth < 720 ? 340.0 : 380.0) * MediaQuery.textScalerOf(context).scale(14) / 14,
-          ),
-          childrenDelegate: SliverChildListDelegate([
-          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('موجودی محصولات', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-            const SizedBox(height: 12),
-            Expanded(child: ListView.separated(
-              itemCount: products.fold<int>(0, (sum, item) => sum + item.variants.length),
-              separatorBuilder: (_, __) => const Divider(height: 16),
-              itemBuilder: (_, index) {
-                var offset = index;
-                Product? product;
-                ProductVariant? variant;
-                for (final candidate in products) {
-                  if (offset < candidate.variants.length) { product = candidate; variant = candidate.variants[offset]; break; }
-                  offset -= candidate.variants.length;
-                }
-                if (product == null || variant == null) return const SizedBox.shrink();
-                final low = variant.availablePackages <= 5;
-                final busy = busySku == variant.sku;
-                return Row(children: [
-                  CircleAvatar(backgroundColor: low ? AdminColors.warningSoft : AdminColors.successSoft, child: Text(formatPersianInteger(variant.availablePackages))),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(product.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text('${variant.displayLabel} · ${variant.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                  ])),
-                  FilledButton.tonalIcon(
-                    onPressed: busy ? null : () => adjust(variant!),
-                    icon: busy ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.tune_rounded),
-                    label: const Text('اصلاح'),
-                  ),
-                ]);
-              },
-            )),
-          ]))),
-          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('آخرین گردش موجودی', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-            const SizedBox(height: 12),
-            Expanded(child: movements.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.swap_vert_rounded, title: 'گردشی ثبت نشده است', detail: 'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.')) : ListView.separated(
-              itemCount: movements.length,
-              separatorBuilder: (_, __) => const Divider(height: 16),
-              itemBuilder: (_, index) {
-                final item = movements[index];
-                final positive = item.quantityDelta >= 0;
-                final sign = positive ? '+' : '-';
-                return ListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: positive ? AdminColors.successSoft : AdminColors.warningSoft,
-                    child: Icon(positive ? Icons.add_rounded : Icons.remove_rounded, size: 18),
-                  ),
-                  title: Text('${item.sku} · $sign${formatPersianInteger(item.quantityDelta.abs())}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${item.movementType == 'Waste' ? 'ضایعات' : item.movementType == 'ManualAdjustment' ? 'اصلاح دستی' : item.movementType} · ${item.reason} · مانده ${formatPersianInteger(item.balanceAfter)}', style: const TextStyle(fontSize: 11)),
-                );
-              },
-            )),
-          ]))),
-          Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('بچ‌های انبار و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-            const SizedBox(height: 4),
-            const Text('برای هر بار خرید، تاریخ انقضای همان سری را جداگانه ثبت کنید؛ تاریخ محصول به‌تنهایی کافی نیست.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey('purchase-filter-${purchaseSku ?? 'all'}'),
-              initialValue: purchaseSku ?? '', isExpanded: true,
-              decoration: const InputDecoration(labelText: 'خریدهای کدام کالا؟'),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('همهٔ کالاها')),
-                for (final product in products) for (final variant in product.variants)
-                  DropdownMenuItem(value: variant.sku, child: Text('${product.title} · ${variant.displayLabel} · ${variant.sku}')),
-                if (purchaseSku != null && !products.any((product) => product.variants.any((variant) => variant.sku == purchaseSku)))
-                  DropdownMenuItem(value: purchaseSku, child: Text('کالای حذف‌شده · $purchaseSku')),
-              ],
-              onChanged: (value) {
-                final next = value == '' ? null : value;
-                if (next == purchaseSku) return;
-                setState(() { purchaseSku = next; purchaseBatchCode = null; });
-                load();
-              },
-            ),
-            if (purchaseBatchCode != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: InputChip(
-                  avatar: const Icon(Icons.qr_code_2_rounded, size: 18),
-                  label: Text('فقط بچ $purchaseBatchCode'),
-                  onDeleted: () { setState(() => purchaseBatchCode = null); load(); },
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1100 ? 2 : 1;
+        final stockQuery = normalizeNumberDigits(
+          inventoryQuery.trim().toLowerCase(),
+        );
+        final stockEntries = [
+          for (final product in products)
+            for (final variant in product.variants)
+              if (normalizeNumberDigits(
+                '${product.title} ${variant.displayLabel} ${variant.sku}'
+                    .toLowerCase(),
+              ).contains(stockQuery))
+                (product: product, variant: variant),
+        ];
+        final stockLastPage = stockEntries.isEmpty
+            ? 0
+            : (stockEntries.length - 1) ~/ inventoryPageSize;
+        final stockCurrentPage = inventoryPage.clamp(0, stockLastPage);
+        final shownStockEntries = stockEntries
+            .skip(stockCurrentPage * inventoryPageSize)
+            .take(inventoryPageSize)
+            .toList();
+        final movementSearch = normalizeNumberDigits(
+          movementQuery.trim().toLowerCase(),
+        );
+        final filteredMovements = movements
+            .where(
+              (item) => normalizeNumberDigits(
+                '${item.sku} ${item.movementType} ${item.reason}'.toLowerCase(),
+              ).contains(movementSearch),
+            )
+            .toList();
+        final movementLastPage = filteredMovements.isEmpty
+            ? 0
+            : (filteredMovements.length - 1) ~/ movementPageSize;
+        final movementCurrentPage = movementPage.clamp(0, movementLastPage);
+        final shownMovements = filteredMovements
+            .skip(movementCurrentPage * movementPageSize)
+            .take(movementPageSize)
+            .toList();
+        final expiredCount = batches
+            .where((item) => item.isExpired && item.remainingPackages > 0)
+            .length;
+        final expiringCount = batches
+            .where((item) => item.isExpiringSoon && item.remainingPackages > 0)
+            .length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (expiredCount > 0 || expiringCount > 0) ...[
+              _InventoryAttentionBanner(
+                expiredCount: expiredCount,
+                expiringCount: expiringCount,
               ),
-            const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'بچی برای نمایش نیست', detail: 'از دکمهٔ «ثبت خرید و تاریخ انقضا» بالای صفحه استفاده کنید تا تاریخ تولید و انقضای هر سری کالا ثبت شود.')) : ListView.separated(
-              key: const ValueKey('inventory-purchases'),
-              itemCount: batches.length + 1,
-              separatorBuilder: (_, __) => const Divider(height: 14),
-              itemBuilder: (_, index) {
-                if (index == batches.length) return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (purchaseError != null) Text(purchaseError!, style: const TextStyle(color: AdminColors.coral)),
-                  if (purchaseCursor != null) TextButton(onPressed: loadingPurchases ? null : loadMorePurchases,
-                    child: Text(loadingPurchases ? 'در حال دریافت…' : purchaseError == null ? 'مشاهده خریدهای قدیمی‌تر' : 'تلاش دوباره')),
-                ]);
-                final item = batches[index];
-                final supplierDetails = <String>[
-                  if (item.supplierContactName?.isNotEmpty == true) 'شخص تماس: ${item.supplierContactName}',
-                  if (item.supplierPhone?.isNotEmpty == true) 'تلفن: ${item.supplierPhone}',
-                  if (item.supplierEmail?.isNotEmpty == true) 'ایمیل: ${item.supplierEmail}',
-                  if (item.supplierAddress?.isNotEmpty == true) 'نشانی: ${item.supplierAddress}',
-                  if (item.supplierNotes?.isNotEmpty == true) 'یادداشت: ${item.supplierNotes}',
-                ].join(' · ');
-                final supplierSummary = [item.supplier ?? 'تأمین‌کننده ثبت نشده', if (supplierDetails.isNotEmpty) supplierDetails].join(' · ');
-                final expired = item.isExpired;
-                final expiringSoon = item.isExpiringSoon && !expired;
-                return ListTile(
-                  dense: true, contentPadding: EdgeInsets.zero,
-                  leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
-                  title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} بسته · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'تاریخ انقضا'}: ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.muted)),
-                );
-              },
-            )),
-          ]))),
-          ]),
-        )),
-      ]);
-    });
+              const SizedBox(height: 14),
+            ],
+            Expanded(
+              child: GridView.custom(
+                key: const ValueKey('inventory-sections'),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  mainAxisExtent:
+                      (constraints.maxWidth < 720 ? 340.0 : 380.0) *
+                      MediaQuery.textScalerOf(context).scale(14) /
+                      14,
+                ),
+                childrenDelegate: SliverChildListDelegate([
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'موجودی محصولات',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          AdminMobileListControls(
+                            totalItems: stockEntries.length,
+                            page: stockCurrentPage,
+                            pageSize: inventoryPageSize,
+                            searchText: inventoryQuery,
+                            searchHint: 'جست‌وجوی کالا، بسته یا SKU',
+                            onSearchChanged: (value) => setState(() {
+                              inventoryQuery = value;
+                              inventoryPage = 0;
+                            }),
+                            onPageChanged: (value) =>
+                                setState(() => inventoryPage = value),
+                            onPageSizeChanged: (value) => setState(() {
+                              inventoryPageSize = value;
+                              inventoryPage = 0;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: stockEntries.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      'کالایی با این جست‌وجو پیدا نشد.',
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: shownStockEntries.length,
+                                    separatorBuilder: (_, __) =>
+                                        const Divider(height: 16),
+                                    itemBuilder: (_, index) {
+                                      final product =
+                                          shownStockEntries[index].product;
+                                      final variant =
+                                          shownStockEntries[index].variant;
+                                      final low =
+                                          variant.availablePackages <= 5;
+                                      final busy = busySku == variant.sku;
+                                      return Row(
+                                        children: [
+                                          CircleAvatar(
+                                            backgroundColor: low
+                                                ? AdminColors.warningSoft
+                                                : AdminColors.successSoft,
+                                            child: Text(
+                                              formatPersianInteger(
+                                                variant.availablePackages,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  product.title,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  '${variant.displayLabel} · ${variant.sku}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: AdminColors.muted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          FilledButton.tonalIcon(
+                                            onPressed: busy
+                                                ? null
+                                                : () => adjust(variant),
+                                            icon: busy
+                                                ? const SizedBox(
+                                                    width: 15,
+                                                    height: 15,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  )
+                                                : const Icon(
+                                                    Icons.tune_rounded,
+                                                  ),
+                                            label: const Text('اصلاح'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'آخرین گردش موجودی',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          AdminMobileListControls(
+                            totalItems: filteredMovements.length,
+                            page: movementCurrentPage,
+                            pageSize: movementPageSize,
+                            searchText: movementQuery,
+                            searchHint: 'جست‌وجو در گردش موجودی یا SKU',
+                            onSearchChanged: (value) => setState(() {
+                              movementQuery = value;
+                              movementPage = 0;
+                            }),
+                            onPageChanged: (value) =>
+                                setState(() => movementPage = value),
+                            onPageSizeChanged: (value) => setState(() {
+                              movementPageSize = value;
+                              movementPage = 0;
+                            }),
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: filteredMovements.isEmpty
+                                ? SingleChildScrollView(
+                                    child: AdminEmptyState(
+                                      icon: Icons.swap_vert_rounded,
+                                      title: movements.isEmpty
+                                          ? 'گردشی ثبت نشده است'
+                                          : 'گردشی با این جست‌وجو پیدا نشد',
+                                      detail:
+                                          'دریافت، فروش یا اصلاح موجودی در اینجا ثبت می‌شود.',
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: shownMovements.length,
+                                    separatorBuilder: (_, __) =>
+                                        const Divider(height: 16),
+                                    itemBuilder: (_, index) {
+                                      final item = shownMovements[index];
+                                      final positive = item.quantityDelta >= 0;
+                                      final sign = positive ? '+' : '-';
+                                      return ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: CircleAvatar(
+                                          backgroundColor: positive
+                                              ? AdminColors.successSoft
+                                              : AdminColors.warningSoft,
+                                          child: Icon(
+                                            positive
+                                                ? Icons.add_rounded
+                                                : Icons.remove_rounded,
+                                            size: 18,
+                                          ),
+                                        ),
+                                        title: Text(
+                                          '${item.sku} · $sign${formatPersianInteger(item.quantityDelta.abs())}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          '${item.movementType == 'Waste'
+                                              ? 'ضایعات'
+                                              : item.movementType == 'ManualAdjustment'
+                                              ? 'اصلاح دستی'
+                                              : item.movementType} · ${item.reason} · مانده ${formatPersianInteger(item.balanceAfter)}',
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'بچ‌های انبار و تاریخ انقضا',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 17,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'برای هر بار خرید، تاریخ انقضای همان سری را جداگانه ثبت کنید؛ تاریخ محصول به‌تنهایی کافی نیست.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AdminColors.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'purchase-filter-${purchaseSku ?? 'all'}',
+                            ),
+                            initialValue: purchaseSku ?? '',
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'خریدهای کدام کالا؟',
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('همهٔ کالاها'),
+                              ),
+                              for (final product in products)
+                                for (final variant in product.variants)
+                                  DropdownMenuItem(
+                                    value: variant.sku,
+                                    child: Text(
+                                      '${product.title} · ${variant.displayLabel} · ${variant.sku}',
+                                    ),
+                                  ),
+                              if (purchaseSku != null &&
+                                  !products.any(
+                                    (product) => product.variants.any(
+                                      (variant) => variant.sku == purchaseSku,
+                                    ),
+                                  ))
+                                DropdownMenuItem(
+                                  value: purchaseSku,
+                                  child: Text('کالای حذف‌شده · $purchaseSku'),
+                                ),
+                            ],
+                            onChanged: (value) {
+                              final next = value == '' ? null : value;
+                              if (next == purchaseSku) return;
+                              setState(() {
+                                purchaseSku = next;
+                                purchaseBatchCode = null;
+                              });
+                              load();
+                            },
+                          ),
+                          if (purchaseBatchCode != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: InputChip(
+                                avatar: const Icon(
+                                  Icons.qr_code_2_rounded,
+                                  size: 18,
+                                ),
+                                label: Text('فقط بچ $purchaseBatchCode'),
+                                onDeleted: () {
+                                  setState(() => purchaseBatchCode = null);
+                                  load();
+                                },
+                              ),
+                            ),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: batches.isEmpty
+                                ? const SingleChildScrollView(
+                                    child: AdminEmptyState(
+                                      icon: Icons.event_available_rounded,
+                                      title: 'بچی برای نمایش نیست',
+                                      detail:
+                                          'از دکمهٔ «ثبت خرید و تاریخ انقضا» بالای صفحه استفاده کنید تا تاریخ تولید و انقضای هر سری کالا ثبت شود.',
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    key: const ValueKey('inventory-purchases'),
+                                    itemCount: batches.length + 1,
+                                    separatorBuilder: (_, __) =>
+                                        const Divider(height: 14),
+                                    itemBuilder: (_, index) {
+                                      if (index == batches.length)
+                                        return Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            if (purchaseError != null)
+                                              Text(
+                                                purchaseError!,
+                                                style: const TextStyle(
+                                                  color: AdminColors.coral,
+                                                ),
+                                              ),
+                                            if (purchaseCursor != null)
+                                              TextButton(
+                                                onPressed: loadingPurchases
+                                                    ? null
+                                                    : loadMorePurchases,
+                                                child: Text(
+                                                  loadingPurchases
+                                                      ? 'در حال دریافت…'
+                                                      : purchaseError == null
+                                                      ? 'مشاهده خریدهای قدیمی‌تر'
+                                                      : 'تلاش دوباره',
+                                                ),
+                                              ),
+                                          ],
+                                        );
+                                      final item = batches[index];
+                                      final supplierDetails = <String>[
+                                        if (item
+                                                .supplierContactName
+                                                ?.isNotEmpty ==
+                                            true)
+                                          'شخص تماس: ${item.supplierContactName}',
+                                        if (item.supplierPhone?.isNotEmpty ==
+                                            true)
+                                          'تلفن: ${item.supplierPhone}',
+                                        if (item.supplierEmail?.isNotEmpty ==
+                                            true)
+                                          'ایمیل: ${item.supplierEmail}',
+                                        if (item.supplierAddress?.isNotEmpty ==
+                                            true)
+                                          'نشانی: ${item.supplierAddress}',
+                                        if (item.supplierNotes?.isNotEmpty ==
+                                            true)
+                                          'یادداشت: ${item.supplierNotes}',
+                                      ].join(' · ');
+                                      final supplierSummary = [
+                                        item.supplier ?? 'تأمین‌کننده ثبت نشده',
+                                        if (supplierDetails.isNotEmpty)
+                                          supplierDetails,
+                                      ].join(' · ');
+                                      final expired = item.isExpired;
+                                      final expiringSoon =
+                                          item.isExpiringSoon && !expired;
+                                      return ListTile(
+                                        dense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: Icon(
+                                          expired || expiringSoon
+                                              ? Icons.warning_amber_rounded
+                                              : Icons.event_available_rounded,
+                                          color: expired
+                                              ? AdminColors.coral
+                                              : expiringSoon
+                                              ? AdminColors.amber
+                                              : AdminColors.ink,
+                                        ),
+                                        title: Text(
+                                          '${item.productTitle} · ${item.batchCode}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          'خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} بسته · ${expired
+                                              ? 'منقضی شده'
+                                              : expiringSoon
+                                              ? 'نزدیک انقضا'
+                                              : 'تاریخ انقضا'}: ${formatLocalizedDateTime(context, item.expiresAt)}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: expired
+                                                ? AdminColors.coral
+                                                : expiringSoon
+                                                ? AdminColors.amber
+                                                : AdminColors.muted,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
 class _InventoryAttentionBanner extends StatelessWidget {
-  const _InventoryAttentionBanner({required this.expiredCount, required this.expiringCount});
+  const _InventoryAttentionBanner({
+    required this.expiredCount,
+    required this.expiringCount,
+  });
 
   final int expiredCount;
   final int expiringCount;
 
   @override
   Widget build(BuildContext context) {
-    final expiredText = expiredCount == 0 ? '' : '${formatPersianInteger(expiredCount)} بچ منقضی با موجودی باقی‌مانده';
-    final expiringText = expiringCount == 0 ? '' : '${formatPersianInteger(expiringCount)} بچ تا ۳۰ روز آینده منقضی می‌شود';
-    final detail = [expiredText, expiringText].where((value) => value.isNotEmpty).join(' · ');
+    final expiredText = expiredCount == 0
+        ? ''
+        : '${formatPersianInteger(expiredCount)} بچ منقضی با موجودی باقی‌مانده';
+    final expiringText = expiringCount == 0
+        ? ''
+        : '${formatPersianInteger(expiringCount)} بچ تا ۳۰ روز آینده منقضی می‌شود';
+    final detail = [
+      expiredText,
+      expiringText,
+    ].where((value) => value.isNotEmpty).join(' · ');
     return Semantics(
       container: true,
       liveRegion: true,
@@ -336,26 +845,58 @@ class _InventoryAttentionBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: expiredCount > 0 ? AdminColors.dangerSoft : AdminColors.warningSoft,
+          color: expiredCount > 0
+              ? AdminColors.dangerSoft
+              : AdminColors.warningSoft,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: expiredCount > 0 ? AdminColors.dangerSoft : AdminColors.warningSoft),
+          border: Border.all(
+            color: expiredCount > 0
+                ? AdminColors.dangerSoft
+                : AdminColors.warningSoft,
+          ),
         ),
-        child: Row(children: [
-          Icon(expiredCount > 0 ? Icons.priority_high_rounded : Icons.schedule_rounded, color: expiredCount > 0 ? AdminColors.coral : AdminColors.amber),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(detail, style: const TextStyle(fontWeight: FontWeight.w800, height: 1.4)),
-            const SizedBox(height: 3),
-            const Text('اولویت با برداشت FEFO', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
-          ])),
-        ]),
+        child: Row(
+          children: [
+            Icon(
+              expiredCount > 0
+                  ? Icons.priority_high_rounded
+                  : Icons.schedule_rounded,
+              color: expiredCount > 0 ? AdminColors.coral : AdminColors.amber,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    detail,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    'اولویت با برداشت FEFO',
+                    style: TextStyle(fontSize: 11, color: AdminColors.muted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class AdjustmentCommand {
-  const AdjustmentCommand(this.delta, this.reason, {this.isWaste = false, this.batchCode});
+  const AdjustmentCommand(
+    this.delta,
+    this.reason, {
+    this.isWaste = false,
+    this.batchCode,
+  });
   final int delta;
   final String reason;
   final bool isWaste;
@@ -363,10 +904,16 @@ class AdjustmentCommand {
 }
 
 class AdjustmentDialog extends StatefulWidget {
-  const AdjustmentDialog({super.key, required this.variant, this.batches = const [], this.onSubmit});
+  const AdjustmentDialog({
+    super.key,
+    required this.variant,
+    this.batches = const [],
+    this.onSubmit,
+  });
   final ProductVariant variant;
   final List<InventoryBatch> batches;
-  final Future<bool> Function(AdjustmentCommand command, String operationKey)? onSubmit;
+  final Future<bool> Function(AdjustmentCommand command, String operationKey)?
+  onSubmit;
   @override
   State<AdjustmentDialog> createState() => _AdjustmentDialogState();
 }
@@ -381,17 +928,35 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
   String? operationKey;
   String? previousPayload;
 
-  String newOperationKey() => List.generate(16, (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  String newOperationKey() => List.generate(
+    16,
+    (_) => Random.secure().nextInt(256).toRadixString(16).padLeft(2, '0'),
+  ).join();
 
   Future<void> submit() async {
     if (busy || formKey.currentState?.validate() != true) return;
-    final command = AdjustmentCommand(parsePersianInteger(delta.text)!, reason.text.trim(), isWaste: isWaste, batchCode: batchCode);
-    final payload = jsonEncode([command.delta, command.reason, command.isWaste, command.batchCode]);
-    if (operationKey == null || payload != previousPayload) operationKey = newOperationKey();
+    final command = AdjustmentCommand(
+      parsePersianInteger(delta.text)!,
+      reason.text.trim(),
+      isWaste: isWaste,
+      batchCode: batchCode,
+    );
+    final payload = jsonEncode([
+      command.delta,
+      command.reason,
+      command.isWaste,
+      command.batchCode,
+    ]);
+    if (operationKey == null || payload != previousPayload)
+      operationKey = newOperationKey();
     previousPayload = payload;
-    setState(() { busy = true; error = null; });
+    setState(() {
+      busy = true;
+      error = null;
+    });
     try {
-      final wasSubmitted = await widget.onSubmit?.call(command, operationKey!) ?? true;
+      final wasSubmitted =
+          await widget.onSubmit?.call(command, operationKey!) ?? true;
       if (mounted && wasSubmitted) Navigator.pop(context, command);
     } catch (exception) {
       if (mounted) setState(() => error = exception);
@@ -412,125 +977,205 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
   @override
   Widget build(BuildContext context) {
     final actions = <Widget>[
-      TextButton(onPressed: busy ? null : () => Navigator.pop(context), child: const Text('انصراف')),
+      TextButton(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('انصراف'),
+      ),
       FilledButton(
         onPressed: busy ? null : submit,
-        child: Text(busy ? 'در حال ثبت…' : isWaste ? 'ثبت ضایعات' : 'ثبت اصلاح'),
+        child: Text(
+          busy
+              ? 'در حال ثبت…'
+              : isWaste
+              ? 'ثبت ضایعات'
+              : 'ثبت اصلاح',
+        ),
       ),
     ];
     final textScale = MediaQuery.textScalerOf(context).scale(14);
-    final useStackedActions = MediaQuery.sizeOf(context).width < 480 || textScale > 16;
-    return PopScope(canPop: !busy, child: AlertDialog(
-      title: Text(isWaste ? 'ثبت ضایعات ${widget.variant.sku}' : 'اصلاح موجودی ${widget.variant.sku}'),
-      content: SizedBox(
-        width: 430,
-        child: Form(
-          key: formKey,
-          child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (widget.batches.isNotEmpty) const Text('این کالا بچ دارد؛ ورود را با ثبت خرید و خروج را با انتخاب بچ ضایعاتی ثبت کنید.'),
-            if (error != null) Semantics(liveRegion: true, child: Text(requestErrorMessage(error!), style: TextStyle(color: Theme.of(context).colorScheme.error))),
-            Text('موجودی فعلی: ${formatPersianInteger(widget.variant.availablePackages)} بسته'),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<bool>(
-              initialValue: isWaste,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'نوع عملیات'),
-              items: [
-                DropdownMenuItem(
-                  value: false,
-                  enabled: widget.batches.isEmpty,
-                  child: const Text('اصلاح دستی موجودی', maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-                const DropdownMenuItem(
-                  value: true,
-                  child: Text('ثبت ضایعات', maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == true && widget.batches.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('برای ثبت ضایعات، ابتدا یک بچ با ماندهٔ موجود انتخاب یا ثبت کنید.')));
-                  return;
-                }
-                setState(() => isWaste = value ?? false);
-              },
-            ),
-            if (isWaste) ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: batchCode,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'بچ ضایعاتی'),
-                items: [
-                  for (final batch in widget.batches)
-                    DropdownMenuItem(value: batch.batchCode, child: Text('${batch.batchCode} · مانده ${formatPersianInteger(batch.remainingPackages)} بسته')),
-                ],
-                onChanged: (value) => setState(() => batchCode = value),
-                validator: (value) => value == null ? 'بچ ضایعاتی را انتخاب کنید.' : null,
-              ),
-            ],
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: delta,
-              keyboardType: TextInputType.number,
-              inputFormatters: const [PersianDigitsInputFormatter()],
-              decoration: InputDecoration(
-                labelText: isWaste ? 'تعداد بستهٔ ضایعاتی' : 'تغییر موجودی',
-                hintText: isWaste ? 'تعداد بسته‌های غیرقابل‌فروش' : 'مثبت برای ورود، منفی برای خروج',
-              ),
-              validator: (value) {
-                final batchRemaining = selectedBatch?.remainingPackages ?? 0;
-                final maximum = isWaste && batchRemaining < maxInventoryAdjustment
-                    ? batchRemaining
-                    : maxInventoryAdjustment;
-                final amount = parsePersianInteger(
-                  value,
-                  min: isWaste ? 1 : -maxInventoryAdjustment,
-                  max: maximum,
-                );
-                if (amount == null) return 'عدد معتبر وارد کنید.';
-                if (isWaste && amount <= 0) return 'تعداد ضایعات باید بیشتر از صفر باشد.';
-                if (isWaste && selectedBatch == null) return 'بچ ضایعاتی را انتخاب کنید.';
-                if (isWaste && selectedBatch != null && amount > selectedBatch!.remainingPackages) return 'تعداد از ماندهٔ بچ بیشتر است.';
-                if (!isWaste && amount == 0) return 'مقدار تغییر نمی‌تواند صفر باشد.';
-                return null;
-              },
-            ),
-            const SizedBox(height: 10),
-            TextFormField(
-              controller: reason,
-              decoration: const InputDecoration(labelText: 'علت اصلاح یا ضایعات', counterText: ''),
-              maxLength: 500,
-              validator: (value) => value == null || value.trim().isEmpty ? 'علت را وارد کنید.' : value.trim().length > 500 ? 'علت حداکثر ۵۰۰ نویسه است.' : null,
-            ),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: reason,
-              builder: (context, value, child) => Align(
-                alignment: AlignmentDirectional.centerEnd,
-                child: Text(
-                  '${formatPersianInteger(value.text.length)} / ۵۰۰ نویسه',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ),
-            ),
-          ])),
+    final useStackedActions =
+        MediaQuery.sizeOf(context).width < 480 || textScale > 16;
+    return PopScope(
+      canPop: !busy,
+      child: AlertDialog(
+        title: Text(
+          isWaste
+              ? 'ثبت ضایعات ${widget.variant.sku}'
+              : 'اصلاح موجودی ${widget.variant.sku}',
         ),
-      ),
-      actions: useStackedActions
-          ? [
-              SizedBox(
-                width: double.infinity,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: actions,
-                ),
+        content: SizedBox(
+          width: 430,
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.batches.isNotEmpty)
+                    const Text(
+                      'این کالا بچ دارد؛ ورود را با ثبت خرید و خروج را با انتخاب بچ ضایعاتی ثبت کنید.',
+                    ),
+                  if (error != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        requestErrorMessage(error!),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    'موجودی فعلی: ${formatPersianInteger(widget.variant.availablePackages)} بسته',
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<bool>(
+                    initialValue: isWaste,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'نوع عملیات'),
+                    items: [
+                      DropdownMenuItem(
+                        value: false,
+                        enabled: widget.batches.isEmpty,
+                        child: const Text(
+                          'اصلاح دستی موجودی',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const DropdownMenuItem(
+                        value: true,
+                        child: Text(
+                          'ثبت ضایعات',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == true && widget.batches.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'برای ثبت ضایعات، ابتدا یک بچ با ماندهٔ موجود انتخاب یا ثبت کنید.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      setState(() => isWaste = value ?? false);
+                    },
+                  ),
+                  if (isWaste) ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: batchCode,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'بچ ضایعاتی',
+                      ),
+                      items: [
+                        for (final batch in widget.batches)
+                          DropdownMenuItem(
+                            value: batch.batchCode,
+                            child: Text(
+                              '${batch.batchCode} · مانده ${formatPersianInteger(batch.remainingPackages)} بسته',
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) => setState(() => batchCode = value),
+                      validator: (value) =>
+                          value == null ? 'بچ ضایعاتی را انتخاب کنید.' : null,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: delta,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: const [PersianDigitsInputFormatter()],
+                    decoration: InputDecoration(
+                      labelText: isWaste
+                          ? 'تعداد بستهٔ ضایعاتی'
+                          : 'تغییر موجودی',
+                      hintText: isWaste
+                          ? 'تعداد بسته‌های غیرقابل‌فروش'
+                          : 'مثبت برای ورود، منفی برای خروج',
+                    ),
+                    validator: (value) {
+                      final batchRemaining =
+                          selectedBatch?.remainingPackages ?? 0;
+                      final maximum =
+                          isWaste && batchRemaining < maxInventoryAdjustment
+                          ? batchRemaining
+                          : maxInventoryAdjustment;
+                      final amount = parsePersianInteger(
+                        value,
+                        min: isWaste ? 1 : -maxInventoryAdjustment,
+                        max: maximum,
+                      );
+                      if (amount == null) return 'عدد معتبر وارد کنید.';
+                      if (isWaste && amount <= 0)
+                        return 'تعداد ضایعات باید بیشتر از صفر باشد.';
+                      if (isWaste && selectedBatch == null)
+                        return 'بچ ضایعاتی را انتخاب کنید.';
+                      if (isWaste &&
+                          selectedBatch != null &&
+                          amount > selectedBatch!.remainingPackages)
+                        return 'تعداد از ماندهٔ بچ بیشتر است.';
+                      if (!isWaste && amount == 0)
+                        return 'مقدار تغییر نمی‌تواند صفر باشد.';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: reason,
+                    decoration: const InputDecoration(
+                      labelText: 'علت اصلاح یا ضایعات',
+                      counterText: '',
+                    ),
+                    maxLength: 500,
+                    validator: (value) => value == null || value.trim().isEmpty
+                        ? 'علت را وارد کنید.'
+                        : value.trim().length > 500
+                        ? 'علت حداکثر ۵۰۰ نویسه است.'
+                        : null,
+                  ),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: reason,
+                    builder: (context, value, child) => Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: Text(
+                        '${formatPersianInteger(value.text.length)} / ۵۰۰ نویسه',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ]
-          : actions,
-      actionsOverflowAlignment: OverflowBarAlignment.end,
-      actionsOverflowDirection: VerticalDirection.down,
-      actionsOverflowButtonSpacing: 8,
-    ));
+            ),
+          ),
+        ),
+        actions: useStackedActions
+            ? [
+                SizedBox(
+                  width: double.infinity,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: actions,
+                  ),
+                ),
+              ]
+            : actions,
+        actionsOverflowAlignment: OverflowBarAlignment.end,
+        actionsOverflowDirection: VerticalDirection.down,
+        actionsOverflowButtonSpacing: 8,
+      ),
+    );
   }
 
   @override
@@ -540,5 +1185,3 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
     super.dispose();
   }
 }
-
-

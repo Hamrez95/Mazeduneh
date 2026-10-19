@@ -1,6 +1,9 @@
 import 'admin_table.dart';
 import 'admin_theme.dart';
+import 'admin_mobile_list_controls.dart';
+import 'localized_calendar.dart';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_session.dart';
@@ -64,6 +67,9 @@ class _PromotionsPageState extends State<PromotionsPage> {
   late final api = widget.api ?? PromotionsApiClient();
   List<dynamic>? rows;
   String? error;
+  String promotionQuery = '';
+  int promotionPage = 0;
+  int promotionPageSize = 10;
   @override
   void initState() {
     super.initState();
@@ -102,138 +108,260 @@ class _PromotionsPageState extends State<PromotionsPage> {
   }
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(28),
-    children: [
-      Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        spacing: 16,
-        runSpacing: 12,
-        children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'کوپن و تخفیف',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-              ),
-              Text('قیمت نهایی و محدودیت مصرف در سرور کنترل می‌شوند.'),
-            ],
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'تازه‌سازی کوپن‌ها',
-                onPressed: load,
-                icon: const Icon(Icons.refresh),
-              ),
-              if (OwnerSession.instance.can('pricing.write'))
-                FilledButton.icon(
-                  onPressed: () => edit(),
-                  icon: const Icon(Icons.add),
-                  label: const Text('کوپن جدید'),
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 1200;
+    final allRows = (rows ?? const []).cast<Map<String, dynamic>>();
+    final query = normalizeNumberDigits(promotionQuery.trim().toLowerCase());
+    final filteredRows = allRows.where((row) {
+      if (query.isEmpty) return true;
+      final rule = row['rule'] as Map;
+      return normalizeNumberDigits(
+        '${row['code']} ${rule['name']}'.toLowerCase(),
+      ).contains(query);
+    }).toList();
+    final lastPage = filteredRows.isEmpty
+        ? 0
+        : (filteredRows.length - 1) ~/ promotionPageSize;
+    final currentPage = promotionPage.clamp(0, lastPage);
+    final pageRows = filteredRows
+        .skip(currentPage * promotionPageSize)
+        .take(promotionPageSize)
+        .toList();
+    return ListView(
+      padding: MediaQuery.sizeOf(context).width < 600
+          ? const EdgeInsets.all(16)
+          : const EdgeInsets.all(28),
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          spacing: 16,
+          runSpacing: 12,
+          children: [
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'کوپن و تخفیف',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
                 ),
-            ],
-          ),
-        ],
-      ),
-      const SizedBox(height: 24),
-      const Card(
-        child: Padding(
-          padding: EdgeInsets.all(18),
-          child: Text(
-            'درصدی، مبلغ ثابت یا ارسال رایگان بسازید؛ زمان و سقف مصرف را مشخص کنید و با یک SKU نمونه اثر تخفیف بر سود را ببینید. پک، خرید و هدیه، دامنهٔ مشتری/شهر/دسته و کمپین خودکار هم قابل تنظیم‌اند. هر سفارش یک تخفیف دارد. مبالغ فرم به تومان هستند.',
-          ),
-        ),
-      ),
-      if (error != null)
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            error!,
-            semanticsLabel: 'خطا: $error',
-            style: const TextStyle(color: Colors.red),
-          ),
-        ),
-      if (rows == null && error == null)
-        const Center(child: CircularProgressIndicator()),
-      if (rows?.isEmpty == true)
-        const Padding(
-          padding: EdgeInsets.all(40),
-          child: Text(
-            'هنوز کوپنی نساخته‌اید. با «کوپن جدید» اولین تخفیف را آماده کنید.',
-          ),
-        ),
-      if (rows?.isNotEmpty == true && MediaQuery.sizeOf(context).width >= 1200)
-        AdminRecordTable<Map<String, dynamic>>(
-          records: rows!.cast<Map<String, dynamic>>(),
-          searchText: (r) => "${r['code']} ${(r['rule'] as Map)['name']}",
-          searchHint: 'جست‌وجوی کمپین یا کوپن…',
-          columns: [
-            AdminColumn('کمپین', (r) => AdminIdentityCell(title: (r['rule'] as Map)['name'] as String, subtitle: r['code'] as String, leading: const CircleAvatar(backgroundColor: AdminColors.primarySoft, child: Icon(Icons.local_offer_outlined, color: AdminColors.primaryLight, size: 20)))),
-            AdminColumn('نوع', (r) => Text(_kindLabel((r['rule'] as Map)['kind'] as String))),
-            AdminColumn('اجرا', (r) => AdminStatusBadge((r['rule'] as Map)['automatic'] == true ? 'خودکار' : 'کد تخفیف')),
-            AdminColumn('وضعیت', (r) => AdminStatusBadge(_promotionState(r), color: _promotionState(r) == 'فعال' ? AdminColors.success : AdminColors.amber, background: _promotionState(r) == 'فعال' ? AdminColors.successSoft : AdminColors.warningSoft)),
-            AdminColumn('مصرف', (r) => Text(formatPersianInteger(r['uses'] as num)), compare: (a,b) => (a['uses'] as num).compareTo(b['uses'] as num)),
-            AdminColumn('تخفیف (تومان)', (r) => Text(formatToman(r['discountTotal'] as num)), compare: (a,b) => (a['discountTotal'] as num).compareTo(b['discountTotal'] as num)),
-            AdminColumn('فروش (تومان)', (r) => Text(formatToman(r['revenue'] as num? ?? 0))),
-            AdminColumn('عملیات', (r) => IconButton(tooltip: "ویرایش ${r['code']}", onPressed: OwnerSession.instance.can('pricing.write') && r['customerScopeHidden'] != true ? () => edit(r) : null, icon: const Icon(Icons.edit_outlined, size: 20))),
+                Text('قیمت نهایی و محدودیت مصرف در سرور کنترل می‌شوند.'),
+              ],
+            ),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              runSpacing: 8,
+              children: [
+                IconButton(
+                  tooltip: 'تازه‌سازی کوپن‌ها',
+                  onPressed: load,
+                  icon: const Icon(Icons.refresh),
+                ),
+                if (OwnerSession.instance.can('pricing.write'))
+                  FilledButton.icon(
+                    onPressed: () => edit(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('کوپن جدید'),
+                  ),
+              ],
+            ),
           ],
-        )
-      else for (final raw in rows ?? [])
-        Builder(
-          builder: (context) {
-            final row = raw as Map<String, dynamic>;
-            final rule = row['rule'] as Map<String, dynamic>;
-            final start = DateTime.parse(rule['startsAt'] as String);
-            final end = DateTime.parse(rule['endsAt'] as String);
-            final now = DateTime.now();
-            final state = rule['active'] != true
-                ? 'غیرفعال'
-                : now.isBefore(start)
-                ? 'زمان‌بندی‌شده'
-                : !now.isBefore(end)
-                ? 'پایان‌یافته'
-                : 'فعال';
-            return Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                title: Text(
-                  '${rule['name']} · ${row['code']}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Text(
-                  '$state • مصرف: ${formatPersianInteger(row['uses'] as num)} از ${rule['maxUses'] == null ? 'نامحدود' : formatPersianInteger(rule['maxUses'] as num)}\nپرداخت‌شده: ${formatPersianInteger(row['paidOrders'] as num? ?? 0)} سفارش • تخفیف: ${formatToman(row['discountTotal'] as num)} تومان\nفروش پرداخت‌شده: ${formatToman(row['revenue'] as num? ?? 0)} تومان${rule['automatic'] == true ? ' • خودکار' : ''}',
-                ),
-                isThreeLine: true,
-                trailing:
-                    OwnerSession.instance.can('pricing.write') &&
-                        row['customerScopeHidden'] != true
-                    ? IconButton(
-                        tooltip: 'ویرایش ${row['code']}',
-                        onPressed: () => edit(row),
-                        icon: const Icon(Icons.edit_outlined),
-                      )
-                    : null,
-              ),
-            );
-          },
         ),
-    ],
-  );
+        const SizedBox(height: 24),
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(18),
+            child: Text(
+              'درصدی، مبلغ ثابت یا ارسال رایگان بسازید؛ زمان و سقف مصرف را مشخص کنید و با یک SKU نمونه اثر تخفیف بر سود را ببینید. پک، خرید و هدیه، دامنهٔ مشتری/شهر/دسته و کمپین خودکار هم قابل تنظیم‌اند. هر سفارش یک تخفیف دارد. مبالغ فرم به تومان هستند.',
+            ),
+          ),
+        ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              error!,
+              semanticsLabel: 'خطا: $error',
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        if (rows == null && error == null)
+          const Center(child: CircularProgressIndicator()),
+        if (rows?.isEmpty == true)
+          const Padding(
+            padding: EdgeInsets.all(40),
+            child: Text(
+              'هنوز کوپنی نساخته‌اید. با «کوپن جدید» اولین تخفیف را آماده کنید.',
+            ),
+          ),
+        if (rows?.isNotEmpty == true && !wide)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: AdminMobileListControls(
+              totalItems: filteredRows.length,
+              page: currentPage,
+              pageSize: promotionPageSize,
+              searchText: promotionQuery,
+              searchHint: 'جست‌وجوی نام کمپین یا کد',
+              onSearchChanged: (value) => setState(() {
+                promotionQuery = value;
+                promotionPage = 0;
+              }),
+              onPageChanged: (value) => setState(() => promotionPage = value),
+              onPageSizeChanged: (value) => setState(() {
+                promotionPageSize = value;
+                promotionPage = 0;
+              }),
+            ),
+          ),
+        if (rows?.isNotEmpty == true && wide)
+          AdminRecordTable<Map<String, dynamic>>(
+            records: rows!.cast<Map<String, dynamic>>(),
+            searchText: (r) => "${r['code']} ${(r['rule'] as Map)['name']}",
+            searchHint: 'جست‌وجوی کمپین یا کوپن…',
+            columns: [
+              AdminColumn(
+                'کمپین',
+                (r) => AdminIdentityCell(
+                  title: (r['rule'] as Map)['name'] as String,
+                  subtitle: r['code'] as String,
+                  leading: const CircleAvatar(
+                    backgroundColor: AdminColors.primarySoft,
+                    child: Icon(
+                      Icons.local_offer_outlined,
+                      color: AdminColors.primaryLight,
+                      size: 20,
+                    ),
+                  ),
+                ),
+              ),
+              AdminColumn(
+                'نوع',
+                (r) => Text(_kindLabel((r['rule'] as Map)['kind'] as String)),
+              ),
+              AdminColumn(
+                'اجرا',
+                (r) => AdminStatusBadge(
+                  (r['rule'] as Map)['automatic'] == true
+                      ? 'خودکار'
+                      : 'کد تخفیف',
+                ),
+              ),
+              AdminColumn(
+                'وضعیت',
+                (r) => AdminStatusBadge(
+                  _promotionState(r),
+                  color: _promotionState(r) == 'فعال'
+                      ? AdminColors.success
+                      : AdminColors.amber,
+                  background: _promotionState(r) == 'فعال'
+                      ? AdminColors.successSoft
+                      : AdminColors.warningSoft,
+                ),
+              ),
+              AdminColumn(
+                'مصرف',
+                (r) => Text(formatPersianInteger(r['uses'] as num)),
+                compare: (a, b) =>
+                    (a['uses'] as num).compareTo(b['uses'] as num),
+              ),
+              AdminColumn(
+                'تخفیف (تومان)',
+                (r) => Text(formatToman(r['discountTotal'] as num)),
+                compare: (a, b) => (a['discountTotal'] as num).compareTo(
+                  b['discountTotal'] as num,
+                ),
+              ),
+              AdminColumn(
+                'فروش (تومان)',
+                (r) => Text(formatToman(r['revenue'] as num? ?? 0)),
+              ),
+              AdminColumn(
+                'عملیات',
+                (r) => IconButton(
+                  tooltip: "ویرایش ${r['code']}",
+                  onPressed:
+                      OwnerSession.instance.can('pricing.write') &&
+                          r['customerScopeHidden'] != true
+                      ? () => edit(r)
+                      : null,
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                ),
+              ),
+            ],
+          )
+        else if (filteredRows.isEmpty && allRows.isNotEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: Text('کمپینی با این جست‌وجو پیدا نشد.'),
+          )
+        else if (!wide)
+          for (final row in pageRows)
+            Builder(
+              builder: (context) {
+                final rule = row['rule'] as Map<String, dynamic>;
+                final start = DateTime.parse(rule['startsAt'] as String);
+                final end = DateTime.parse(rule['endsAt'] as String);
+                final now = DateTime.now();
+                final state = rule['active'] != true
+                    ? 'غیرفعال'
+                    : now.isBefore(start)
+                    ? 'زمان‌بندی‌شده'
+                    : !now.isBefore(end)
+                    ? 'پایان‌یافته'
+                    : 'فعال';
+                return Card(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: MediaQuery.sizeOf(context).width < 380
+                          ? 12
+                          : 20,
+                      vertical: 12,
+                    ),
+                    title: Text(
+                      '${rule['name']} · ${row['code']}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '$state • مصرف: ${formatPersianInteger(row['uses'] as num)} از ${rule['maxUses'] == null ? 'نامحدود' : formatPersianInteger(rule['maxUses'] as num)}\nپرداخت‌شده: ${formatPersianInteger(row['paidOrders'] as num? ?? 0)} سفارش • تخفیف: ${formatToman(row['discountTotal'] as num)} تومان\nفروش پرداخت‌شده: ${formatToman(row['revenue'] as num? ?? 0)} تومان${rule['automatic'] == true ? ' • خودکار' : ''}',
+                    ),
+                    isThreeLine: true,
+                    trailing:
+                        OwnerSession.instance.can('pricing.write') &&
+                            row['customerScopeHidden'] != true
+                        ? IconButton(
+                            tooltip: 'ویرایش ${row['code']}',
+                            onPressed: () => edit(row),
+                            icon: const Icon(Icons.edit_outlined),
+                          )
+                        : null,
+                  ),
+                );
+              },
+            ),
+      ],
+    );
+  }
 }
 
-String _kindLabel(String kind) => switch(kind) { 'Percent' => 'درصدی', 'Fixed' => 'مبلغ ثابت', 'FreeShipping' => 'ارسال رایگان', 'Bundle' => 'پک', 'BuyGet' => 'خرید و هدیه', _ => kind };
-String _promotionState(Map<String,dynamic> row) {
+String _kindLabel(String kind) => switch (kind) {
+  'Percent' => 'درصدی',
+  'Fixed' => 'مبلغ ثابت',
+  'FreeShipping' => 'ارسال رایگان',
+  'Bundle' => 'پک',
+  'BuyGet' => 'خرید و هدیه',
+  _ => kind,
+};
+String _promotionState(Map<String, dynamic> row) {
   final rule = row['rule'] as Map;
   final now = DateTime.now();
   if (rule['active'] != true) return 'غیرفعال';
-  if (now.isBefore(DateTime.parse(rule['startsAt'] as String))) return 'زمان‌بندی‌شده';
-  if (!now.isBefore(DateTime.parse(rule['endsAt'] as String))) return 'پایان‌یافته';
+  if (now.isBefore(DateTime.parse(rule['startsAt'] as String)))
+    return 'زمان‌بندی‌شده';
+  if (!now.isBefore(DateTime.parse(rule['endsAt'] as String)))
+    return 'پایان‌یافته';
   return 'فعال';
 }
 
@@ -261,6 +389,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   final sampleBasket = <Map<String, dynamic>>[];
   final bundleBasket = <Map<String, dynamic>>[];
   bool loadingChoices = false;
+  late DateTime startsAt;
+  late DateTime endsAt;
   TextEditingController field(String name) =>
       fields.putIfAbsent(name, () => TextEditingController());
   @override
@@ -273,8 +403,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     allowLoss = rule?['allowLoss'] == true;
     field('code').text = widget.item?['code'] as String? ?? '';
     field('name').text = rule?['name'] as String? ?? '';
-    final promotionValue = (rule?['value'] as num? ?? 10) /
-        (kind == 'Fixed' ? 10 : 1);
+    final promotionValue =
+        (rule?['value'] as num? ?? 10) / (kind == 'Fixed' ? 10 : 1);
     field('value').text = kind == 'Fixed'
         ? formatPersianInteger(promotionValue)
         : toPersianDigits(promotionValue);
@@ -286,16 +416,12 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         : formatPersianInteger((rule!['maxDiscount'] as num) / 10);
     field('uses').text = toPersianDigits(rule?['maxUses'] ?? '');
     field('skus').text = (rule?['skus'] as List? ?? []).join(', ');
-    field('start').text = toPersianDigits(
-        (DateTime.tryParse(rule?['startsAt'] as String? ?? '')?.toLocal() ??
-                DateTime.now().subtract(const Duration(minutes: 1)))
-            .toString()
-            .substring(0, 16));
-    field('end').text = toPersianDigits(
-        (DateTime.tryParse(rule?['endsAt'] as String? ?? '')?.toLocal() ??
-                DateTime.now().add(const Duration(days: 30)))
-            .toString()
-            .substring(0, 16));
+    startsAt =
+        DateTime.tryParse(rule?['startsAt'] as String? ?? '')?.toLocal() ??
+        DateTime.now().subtract(const Duration(minutes: 1));
+    endsAt =
+        DateTime.tryParse(rule?['endsAt'] as String? ?? '')?.toLocal() ??
+        DateTime.now().add(const Duration(days: 30));
     field('quantity').text = '۱';
     field('shipping').text = 'post';
     automatic = rule?['automatic'] == true;
@@ -316,10 +442,14 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     field('bundlePrice').text = rule?['bundlePrice'] == null
         ? ''
         : '${(rule!['bundlePrice'] as num) / 10}';
-    bundleBasket.addAll((rule?['bundleItems'] as List? ?? []).map((item) => {
-      'sku': item['sku'] as String,
-      'quantity': (item['quantity'] as num).toInt(),
-    }));
+    bundleBasket.addAll(
+      (rule?['bundleItems'] as List? ?? []).map(
+        (item) => {
+          'sku': item['sku'] as String,
+          'quantity': (item['quantity'] as num).toInt(),
+        },
+      ),
+    );
     field('bundleQuantity').text = '۱';
   }
 
@@ -327,15 +457,23 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     loadingChoices = true;
     try {
       final requests = <Future<dynamic>>[
-        CatalogApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchProducts(includeDrafts: true),
+        CatalogApiClient(
+          client: widget.api.client,
+          baseUrl: widget.api.baseUrl,
+        ).fetchProducts(includeDrafts: true),
         if (OwnerSession.instance.can('customers.pii.read'))
-          CustomerApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchCustomers(limit: 200),
+          CustomerApiClient(
+            client: widget.api.client,
+            baseUrl: widget.api.baseUrl,
+          ).fetchCustomers(limit: 200),
       ];
       final result = await Future.wait(requests);
       if (!mounted) return;
       setState(() {
         products = result[0] as List<Product>;
-        customers = result.length > 1 ? result[1] as List<CustomerSummary> : const [];
+        customers = result.length > 1
+            ? result[1] as List<CustomerSummary>
+            : const [];
       });
     } catch (_) {
       // Keep current saved values editable if choice data is temporarily unavailable.
@@ -347,11 +485,15 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   List<({String value, String label})> get skuChoices => [
     for (final product in products)
       for (final variant in product.variants)
-        (value: variant.sku, label: '${product.title} · ${variant.displayLabel} · ${variant.sku}'),
+        (
+          value: variant.sku,
+          label: '${product.title} · ${variant.displayLabel} · ${variant.sku}',
+        ),
   ];
 
   List<({String value, String label})> get categoryChoices => [
-    for (final value in products.map((product) => product.category).toSet().toList()..sort())
+    for (final value
+        in products.map((product) => product.category).toSet().toList()..sort())
       (value: value, label: value),
   ];
 
@@ -362,25 +504,38 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         if (address.city.trim().isNotEmpty) cities.add(address.city.trim());
       }
     }
-    return [for (final city in cities.toList()..sort()) (value: city, label: city)];
+    return [
+      for (final city in cities.toList()..sort()) (value: city, label: city),
+    ];
   }
 
   List<({String value, String label})> get customerChoices => [
-    for (final customer in customers.where((customer) => customer.mobile.trim().isNotEmpty))
-      (value: customer.mobile, label: '${customer.fullName} · ${customer.mobile}'),
+    for (final customer in customers.where(
+      (customer) => customer.mobile.trim().isNotEmpty,
+    ))
+      (
+        value: customer.mobile,
+        label: '${customer.fullName} · ${customer.mobile}',
+      ),
   ];
 
-  Widget selection(String key, String label, List<({String value, String label})> choices) =>
-      _MultiSelectField(
-        label: label,
-        choices: choices,
-        selected: csv(key),
-        loading: loadingChoices,
-        onChanged: (values) => setState(() {
-          field(key).text = values.join(', ');
-          preview = null;
-        }),
-      );
+  double get editorFieldWidth =>
+      math.min(330, math.max(180, MediaQuery.sizeOf(context).width - 96));
+
+  Widget selection(
+    String key,
+    String label,
+    List<({String value, String label})> choices,
+  ) => _MultiSelectField(
+    label: label,
+    choices: choices,
+    selected: csv(key),
+    loading: loadingChoices,
+    onChanged: (values) => setState(() {
+      field(key).text = values.join(', ');
+      preview = null;
+    }),
+  );
 
   void addSampleLine() {
     final sku = field('sku').text.trim();
@@ -389,7 +544,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     setState(() {
       final index = sampleBasket.indexWhere((line) => line['sku'] == sku);
       if (index >= 0) {
-        sampleBasket[index] = {...sampleBasket[index], 'quantity': (sampleBasket[index]['quantity'] as int) + count.toInt()};
+        sampleBasket[index] = {
+          ...sampleBasket[index],
+          'quantity': (sampleBasket[index]['quantity'] as int) + count.toInt(),
+        };
       } else {
         sampleBasket.add({'sku': sku, 'quantity': count.toInt()});
       }
@@ -404,7 +562,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     setState(() {
       final index = bundleBasket.indexWhere((line) => line['sku'] == sku);
       if (index >= 0) {
-        bundleBasket[index] = {...bundleBasket[index], 'quantity': (bundleBasket[index]['quantity'] as int) + count.toInt()};
+        bundleBasket[index] = {
+          ...bundleBasket[index],
+          'quantity': (bundleBasket[index]['quantity'] as int) + count.toInt(),
+        };
       } else {
         bundleBasket.add({'sku': sku, 'quantity': count.toInt()});
       }
@@ -435,8 +596,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         ? 0
         : number('value') * (kind == 'Fixed' ? 10 : 1),
     'active': active,
-    'startsAt': DateTime.parse(normalizeNumberDigits(field('start').text)).toUtc().toIso8601String(),
-    'endsAt': DateTime.parse(normalizeNumberDigits(field('end').text)).toUtc().toIso8601String(),
+    'startsAt': startsAt.toUtc().toIso8601String(),
+    'endsAt': endsAt.toUtc().toIso8601String(),
     'minSubtotal': number('min') * 10,
     'maxDiscount': field('max').text.trim().isEmpty ? null : number('max') * 10,
     'maxUses': field('uses').text.trim().isEmpty
@@ -465,6 +626,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   };
   Future<void> run(bool save) async {
     if (form.currentState?.validate() != true) return;
+    if (!endsAt.isAfter(startsAt)) {
+      setState(() => error = 'زمان پایان باید بعد از زمان شروع باشد.');
+      return;
+    }
     if (save && kind == 'Bundle' && bundleBasket.isEmpty) {
       setState(() => error = 'برای این پک حداقل یک کالا انتخاب کنید.');
       return;
@@ -533,7 +698,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     bool required = false,
     bool date = false,
   }) => SizedBox(
-    width: 330,
+    width: editorFieldWidth,
     child: TextFormField(
       controller: field(key),
       onChanged: (_) {
@@ -599,10 +764,62 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   n != n.toInt()))
             return 'عدد معتبر وارد کنید.';
         }
-        if (date && DateTime.tryParse(normalizeNumberDigits(value ?? '')) == null)
+        if (date &&
+            DateTime.tryParse(normalizeNumberDigits(value ?? '')) == null)
           return 'مثال: 2026-10-17 14:30';
         return null;
       },
+    ),
+  );
+
+  Future<void> _pickPromotionDateTime({required bool isStart}) async {
+    final current = isStart ? startsAt : endsAt;
+    final selectedDate = await showLocalizedDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+      helpText: isStart ? 'تاریخ شروع کمپین' : 'تاریخ پایان کمپین',
+    );
+    if (selectedDate == null || !mounted) return;
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+      helpText: isStart ? 'ساعت شروع کمپین' : 'ساعت پایان کمپین',
+    );
+    if (selectedTime == null || !mounted) return;
+    final value = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    setState(() {
+      if (isStart) {
+        startsAt = value;
+      } else {
+        endsAt = value;
+      }
+      preview = null;
+      error = null;
+    });
+  }
+
+  Widget _dateTimeField({required bool isStart}) => SizedBox(
+    width: editorFieldWidth,
+    child: OutlinedButton.icon(
+      key: ValueKey(isStart ? 'promotion-start-date' : 'promotion-end-date'),
+      onPressed: busy ? null : () => _pickPromotionDateTime(isStart: isStart),
+      icon: const Icon(Icons.calendar_month_outlined),
+      label: Text(
+        '${isStart ? 'شروع کمپین' : 'پایان کمپین'}\n${formatLocalizedDateTime(context, isStart ? startsAt : endsAt)}',
+        textAlign: TextAlign.start,
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        alignment: AlignmentDirectional.centerStart,
+      ),
     ),
   );
   @override
@@ -624,7 +841,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('code', 'کد انگلیسی؛ مثل WELCOME10', required: true),
                   input('name', 'نام کوپن', required: true),
                   SizedBox(
-                    width: 330,
+                    width: editorFieldWidth,
                     child: DropdownButtonFormField<String>(
                       key: const ValueKey('promotion-kind'),
                       initialValue: kind,
@@ -669,30 +886,78 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('max', 'سقف تخفیف (تومان؛ اختیاری)'),
                   input('uses', 'سقف تعداد مصرف (اختیاری)'),
                   if (kind != 'Bundle')
-                      selection('skus', 'کالاهای مشمول', skuChoices),
+                    selection('skus', 'کالاهای مشمول', skuChoices),
                   if (kind == 'BuyGet') ...[
                     input('buy', 'تعداد خرید X', required: true),
                     input('get', 'تعداد هدیه Y', required: true),
-                    selection('rewardSkus', 'کالاهای هدیه؛ خالی یعنی کالاهای خرید', skuChoices),
+                    selection(
+                      'rewardSkus',
+                      'کالاهای هدیه؛ خالی یعنی کالاهای خرید',
+                      skuChoices,
+                    ),
                   ],
                   if (kind == 'Bundle') ...[
-                    SizedBox(width: 330, child: DropdownButtonFormField<String>(
-                      key: ValueKey('bundle-sku-${field('bundleSku').text}'),
-                      initialValue: skuChoices.any((item) => item.value == field('bundleSku').text) ? field('bundleSku').text : null,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'کالای داخل پک'),
-                      items: [for (final option in skuChoices) DropdownMenuItem(value: option.value, child: Text(option.label, overflow: TextOverflow.ellipsis))],
-                      onChanged: busy ? null : (value) => setState(() { field('bundleSku').text = value ?? ''; preview = null; }),
-                    )),
-                    input('bundleQuantity', 'تعداد این کالا در پک', required: true),
-                    OutlinedButton.icon(onPressed: busy ? null : addBundleLine, icon: const Icon(Icons.add_rounded), label: const Text('افزودن کالا به پک')),
-                    if (bundleBasket.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: [
-                      for (final line in bundleBasket)
-                        InputChip(
-                          label: Text('${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته'),
-                          onDeleted: busy ? null : () => setState(() { bundleBasket.remove(line); preview = null; }),
+                    SizedBox(
+                      width: editorFieldWidth,
+                      child: DropdownButtonFormField<String>(
+                        key: ValueKey('bundle-sku-${field('bundleSku').text}'),
+                        initialValue:
+                            skuChoices.any(
+                              (item) => item.value == field('bundleSku').text,
+                            )
+                            ? field('bundleSku').text
+                            : null,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'کالای داخل پک',
                         ),
-                    ]),
+                        items: [
+                          for (final option in skuChoices)
+                            DropdownMenuItem(
+                              value: option.value,
+                              child: Text(
+                                option.label,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                        onChanged: busy
+                            ? null
+                            : (value) => setState(() {
+                                field('bundleSku').text = value ?? '';
+                                preview = null;
+                              }),
+                      ),
+                    ),
+                    input(
+                      'bundleQuantity',
+                      'تعداد این کالا در پک',
+                      required: true,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : addBundleLine,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('افزودن کالا به پک'),
+                    ),
+                    if (bundleBasket.isNotEmpty)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final line in bundleBasket)
+                            InputChip(
+                              label: Text(
+                                '${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته',
+                              ),
+                              onDeleted: busy
+                                  ? null
+                                  : () => setState(() {
+                                      bundleBasket.remove(line);
+                                      preview = null;
+                                    }),
+                            ),
+                        ],
+                      ),
                     input(
                       'bundlePrice',
                       'قیمت نهایی یک پک (تومان)',
@@ -701,16 +966,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   ],
                   if (['BuyGet', 'Bundle'].contains(kind))
                     input('applications', 'سقف تکرار پیشنهاد در هر سفارش'),
-                  input(
-                    'start',
-                    'شروع به وقت این سیستم؛ YYYY-MM-DD HH:mm',
-                    date: true,
-                  ),
-                  input(
-                    'end',
-                    'پایان به وقت این سیستم؛ YYYY-MM-DD HH:mm',
-                    date: true,
-                  ),
+                  _dateTimeField(isStart: true),
+                  _dateTimeField(isStart: false),
                 ],
               ),
               SwitchListTile(
@@ -736,10 +993,18 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                     runSpacing: 16,
                     children: [
                       if (kind != 'Bundle')
-                        selection('categories', 'دسته‌های کالا؛ اختیاری', categoryChoices),
+                        selection(
+                          'categories',
+                          'دسته‌های کالا؛ اختیاری',
+                          categoryChoices,
+                        ),
                       selection('cities', 'شهرهای مجاز؛ اختیاری', cityChoices),
                       if (OwnerSession.instance.can('customers.pii.read'))
-                        selection('customerMobiles', 'مشتری‌های مجاز', customerChoices),
+                        selection(
+                          'customerMobiles',
+                          'مشتری‌های مجاز',
+                          customerChoices,
+                        ),
                       input('perCustomer', 'سقف مصرف هر مشتری؛ اختیاری'),
                       input('priority', 'اولویت کمپین؛ ۰ تا ۱۰۰۰'),
                     ],
@@ -783,20 +1048,46 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                 'محاسبهٔ آزمایشی سبد خرید',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              const Text('اینجا کالاها و تعدادشان را برای محاسبه انتخاب کنید؛ این پیش‌نمایش سفارش نمی‌سازد و موجودی را رزرو نمی‌کند.'),
+              const Text(
+                'اینجا کالاها و تعدادشان را برای محاسبه انتخاب کنید؛ این پیش‌نمایش سفارش نمی‌سازد و موجودی را رزرو نمی‌کند.',
+              ),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  SizedBox(width: 330, child: DropdownButtonFormField<String>(
-                    key: ValueKey('sample-sku-${field('sku').text}'),
-                    initialValue: skuChoices.any((item) => item.value == field('sku').text) ? field('sku').text : null,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'کالا / بستهٔ نمونه'),
-                    items: [for (final option in skuChoices) DropdownMenuItem(value: option.value, child: Text(option.label, overflow: TextOverflow.ellipsis))],
-                    onChanged: busy ? null : (value) => setState(() { field('sku').text = value ?? ''; preview = null; }),
-                  )),
+                  SizedBox(
+                    width: editorFieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey('sample-sku-${field('sku').text}'),
+                      initialValue:
+                          skuChoices.any(
+                            (item) => item.value == field('sku').text,
+                          )
+                          ? field('sku').text
+                          : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'کالا / بستهٔ نمونه',
+                      ),
+                      items: [
+                        for (final option in skuChoices)
+                          DropdownMenuItem(
+                            value: option.value,
+                            child: Text(
+                              option.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: busy
+                          ? null
+                          : (value) => setState(() {
+                              field('sku').text = value ?? '';
+                              preview = null;
+                            }),
+                    ),
+                  ),
                   input('quantity', 'تعداد'),
                   input('shipping', 'کد ارسال؛ post یا pickup'),
                   if (OwnerSession.instance.can('customers.pii.read'))
@@ -804,14 +1095,30 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('sampleCity', 'شهر سبد نمونه'),
                 ],
               ),
-              OutlinedButton.icon(onPressed: busy ? null : addSampleLine, icon: const Icon(Icons.add_shopping_cart_rounded), label: const Text('افزودن کالا به سبد نمونه')),
-              if (sampleBasket.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final line in sampleBasket)
-                  InputChip(
-                    label: Text('${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته'),
-                    onDeleted: busy ? null : () => setState(() { sampleBasket.remove(line); preview = null; }),
-                  ),
-              ]),
+              OutlinedButton.icon(
+                onPressed: busy ? null : addSampleLine,
+                icon: const Icon(Icons.add_shopping_cart_rounded),
+                label: const Text('افزودن کالا به سبد نمونه'),
+              ),
+              if (sampleBasket.isNotEmpty)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final line in sampleBasket)
+                      InputChip(
+                        label: Text(
+                          '${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته',
+                        ),
+                        onDeleted: busy
+                            ? null
+                            : () => setState(() {
+                                sampleBasket.remove(line);
+                                preview = null;
+                              }),
+                      ),
+                  ],
+                ),
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: busy ? null : () => run(false),
@@ -850,7 +1157,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   );
 }
 
-String _choiceLabel(List<({String value, String label})> choices, String value) {
+String _choiceLabel(
+  List<({String value, String label})> choices,
+  String value,
+) {
   for (final choice in choices) {
     if (choice.value == value) return choice.label;
   }
@@ -891,7 +1201,8 @@ class _MultiSelectField extends StatelessWidget {
             child: Column(
               children: [
                 TextField(
-                  onChanged: (value) => query.value = value.trim().toLowerCase(),
+                  onChanged: (value) =>
+                      query.value = value.trim().toLowerCase(),
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.search_rounded),
                     labelText: 'جست‌وجو',
@@ -903,10 +1214,20 @@ class _MultiSelectField extends StatelessWidget {
                     valueListenable: query,
                     builder: (context, text, _) {
                       final entries = available.entries
-                          .where((entry) => entry.value.toLowerCase().contains(text) || entry.key.toLowerCase().contains(text))
+                          .where(
+                            (entry) =>
+                                entry.value.toLowerCase().contains(text) ||
+                                entry.key.toLowerCase().contains(text),
+                          )
                           .toList();
                       if (entries.isEmpty) {
-                        return Center(child: Text(loading ? 'در حال بارگذاری گزینه‌ها…' : 'موردی پیدا نشد.'));
+                        return Center(
+                          child: Text(
+                            loading
+                                ? 'در حال بارگذاری گزینه‌ها…'
+                                : 'موردی پیدا نشد.',
+                          ),
+                        );
                       }
                       return StatefulBuilder(
                         builder: (context, setDialogState) => ListView.builder(
@@ -916,7 +1237,12 @@ class _MultiSelectField extends StatelessWidget {
                             return CheckboxListTile(
                               value: checked.contains(entry.key),
                               title: Text(entry.value),
-                              subtitle: entry.value == entry.key ? null : Text(entry.key, textDirection: TextDirection.ltr),
+                              subtitle: entry.value == entry.key
+                                  ? null
+                                  : Text(
+                                      entry.key,
+                                      textDirection: TextDirection.ltr,
+                                    ),
                               controlAffinity: ListTileControlAffinity.leading,
                               onChanged: (value) => setDialogState(() {
                                 if (value == true) {
@@ -936,9 +1262,18 @@ class _MultiSelectField extends StatelessWidget {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
-            TextButton(onPressed: () => Navigator.pop(context, <String>[]), child: const Text('پاک‌کردن انتخاب‌ها')),
-            FilledButton(onPressed: () => Navigator.pop(context, checked.toList()), child: const Text('اعمال انتخاب')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('انصراف'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, <String>[]),
+              child: const Text('پاک‌کردن انتخاب‌ها'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, checked.toList()),
+              child: const Text('اعمال انتخاب'),
+            ),
           ],
         );
       },
@@ -948,17 +1283,25 @@ class _MultiSelectField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final shown = selected.map((value) => _choiceLabel(choices, value)).toList();
+    final shown = selected
+        .map((value) => _choiceLabel(choices, value))
+        .toList();
     return InkWell(
       borderRadius: BorderRadius.circular(6),
       onTap: () => _select(context),
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          suffixIcon: Icon(loading ? Icons.hourglass_top_rounded : Icons.arrow_drop_down_rounded),
+          suffixIcon: Icon(
+            loading
+                ? Icons.hourglass_top_rounded
+                : Icons.arrow_drop_down_rounded,
+          ),
         ),
         child: Text(
-          selected.isEmpty ? 'انتخاب از فهرست' : '${selected.length} مورد: ${shown.take(2).join('، ')}${shown.length > 2 ? ' و …' : ''}',
+          selected.isEmpty
+              ? 'انتخاب از فهرست'
+              : '${selected.length} مورد: ${shown.take(2).join('، ')}${shown.length > 2 ? ' و …' : ''}',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
