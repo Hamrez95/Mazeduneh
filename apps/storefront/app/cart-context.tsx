@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { DemoProduct } from "./demo/catalog";
 
@@ -81,6 +81,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (ready) window.localStorage.setItem(storageKey, JSON.stringify(cart));
   }, [cart, ready]);
 
+  const clear = useCallback(() => setCart([]), []);
+
   const value = useMemo<CartValue>(() => {
     const count = cart.reduce((sum, line) => sum + line.quantity, 0);
     const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -110,9 +112,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
           .filter((line) => line.quantity > 0));
       },
       remove(key) { setCart((current) => current.filter((line) => (line.sku ?? line.id) !== key)); },
-      clear() { setCart([]); },
+      clear,
     };
-  }, [cart]);
+  }, [cart, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

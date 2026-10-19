@@ -135,12 +135,13 @@ class _InventoryPageState extends State<InventoryPage> {
       onSave: (receipt) => orders.receiveInventoryBatch(sku: receipt.sku, batchCode: receipt.batchCode,
         receivedPackages: receipt.receivedPackages, producedAt: receipt.producedAt, expiresAt: receipt.expiresAt,
         costPrice: receipt.costPrice, packagingCost: receipt.packagingCost, additionalCost: receipt.additionalCost,
+        openingStock: receipt.openingStock,
         purchasedAt: receipt.purchasedAt, supplier: receipt.supplier,
         supplierContactName: receipt.supplierContactName, supplierPhone: receipt.supplierPhone,
         supplierEmail: receipt.supplierEmail, supplierAddress: receipt.supplierAddress, supplierNotes: receipt.supplierNotes)));
     if (result == null) return;
     await load();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('خرید و موجودی ثبت شد؛ سابقه در فهرست دریافت‌ها قابل مشاهده است.')));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('بچ، موجودی و تاریخ انقضا ثبت شد؛ تاریخ در فهرست بچ‌های انبار دیده می‌شود.')));
   }
 
   @override
@@ -150,7 +151,7 @@ class _InventoryPageState extends State<InventoryPage> {
       LayoutBuilder(builder: (context, constraints) {
         final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('مدیریت انبار', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
-          const Text('موجودی هر SKU، اصلاحات دستی و دفترچه گردش کالا را یکجا کنترل کنید.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
+          const Text('موجودی و تاریخ انقضای هر سری کالا را ثبت و پیگیری کنید. تاریخ واقعی هر بار خرید در انبار ثبت می‌شود.', style: TextStyle(color: AdminColors.muted, fontSize: 11)),
         ]);
         final controls = Wrap(spacing: 8, children: [
         OutlinedButton.icon(onPressed: products.isEmpty ? null : () async {
@@ -160,11 +161,11 @@ class _InventoryPageState extends State<InventoryPage> {
             if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('قیمت فروش اعمال شد؛ فروشگاه قیمت جدید را از API می‌گیرد.')));
           }
         }, icon: const Icon(Icons.calculate_outlined), label: const Text('محاسبه قیمت فروش')),
-        OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید')),
+        OutlinedButton.icon(onPressed: products.isEmpty || !OwnerSession.instance.can(AdminPermissions.inventoryWrite) ? null : receiveBatch, icon: const Icon(Icons.event_available_rounded), label: const Text('ثبت خرید و تاریخ انقضا')),
         const SizedBox(width: 8),
         IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد'),
         ]);
-        return constraints.maxWidth < 720
+        return constraints.maxWidth < 980
           ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [heading, controls])
           : Row(children: [Expanded(child: heading), controls]);
       }),
@@ -248,7 +249,9 @@ class _InventoryPageState extends State<InventoryPage> {
             )),
           ]))),
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('سوابق خرید و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const Text('بچ‌های انبار و تاریخ انقضا', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+            const SizedBox(height: 4),
+            const Text('برای هر بار خرید، تاریخ انقضای همان سری را جداگانه ثبت کنید؛ تاریخ محصول به‌تنهایی کافی نیست.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: ValueKey('purchase-filter-${purchaseSku ?? 'all'}'),
@@ -278,7 +281,7 @@ class _InventoryPageState extends State<InventoryPage> {
                 ),
               ),
             const SizedBox(height: 12),
-            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'خریدی پیدا نشد', detail: 'همهٔ کالاها را انتخاب کنید یا اولین خرید را ثبت کنید.')) : ListView.separated(
+            Expanded(child: batches.isEmpty ? const SingleChildScrollView(child: AdminEmptyState(icon: Icons.event_available_rounded, title: 'بچی برای نمایش نیست', detail: 'از دکمهٔ «ثبت خرید و تاریخ انقضا» بالای صفحه استفاده کنید تا تاریخ تولید و انقضای هر سری کالا ثبت شود.')) : ListView.separated(
               key: const ValueKey('inventory-purchases'),
               itemCount: batches.length + 1,
               separatorBuilder: (_, __) => const Divider(height: 14),
@@ -303,7 +306,7 @@ class _InventoryPageState extends State<InventoryPage> {
                   dense: true, contentPadding: EdgeInsets.zero,
                   leading: Icon(expired || expiringSoon ? Icons.warning_amber_rounded : Icons.event_available_rounded, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.ink),
                   title: Text('${item.productTitle} · ${item.batchCode}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'انقضا'} ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.muted)),
+                  subtitle: Text('خرید ${item.purchasedAt == null ? 'تاریخ نامشخص' : formatLocalizedDateTime(context, item.purchasedAt!)} · $supplierSummary\n${formatPersianInteger(item.receivedPackages)} بسته · خرید هر بسته ${formatToman(item.costPrice)} تومان · جمع خرید ${formatToman(item.costPrice * item.receivedPackages)} تومان\n${item.sku} · مانده ${formatPersianInteger(item.remainingPackages)} بسته · ${expired ? 'منقضی شده' : expiringSoon ? 'نزدیک انقضا' : 'تاریخ انقضا'}: ${formatLocalizedDateTime(context, item.expiresAt)}', style: TextStyle(fontSize: 11, color: expired ? AdminColors.coral : expiringSoon ? AdminColors.amber : AdminColors.muted)),
                 );
               },
             )),

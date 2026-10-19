@@ -237,10 +237,14 @@ void main() {
       DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String(),
     );
 
-    await tester.scrollUntilVisible(find.text('سود خالص بازه'), 350, maxScrolls: 20);
-    await tester.ensureVisible(find.text('سود خالص بازه'));
+    await tester.scrollUntilVisible(
+      find.text('سود پس از هزینهٔ کالا و ارسال'),
+      350,
+      maxScrolls: 20,
+    );
+    await tester.ensureVisible(find.text('سود پس از هزینهٔ کالا و ارسال'));
     expect(find.textContaining('۲۷۵'), findsOneWidget);
-    await tester.tap(find.text('سود خالص بازه'));
+    await tester.tap(find.text('سود پس از هزینهٔ کالا و ارسال'));
 
     expect(destination?.module, AdminModule.reports);
     expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());

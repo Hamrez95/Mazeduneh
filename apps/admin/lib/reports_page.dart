@@ -30,6 +30,10 @@ class _ReportsPageState extends State<ReportsPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   AdminAnalytics? analytics;
   List<AdminProductProfitability> profitability = const [];
+  List<AdminPriceHistoryPoint> priceHistory = const [];
+  List<AdminPriceHistorySku> priceHistorySkus = const [];
+  String? selectedPriceSku;
+  bool loadingPriceHistory = false;
   int days = 30;
   String productQuery = '';
   int productPage = 0;
@@ -88,17 +92,35 @@ class _ReportsPageState extends State<ReportsPage> {
           fromUtc: _fromUtc,
           toUtcExclusive: _toUtcExclusive,
         ),
+        api.fetchPriceHistorySkus(),
       ]);
       if (mounted)
         setState(() {
           analytics = result[0] as AdminAnalytics;
           profitability = result[1] as List<AdminProductProfitability>;
+          priceHistorySkus = result[2] as List<AdminPriceHistorySku>;
           productPage = 0;
+          selectedPriceSku = priceHistorySkus.any((item) => item.sku == selectedPriceSku)
+              ? selectedPriceSku
+              : (priceHistorySkus.isEmpty ? null : priceHistorySkus.first.sku);
         });
+      if (mounted && selectedPriceSku != null) await loadPriceHistory(selectedPriceSku!);
     } catch (exception) {
       if (mounted) setState(() => error = exception);
     } finally {
       if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> loadPriceHistory(String sku) async {
+    setState(() => loadingPriceHistory = true);
+    try {
+      final rows = await api.fetchPriceHistory(sku, days: days, fromUtc: _fromUtc, toUtcExclusive: _toUtcExclusive);
+      if (mounted) setState(() => priceHistory = rows);
+    } catch (_) {
+      if (mounted) setState(() => priceHistory = const []);
+    } finally {
+      if (mounted) setState(() => loadingPriceHistory = false);
     }
   }
 
@@ -181,12 +203,11 @@ class _ReportsPageState extends State<ReportsPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final data = analytics!;
     if (data.orderCount == 0)
-      return const Center(
-        child: Text(
-          'برای این بازه هنوز داده‌ی فروش ثبت نشده است.',
-          style: TextStyle(color: AdminColors.muted),
-        ),
-      );
+      return ListView(key: const ValueKey('reports-content'), padding: const EdgeInsets.only(bottom: 24), children: [
+        const Card(child: Padding(padding: EdgeInsets.all(18), child: Text('برای این بازه هنوز دادهٔ فروش ثبت نشده است.', style: TextStyle(color: AdminColors.muted)))),
+        const SizedBox(height: 14),
+        _priceHistoryPanel(),
+      ]);
     final merchandiseSalesAfterDiscount =
         data.merchandiseRevenue - data.discount;
     return LayoutBuilder(
@@ -197,14 +218,15 @@ class _ReportsPageState extends State<ReportsPage> {
             ? 2
             : 1;
         return ListView(
+          key: const ValueKey('reports-content'),
           children: [
-            GridView.count(
-              crossAxisCount: columns,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              childAspectRatio:
-                  ((constraints.maxWidth - (columns - 1) * 14) / columns) /
-                  (120 * MediaQuery.textScalerOf(context).scale(1)),
+            GridView(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 14,
+                mainAxisSpacing: 14,
+                mainAxisExtent: 132 * MediaQuery.textScalerOf(context).scale(1),
+              ),
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               children: [
@@ -222,9 +244,15 @@ class _ReportsPageState extends State<ReportsPage> {
                   tint: AdminColors.mintSoft,
                 ),
                 _ReportMetric(
-                  title: 'هزینهٔ کل محصول و آماده‌سازی',
+                  title: 'هزینهٔ کالا، آماده‌سازی و اقلام داخلی',
                   value: '${formatPersianNumber(data.cost)} ریال',
                   icon: Icons.inventory_2_rounded,
+                  tint: AdminColors.warningSoft,
+                ),
+                _ReportMetric(
+                  title: 'هزینه‌های داخلی سفارش',
+                  value: '${formatPersianNumber(data.orderInternalCosts)} ریال',
+                  icon: Icons.card_giftcard_outlined,
                   tint: AdminColors.warningSoft,
                 ),
                 _ReportMetric(
@@ -246,7 +274,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   tint: AdminColors.dangerSoft,
                 ),
                 _ReportMetric(
-                  title: 'سود خالص',
+                  title: 'سود پس از هزینه‌های ثبت‌شده',
                   value: '${formatPersianNumber(data.netProfit)} ریال',
                   icon: Icons.account_balance_wallet_rounded,
                   tint: AdminColors.infoSoft,
@@ -263,6 +291,8 @@ class _ReportsPageState extends State<ReportsPage> {
             const SizedBox(height: 18),
             AdminAnalyticsPanels(analytics: data, products: profitability),
             const SizedBox(height: 18),
+            _priceHistoryPanel(),
+            const SizedBox(height: 18),
             _salesSummary(data),
             const SizedBox(height: 20),
             _productProfitCards(),
@@ -271,6 +301,37 @@ class _ReportsPageState extends State<ReportsPage> {
       },
     );
   }
+
+  Widget _priceHistoryPanel() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('روند بهای خرید و قیمت فروش', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AdminColors.heading))),
+          if (priceHistorySkus.isNotEmpty) SizedBox(
+            width: 260,
+            child: DropdownButtonFormField<String>(
+              value: selectedPriceSku,
+              decoration: const InputDecoration(labelText: 'گونهٔ کالا'),
+              items: priceHistorySkus.map((item) => DropdownMenuItem(value: item.sku, child: Text('${item.productTitle} · ${item.variantLabel}', overflow: TextOverflow.ellipsis))).toList(),
+              onChanged: (sku) {
+                if (sku == null) return;
+                setState(() => selectedPriceSku = sku);
+                loadPriceHistory(sku);
+              },
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        const Text('بهای خرید هر بسته از بچ‌های ثبت‌شده با قیمت فروش همان SKU مقایسه می‌شود. سوابق از زمان ثبت در سیستم در دسترس‌اند.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
+        const SizedBox(height: 16),
+        if (loadingPriceHistory) const SizedBox(height: 180, child: Center(child: CircularProgressIndicator()))
+        else if (selectedPriceSku == null) const SizedBox(height: 120, child: Center(child: Text('گونه‌ای از کالا ثبت نشده است.')))
+        else if (priceHistory.isEmpty) const SizedBox(height: 120, child: Center(child: Text('در این بازه سابقهٔ خرید یا تغییر قیمت ثبت نشده است.')))
+        else AdminPriceHistoryChart(points: priceHistory),
+      ]),
+    ),
+  );
 
   Widget _salesSummary(AdminAnalytics data) => Card(
     child: Padding(
@@ -297,12 +358,13 @@ class _ReportsPageState extends State<ReportsPage> {
             ('تخفیف کسرشده', data.discount),
             ('فروش کالا پس از تخفیف', data.merchandiseRevenue - data.discount),
             ('هزینهٔ کالا و آماده‌سازی', data.cost),
+            ('از این مبلغ: هزینه‌های داخلی سفارش', data.orderInternalCosts),
             ('سود ناخالص کالا', data.grossProfit),
-            ('سود خالص با احتساب ارسال', data.netProfit),
+            ('سود پس از هزینهٔ کالا و ارسال', data.netProfit),
           ]),
           const SizedBox(height: 16),
           const Text(
-            'سود ناخالص = فروش کالا پس از تخفیف − هزینهٔ کالا و آماده‌سازی.\nسود خالص = سود ناخالص + درآمد ارسال − هزینهٔ واقعی ارسال. مالیات درآمد فروشگاه نیست.',
+            'سود ناخالص = فروش کالا پس از تخفیف − هزینهٔ کالا، آماده‌سازی و هزینه‌های داخلی سفارش.\nسود پس از هزینه‌های ثبت‌شده = سود ناخالص + درآمد ارسال − هزینهٔ واقعی ارسال. مالیات درآمد فروشگاه نیست.\nهزینه‌هایی مثل اجاره، دستمزد، تبلیغات و کارمزد درگاه در این عدد نیستند؛ پس این شاخص سود نهایی حسابداری نیست.',
             style: TextStyle(
               fontSize: 12,
               height: 1.9,
@@ -438,6 +500,14 @@ class _ReportsPageState extends State<ReportsPage> {
                       '${toPersianDigits(item.variantLabel)} • ${formatPersianInteger(item.unitsSold)} بسته فروخته‌شده',
                       style: const TextStyle(color: AdminColors.primaryLight),
                     ),
+                    Text(
+                      item.quantitySold == null
+                          ? 'مقدار وزنی برای سفارش‌های قدیمی ثبت نشده است.'
+                          : item.baseUnit == 'gram'
+                          ? 'وزن فروخته‌شده: ${formatPersianNumber(item.quantitySold! / 1000, fractionDigits: 3)} کیلوگرم'
+                          : 'تعداد فروخته‌شده: ${formatPersianInteger(item.quantitySold!)} عدد',
+                      style: const TextStyle(fontSize: 12, color: AdminColors.muted),
+                    ),
                     const SizedBox(height: 4),
                     Text(
                       'کد انبار: ${item.sku}',
@@ -481,6 +551,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         ('خرید کالا', item.productCost),
                         ('بسته‌بندی', item.packagingCost),
                         ('هزینه‌های جانبی', item.additionalCost),
+                        ('سهم هزینهٔ داخلی سفارش', item.orderInternalCost),
                       ]),
                     ],
                     const SizedBox(height: 18),
@@ -582,6 +653,18 @@ class _ReportMetric extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color tint;
+  String get help => switch (title) {
+    'مبلغ پرداخت‌شده با ارسال و مالیات' => 'جمع مبلغی که مشتری برای سفارش‌های پرداخت‌شده پرداخته است؛ شامل کالا، ارسال و مالیات پس از تخفیف.',
+    'فروش کالا پس از تخفیف' => 'درآمد اقلام کالا پس از اعمال تخفیف؛ هزینهٔ ارسال و مالیات در این رقم نیست.',
+    'هزینهٔ کالا، آماده‌سازی و اقلام داخلی' => 'بهای کالا و آماده‌سازی ثبت‌شده در اقلام، به‌علاوه هزینه‌های خصوصی ثبت‌شده برای هر سفارش.',
+    'هزینه‌های داخلی سفارش' => 'جمع بسته‌بندی اضافه، نمونه یا هدیه‌ای که برای مشتری رایگان است اما هزینه‌اش در حسابداری از سود کم می‌شود.',
+    'درآمد ارسال' => 'هزینهٔ ارسالی که از مشتری دریافت شده است.',
+    'هزینهٔ واقعی ارسال' => 'هزینهٔ ارسال ثبت‌شده برای سفارش‌ها؛ اگر هزینهٔ واقعی وارد نشده باشد، رقم گزارش ممکن است کمتر از واقع باشد.',
+    'مالیات پرداختنی' => 'مالیات محاسبه‌شده برای سفارش‌های پرداخت‌شده در بازه.',
+    'سود پس از هزینه‌های ثبت‌شده' => 'مبلغ فروش پس از کسر بهای کالا، هزینه‌های داخلی سفارش و هزینه واقعی ارسال. این شاخص هزینه‌های ثابت کسب‌وکار را کم نمی‌کند.',
+    'حاشیه سود ناخالص' => 'نسبت سود کالا به فروش کالا پس از تخفیف؛ هزینه‌های ثابت و مالیات در این درصد لحاظ نشده‌اند.',
+    _ => 'این شاخص بر اساس سفارش‌های بازهٔ انتخابی محاسبه شده است.',
+  };
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -599,13 +682,21 @@ class _ReportMetric extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AdminColors.muted,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: [
+                    Expanded(child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AdminColors.muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )),
+                    Tooltip(
+                      message: help,
+                      child: const Icon(Icons.info_outline_rounded, size: 16, color: AdminColors.subtle),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(

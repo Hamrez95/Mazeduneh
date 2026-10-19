@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'auth_session.dart';
-import 'catalog_api.dart' show defaultApiBaseUrl;
+import 'catalog_api.dart' show defaultApiBaseUrl, CatalogApiClient, Product;
+import 'customer_api.dart' show CustomerApiClient, CustomerSummary;
 import 'admin_step_up_dialog.dart';
 import 'formatters.dart';
 
@@ -255,11 +256,17 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   var busy = false;
   String? error;
   Map<String, dynamic>? preview;
+  List<Product> products = const [];
+  List<CustomerSummary> customers = const [];
+  final sampleBasket = <Map<String, dynamic>>[];
+  final bundleBasket = <Map<String, dynamic>>[];
+  bool loadingChoices = false;
   TextEditingController field(String name) =>
       fields.putIfAbsent(name, () => TextEditingController());
   @override
   void initState() {
     super.initState();
+    _loadChoices();
     final rule = widget.item?['rule'] as Map<String, dynamic>?;
     kind = rule?['kind'] as String? ?? 'Percent';
     active = rule?['active'] == true;
@@ -309,9 +316,100 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     field('bundlePrice').text = rule?['bundlePrice'] == null
         ? ''
         : '${(rule!['bundlePrice'] as num) / 10}';
-    field('bundleItems').text = (rule?['bundleItems'] as List? ?? [])
-        .map((x) => '${x['sku']}:${x['quantity']}')
-        .join(', ');
+    bundleBasket.addAll((rule?['bundleItems'] as List? ?? []).map((item) => {
+      'sku': item['sku'] as String,
+      'quantity': (item['quantity'] as num).toInt(),
+    }));
+    field('bundleQuantity').text = '۱';
+  }
+
+  Future<void> _loadChoices() async {
+    loadingChoices = true;
+    try {
+      final requests = <Future<dynamic>>[
+        CatalogApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchProducts(includeDrafts: true),
+        if (OwnerSession.instance.can('customers.pii.read'))
+          CustomerApiClient(client: widget.api.client, baseUrl: widget.api.baseUrl).fetchCustomers(limit: 200),
+      ];
+      final result = await Future.wait(requests);
+      if (!mounted) return;
+      setState(() {
+        products = result[0] as List<Product>;
+        customers = result.length > 1 ? result[1] as List<CustomerSummary> : const [];
+      });
+    } catch (_) {
+      // Keep current saved values editable if choice data is temporarily unavailable.
+    } finally {
+      if (mounted) setState(() => loadingChoices = false);
+    }
+  }
+
+  List<({String value, String label})> get skuChoices => [
+    for (final product in products)
+      for (final variant in product.variants)
+        (value: variant.sku, label: '${product.title} · ${variant.displayLabel} · ${variant.sku}'),
+  ];
+
+  List<({String value, String label})> get categoryChoices => [
+    for (final value in products.map((product) => product.category).toSet().toList()..sort())
+      (value: value, label: value),
+  ];
+
+  List<({String value, String label})> get cityChoices {
+    final cities = <String>{};
+    for (final customer in customers) {
+      for (final address in customer.addresses) {
+        if (address.city.trim().isNotEmpty) cities.add(address.city.trim());
+      }
+    }
+    return [for (final city in cities.toList()..sort()) (value: city, label: city)];
+  }
+
+  List<({String value, String label})> get customerChoices => [
+    for (final customer in customers.where((customer) => customer.mobile.trim().isNotEmpty))
+      (value: customer.mobile, label: '${customer.fullName} · ${customer.mobile}'),
+  ];
+
+  Widget selection(String key, String label, List<({String value, String label})> choices) =>
+      _MultiSelectField(
+        label: label,
+        choices: choices,
+        selected: csv(key),
+        loading: loadingChoices,
+        onChanged: (values) => setState(() {
+          field(key).text = values.join(', ');
+          preview = null;
+        }),
+      );
+
+  void addSampleLine() {
+    final sku = field('sku').text.trim();
+    final count = number('quantity');
+    if (sku.isEmpty || count < 1 || count != count.toInt()) return;
+    setState(() {
+      final index = sampleBasket.indexWhere((line) => line['sku'] == sku);
+      if (index >= 0) {
+        sampleBasket[index] = {...sampleBasket[index], 'quantity': (sampleBasket[index]['quantity'] as int) + count.toInt()};
+      } else {
+        sampleBasket.add({'sku': sku, 'quantity': count.toInt()});
+      }
+      preview = null;
+    });
+  }
+
+  void addBundleLine() {
+    final sku = field('bundleSku').text.trim();
+    final count = number('bundleQuantity');
+    if (sku.isEmpty || count < 1 || count != count.toInt()) return;
+    setState(() {
+      final index = bundleBasket.indexWhere((line) => line['sku'] == sku);
+      if (index >= 0) {
+        bundleBasket[index] = {...bundleBasket[index], 'quantity': (bundleBasket[index]['quantity'] as int) + count.toInt()};
+      } else {
+        bundleBasket.add({'sku': sku, 'quantity': count.toInt()});
+      }
+      preview = null;
+    });
   }
 
   @override
@@ -330,21 +428,6 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       .map((s) => s.trim())
       .where((s) => s.isNotEmpty)
       .toList();
-  List<Map<String, dynamic>> basket(String key) => csv(key).map((s) {
-    final parts = s.split(':');
-    final qty = parts.length == 2
-        ? int.tryParse(normalizeNumberDigits(parts[1].trim()))
-        : null;
-    if (parts.length != 2 ||
-        parts[0].trim().isEmpty ||
-        qty == null ||
-        qty < 1 ||
-        qty > 50)
-      throw Exception(
-        'اقلام را به شکل SKU:تعداد وارد کنید؛ مانند A-250:2, B-250:1',
-      );
-    return <String, dynamic>{'sku': parts[0].trim(), 'quantity': qty};
-  }).toList();
   Map<String, dynamic> rule() => {
     'name': field('name').text.trim(),
     'kind': kind,
@@ -377,11 +460,15 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     'maxApplications': field('applications').text.trim().isEmpty
         ? null
         : number('applications').toInt(),
-    'bundleItems': kind == 'Bundle' ? basket('bundleItems') : null,
+    'bundleItems': kind == 'Bundle' ? bundleBasket : null,
     'bundlePrice': kind == 'Bundle' ? number('bundlePrice') * 10 : null,
   };
   Future<void> run(bool save) async {
     if (form.currentState?.validate() != true) return;
+    if (save && kind == 'Bundle' && bundleBasket.isEmpty) {
+      setState(() => error = 'برای این پک حداقل یک کالا انتخاب کنید.');
+      return;
+    }
     setState(() {
       busy = true;
       error = null;
@@ -400,18 +487,17 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         if (mounted) Navigator.pop(context, true);
       } else {
         final quantity = number('quantity');
-        if (field('basket').text.trim().isEmpty &&
-                field('sku').text.trim().isEmpty ||
+        if ((sampleBasket.isEmpty && field('sku').text.trim().isEmpty) ||
             quantity < 1 ||
             quantity != quantity.toInt())
-          throw Exception('برای پیش‌نمایش یک SKU و تعداد صحیح وارد کنید.');
+          throw Exception('یک کالا و تعداد را به سبد نمونه اضافه کنید.');
         final result = await widget.api.send(
           'POST',
           '/preview',
           body: {
             'rule': payload,
-            'lines': field('basket').text.trim().isNotEmpty
-                ? basket('basket')
+            'lines': sampleBasket.isNotEmpty
+                ? sampleBasket
                 : [
                     {
                       'sku': field('sku').text.trim(),
@@ -540,6 +626,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   SizedBox(
                     width: 330,
                     child: DropdownButtonFormField<String>(
+                      key: const ValueKey('promotion-kind'),
                       initialValue: kind,
                       decoration: const InputDecoration(labelText: 'نوع تخفیف'),
                       items: const [
@@ -582,18 +669,30 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                   input('max', 'سقف تخفیف (تومان؛ اختیاری)'),
                   input('uses', 'سقف تعداد مصرف (اختیاری)'),
                   if (kind != 'Bundle')
-                    input('skus', 'SKUهای خرید با کاما؛ خالی یعنی همه'),
+                      selection('skus', 'کالاهای مشمول', skuChoices),
                   if (kind == 'BuyGet') ...[
                     input('buy', 'تعداد خرید X', required: true),
                     input('get', 'تعداد هدیه Y', required: true),
-                    input('rewardSkus', 'SKUهای هدیه؛ خالی یعنی کالاهای خرید'),
+                    selection('rewardSkus', 'کالاهای هدیه؛ خالی یعنی کالاهای خرید', skuChoices),
                   ],
                   if (kind == 'Bundle') ...[
-                    input(
-                      'bundleItems',
-                      'اقلام پک؛ A-250:2, B-250:1',
-                      required: true,
-                    ),
+                    SizedBox(width: 330, child: DropdownButtonFormField<String>(
+                      key: ValueKey('bundle-sku-${field('bundleSku').text}'),
+                      initialValue: skuChoices.any((item) => item.value == field('bundleSku').text) ? field('bundleSku').text : null,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'کالای داخل پک'),
+                      items: [for (final option in skuChoices) DropdownMenuItem(value: option.value, child: Text(option.label, overflow: TextOverflow.ellipsis))],
+                      onChanged: busy ? null : (value) => setState(() { field('bundleSku').text = value ?? ''; preview = null; }),
+                    )),
+                    input('bundleQuantity', 'تعداد این کالا در پک', required: true),
+                    OutlinedButton.icon(onPressed: busy ? null : addBundleLine, icon: const Icon(Icons.add_rounded), label: const Text('افزودن کالا به پک')),
+                    if (bundleBasket.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final line in bundleBasket)
+                        InputChip(
+                          label: Text('${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته'),
+                          onDeleted: busy ? null : () => setState(() { bundleBasket.remove(line); preview = null; }),
+                        ),
+                    ]),
                     input(
                       'bundlePrice',
                       'قیمت نهایی یک پک (تومان)',
@@ -637,13 +736,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                     runSpacing: 16,
                     children: [
                       if (kind != 'Bundle')
-                        input('categories', 'دسته‌های کالا با کاما؛ اختیاری'),
-                      input('cities', 'شهرهای مجاز با کاما؛ اختیاری'),
+                        selection('categories', 'دسته‌های کالا؛ اختیاری', categoryChoices),
+                      selection('cities', 'شهرهای مجاز؛ اختیاری', cityChoices),
                       if (OwnerSession.instance.can('customers.pii.read'))
-                        input(
-                          'customerMobiles',
-                          'موبایل مشتری‌های مجاز با کاما',
-                        ),
+                        selection('customerMobiles', 'مشتری‌های مجاز', customerChoices),
                       input('perCustomer', 'سقف مصرف هر مشتری؛ اختیاری'),
                       input('priority', 'اولویت کمپین؛ ۰ تا ۱۰۰۰'),
                     ],
@@ -684,23 +780,38 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                 ),
               const Divider(height: 32),
               const Text(
-                'پیش‌نمایش یک سبد نمونه',
+                'محاسبهٔ آزمایشی سبد خرید',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
+              const Text('اینجا کالاها و تعدادشان را برای محاسبه انتخاب کنید؛ این پیش‌نمایش سفارش نمی‌سازد و موجودی را رزرو نمی‌کند.'),
               const SizedBox(height: 16),
               Wrap(
                 spacing: 16,
                 runSpacing: 16,
                 children: [
-                  input('sku', 'SKU نمونه'),
+                  SizedBox(width: 330, child: DropdownButtonFormField<String>(
+                    key: ValueKey('sample-sku-${field('sku').text}'),
+                    initialValue: skuChoices.any((item) => item.value == field('sku').text) ? field('sku').text : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'کالا / بستهٔ نمونه'),
+                    items: [for (final option in skuChoices) DropdownMenuItem(value: option.value, child: Text(option.label, overflow: TextOverflow.ellipsis))],
+                    onChanged: busy ? null : (value) => setState(() { field('sku').text = value ?? ''; preview = null; }),
+                  )),
                   input('quantity', 'تعداد'),
                   input('shipping', 'کد ارسال؛ post یا pickup'),
-                  input('basket', 'سبد چندقلمی؛ A-250:2, B-250:1'),
                   if (OwnerSession.instance.can('customers.pii.read'))
                     input('sampleMobile', 'موبایل سبد نمونه'),
                   input('sampleCity', 'شهر سبد نمونه'),
                 ],
               ),
+              OutlinedButton.icon(onPressed: busy ? null : addSampleLine, icon: const Icon(Icons.add_shopping_cart_rounded), label: const Text('افزودن کالا به سبد نمونه')),
+              if (sampleBasket.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final line in sampleBasket)
+                  InputChip(
+                    label: Text('${_choiceLabel(skuChoices, line['sku'] as String)} · ${formatPersianInteger(line['quantity'] as int)} بسته'),
+                    onDeleted: busy ? null : () => setState(() { sampleBasket.remove(line); preview = null; }),
+                  ),
+              ]),
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: busy ? null : () => run(false),
@@ -737,4 +848,121 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       ),
     ],
   );
+}
+
+String _choiceLabel(List<({String value, String label})> choices, String value) {
+  for (final choice in choices) {
+    if (choice.value == value) return choice.label;
+  }
+  return value;
+}
+
+class _MultiSelectField extends StatelessWidget {
+  const _MultiSelectField({
+    required this.label,
+    required this.choices,
+    required this.selected,
+    required this.loading,
+    required this.onChanged,
+  });
+
+  final String label;
+  final List<({String value, String label})> choices;
+  final List<String> selected;
+  final bool loading;
+  final ValueChanged<List<String>> onChanged;
+
+  Future<void> _select(BuildContext context) async {
+    final available = <String, String>{
+      for (final choice in choices) choice.value: choice.label,
+      for (final value in selected)
+        if (!choices.any((choice) => choice.value == value)) value: value,
+    };
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) {
+        final query = ValueNotifier('');
+        final checked = selected.toSet();
+        return AlertDialog(
+          title: Text(label),
+          content: SizedBox(
+            width: 520,
+            height: 460,
+            child: Column(
+              children: [
+                TextField(
+                  onChanged: (value) => query.value = value.trim().toLowerCase(),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search_rounded),
+                    labelText: 'جست‌وجو',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ValueListenableBuilder<String>(
+                    valueListenable: query,
+                    builder: (context, text, _) {
+                      final entries = available.entries
+                          .where((entry) => entry.value.toLowerCase().contains(text) || entry.key.toLowerCase().contains(text))
+                          .toList();
+                      if (entries.isEmpty) {
+                        return Center(child: Text(loading ? 'در حال بارگذاری گزینه‌ها…' : 'موردی پیدا نشد.'));
+                      }
+                      return StatefulBuilder(
+                        builder: (context, setDialogState) => ListView.builder(
+                          itemCount: entries.length,
+                          itemBuilder: (context, index) {
+                            final entry = entries[index];
+                            return CheckboxListTile(
+                              value: checked.contains(entry.key),
+                              title: Text(entry.value),
+                              subtitle: entry.value == entry.key ? null : Text(entry.key, textDirection: TextDirection.ltr),
+                              controlAffinity: ListTileControlAffinity.leading,
+                              onChanged: (value) => setDialogState(() {
+                                if (value == true) {
+                                  checked.add(entry.key);
+                                } else {
+                                  checked.remove(entry.key);
+                                }
+                              }),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')),
+            TextButton(onPressed: () => Navigator.pop(context, <String>[]), child: const Text('پاک‌کردن انتخاب‌ها')),
+            FilledButton(onPressed: () => Navigator.pop(context, checked.toList()), child: const Text('اعمال انتخاب')),
+          ],
+        );
+      },
+    );
+    if (result != null) onChanged(result);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = selected.map((value) => _choiceLabel(choices, value)).toList();
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => _select(context),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: Icon(loading ? Icons.hourglass_top_rounded : Icons.arrow_drop_down_rounded),
+        ),
+        child: Text(
+          selected.isEmpty ? 'انتخاب از فهرست' : '${selected.length} مورد: ${shown.take(2).join('، ')}${shown.length > 2 ? ' و …' : ''}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    );
+  }
 }

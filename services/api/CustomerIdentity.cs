@@ -225,6 +225,44 @@ public sealed class CustomerIdentityDatabase(IConfiguration configuration, ILogg
                 where order_id is not null;
             """;
         await DatabaseMigrationRunner.ApplyAsync(connection, "customers", "002-consent-history", consentHistoryMigration, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "customers", "003-private-checkout-exclusion", """
+            create or replace function mazeduneh_ensure_checkout_customer()
+            returns trigger
+            language plpgsql
+            as $function$
+            declare
+                normalized_mobile text;
+                resolved_customer_id uuid;
+            begin
+                if coalesce(new.is_private,false) then
+                    new.customer_id := null;
+                    return new;
+                end if;
+                normalized_mobile := translate(
+                    regexp_replace(coalesce(new.mobile, ''), '[^0-9۰-۹+]', '', 'g'),
+                    '۰۱۲۳۴۵۶۷۸۹',
+                    '0123456789'
+                );
+                if normalized_mobile like '+98%' then
+                    normalized_mobile := '0' || substring(normalized_mobile from 4);
+                elsif normalized_mobile like '98%' then
+                    normalized_mobile := '0' || substring(normalized_mobile from 3);
+                end if;
+                insert into customers (id, full_name, mobile, mobile_normalized, created_at, updated_at)
+                values (gen_random_uuid(),coalesce(nullif(trim(new.customer_name), ''), 'مشتری مزه‌دونه'),new.mobile,normalized_mobile,now(),now())
+                on conflict (mobile_normalized) do update
+                  set full_name=excluded.full_name,mobile=excluded.mobile,updated_at=now()
+                returning id into resolved_customer_id;
+                new.customer_id := resolved_customer_id;
+                insert into customer_addresses (id,customer_id,province,city,address,postal_code,is_default,created_at,last_used_at)
+                select gen_random_uuid(),resolved_customer_id,new.province,new.city,new.address,new.postal_code,
+                       not exists(select 1 from customer_addresses where customer_id=resolved_customer_id),now(),now()
+                where not exists(select 1 from customer_addresses where customer_id=resolved_customer_id and province=new.province
+                  and city=new.city and address=new.address and postal_code=new.postal_code);
+                return new;
+            end;
+            $function$;
+            """, cancellationToken);
         logger.LogInformation("Customer identity schema and checkout trigger are ready.");
     }
 

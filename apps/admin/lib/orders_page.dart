@@ -39,6 +39,92 @@ class OrdersPage extends StatefulWidget {
   State<OrdersPage> createState() => _OrdersPageState();
 }
 
+class _PrivateOrderDialog extends StatefulWidget {
+  const _PrivateOrderDialog();
+
+  @override
+  State<_PrivateOrderDialog> createState() => _PrivateOrderDialogState();
+}
+
+class _PrivateOrderDialogState extends State<_PrivateOrderDialog> {
+  final name = TextEditingController();
+  final mobile = TextEditingController();
+  final province = TextEditingController();
+  final city = TextEditingController();
+  final address = TextEditingController();
+  final postalCode = TextEditingController();
+  final lines = <_PrivateOrderLineInput>[_PrivateOrderLineInput()];
+  String? error;
+
+  @override
+  void dispose() {
+    name.dispose(); mobile.dispose(); province.dispose(); city.dispose(); address.dispose(); postalCode.dispose();
+    for (final line in lines) line.dispose();
+    super.dispose();
+  }
+
+  void submit() {
+    final normalizedLines = <Map<String, dynamic>>[];
+    for (final line in lines) {
+      if (line.sku.text.trim().isEmpty && line.quantity.text.trim().isEmpty) continue;
+      final quantity = parsePersianInteger(line.quantity.text);
+      if (line.sku.text.trim().isEmpty || quantity == null || quantity < 1) {
+        setState(() => error = 'برای هر ردیف، SKU و تعداد معتبر وارد کنید.');
+        return;
+      }
+      normalizedLines.add({'sku': line.sku.text.trim(), 'quantity': quantity});
+    }
+    if ([name, mobile, province, city, address, postalCode].any((controller) => controller.text.trim().isEmpty) || normalizedLines.isEmpty) {
+      setState(() => error = 'اطلاعات مشتری، نشانی و حداقل یک قلم کالا لازم است.');
+      return;
+    }
+    Navigator.pop(context, {
+      'customerName': name.text.trim(), 'mobile': mobile.text.trim(), 'province': province.text.trim(),
+      'city': city.text.trim(), 'address': address.text.trim(), 'postalCode': postalCode.text.trim(),
+      'shippingMethod': 'post', 'lines': normalizedLines,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('ثبت سفارش سفارشی خصوصی'),
+    content: SizedBox(
+      width: MediaQuery.sizeOf(context).width.clamp(320.0, 680.0),
+      child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('این سفارش فقط در پنل و گزارش‌های داخلی دیده می‌شود و در سایت یا حساب مشتری نمایش داده نمی‌شود.', style: TextStyle(color: AdminColors.muted, height: 1.6)),
+        const SizedBox(height: 14),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          SizedBox(width: 310, child: TextField(controller: name, decoration: const InputDecoration(labelText: 'نام مشتری'))),
+          SizedBox(width: 310, child: TextField(controller: mobile, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'شماره تماس'))),
+          SizedBox(width: 200, child: TextField(controller: province, decoration: const InputDecoration(labelText: 'استان'))),
+          SizedBox(width: 200, child: TextField(controller: city, decoration: const InputDecoration(labelText: 'شهر'))),
+          SizedBox(width: 200, child: TextField(controller: postalCode, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'کد پستی'))),
+          SizedBox(width: MediaQuery.sizeOf(context).width.clamp(320.0, 680.0) - 40, child: TextField(controller: address, maxLines: 2, decoration: const InputDecoration(labelText: 'نشانی تحویل'))),
+        ]),
+        const SizedBox(height: 18),
+        Row(children: [const Expanded(child: Text('اقلام سفارش با قیمت ثبت‌شدهٔ هر SKU', style: TextStyle(fontWeight: FontWeight.w800))), TextButton.icon(onPressed: () => setState(() => lines.add(_PrivateOrderLineInput())), icon: const Icon(Icons.add_rounded), label: const Text('افزودن قلم'))]),
+        for (var i = 0; i < lines.length; i++) Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Expanded(child: TextField(controller: lines[i].sku, decoration: const InputDecoration(labelText: 'SKU'))),
+            const SizedBox(width: 10),
+            SizedBox(width: 130, child: TextField(controller: lines[i].quantity, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'تعداد'))),
+            if (lines.length > 1) IconButton(tooltip: 'حذف ردیف', onPressed: () { final removed = lines.removeAt(i); removed.dispose(); setState(() {}); }, icon: const Icon(Icons.delete_outline_rounded)),
+          ]),
+        ),
+        if (error != null) ...[const SizedBox(height: 10), Text(error!, style: const TextStyle(color: AdminColors.coral))],
+      ])),
+    ),
+    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('انصراف')), FilledButton.icon(onPressed: submit, icon: const Icon(Icons.save_outlined), label: const Text('ثبت سفارش خصوصی'))],
+  );
+}
+
+class _PrivateOrderLineInput {
+  final sku = TextEditingController();
+  final quantity = TextEditingController(text: '1');
+  void dispose() { sku.dispose(); quantity.dispose(); }
+}
+
 class _OrdersPageState extends State<OrdersPage> {
   late final OrderApiClient api = widget.api ?? OrderApiClient();
   final states = const <String, String>{
@@ -140,7 +226,9 @@ class _OrdersPageState extends State<OrdersPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('تغییر وضعیت سفارش'),
-        content: Text('وضعیت سفارش ${order.id.substring(0, 8)} به «${states[next] ?? next}» تغییر کند؟'),
+        content: Text(order.isPrivate && next == 'Paid'
+          ? 'دریافت پرداخت سفارش خصوصی ${order.id.substring(0, 8)} را تأیید می‌کنید؟ این تأیید در سابقه مدیریتی ثبت می‌شود.'
+          : 'وضعیت سفارش ${order.id.substring(0, 8)} به «${states[next] ?? next}» تغییر کند؟'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('تأیید')),
@@ -150,7 +238,7 @@ class _OrdersPageState extends State<OrdersPage> {
     if (confirmed != true) return;
     setState(() => busyOrder = order.id);
     try {
-      await api.transition(order.id, next);
+      await api.transition(order.id, next, reason: order.isPrivate && next == 'Paid' ? 'دریافت پرداخت سفارش خصوصی توسط مدیر تأیید شد.' : null);
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -171,6 +259,25 @@ class _OrdersPageState extends State<OrdersPage> {
         backgroundColor: Colors.transparent,
         builder: (_) => _OrderDetailSheet(api: api, order: order),
       );
+
+  Future<void> createPrivateOrder() async {
+    final request = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const _PrivateOrderDialog(),
+    );
+    if (request == null || !mounted) return;
+    setState(() => loading = true);
+    try {
+      final id = await api.createPrivateOrder(request);
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('سفارش خصوصی ${id.substring(0, 8)} ثبت شد و در سایت مشتری نمایش داده نمی‌شود.')));
+    } catch (exception) {
+      if (mounted) {
+        setState(() => loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+      }
+    }
+  }
 
   Future<void> exportCsv() async {
     final stepUpToken = await showAdminStepUpDialog(context);
@@ -300,6 +407,8 @@ class _OrdersPageState extends State<OrdersPage> {
                 icon: exporting ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.file_download_outlined),
                 label: const Text('خروجی CSV'),
               ),
+              if (!OwnerSession.instance.isAuthenticated || OwnerSession.instance.can(AdminPermissions.ordersWrite))
+                FilledButton.tonalIcon(onPressed: createPrivateOrder, icon: const Icon(Icons.add_shopping_cart_rounded), label: const Text('سفارش سفارشی خصوصی')),
               if (selectedOrders.isNotEmpty)
                 PopupMenuButton<String>(
                   onSelected: bulkAdvance,
@@ -317,7 +426,17 @@ class _OrdersPageState extends State<OrdersPage> {
             ]);
             return constraints.maxWidth < 1120
                 ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [heading, const SizedBox(height: 10), controls])
-                : Row(children: [Expanded(child: heading), controls]);
+                : Row(
+                    children: [
+                      Expanded(child: heading),
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: controls,
+                        ),
+                      ),
+                    ],
+                  );
           }),
           const SizedBox(height: 12),
           TextField(
@@ -487,6 +606,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     const SizedBox(height: 5),
                     Text(order.customerName, style: const TextStyle(fontWeight: FontWeight.w700)),
                     Text('${order.province}، ${order.city} · ${formatPersianInteger(order.lineCount)} قلم', style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
+                    if (order.isPrivate) const Padding(padding: EdgeInsets.only(top: 5), child: Chip(visualDensity: VisualDensity.compact, label: Text('فقط داخلی'), backgroundColor: AdminColors.warningSoft)),
                   ]),
                 ),
                 Chip(
@@ -531,8 +651,11 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   bool loading = true;
   bool savingNote = false;
   bool savingShipping = false;
+  bool savingInternalCost = false;
   bool openingPackingSlip = false;
   final noteController = TextEditingController();
+  final internalCostTitleController = TextEditingController();
+  final internalCostAmountController = TextEditingController();
   final carrierController = TextEditingController();
   final trackingController = TextEditingController();
   final shippingExpenseController = TextEditingController();
@@ -567,6 +690,8 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   @override
   void dispose() {
     noteController.dispose();
+    internalCostTitleController.dispose();
+    internalCostAmountController.dispose();
     carrierController.dispose();
     trackingController.dispose();
     shippingExpenseController.dispose();
@@ -587,6 +712,48 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
     } finally {
       if (mounted) setState(() => savingNote = false);
+    }
+  }
+
+  Future<void> addInternalCost() async {
+    final title = internalCostTitleController.text.trim();
+    final amount = parsePersianNumber(internalCostAmountController.text);
+    if (title.isEmpty || title.length > 160 || amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('عنوان و مبلغ معتبر هزینه داخلی را وارد کنید.')));
+      return;
+    }
+    setState(() => savingInternalCost = true);
+    try {
+      await widget.api.addInternalCost(widget.order.id, title, amount);
+      internalCostTitleController.clear();
+      internalCostAmountController.clear();
+      await load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('هزینه فقط برای محاسبات داخلی ثبت شد.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
+    } finally {
+      if (mounted) setState(() => savingInternalCost = false);
+    }
+  }
+
+  Future<void> removeInternalCost(AdminOrderInternalCost cost) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف هزینه داخلی'),
+        content: Text('«${cost.title}» از محاسبه سود حذف شود؟ این تغییر در سابقه مدیریتی ثبت می‌شود.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('حذف هزینه')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.api.removeInternalCost(widget.order.id, cost.id);
+      await load();
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(requestErrorMessage(exception))));
     }
   }
 
@@ -679,6 +846,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('سفارش ${detail.order.id.substring(0, 8)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
             Chip(label: Text(_stateLabel(detail.order.state)), backgroundColor: AdminColors.mintSoft),
+          if (detail.order.isPrivate) const Chip(label: Text('سفارش خصوصی؛ فقط پنل'), backgroundColor: AdminColors.warningSoft),
             if (!OwnerSession.instance.isAuthenticated || (OwnerSession.instance.can(AdminPermissions.ordersDocumentsRead) && OwnerSession.instance.can(AdminPermissions.customersPiiRead)))
             FilledButton.tonalIcon(
               onPressed: openingPackingSlip ? null : openPackingSlip,
@@ -725,6 +893,32 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
             const Divider(height: 20),
             _moneyRow('مبلغ نهایی', detail.order.payable, detail.order.currency, strong: true),
             if (detail.shippingExpense > 0) _moneyRow('هزینه واقعی ارسال', detail.shippingExpense, detail.order.currency),
+          ])),
+          const SizedBox(height: 12),
+          _detailCard(title: 'هزینه‌های داخلی حسابداری', icon: Icons.calculate_outlined, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('این هزینه‌ها به مبلغ مشتری و فاکتور اضافه نمی‌شوند؛ فقط از سود واقعی سفارش کم می‌شوند.', style: TextStyle(fontSize: 12, color: AdminColors.muted)),
+            const SizedBox(height: 12),
+            if (detail.internalCosts.isEmpty)
+              const AdminEmptyState(icon: Icons.receipt_long_outlined, title: 'هزینه اضافه‌ای ثبت نشده', detail: 'مثلاً بسته‌بندی ویژه، نمونه رایگان یا هدیه را اینجا ثبت کنید.'),
+            for (final cost in detail.internalCosts) ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(cost.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text('${cost.actor} · ${formatLocalizedDateTime(context, cost.createdAt)}'),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('${formatPersianNumber(cost.amount)} ریال', style: const TextStyle(fontWeight: FontWeight.w800)),
+                IconButton(tooltip: 'حذف از محاسبه سود', onPressed: () => removeInternalCost(cost), icon: const Icon(Icons.delete_outline_rounded)),
+              ]),
+            ),
+            if (detail.internalCosts.isNotEmpty) ...[
+              const Divider(),
+              _moneyRow('جمع هزینه‌های داخلی', detail.internalCosts.fold<num>(0, (sum, cost) => sum + cost.amount), detail.order.currency, strong: true),
+            ],
+            const SizedBox(height: 8),
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              SizedBox(width: 260, child: TextField(controller: internalCostTitleController, maxLength: 160, decoration: const InputDecoration(labelText: 'عنوان هزینه', hintText: 'مثلاً بسته‌بندی اضافه یا سمپل'))),
+              SizedBox(width: 220, child: TextField(controller: internalCostAmountController, keyboardType: TextInputType.number, inputFormatters: const [PersianGroupedIntegerInputFormatter()], decoration: const InputDecoration(labelText: 'مبلغ هزینه', suffixText: 'ریال'))),
+              FilledButton.tonalIcon(onPressed: savingInternalCost ? null : addInternalCost, icon: savingInternalCost ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_rounded), label: const Text('ثبت هزینه داخلی')),
+            ]),
           ])),
           if (detail.payment != null) ...[
             const SizedBox(height: 12),
