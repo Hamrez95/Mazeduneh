@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'formatters.dart';
 import 'package:flutter/material.dart';
 import 'admin_theme.dart';
+import 'admin_mobile_list_controls.dart';
 
 import 'admin_step_up_dialog.dart';
 import 'catalog_api.dart';
@@ -25,6 +28,9 @@ class ProductManagementPage extends StatefulWidget {
 
 class _ProductManagementPageState extends State<ProductManagementPage> {
   String? changingSlug;
+  String productQuery = '';
+  int productPage = 0;
+  int productPageSize = 10;
 
   Future<void> _togglePublication(Product product) async {
     final publish = !product.isPublished;
@@ -57,12 +63,19 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
       await widget.onReload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(publish ? 'محصول منتشر شد.' : 'محصول از فروشگاه خارج شد.')),
+        SnackBar(
+          content: Text(
+            publish ? 'محصول منتشر شد.' : 'محصول از فروشگاه خارج شد.',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString()), backgroundColor: Colors.red.shade700),
+        SnackBar(
+          content: Text(error.toString()),
+          backgroundColor: Colors.red.shade700,
+        ),
       );
     } finally {
       if (mounted) setState(() => changingSlug = null);
@@ -78,26 +91,35 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
     if (created != true) return;
     await widget.onReload();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('دسته‌بندی ثبت شد.')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('دسته‌بندی ثبت شد.')));
   }
 
   Future<void> _openEditDialog(Product product) async {
     final updated = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories, initialProduct: product),
+      builder: (_) => _CreateProductDialog(
+        api: widget.api,
+        categories: widget.categories,
+        initialProduct: product,
+      ),
     );
     if (updated != true) return;
     await widget.onReload();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('محصول به‌روزرسانی شد.')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('محصول به‌روزرسانی شد.')));
   }
 
   Future<void> _openCreateDialog() async {
     final created = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _CreateProductDialog(api: widget.api, categories: widget.categories),
+      builder: (_) =>
+          _CreateProductDialog(api: widget.api, categories: widget.categories),
     );
     if (created != true) return;
     await widget.onReload();
@@ -109,30 +131,52 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final query = normalizeNumberDigits(productQuery.trim().toLowerCase());
+    final filteredProducts = widget.products.where((product) {
+      if (query.isEmpty) return true;
+      final searchable = <String>[
+        product.title,
+        product.category,
+        product.origin,
+        product.slug,
+        ...product.variants.expand(
+          (variant) => [variant.sku, variant.displayLabel],
+        ),
+      ].join(' ').toLowerCase();
+      return normalizeNumberDigits(searchable).contains(query);
+    }).toList();
+    final lastPage = filteredProducts.isEmpty
+        ? 0
+        : (filteredProducts.length - 1) ~/ productPageSize;
+    final currentPage = productPage.clamp(0, lastPage);
+    final pageProducts = filteredProducts
+        .skip(currentPage * productPageSize)
+        .take(productPageSize)
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'کاتالوگ و موجودی',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final heading = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'کاتالوگ و موجودی',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
                   ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'محصول وزنی یا عددی بساز، بسته‌ها را تعریف کن و بعد از بازبینی منتشر کن.',
-                    style: TextStyle(color: AdminColors.muted),
-                  ),
-                ],
-              ),
-            ),
-            Wrap(
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'محصول وزنی یا عددی بساز، بسته‌ها را تعریف کن و بعد از بازبینی منتشر کن.',
+                  style: TextStyle(color: AdminColors.muted),
+                ),
+              ],
+            );
+            final actions = Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   onPressed: _openCreateCategoryDialog,
@@ -145,8 +189,20 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                   label: const Text('محصول جدید'),
                 ),
               ],
-            ),
-          ],
+            );
+            return constraints.maxWidth < 720
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [heading, const SizedBox(height: 12), actions],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: heading),
+                      actions,
+                    ],
+                  );
+          },
         ),
         const SizedBox(height: 16),
         Expanded(
@@ -163,108 +219,239 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                     final columns = constraints.maxWidth >= 1100
                         ? 3
                         : constraints.maxWidth >= 680
-                            ? 2
-                            : 1;
-                    return GridView.builder(
-                      itemCount: widget.products.length,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        mainAxisExtent: 286,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemBuilder: (_, index) {
-                        final product = widget.products[index];
-                        final changing = changingSlug == product.slug;
-                        return Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(18),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        product.title,
-                                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                                      ),
-                                    ),
-                                    Chip(
-                                      label: Text(product.isPublished ? 'منتشرشده' : 'پیش‌نویس'),
-                                      backgroundColor: product.isPublished
-                                          ? AdminColors.successSoft
-                                          : AdminColors.warningSoft,
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  '${product.category} · ${product.origin}',
-                                  style: const TextStyle(color: AdminColors.muted),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      product.isWeight ? Icons.scale_rounded : Icons.cookie_rounded,
-                                      size: 18,
-                                      color: AdminColors.success,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(product.isWeight ? 'واحد پایه: گرم' : 'واحد پایه: عدد'),
-                                    const Spacer(),
-                                    Text(
-                                      '${formatPersianInteger(product.totalStock)} بسته',
-                                      style: const TextStyle(fontWeight: FontWeight.w800),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Expanded(
-                                  child: SingleChildScrollView(
-                                    child: Wrap(
-                                      spacing: 6,
-                                      runSpacing: 6,
+                        ? 2
+                        : 1;
+                    final textScale = MediaQuery.textScalerOf(context).scale(1);
+                    final cardExtent = math
+                        .max(
+                          constraints.maxWidth < 400 ? 330.0 : 286.0,
+                          286.0 * textScale,
+                        )
+                        .toDouble();
+                    return Column(
+                      children: [
+                        AdminMobileListControls(
+                          totalItems: filteredProducts.length,
+                          page: currentPage,
+                          pageSize: productPageSize,
+                          searchText: productQuery,
+                          searchHint: 'جست‌وجوی محصول، دسته یا SKU',
+                          onSearchChanged: (value) => setState(() {
+                            productQuery = value;
+                            productPage = 0;
+                          }),
+                          onPageChanged: (value) =>
+                              setState(() => productPage = value),
+                          onPageSizeChanged: (value) => setState(() {
+                            productPageSize = value;
+                            productPage = 0;
+                          }),
+                        ),
+                        const SizedBox(height: 12),
+                        if (filteredProducts.isEmpty)
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                widget.products.isEmpty
+                                    ? 'محصولی ثبت نشده است.'
+                                    : 'محصولی با این جست‌وجو پیدا نشد.',
+                              ),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: GridView.builder(
+                              itemCount: pageProducts.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    mainAxisExtent: cardExtent,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                  ),
+                              itemBuilder: (_, index) {
+                                final product = pageProducts[index];
+                                final changing = changingSlug == product.slug;
+                                return Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(18),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        for (final variant in product.variants)
-                                          Tooltip(
-                                            message: '${variant.sku} · ${formatToman(variant.price)} تومان',
-                                            child: Chip(
-                                              label: Text(
-                                                '${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)}',
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                product.title,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 16,
+                                                ),
                                               ),
                                             ),
+                                            Chip(
+                                              label: Text(
+                                                product.isPublished
+                                                    ? 'منتشرشده'
+                                                    : 'پیش‌نویس',
+                                              ),
+                                              backgroundColor:
+                                                  product.isPublished
+                                                  ? AdminColors.successSoft
+                                                  : AdminColors.warningSoft,
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          '${product.category} · ${product.origin}',
+                                          style: const TextStyle(
+                                            color: AdminColors.muted,
                                           ),
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Wrap(
+                                          alignment: WrapAlignment.spaceBetween,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  product.isWeight
+                                                      ? Icons.scale_rounded
+                                                      : Icons.cookie_rounded,
+                                                  size: 18,
+                                                  color: AdminColors.success,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  product.isWeight
+                                                      ? 'واحد پایه: گرم'
+                                                      : 'واحد پایه: عدد',
+                                                ),
+                                              ],
+                                            ),
+                                            Text(
+                                              '${formatPersianInteger(product.totalStock)} بسته',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 10),
+                                        Expanded(
+                                          child: SingleChildScrollView(
+                                            child: Wrap(
+                                              spacing: 6,
+                                              runSpacing: 6,
+                                              children: [
+                                                for (final variant
+                                                    in product.variants)
+                                                  Tooltip(
+                                                    message:
+                                                        '${variant.sku} · ${formatToman(variant.price)} تومان',
+                                                    child: Chip(
+                                                      label: Text(
+                                                        '${variant.displayLabel} · ${formatPersianInteger(variant.availablePackages)}',
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                        const Divider(),
+                                        LayoutBuilder(
+                                          builder: (context, constraints) {
+                                            final actions = changing
+                                                ? const SizedBox.square(
+                                                    dimension: 24,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  )
+                                                : Wrap(
+                                                    spacing: 8,
+                                                    children: [
+                                                      OutlinedButton.icon(
+                                                        onPressed: () =>
+                                                            _openEditDialog(
+                                                              product,
+                                                            ),
+                                                        icon: const Icon(
+                                                          Icons.edit_outlined,
+                                                          size: 17,
+                                                        ),
+                                                        label: const Text(
+                                                          'ویرایش',
+                                                        ),
+                                                      ),
+                                                      Tooltip(
+                                                        message:
+                                                            product.isPublished
+                                                            ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.'
+                                                            : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
+                                                        child: OutlinedButton(
+                                                          onPressed: () =>
+                                                              _togglePublication(
+                                                                product,
+                                                              ),
+                                                          child: Text(
+                                                            product.isPublished
+                                                                ? 'خروج از فروش'
+                                                                : 'انتشار',
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                            final status = Text(
+                                              product.isPublished
+                                                  ? 'قابل نمایش و سفارش در سایت'
+                                                  : 'فقط در پنل مدیریت دیده می‌شود',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AdminColors.muted,
+                                              ),
+                                            );
+                                            return constraints.maxWidth < 410
+                                                ? Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .stretch,
+                                                    children: [
+                                                      status,
+                                                      const SizedBox(height: 8),
+                                                      Align(
+                                                        alignment:
+                                                            AlignmentDirectional
+                                                                .centerEnd,
+                                                        child: actions,
+                                                      ),
+                                                    ],
+                                                  )
+                                                : Row(
+                                                    children: [
+                                                      Expanded(child: status),
+                                                      actions,
+                                                    ],
+                                                  );
+                                          },
+                                        ),
                                       ],
                                     ),
                                   ),
-                                ),
-                                const Divider(),
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final actions = changing
-                                        ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                                        : Wrap(spacing: 8, children: [
-                                            OutlinedButton.icon(onPressed: () => _openEditDialog(product), icon: const Icon(Icons.edit_outlined, size: 17), label: const Text('ویرایش')),
-                                            Tooltip(
-                                              message: product.isPublished ? 'محصول از فروش عمومی خارج می‌شود و حذف نخواهد شد.' : 'انتشار فقط با SKU، عنوان بسته و قیمت معتبر برای همه بسته‌ها انجام می‌شود.',
-                                              child: OutlinedButton(onPressed: () => _togglePublication(product), child: Text(product.isPublished ? 'خروج از فروش' : 'انتشار')),
-                                            ),
-                                          ]);
-                                    final status = Text(
-                                      product.isPublished ? 'قابل نمایش و سفارش در سایت' : 'فقط در پنل مدیریت دیده می‌شود',
-                                      style: const TextStyle(fontSize: 11, color: AdminColors.muted),
-                                    );
-                                    return constraints.maxWidth < 410
-                                        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [status, const SizedBox(height: 8), Align(alignment: AlignmentDirectional.centerEnd, child: actions)])
-                                        : Row(children: [Expanded(child: status), actions]);
-                                  },
-                                ),
-                              ],
+                                );
+                              },
                             ),
                           ),
-                        );
-                      },
+                      ],
                     );
                   },
                 ),
@@ -275,7 +462,11 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
 }
 
 class _CreateProductDialog extends StatefulWidget {
-  const _CreateProductDialog({required this.api, required this.categories, this.initialProduct});
+  const _CreateProductDialog({
+    required this.api,
+    required this.categories,
+    this.initialProduct,
+  });
 
   final CatalogApiClient api;
   final List<Category> categories;
@@ -322,7 +513,10 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     slug.text = product.slug;
     category.text = product.category;
     origin.text = product.origin;
-    selectedCategory = widget.categories.any((item) => item.name == product.category) ? product.category : null;
+    selectedCategory =
+        widget.categories.any((item) => item.name == product.category)
+        ? product.category
+        : null;
     unitType = product.unitType;
     shortDescription.text = product.shortDescription;
     description.text = product.description;
@@ -331,25 +525,41 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     seoKeywords.text = product.seoKeywords;
     primaryImage.text = product.primaryImage;
     galleryImages.text = product.galleryImages.join('\\n');
-    specifications.text = product.specifications.entries.map((entry) => '${entry.key}: ${entry.value}').join('\\n');
+    specifications.text = product.specifications.entries
+        .map((entry) => '${entry.key}: ${entry.value}')
+        .join('\\n');
     ingredients.text = product.ingredients;
     allergens.text = product.allergens.join('، ');
-    nutritionFacts.text = product.nutritionFacts.entries.map((entry) => '${entry.key}: ${toPersianDigits(entry.value)}').join('\\n');
+    nutritionFacts.text = product.nutritionFacts.entries
+        .map((entry) => '${entry.key}: ${toPersianDigits(entry.value)}')
+        .join('\\n');
     storageInstructions.text = product.storageInstructions;
-    shelfLifeDays.text = product.shelfLifeDays == null ? '' : toPersianDigits(product.shelfLifeDays);
-    netWeight.text = product.netWeight == null ? '' : toPersianDigits(product.netWeight);
+    shelfLifeDays.text = product.shelfLifeDays == null
+        ? ''
+        : toPersianDigits(product.shelfLifeDays);
+    netWeight.text = product.netWeight == null
+        ? ''
+        : toPersianDigits(product.netWeight);
     expiryLabel.text = product.expiryLabel;
     for (final variant in variants) variant.dispose();
-    variants = product.variants.map((variant) => _VariantDraft(
-      sku: variant.sku,
-      quantity: toPersianDigits(variant.quantity),
-      label: variant.displayLabel,
-      priceToman: toPersianDigits((variant.price / 10).round()),
-      costPriceToman: toPersianDigits((variant.costPrice / 10).round()),
-      packagingCostToman: toPersianDigits((variant.packagingCost / 10).round()),
-      additionalCostToman: toPersianDigits((variant.additionalCost / 10).round()),
-      stock: toPersianDigits(variant.availablePackages),
-    )).toList();
+    variants = product.variants
+        .map(
+          (variant) => _VariantDraft(
+            sku: variant.sku,
+            quantity: toPersianDigits(variant.quantity),
+            label: variant.displayLabel,
+            priceToman: toPersianDigits((variant.price / 10).round()),
+            costPriceToman: toPersianDigits((variant.costPrice / 10).round()),
+            packagingCostToman: toPersianDigits(
+              (variant.packagingCost / 10).round(),
+            ),
+            additionalCostToman: toPersianDigits(
+              (variant.additionalCost / 10).round(),
+            ),
+            stock: toPersianDigits(variant.availablePackages),
+          ),
+        )
+        .toList();
   }
 
   @override
@@ -428,15 +638,25 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
         seoDescription: seoDescription.text.trim(),
         seoKeywords: seoKeywords.text.trim(),
         primaryImage: primaryImage.text.trim(),
-        galleryImages: galleryImages.text.split('\n').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        galleryImages: galleryImages.text
+            .split('\n')
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList(),
         specifications: _parseSpecifications(specifications.text),
         ingredients: ingredients.text.trim(),
-        allergens: allergens.text.split('،').map((item) => item.trim()).where((item) => item.isNotEmpty).toList(),
+        allergens: allergens.text
+            .split('،')
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList(),
         nutritionFacts: _parseDecimalMap(nutritionFacts.text),
         storageInstructions: storageInstructions.text.trim(),
         shelfLifeDays: parsePersianInteger(shelfLifeDays.text),
         netWeight: parsePersianNumber(netWeight.text),
-        expiryLabel: expiryLabel.text.trim().isEmpty ? 'best-before' : expiryLabel.text.trim(),
+        expiryLabel: expiryLabel.text.trim().isEmpty
+            ? 'best-before'
+            : expiryLabel.text.trim(),
         variants: variants
             .map(
               (variant) => CreateVariantCommand(
@@ -444,9 +664,12 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                 quantity: parsePersianNumber(variant.quantity.text)!,
                 displayLabel: variant.label.text.trim(),
                 price: parsePersianInteger(variant.priceToman.text)! * 10,
-                costPrice: parsePersianInteger(variant.costPriceToman.text)! * 10,
-                packagingCost: parsePersianInteger(variant.packagingCostToman.text)! * 10,
-                additionalCost: parsePersianInteger(variant.additionalCostToman.text)! * 10,
+                costPrice:
+                    parsePersianInteger(variant.costPriceToman.text)! * 10,
+                packagingCost:
+                    parsePersianInteger(variant.packagingCostToman.text)! * 10,
+                additionalCost:
+                    parsePersianInteger(variant.additionalCostToman.text)! * 10,
                 availablePackages: parsePersianInteger(variant.stock.text)!,
               ),
             )
@@ -496,7 +719,9 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
     return Dialog.fullscreen(
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.initialProduct == null ? 'محصول جدید' : 'ویرایش محصول'),
+          title: Text(
+            widget.initialProduct == null ? 'محصول جدید' : 'ویرایش محصول',
+          ),
           leading: IconButton(
             onPressed: submitting ? null : () => Navigator.pop(context, false),
             icon: const Icon(Icons.close_rounded),
@@ -512,7 +737,11 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save_rounded),
-                label: Text(widget.initialProduct == null ? 'ذخیره پیش‌نویس' : 'ذخیره تغییرات'),
+                label: Text(
+                  widget.initialProduct == null
+                      ? 'ذخیره پیش‌نویس'
+                      : 'ذخیره تغییرات',
+                ),
               ),
             ),
           ],
@@ -530,14 +759,20 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                     children: [
                       const _SectionTitle(
                         title: 'مشخصات پایه',
-                        subtitle: 'محصول بعد از ثبت پیش‌نویس می‌ماند تا پیش از انتشار بازبینی شود.',
+                        subtitle:
+                            'محصول بعد از ثبت پیش‌نویس می‌ماند تا پیش از انتشار بازبینی شود.',
                       ),
                       const SizedBox(height: 14),
                       Wrap(
                         spacing: 12,
                         runSpacing: 12,
                         children: [
-                          _Input(width: 430, controller: title, label: 'نام محصول', validator: _required),
+                          _Input(
+                            width: 430,
+                            controller: title,
+                            label: 'نام محصول',
+                            validator: _required,
+                          ),
                           _Input(
                             width: 430,
                             controller: slug,
@@ -547,53 +782,175 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                             textDirection: TextDirection.ltr,
                           ),
                           if (widget.categories.isEmpty)
-                            _Input(width: 430, controller: category, label: 'دسته‌بندی', validator: _required)
+                            _Input(
+                              width: 430,
+                              controller: category,
+                              label: 'دسته‌بندی',
+                              validator: _required,
+                            )
                           else
                             SizedBox(
-                              width: MediaQuery.sizeOf(context).width < 520 ? MediaQuery.sizeOf(context).width - 56 : 430,
+                              width: MediaQuery.sizeOf(context).width < 520
+                                  ? MediaQuery.sizeOf(context).width - 56
+                                  : 430,
                               child: DropdownButtonFormField<String>(
                                 value: selectedCategory,
-                                decoration: const InputDecoration(labelText: 'دسته‌بندی'),
-                                items: widget.categories.where((item) => item.isActive).map((item) => DropdownMenuItem(value: item.name, child: Text(item.name))).toList(),
-                                onChanged: submitting ? null : (value) => setState(() => selectedCategory = value),
-                                validator: (value) => value == null ? 'دسته‌بندی را انتخاب کنید.' : null,
+                                decoration: const InputDecoration(
+                                  labelText: 'دسته‌بندی',
+                                ),
+                                items: widget.categories
+                                    .where((item) => item.isActive)
+                                    .map(
+                                      (item) => DropdownMenuItem(
+                                        value: item.name,
+                                        child: Text(item.name),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: submitting
+                                    ? null
+                                    : (value) => setState(
+                                        () => selectedCategory = value,
+                                      ),
+                                validator: (value) => value == null
+                                    ? 'دسته‌بندی را انتخاب کنید.'
+                                    : null,
                               ),
                             ),
-                          _Input(width: 430, controller: origin, label: 'مبدأ یا برند', validator: _required),
-                          _Input(width: 430, controller: shortDescription, label: 'توضیح کوتاه', hint: 'برای کارت محصول و خلاصه سئو'),
-                          _Input(width: 872, controller: description, label: 'توضیحات کامل محصول', maxLines: 4),
+                          _Input(
+                            width: 430,
+                            controller: origin,
+                            label: 'مبدأ یا برند',
+                            validator: _required,
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: shortDescription,
+                            label: 'توضیح کوتاه',
+                            hint: 'برای کارت محصول و خلاصه سئو',
+                          ),
+                          _Input(
+                            width: 872,
+                            controller: description,
+                            label: 'توضیحات کامل محصول',
+                            maxLines: 4,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
                       const _SectionTitle(
                         title: 'اطلاعات خوراکی و نگهداری',
-                        subtitle: 'ماندگاری و نوع تاریخ، اطلاعات عمومی صفحه محصول است؛ تاریخ واقعی هر سری خرید را در بخش انبار ثبت کنید.',
+                        subtitle:
+                            'ماندگاری و نوع تاریخ، اطلاعات عمومی صفحه محصول است؛ تاریخ واقعی هر سری خرید را در بخش انبار ثبت کنید.',
                       ),
                       const SizedBox(height: 12),
-                      Wrap(spacing: 12, runSpacing: 12, children: [
-                        _Input(width: 430, controller: ingredients, label: 'مواد تشکیل‌دهنده', hint: 'پسته، نمک، زعفران'),
-                        _Input(width: 430, controller: allergens, label: 'آلرژن‌ها', hint: 'بادام، بادام‌زمینی، گلوتن'),
-                        _Input(width: 430, controller: nutritionFacts, label: 'ارزش غذایی', hint: 'کالری: ۵۶۰\\nپروتئین: ۲۰', maxLines: 4),
-                        _Input(width: 430, controller: storageInstructions, label: 'نحوه نگهداری', hint: 'در جای خشک و خنک نگهداری شود', maxLines: 3),
-                        _Input(width: 210, controller: shelfLifeDays, label: 'ماندگاری (روز)', validator: _optionalNonNegativeInt, keyboardType: TextInputType.number),
-                        _Input(width: 210, controller: netWeight, label: 'وزن خالص', validator: _optionalNumber, keyboardType: TextInputType.number),
-                        _Input(width: 210, controller: expiryLabel, label: 'عنوان تاریخ روی بسته', hint: 'بهترین زمان مصرف'),
-                      ]),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _Input(
+                            width: 430,
+                            controller: ingredients,
+                            label: 'مواد تشکیل‌دهنده',
+                            hint: 'پسته، نمک، زعفران',
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: allergens,
+                            label: 'آلرژن‌ها',
+                            hint: 'بادام، بادام‌زمینی، گلوتن',
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: nutritionFacts,
+                            label: 'ارزش غذایی',
+                            hint: 'کالری: ۵۶۰\\nپروتئین: ۲۰',
+                            maxLines: 4,
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: storageInstructions,
+                            label: 'نحوه نگهداری',
+                            hint: 'در جای خشک و خنک نگهداری شود',
+                            maxLines: 3,
+                          ),
+                          _Input(
+                            width: 210,
+                            controller: shelfLifeDays,
+                            label: 'ماندگاری (روز)',
+                            validator: _optionalNonNegativeInt,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _Input(
+                            width: 210,
+                            controller: netWeight,
+                            label: 'وزن خالص',
+                            validator: _optionalNumber,
+                            keyboardType: TextInputType.number,
+                          ),
+                          _Input(
+                            width: 210,
+                            controller: expiryLabel,
+                            label: 'عنوان تاریخ روی بسته',
+                            hint: 'بهترین زمان مصرف',
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
-                      const _SectionTitle(title: 'تصاویر و سئوی محصول', subtitle: 'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.'),
+                      const _SectionTitle(
+                        title: 'تصاویر و سئوی محصول',
+                        subtitle:
+                            'مسیر یا URL تصویر اصلی و گالری را وارد کن؛ هر تصویر گالری در یک خط.',
+                      ),
                       const SizedBox(height: 12),
-                      Wrap(spacing: 12, runSpacing: 12, children: [
-                        _Input(width: 430, controller: primaryImage, label: 'تصویر اصلی', hint: '/products/pistachio-pouch-new.webp', textDirection: TextDirection.ltr),
-                        _Input(width: 430, controller: seoTitle, label: 'عنوان SEO'),
-                        _Input(width: 430, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
-                        _Input(width: 430, controller: seoKeywords, label: 'کلمات کلیدی SEO'),
-                        _Input(width: 430, controller: galleryImages, label: 'گالری تصاویر', maxLines: 4, textDirection: TextDirection.ltr),
-                        _Input(width: 430, controller: specifications, label: 'مشخصات کلیدی', hint: 'وزن: ۲۵۰ گرم\nدرجه: ممتاز', maxLines: 4),
-                      ]),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _Input(
+                            width: 430,
+                            controller: primaryImage,
+                            label: 'تصویر اصلی',
+                            hint: '/products/pistachio-pouch-new.webp',
+                            textDirection: TextDirection.ltr,
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: seoTitle,
+                            label: 'عنوان SEO',
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: seoDescription,
+                            label: 'توضیحات SEO',
+                            maxLines: 3,
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: seoKeywords,
+                            label: 'کلمات کلیدی SEO',
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: galleryImages,
+                            label: 'گالری تصاویر',
+                            maxLines: 4,
+                            textDirection: TextDirection.ltr,
+                          ),
+                          _Input(
+                            width: 430,
+                            controller: specifications,
+                            label: 'مشخصات کلیدی',
+                            hint: 'وزن: ۲۵۰ گرم\nدرجه: ممتاز',
+                            maxLines: 4,
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 24),
                       const _SectionTitle(
                         title: 'نوع واحد فروش',
-                        subtitle: 'مغزیجات معمولاً وزنی‌اند؛ کوکی و کیک می‌توانند عددی باشند.',
+                        subtitle:
+                            'مغزیجات معمولاً وزنی‌اند؛ کوکی و کیک می‌توانند عددی باشند.',
                       ),
                       const SizedBox(height: 12),
                       SegmentedButton<String>(
@@ -620,7 +977,8 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                           const Expanded(
                             child: _SectionTitle(
                               title: 'بسته‌های قابل فروش',
-                              subtitle: 'هر بسته SKU، قیمت و موجودی مستقل دارد.',
+                              subtitle:
+                                  'هر بسته SKU، قیمت و موجودی مستقل دارد.',
                             ),
                           ),
                           OutlinedButton.icon(
@@ -823,8 +1181,8 @@ class _Input extends StatelessWidget {
         inputFormatters: keyboardType == null
             ? null
             : groupThousands
-                ? const [PersianGroupedIntegerInputFormatter()]
-                : const [PersianDigitsInputFormatter()],
+            ? const [PersianGroupedIntegerInputFormatter()]
+            : const [PersianDigitsInputFormatter()],
         textDirection: textDirection,
         maxLines: maxLines,
         decoration: InputDecoration(labelText: label, hintText: hint),
@@ -846,7 +1204,9 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
         ),
         Text(subtitle, style: const TextStyle(color: AdminColors.muted)),
       ],
@@ -864,14 +1224,14 @@ class _VariantDraft {
     String packagingCostToman = '۰',
     String additionalCostToman = '۰',
     String stock = '۰',
-  })  : sku = TextEditingController(text: sku),
-        quantity = TextEditingController(text: quantity),
-        label = TextEditingController(text: label),
-        priceToman = TextEditingController(text: priceToman),
-        costPriceToman = TextEditingController(text: costPriceToman),
-        packagingCostToman = TextEditingController(text: packagingCostToman),
-        additionalCostToman = TextEditingController(text: additionalCostToman),
-        stock = TextEditingController(text: stock);
+  }) : sku = TextEditingController(text: sku),
+       quantity = TextEditingController(text: quantity),
+       label = TextEditingController(text: label),
+       priceToman = TextEditingController(text: priceToman),
+       costPriceToman = TextEditingController(text: costPriceToman),
+       packagingCostToman = TextEditingController(text: packagingCostToman),
+       additionalCostToman = TextEditingController(text: additionalCostToman),
+       stock = TextEditingController(text: stock);
 
   final TextEditingController sku;
   final TextEditingController quantity;
@@ -895,15 +1255,15 @@ class _VariantDraft {
 }
 
 List<_VariantDraft> _weightVariants() => [
-      _VariantDraft(quantity: '۲۵۰', label: '۲۵۰ گرم'),
-      _VariantDraft(quantity: '۵۰۰', label: '۵۰۰ گرم'),
-      _VariantDraft(quantity: '۱۰۰۰', label: '۱۰۰۰ گرم'),
-    ];
+  _VariantDraft(quantity: '۲۵۰', label: '۲۵۰ گرم'),
+  _VariantDraft(quantity: '۵۰۰', label: '۵۰۰ گرم'),
+  _VariantDraft(quantity: '۱۰۰۰', label: '۱۰۰۰ گرم'),
+];
 
 List<_VariantDraft> _countVariants() => [
-      _VariantDraft(quantity: '۱', label: '۱ عدد'),
-      _VariantDraft(quantity: '۴', label: 'پک ۴ عددی'),
-    ];
+  _VariantDraft(quantity: '۱', label: '۱ عدد'),
+  _VariantDraft(quantity: '۴', label: 'پک ۴ عددی'),
+];
 
 String? _required(String? value) {
   if (value == null || value.trim().isEmpty) return 'این فیلد الزامی است.';
@@ -998,31 +1358,105 @@ class _CreateCategoryDialogState extends State<_CreateCategoryDialog> {
   bool submitting = false;
   String? error;
   @override
-  void dispose() { name.dispose(); slug.dispose(); description.dispose(); seoTitle.dispose(); seoDescription.dispose(); super.dispose(); }
+  void dispose() {
+    name.dispose();
+    slug.dispose();
+    description.dispose();
+    seoTitle.dispose();
+    seoDescription.dispose();
+    super.dispose();
+  }
+
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
-    setState(() { submitting = true; error = null; });
+    setState(() {
+      submitting = true;
+      error = null;
+    });
     try {
-      await widget.api.createCategory(CreateCategoryCommand(name: name.text.trim(), slug: slug.text.trim().toLowerCase(), description: description.text.trim(), seoTitle: seoTitle.text.trim(), seoDescription: seoDescription.text.trim()));
+      await widget.api.createCategory(
+        CreateCategoryCommand(
+          name: name.text.trim(),
+          slug: slug.text.trim().toLowerCase(),
+          description: description.text.trim(),
+          seoTitle: seoTitle.text.trim(),
+          seoDescription: seoDescription.text.trim(),
+        ),
+      );
       if (mounted) Navigator.pop(context, true);
-    } catch (exception) { if (mounted) setState(() => error = exception.toString()); }
-    finally { if (mounted) setState(() => submitting = false); }
+    } catch (exception) {
+      if (mounted) setState(() => error = exception.toString());
+    } finally {
+      if (mounted) setState(() => submitting = false);
+    }
   }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('دسته‌بندی جدید'),
-    content: SizedBox(width: 460, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      _Input(width: double.infinity, controller: name, label: 'نام دسته‌بندی', validator: _required),
-      const SizedBox(height: 10),
-      _Input(width: double.infinity, controller: slug, label: 'شناسه انگلیسی URL', validator: _slugValidator, textDirection: TextDirection.ltr),
-      const SizedBox(height: 10),
-      _Input(width: double.infinity, controller: description, label: 'توضیح'),
-      const SizedBox(height: 10),
-      _Input(width: double.infinity, controller: seoTitle, label: 'عنوان SEO'),
-      const SizedBox(height: 10),
-      _Input(width: double.infinity, controller: seoDescription, label: 'توضیحات SEO', maxLines: 3),
-      if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Colors.red))),
-    ])))),
-    actions: [TextButton(onPressed: submitting ? null : () => Navigator.pop(context, false), child: const Text('انصراف')), FilledButton(onPressed: submitting ? null : submit, child: const Text('ثبت دسته'))],
+    content: SizedBox(
+      width: 460,
+      child: Form(
+        key: formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _Input(
+                width: double.infinity,
+                controller: name,
+                label: 'نام دسته‌بندی',
+                validator: _required,
+              ),
+              const SizedBox(height: 10),
+              _Input(
+                width: double.infinity,
+                controller: slug,
+                label: 'شناسه انگلیسی URL',
+                validator: _slugValidator,
+                textDirection: TextDirection.ltr,
+              ),
+              const SizedBox(height: 10),
+              _Input(
+                width: double.infinity,
+                controller: description,
+                label: 'توضیح',
+              ),
+              const SizedBox(height: 10),
+              _Input(
+                width: double.infinity,
+                controller: seoTitle,
+                label: 'عنوان SEO',
+              ),
+              const SizedBox(height: 10),
+              _Input(
+                width: double.infinity,
+                controller: seoDescription,
+                label: 'توضیحات SEO',
+                maxLines: 3,
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: submitting ? null : () => Navigator.pop(context, false),
+        child: const Text('انصراف'),
+      ),
+      FilledButton(
+        onPressed: submitting ? null : submit,
+        child: const Text('ثبت دسته'),
+      ),
+    ],
   );
 }

@@ -567,7 +567,6 @@ export function CheckoutPage() {
           <input id="marketingConsent" name="marketingConsent" type="checkbox" />
           <span><b>دریافت پیامک‌های معرفی و تخفیف</b>این انتخاب اختیاری است و ثبت یا هزینهٔ سفارش را تغییر نمی‌دهد.</span>
         </label>
-        <div className={styles.paymentInfo}><b>ارسال پستی برای این مرحله در نظر گرفته شده است.</b><br />هزینهٔ ارسال نهایی را سرور محاسبه می‌کند. ثبت سفارش به‌معنی پرداخت نیست؛ خرید پس از اتصال و تأیید درگاه کامل می‌شود.</div>
         {error && <p role="alert" className={styles.paymentInfo}>{error}</p>}
         {unsupportedLines.length > 0 && <p className={styles.summaryNote}>برای ثبت آنلاین، فعلاً این کالاها را از سبد بردار: {unsupportedLines.map((line) => line.title).join("، ")}.</p>}
         {!apiBaseUrl && <p className={styles.summaryNote}>ثبت سفارش آنلاین هنوز برای این سایت فعال نشده است.</p>}
@@ -575,7 +574,7 @@ export function CheckoutPage() {
       </form>
       <aside className={styles.checkoutSummary}><h2>مرور سفارش</h2>
         <div className={styles.field}><label htmlFor="couponCode">کد تخفیف</label><input id="couponCode" value={couponCode} maxLength={40} dir="ltr" autoComplete="off" placeholder="WELCOME10" onChange={e => {setCouponCode(e.target.value); setCouponError("");}} />
-          <button type="button" className={styles.secondaryAction} disabled={couponBusy || !apiBaseUrl || unsupportedLines.length > 0} onClick={applyCoupon}>{couponBusy ? "در حال بررسی…" : (couponCode.trim() ? "بررسی کد تخفیف" : "بررسی پیشنهادهای خودکار")}</button>
+          <button type="button" className={styles.secondaryAction} disabled={couponBusy || !apiBaseUrl || unsupportedLines.length > 0} onClick={applyCoupon}>{couponBusy ? "در حال بررسی…" : (couponCode.trim() ? "بررسی کد تخفیف" : "بررسی تخفیف‌ها")}</button>
           {couponError && <p role="alert">{couponError}</p>}
           {couponQuote?.name && <p role="status">{couponQuote.name}؛ هنگام ثبت سفارش دوباره بررسی می‌شود.</p>}
         </div>{cart.map((line) => <div className={styles.summaryProduct} key={line.id}><span>{line.title} × {toman(line.quantity)}</span><b>{toman(line.price * line.quantity)} تومان</b></div>)}<div className={styles.summaryRow}><span>جمع محصولات</span><strong>{toman(subtotal)} تومان</strong></div><div className={styles.summaryRow}><span>ارسال</span><strong>{couponQuote ? `${toman(couponQuote.shipping / 10)} تومان` : shipping ? `${toman(shipping)} تومان` : "رایگان"}</strong></div>
