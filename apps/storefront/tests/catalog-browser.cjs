@@ -28,7 +28,11 @@ async function ready() {
   let browser;
   try {
     await ready();
-    browser = await chromium.launch();
+    browser = await chromium.launch({
+      ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+        ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+        : {}),
+    });
     await mkdir('.test-results', { recursive: true });
     for (const width of [360, 768, 1280]) {
       const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
@@ -36,12 +40,22 @@ async function ready() {
       const errors = [];
       page.on('pageerror', (error) => errors.push(error.message));
       let records = [product('live-nut', 'پسته پنل'), product('live-almond', 'بادام پنل', 0)];
+      let orderRequests = 0;
       records[0].variants[0].price = 2000000;
       records[0].variants.push({ sku: 'LIVE-NUT-500', quantity: 500, displayLabel: '۵۰۰ گرم', price: 3800000, availablePackages: 2 });
       let failing = false;
       await context.route(api + '/**', async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path === '/api/v1/checkout/orders') {
+          orderRequests++;
+          await delay(500);
+          await route.fulfill({ status: 201, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
+            body: JSON.stringify({ id: 'order-test', receiptToken: 'receipt-test', payable: 8250000, tax: 0, shipping: 750000, shippingMethod: 'post', state: 'AwaitingPayment', reservationExpiresAt: '2026-10-20T12:00:00Z' }) });
+          return;
+        }
         const body = path.endsWith('/categories') ? (records.length ? [{ name: 'دسته پنل', isActive: true }] : [])
+          : path.endsWith('/shipping-methods') ? { shippingMethods: [{ code: 'post', title: 'پست', price: 75000, freeAbove: 1500000, isActive: true }] }
+          : path.endsWith('/coupon-preview') ? { discount: 0, shipping: 750000, tax: 0, payable: 8250000 }
           : path.endsWith('/products') ? records : records.find((item) => path.endsWith('/' + item.slug));
         await route.fulfill({ status: failing ? 503 : body ? 200 : 404,
           headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
@@ -74,6 +88,8 @@ async function ready() {
       await page.getByRole('heading', { name: records[0].title, exact: true }).waitFor();
       await page.getByRole('heading', { name: 'بادام پنل', exact: true }).waitFor();
       assert.equal(await page.getByText('پسته اکبری ممتاز', { exact: true }).count(), 0);
+      assert.equal(await page.getByText('ثبت دیدگاه در پیش‌نمایش', { exact: true }).count(), 0);
+      assert.equal(await page.locator('.reviewCard').count(), 0);
       const selectedPrice = page.getByRole('status', { name: 'قیمت بستهٔ انتخاب‌شده', exact: true });
       assert.match(await selectedPrice.textContent(), /۲۰۰٬۰۰۰/);
       const bigPack = page.getByRole('option', { name: /۵۰۰ گرم/ });
@@ -87,6 +103,32 @@ async function ready() {
       await page.goto(origin + '/cart');
       await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
       await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
+      await page.reload();
+      await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
+      await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
+      assert.equal(await page.getByText('سبد خرید خالی است', { exact: true }).count(), 0);
+
+      if (width === 360) {
+        await page.goto(origin + '/checkout');
+        await page.getByRole('heading', { name: 'اطلاعات تحویل سفارش', exact: true }).waitFor();
+        const summary = await page.getByRole('heading', { name: 'مرور سفارش', exact: true }).boundingBox();
+        const submit = await page.getByRole('button', { name: /ثبت سفارش و بررسی مبلغ نهایی/ }).boundingBox();
+        assert.ok(summary && submit && summary.y < submit.y, 'mobile order summary must appear before the submit action');
+        await page.getByRole('button', { name: 'بررسی تخفیف‌ها', exact: true }).waitFor();
+        assert.equal(await page.getByText('بررسی پیشنهادهای خودکار', { exact: true }).count(), 0);
+        assert.equal(await page.getByText('ارسال پستی برای این مرحله در نظر گرفته شده است.', { exact: true }).count(), 0);
+        await page.getByLabel('نام و نام خانوادگی').fill('مشتری آزمایشی');
+        await page.getByLabel('شماره موبایل').fill('09120000000');
+        await page.getByLabel('استان').selectOption({ label: 'تهران' });
+        await page.getByLabel('شهر').fill('تهران');
+        await page.getByLabel('نشانی کامل').fill('خیابان نمونه، پلاک ۱');
+        await page.getByLabel('روش ارسال').selectOption('post');
+        await page.getByLabel('کد پستی').fill('1234567890');
+        const submitButton = page.getByRole('button', { name: /ثبت سفارش و بررسی مبلغ نهایی/ });
+        await submitButton.click();
+        await page.getByRole('heading', { name: /سفارش ثبت شد/ }).waitFor();
+        assert.equal(orderRequests, 1, 'one active checkout submission creates one order');
+      }
 
 
       records = [];
@@ -100,7 +142,7 @@ async function ready() {
       assert.deepEqual(errors, []);
       await context.close();
     }
-    console.log('Catalog browser: home/shop/detail/related, admin edits, sold-out, empty/error/stale, keyboard and responsive 360/768/1280 passed');
+    console.log('Storefront browser: catalog, real-review empty state, cart hydration/reload, mobile checkout summary, errors and responsive 360/768/1280 passed');
   } finally {
     if (browser) await browser.close();
     server.kill('SIGTERM');

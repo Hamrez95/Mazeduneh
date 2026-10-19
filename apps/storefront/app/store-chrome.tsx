@@ -27,7 +27,7 @@ export function BrandLogo({ light = false }: { light?: boolean }) {
 
 export function StoreHeader() {
   const { categories: catalogCategories } = useCatalog();
-  const { count } = useCart();
+  const { count, ready } = useCart();
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
@@ -53,7 +53,7 @@ export function StoreHeader() {
         <div className={styles.headerActions}>
           <form className={styles.search} onSubmit={search} role="search"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="دنبال چه مزه‌ای هستی؟" aria-label="جست‌وجوی محصولات" /><button aria-label="جست‌وجو">⌕</button></form>
           <a href="/profile" className={styles.accountLink} aria-label="حساب کاربری"><UserGlyph /><em>حساب کاربری</em></a>
-          <a href="/cart" className={styles.cartLink} aria-label={`سبد خرید، ${count} کالا`}><span className={styles.cartGlyph}><CartGlyph /></span><em>سبد خرید</em><b>{toman(count)}</b></a>
+          <a href="/cart" className={styles.cartLink} aria-label={ready ? `سبد خرید، ${count} کالا` : "در حال بارگذاری سبد خرید"}><span className={styles.cartGlyph}><CartGlyph /></span><em>سبد خرید</em><b>{ready ? toman(count) : "…"}</b></a>
         </div>
       </header>
       {menuOpen && <button className={styles.menuScrim} type="button" aria-label="بستن فهرست" onClick={() => setMenuOpen(false)} />}
@@ -76,7 +76,7 @@ export function StoreFooter() {
 }
 
 export function ProductCard({ product }: { product: DemoProduct }) {
-  const { add } = useCart();
+  const { add, ready } = useCart();
   return <article className={styles.productCard}>
     <a className={`${styles.productVisual} ${styles[product.accent]}`} href={`/product/${product.id}`} aria-label={`دیدن جزئیات ${product.title}`}>
       {product.badge && <span className={styles.badge}>{product.badge}</span>}
@@ -87,7 +87,7 @@ export function ProductCard({ product }: { product: DemoProduct }) {
       <small>{product.category} <span>·</span> {product.packageLabel}</small>
       <a href={`/product/${product.id}`}><h3>{product.title}</h3></a>
       <p>{product.subtitle}</p>
-      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><button type="button" onClick={() => add(product)} disabled={product.stock <= 0} aria-label={`افزودن ${product.title} به سبد`}>{product.stock > 0 ? "افزودن" : "ناموجود"} <b>+</b></button></div>
+      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><button type="button" onClick={() => add(product)} disabled={!ready || product.stock <= 0} aria-label={`افزودن ${product.title} به سبد`}>{!ready ? "در حال آماده‌سازی" : product.stock > 0 ? "افزودن" : "ناموجود"} <b>+</b></button></div>
     </div>
   </article>;
 }
