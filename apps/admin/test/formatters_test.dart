@@ -7,6 +7,8 @@ void main() {
     expect(formatPersianInteger(1234567), '۱٬۲۳۴٬۵۶۷');
     expect(formatPersianNumber(1234.5, fractionDigits: 1), '۱٬۲۳۴٫۵');
     expect(formatToman(1200000), '۱۲۰٬۰۰۰');
+    expect(formatToman(1234565), '۱۲۳٬۴۵۶٫۵');
+    expect(parseTomanToRial('۱۲۳٬۴۵۶٫۵'), 1234565);
     expect(parsePersianNumber('۱٬۲۳۴٫۵'), 1234.5);
     expect(parsePersianNumber('١٬٢٣٤٫٥'), 1234.5);
     expect(parsePersianInteger('۱۲ بسته'), isNull);
@@ -42,5 +44,12 @@ void main() {
     ]) {
       expect(parsePersianInteger(value, min: 0, max: maxApiInteger), isNull, reason: 'value=$value');
     }
+  });
+
+  test('toman amounts accept only precision supported by integer rials', () {
+    expect(parseTomanToRial('۱٬۲۳۴٫۵'), 12345);
+    expect(parseTomanToRial('١٢٣٫٤'), 1234);
+    expect(parseTomanToRial('۱٫۲۵'), isNull);
+    expect(parseTomanToRial('۱۲۳٫۴ تومان'), isNull);
   });
 }
