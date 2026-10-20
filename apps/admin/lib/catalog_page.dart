@@ -931,13 +931,12 @@ class _ProductDialogState extends State<ProductDialog> {
     );
   }
 
-  List<String> _galleryUrls() {
+  List<String> _normalizeGalleryUrls(Iterable<String> values) {
     final primary = primaryImage.text.trim().isEmpty
         ? null
         : resolveMediaUri(primaryImage.text).toString();
     final seen = <String>{};
-    return galleryImages.text
-        .split('\n')
+    return values
         .map((value) => value.trim())
         .where((value) => value.isNotEmpty)
         .where((value) {
@@ -947,8 +946,11 @@ class _ProductDialogState extends State<ProductDialog> {
         .toList();
   }
 
+  List<String> _galleryUrls() =>
+      _normalizeGalleryUrls(galleryImages.text.split('\n'));
+
   void _writeGalleryUrls(List<String> urls) {
-    galleryImages.text = urls.join('\n');
+    galleryImages.text = _normalizeGalleryUrls(urls).join('\n');
     _dirty = true;
     _persistDraft();
     setState(() {});
@@ -1031,14 +1033,7 @@ class _ProductDialogState extends State<ProductDialog> {
         );
         uploadedUrls.add(uploaded.url);
       }
-      if (mounted)
-        setState(() {
-          final existing = galleryImages.text
-              .split('\n')
-              .map((value) => value.trim())
-              .where((value) => value.isNotEmpty);
-          galleryImages.text = [...existing, ...uploadedUrls].join('\n');
-        });
+      if (mounted) _writeGalleryUrls([..._galleryUrls(), ...uploadedUrls]);
     } catch (exception) {
       if (mounted) setState(() => mediaError = exception.toString());
     } finally {
