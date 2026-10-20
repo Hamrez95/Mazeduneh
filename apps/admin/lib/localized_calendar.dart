@@ -189,6 +189,31 @@ Future<DateTime?> showLocalizedDatePicker({
   return gregorianDateFor(selected, locale);
 }
 
+/// Opens a time picker using the same locale and direction as the date picker.
+/// The returned [TimeOfDay] is a wall-clock time; callers combine it with the
+/// selected store date and convert to UTC only when sending it to the API.
+Future<TimeOfDay?> showLocalizedTimePicker({
+  required BuildContext context,
+  required TimeOfDay initialTime,
+  String? helpText,
+}) {
+  final locale = Localizations.localeOf(context);
+  final jalali = usesJalaliCalendar(locale);
+  return showTimePicker(
+    context: context,
+    initialTime: initialTime,
+    helpText: helpText,
+    builder: (context, child) => Localizations.override(
+      context: context,
+      locale: locale,
+      child: Directionality(
+        textDirection: jalali ? TextDirection.rtl : TextDirection.ltr,
+        child: child!,
+      ),
+    ),
+  );
+}
+
 /// Flutter's date picker keeps its `DateTime` API. For Persian dates this
 /// delegate treats the date components as Jalali calendar components and the
 /// call site converts the result back to a Gregorian `DateTime` for storage.

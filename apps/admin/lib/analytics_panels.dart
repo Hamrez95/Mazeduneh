@@ -148,7 +148,9 @@ class _DailySalesChartState extends State<_DailySalesChart> {
     final locale = Localizations.localeOf(context);
     return _ChartCard(
       title: 'روند فروش و سود',
-      subtitle: 'از اولین تا آخرین فروش بازه • تفکیک روزانه به وقت UTC • تومان',
+      subtitle: Localizations.localeOf(context).languageCode == 'en'
+          ? 'First to last sale in range • Daily in Asia/Tehran time • Toman'
+          : 'از اولین تا آخرین فروش بازه • تفکیک روزانه به وقت تهران • تومان',
       action: Wrap(
         spacing: 8,
         runSpacing: 8,
