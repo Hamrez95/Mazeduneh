@@ -847,7 +847,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       helpText: isStart ? 'تاریخ شروع کمپین' : 'تاریخ پایان کمپین',
     );
     if (selectedDate == null || !mounted) return;
-    final selectedTime = await showTimePicker(
+    final selectedTime = await showLocalizedTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(current),
       helpText: isStart ? 'ساعت شروع کمپین' : 'ساعت پایان کمپین',
