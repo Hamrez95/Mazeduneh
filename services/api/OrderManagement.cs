@@ -1066,7 +1066,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                   and o.state in ('Paid','Preparing','Shipped','Delivered')
                 group by l.order_id
             )
-            select (o.created_at at time zone 'UTC')::date as day, count(*)::int,
+            select (o.created_at at time zone 'Asia/Tehran')::date as day, count(*)::int,
                    coalesce(sum(o.payable),0),
                    coalesce(sum(coalesce(l.merchandise,0)-o.discount-coalesce(l.cost,0)+o.shipping-o.shipping_expense-coalesce(l.internal_cost,0)),0)
             from checkout_orders o left join line_costs l on l.order_id=o.id

@@ -10,6 +10,7 @@ import 'formatters.dart';
 import 'localized_calendar.dart';
 import 'notification_tile.dart';
 import 'order_api.dart';
+import 'store_timezone.dart';
 
 List<String> _healthRecommendations(AdminDashboardHealth health) => [
   if (health.database == 'unhealthy' || health.database == 'not-configured') 'اتصال پایگاه داده را بررسی کنید؛ آمار و عملیات فروشگاه به آن وابسته است.',
@@ -74,12 +75,12 @@ class _DashboardPageState extends State<DashboardPage> {
         .then<Object?>((value) => value)
         .catchError((Object exception) => exception);
     try {
-      final today = DateUtils.dateOnly(DateTime.now());
+      final today = DateUtils.dateOnly(storeWallTimeNow());
       final rangeStart = _selectedRangeStart(today);
       final rangeEnd = _selectedRangeEnd(today);
-      final rangeStartUtc = rangeStart.toUtc();
+      final rangeStartUtc = storeWallTimeToUtc(rangeStart);
       final rangeEndUtcExclusive =
-          DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc();
+          storeWallTimeToUtc(DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1));
       final analyticsFuture = canReadFinancials
           ? api
               .fetchAnalytics(
@@ -132,13 +133,13 @@ class _DashboardPageState extends State<DashboardPage> {
   DateTime _selectedRangeEnd(DateTime today) => customRange?.end ?? today;
 
   AdminNavigationIntent _periodOrdersIntent() {
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
     final start = _selectedRangeStart(today);
     final end = _selectedRangeEnd(today);
     return AdminNavigationIntent(
       module: AdminModule.orders,
-      createdFromUtc: start.toUtc(),
-      createdToUtcExclusive: DateTime(end.year, end.month, end.day + 1).toUtc(),
+      createdFromUtc: storeWallTimeToUtc(start),
+      createdToUtcExclusive: storeWallTimeToUtc(DateTime(end.year, end.month, end.day + 1)),
     );
   }
 
@@ -160,7 +161,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> chooseCustomRange() async {
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
     final selected = await showDialog<DateTimeRange>(
       context: context,
       builder: (_) => _DashboardRangeDialog(initialRange: customRange, today: today),
@@ -643,7 +644,7 @@ class _DashboardPeriodSelector extends StatelessWidget {
                   ? (Localizations.localeOf(context).languageCode == 'en' ? 'Custom range' : 'بازهٔ دلخواه')
                   : '${formatCalendarDate(customRange!.start, Localizations.localeOf(context))} ${Localizations.localeOf(context).languageCode == 'en' ? 'to' : 'تا'} ${formatCalendarDate(customRange!.end, Localizations.localeOf(context))}'),
             ),
-            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Dates use this device’s time zone.' : 'تاریخ‌ها بر اساس منطقهٔ زمانی این دستگاه هستند.', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
+            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Store time zone: Asia/Tehran.' : 'منطقهٔ زمانی فروشگاه: تهران.', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
           ],
         ),
       );

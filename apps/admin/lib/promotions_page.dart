@@ -13,6 +13,7 @@ import 'admin_step_up_dialog.dart';
 import 'formatters.dart';
 import 'admin_form_guard.dart';
 import 'admin_form_drafts.dart';
+import 'store_timezone.dart';
 
 class PromotionsApiClient {
   PromotionsApiClient({http.Client? client, String? baseUrl})
@@ -303,9 +304,9 @@ class _PromotionsPageState extends State<PromotionsPage> {
             Builder(
               builder: (context) {
                 final rule = row['rule'] as Map<String, dynamic>;
-                final start = DateTime.parse(rule['startsAt'] as String);
-                final end = DateTime.parse(rule['endsAt'] as String);
-                final now = DateTime.now();
+                final start = storeUtcToWallTime(DateTime.parse(rule['startsAt'] as String));
+                final end = storeUtcToWallTime(DateTime.parse(rule['endsAt'] as String));
+                final now = storeWallTimeNow();
                 final state = rule['active'] != true
                     ? 'غیرفعال'
                     : now.isBefore(start)
@@ -359,11 +360,11 @@ String _kindLabel(String kind) => switch (kind) {
 };
 String _promotionState(Map<String, dynamic> row) {
   final rule = row['rule'] as Map;
-  final now = DateTime.now();
+  final now = storeWallTimeNow();
   if (rule['active'] != true) return 'غیرفعال';
-  if (now.isBefore(DateTime.parse(rule['startsAt'] as String)))
+  if (now.isBefore(storeUtcToWallTime(DateTime.parse(rule['startsAt'] as String))))
     return 'زمان‌بندی‌شده';
-  if (!now.isBefore(DateTime.parse(rule['endsAt'] as String)))
+  if (!now.isBefore(storeUtcToWallTime(DateTime.parse(rule['endsAt'] as String))))
     return 'پایان‌یافته';
   return 'فعال';
 }
@@ -451,12 +452,14 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         : formatToman(rule!['maxDiscount'] as num);
     field('uses').text = toPersianDigits(rule?['maxUses'] ?? '');
     field('skus').text = (rule?['skus'] as List? ?? []).join(', ');
-    startsAt =
-        DateTime.tryParse(rule?['startsAt'] as String? ?? '')?.toLocal() ??
-        DateTime.now().subtract(const Duration(minutes: 1));
-    endsAt =
-        DateTime.tryParse(rule?['endsAt'] as String? ?? '')?.toLocal() ??
-        DateTime.now().add(const Duration(days: 30));
+    final parsedStart = DateTime.tryParse(rule?['startsAt'] as String? ?? '');
+    final parsedEnd = DateTime.tryParse(rule?['endsAt'] as String? ?? '');
+    startsAt = parsedStart == null
+        ? storeWallTimeNow().subtract(const Duration(minutes: 1))
+        : storeUtcToWallTime(parsedStart);
+    endsAt = parsedEnd == null
+        ? storeWallTimeNow().add(const Duration(days: 30))
+        : storeUtcToWallTime(parsedEnd);
     field('quantity').text = '۱';
     field('shipping').text = 'post';
     automatic = rule?['automatic'] == true;
@@ -499,8 +502,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       if (draft['allowLoss'] is bool) allowLoss = draft['allowLoss'] as bool;
       if (draft['automatic'] is bool) automatic = draft['automatic'] as bool;
       if (draft['firstOrderOnly'] is bool) firstOrderOnly = draft['firstOrderOnly'] as bool;
-      startsAt = DateTime.tryParse(draft['startsAt'] as String? ?? '')?.toLocal() ?? startsAt;
-      endsAt = DateTime.tryParse(draft['endsAt'] as String? ?? '')?.toLocal() ?? endsAt;
+      startsAt = DateTime.tryParse(draft['startsAt'] as String? ?? '') ?? startsAt;
+      endsAt = DateTime.tryParse(draft['endsAt'] as String? ?? '') ?? endsAt;
       final savedBundle = draft['bundleBasket'];
       if (savedBundle is List) {
         bundleBasket.addAll(savedBundle.whereType<Map>().where((line) => line['sku'] is String && line['quantity'] is int).map((line) => {'sku': line['sku'] as String, 'quantity': line['quantity'] as int}));
@@ -654,8 +657,8 @@ class _PromotionEditorState extends State<_PromotionEditor> {
         ? 0
         : number('value') * (kind == 'Fixed' ? 10 : 1),
     'active': active,
-    'startsAt': startsAt.toUtc().toIso8601String(),
-    'endsAt': endsAt.toUtc().toIso8601String(),
+    'startsAt': storeWallTimeToUtc(startsAt).toIso8601String(),
+    'endsAt': storeWallTimeToUtc(endsAt).toIso8601String(),
     'minSubtotal': number('min') * 10,
     'maxDiscount': field('max').text.trim().isEmpty ? null : number('max') * 10,
     'maxUses': field('uses').text.trim().isEmpty
@@ -876,7 +879,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
       onPressed: busy ? null : () => _pickPromotionDateTime(isStart: isStart),
       icon: const Icon(Icons.calendar_month_outlined),
       label: Text(
-        '${isStart ? 'شروع کمپین' : 'پایان کمپین'}\n${formatLocalizedDateTime(context, isStart ? startsAt : endsAt)}',
+        '${isStart ? 'شروع کمپین' : 'پایان کمپین'}\n${formatLocalizedStoreWallDateTime(context, isStart ? startsAt : endsAt)}',
         textAlign: TextAlign.start,
       ),
       style: OutlinedButton.styleFrom(

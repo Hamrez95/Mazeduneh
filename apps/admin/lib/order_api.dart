@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'auth_session.dart';
 import 'admin_navigation.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
+import 'store_timezone.dart';
 
 class OrderApiException implements Exception {
   OrderApiException(this.message, {this.statusCode});
@@ -259,9 +260,9 @@ class OrderApiClient {
       headers: _headers(json: true),
       body: jsonEncode({
         'sku': sku, 'batchCode': batchCode, 'receivedPackages': receivedPackages,
-        'producedAt': producedAt.toUtc().toIso8601String(), 'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'producedAt': storeWallTimeToUtc(producedAt).toIso8601String(), 'expiresAt': storeWallTimeToUtc(expiresAt).toIso8601String(),
         'costPrice': costPrice, 'packagingCost': packagingCost, 'additionalCost': additionalCost,
-        if (purchasedAt != null) 'purchasedAt': purchasedAt.toUtc().toIso8601String(),
+        if (purchasedAt != null) 'purchasedAt': storeWallTimeToUtc(purchasedAt).toIso8601String(),
         if (supplier != null) 'supplier': supplier,
         if (supplierContactName?.trim().isNotEmpty == true) 'supplierContactName': supplierContactName!.trim(),
         if (supplierPhone?.trim().isNotEmpty == true) 'supplierPhone': supplierPhone!.trim(),
