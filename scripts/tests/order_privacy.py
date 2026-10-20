@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -171,7 +172,8 @@ with tempfile.TemporaryFile() as log:
         assert sum(day['orderCount'] for day in ranged_analytics['dailySales']) == ranged_analytics['orderCount']
         assert abs(sum(day['revenue'] for day in ranged_analytics['dailySales']) - ranged_analytics['revenue']) < 0.01
         assert abs(sum(day['netProfit'] for day in ranged_analytics['dailySales']) - ranged_analytics['netProfit']) < 0.01
-        assert ranged_analytics['dailySales'][0]['day'] == order_created_at.date().isoformat()
+        expected_store_day = order_created_at.astimezone(ZoneInfo('Asia/Tehran')).date().isoformat()
+        assert ranged_analytics['dailySales'][0]['day'] == expected_store_day
         assert sum(row['count'] for row in ranged_analytics['orderStates'] if row['state'] == 'Paid') == 1
         status, ranged_products = request('/api/v1/admin/analytics/products?from=' + range_start + '&to=' + range_end, token=token)
         assert status == 200 and any(row['sku'] == SKU for row in ranged_products), (status, ranged_products)
