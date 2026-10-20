@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { DemoProduct } from "./demo/catalog";
+import { rialsToTomans } from "./formatters";
 
 export type CartLine = DemoProduct & { quantity: number };
 type CartValue = {
@@ -47,7 +48,7 @@ function normalizeStoredCart(value: unknown): CartLine[] {
         origin: "مزه‌دونه",
         art: "almond",
         accent: "sage",
-        price: Math.max(0, Math.round(unitPrice / 10)),
+        price: Math.max(0, rialsToTomans(unitPrice)),
         packageLabel: variantLabel,
         stock,
         note: "محصول کاتالوگ آنلاین",

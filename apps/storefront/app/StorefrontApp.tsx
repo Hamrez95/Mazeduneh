@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { formatRialsAsTomans } from "./formatters";
 
 type UnitType = "Weight" | "Count";
 
@@ -137,7 +138,7 @@ const emptyForm: CheckoutForm = {
 };
 
 function formatToman(irr: number) {
-  return new Intl.NumberFormat("fa-IR").format(Math.round(irr / 10));
+  return formatRialsAsTomans(irr);
 }
 
 function productIcon(product: Product) {
