@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mazeduneh_admin/formatters.dart';
 
@@ -12,7 +13,25 @@ void main() {
     expect(parsePersianNumber('۱٬۲۳۴٫۵'), 1234.5);
     expect(parsePersianNumber('١٬٢٣٤٫٥'), 1234.5);
     expect(parsePersianInteger('۱۲ بسته'), isNull);
+    expect(toLatinDigits('۰۹۱۲-۳۴۵ ۶۷۸۹'), '0912-345 6789');
+    expect(toLatinDigits('+٩٨ (۹۱۲) ۳۴۵'), '+98 (912) 345');
   });
+
+  test(
+    'postal code formatter accepts Persian, Arabic, Latin and filters text',
+    () {
+      const formatter = PersianDigitsOnlyInputFormatter();
+      final value = formatter.formatEditUpdate(
+        const TextEditingValue(),
+        const TextEditingValue(
+          text: '۱۲A٣4-۵',
+          selection: TextSelection.collapsed(offset: 7),
+        ),
+      );
+      expect(value.text, '۱۲۳۴۵');
+      expect(value.selection.extentOffset, value.text.length);
+    },
+  );
 
   test('accepts bounded whole numbers across Persian, Arabic, and Latin digits', () {
     expect(parsePersianInteger('1,234'), 1234);

@@ -129,11 +129,11 @@ class _PrivateOrderDialogState extends State<_PrivateOrderDialog> {
     }
     Navigator.pop(context, {
       'customerName': name.text.trim(),
-      'mobile': mobile.text.trim(),
+      'mobile': toLatinDigits(mobile.text.trim()),
       'province': province.text.trim(),
       'city': city.text.trim(),
       'address': address.text.trim(),
-      'postalCode': postalCode.text.trim(),
+      'postalCode': toLatinDigits(postalCode.text.trim()),
       'shippingMethod': 'post',
       'lines': normalizedLines,
     });
@@ -169,6 +169,8 @@ class _PrivateOrderDialogState extends State<_PrivateOrderDialog> {
                   child: TextField(
                     controller: mobile,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: const [PersianDigitsInputFormatter()],
+                    textDirection: TextDirection.ltr,
                     decoration: const InputDecoration(labelText: 'شماره تماس'),
                   ),
                 ),
@@ -191,6 +193,9 @@ class _PrivateOrderDialogState extends State<_PrivateOrderDialog> {
                   child: TextField(
                     controller: postalCode,
                     keyboardType: TextInputType.number,
+                    inputFormatters: const [PersianDigitsOnlyInputFormatter()],
+                    textDirection: TextDirection.ltr,
+                    maxLength: 10,
                     decoration: const InputDecoration(labelText: 'کد پستی'),
                   ),
                 ),
