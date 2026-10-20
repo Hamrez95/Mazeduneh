@@ -9,6 +9,7 @@ import 'auth_session.dart';
 import 'formatters.dart';
 import 'localized_calendar.dart';
 import 'order_api.dart';
+import 'store_timezone.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({
@@ -45,8 +46,8 @@ class _ReportsPageState extends State<ReportsPage> {
   void initState() {
     super.initState();
     if (widget.initialFromUtc != null && widget.initialToUtcExclusive != null) {
-      final localStart = widget.initialFromUtc!.toLocal();
-      final localEndExclusive = widget.initialToUtcExclusive!.toLocal();
+      final localStart = storeUtcToWallTime(widget.initialFromUtc!);
+      final localEndExclusive = storeUtcToWallTime(widget.initialToUtcExclusive!);
       selectedRange = DateTimeRange(
         start: DateTime(localStart.year, localStart.month, localStart.day),
         end: DateTime(
@@ -61,19 +62,19 @@ class _ReportsPageState extends State<ReportsPage> {
 
   DateTime? get _fromUtc => selectedRange == null
       ? null
-      : DateTime(
+      : storeWallTimeToUtc(DateTime(
           selectedRange!.start.year,
           selectedRange!.start.month,
           selectedRange!.start.day,
-        ).toUtc();
+        ));
 
   DateTime? get _toUtcExclusive => selectedRange == null
       ? null
-      : DateTime(
+      : storeWallTimeToUtc(DateTime(
           selectedRange!.end.year,
           selectedRange!.end.month,
           selectedRange!.end.day + 1,
-        ).toUtc();
+        ));
 
   Future<void> load() async {
     setState(() {

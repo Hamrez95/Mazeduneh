@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_session.dart';
 import 'catalog_api.dart' show defaultApiBaseUrl;
+import 'store_timezone.dart';
 
 class CorporateApiException implements Exception { CorporateApiException(this.message, {this.statusCode}); final String message; final int? statusCode; @override String toString() => message; }
 
@@ -127,7 +128,7 @@ class CorporateApiClient {
     );
   }
   Future<void> assign(String id,String? assignedTo) => _send('POST','/api/v1/admin/corporate-requests/$id/assign',{'assignedTo':assignedTo});
-  Future<void> followUp(String id,DateTime? date) => _send('POST','/api/v1/admin/corporate-requests/$id/follow-up',{'nextFollowUpAt':date?.toUtc().toIso8601String()});
+  Future<void> followUp(String id,DateTime? date) => _send('POST','/api/v1/admin/corporate-requests/$id/follow-up',{'nextFollowUpAt':date == null ? null : storeWallTimeToUtc(date).toIso8601String()});
   Future<void> addNote(String id,String note) => _send('POST','/api/v1/admin/corporate-requests/$id/notes',{'note':note});
   Future<void> addMessage(String id,String body,{String channel='panel'}) => _send('POST','/api/v1/admin/corporate-requests/$id/messages',{'body':body,'channel':channel});
   Future<void> uploadProforma(String id, String name, List<int> bytes) async { final request=http.MultipartRequest('POST',Uri.parse('$baseUrl/api/v1/admin/corporate-requests/$id/proforma')); request.headers.addAll(_headers); request.files.add(http.MultipartFile.fromBytes('file',bytes,filename:name)); final response=await http.Response.fromStream(await request.send()); _guard(response); if(response.statusCode!=200) throw CorporateApiException(_message(response),statusCode:response.statusCode); }

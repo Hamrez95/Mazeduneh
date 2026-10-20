@@ -1,1031 +1,5 @@
-import 'analytics_panels.dart';
-import 'package:flutter/material.dart';
-
-import 'admin_navigation.dart';
-import 'admin_permissions.dart';
-import 'admin_state.dart';
-import 'admin_theme.dart';
-import 'auth_session.dart';
-import 'formatters.dart';
-import 'localized_calendar.dart';
-import 'notification_tile.dart';
-import 'order_api.dart';
-
-List<String> _healthRecommendations(AdminDashboardHealth health) => [
-  if (health.database == 'unhealthy' || health.database == 'not-configured') 'Ø§ØªØµØ§Ù„ Ù¾Ø§ÛŒÚ¯Ø§Ù‡ Ø¯Ø§Ø¯Ù‡ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯Ø› Ø¢Ù…Ø§Ø± Ùˆ Ø¹Ù…Ù„ÛŒØ§Øª ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ø¨Ù‡ Ø¢Ù† ÙˆØ§Ø¨Ø³ØªÙ‡ Ø§Ø³Øª.',
-  if (health.migrations == 'empty' || health.migrations == 'unavailable') 'ÙˆØ¶Ø¹ÛŒØª Ù…Ù‡Ø§Ø¬Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ù¾Ø§ÛŒÚ¯Ø§Ù‡ Ø¯Ø§Ø¯Ù‡ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.',
-  if (health.adminAuthentication == 'not-configured') 'ÙˆØ±ÙˆØ¯ Ø§Ù…Ù† Ù…Ø¯ÛŒØ± Ø¯Ø± ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ù…Ø­ÛŒØ· Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.',
-  if (health.payment == 'disabled') 'Ø¯Ø±Ú¯Ø§Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª ØºÛŒØ±ÙØ¹Ø§Ù„ Ø§Ø³ØªØ› Ù¾Ø±Ø¯Ø§Ø®Øª Ø§ÛŒÙ†ØªØ±Ù†ØªÛŒ Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ Ø§Ù†Ø¬Ø§Ù… Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.',
-  if (health.payment == 'sandbox-enabled') 'Ù¾Ø±Ø¯Ø§Ø®Øª Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ ÙØ¹Ø§Ù„ Ø§Ø³ØªØ› Ù¾ÛŒØ´ Ø§Ø² ÙØ±ÙˆØ´ ÙˆØ§Ù‚Ø¹ÛŒØŒ Ø¯Ø±Ú¯Ø§Ù‡ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ Ø±Ø§ ØªÙ†Ø¸ÛŒÙ… Ú©Ù†ÛŒØ¯.',
-  if (health.mediaStorage == 'not-configured') 'Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø±Ø³Ø§Ù†Ù‡ Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ù†Ø´Ø¯Ù‡ Ø§Ø³ØªØ› ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³Ø±ÙˆÛŒØ³ ÙØ§ÛŒÙ„ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.',
-];
-
-class DashboardPage extends StatefulWidget {
-  const DashboardPage({
-    super.key,
-    this.api,
-    this.onNavigate,
-    this.refreshRevision = 0,
-  });
-  final OrderApiClient? api;
-  final ValueChanged<AdminNavigationIntent>? onNavigate;
-  final int refreshRevision;
-  @override
-  State<DashboardPage> createState() => _DashboardPageState();
-}
-
-class _DashboardPageState extends State<DashboardPage> {
-  late final OrderApiClient api = widget.api ?? OrderApiClient();
-  AdminDashboard? dashboard;
-  AdminAnalytics? financialAnalytics;
-  Object? financialAnalyticsError;
-  AdminDashboardHealth? systemHealth;
-  AdminNotifications? notifications;
-  DashboardPreferences preferences = DashboardPreferences.defaults;
-  Object? error;
-  bool loading = true;
-  bool healthLoading = true;
-  DateTime? lastLoadedAt;
-  int dashboardDays = 1;
-  DateTimeRange? customRange;
-
-  @override
-  void initState() { super.initState(); load(); }
-
-  @override
-  void didUpdateWidget(covariant DashboardPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshRevision != widget.refreshRevision) load();
-  }
-
-  Future<void> load() async {
-    final session = OwnerSession.instance;
-    final canReadFinancials =
-        !session.isAuthenticated || session.can(AdminPermissions.reportsRead);
-    setState(() {
-      loading = true;
-      healthLoading = true;
-      error = null;
-      financialAnalytics = null;
-      financialAnalyticsError = null;
-      systemHealth = null;
-    });
-    final healthFuture = api.fetchDashboardHealth()
-        .then<Object?>((value) => value)
-        .catchError((Object exception) => exception);
-    try {
-      final today = DateUtils.dateOnly(DateTime.now());
-      final rangeStart = _selectedRangeStart(today);
-      final rangeEnd = _selectedRangeEnd(today);
-      final rangeStartUtc = rangeStart.toUtc();
-      final rangeEndUtcExclusive =
-          DateTime(rangeEnd.year, rangeEnd.month, rangeEnd.day + 1).toUtc();
-      final analyticsFuture = canReadFinancials
-          ? api
-              .fetchAnalytics(
-                days: dashboardDays,
-                fromUtc: rangeStartUtc,
-                toUtcExclusive: rangeEndUtcExclusive,
-              )
-              .then<Object?>((value) => value)
-              .catchError((Object exception) => exception)
-          : Future<Object?>.value(null);
-      final result = await Future.wait([
-        api.fetchDashboard(
-          days: dashboardDays,
-          fromUtc: rangeStartUtc,
-          toUtcExclusive: rangeEndUtcExclusive,
-        ),
-        api.fetchNotifications(),
-        api.fetchDashboardPreferences(),
-        analyticsFuture,
-      ]);
-      if (mounted) setState(() {
-        dashboard = result[0] as AdminDashboard;
-        notifications = result[1] as AdminNotifications;
-        preferences = result[2] as DashboardPreferences;
-        final analyticsResult = result[3];
-        if (analyticsResult is AdminAnalytics) {
-          financialAnalytics = analyticsResult;
-        } else if (analyticsResult != null) {
-          financialAnalyticsError = analyticsResult;
-        }
-        lastLoadedAt = DateTime.now();
-      });
-    } catch (exception) {
-      if (mounted) setState(() => error = exception);
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
-    final healthResult = await healthFuture;
-    if (mounted) setState(() {
-      healthLoading = false;
-      if (healthResult is AdminDashboardHealth) {
-        systemHealth = healthResult;
-      }
-    });
-  }
-
-  DateTime _selectedRangeStart(DateTime today) =>
-      customRange?.start ?? DateTime(today.year, today.month, today.day - dashboardDays + 1);
-
-  DateTime _selectedRangeEnd(DateTime today) => customRange?.end ?? today;
-
-  AdminNavigationIntent _periodOrdersIntent() {
-    final today = DateUtils.dateOnly(DateTime.now());
-    final start = _selectedRangeStart(today);
-    final end = _selectedRangeEnd(today);
-    return AdminNavigationIntent(
-      module: AdminModule.orders,
-      createdFromUtc: start.toUtc(),
-      createdToUtcExclusive: DateTime(end.year, end.month, end.day + 1).toUtc(),
-    );
-  }
-
-  AdminNavigationIntent _periodReportsIntent() {
-    final orderIntent = _periodOrdersIntent();
-    return AdminNavigationIntent(
-      module: AdminModule.reports,
-      createdFromUtc: orderIntent.createdFromUtc,
-      createdToUtcExclusive: orderIntent.createdToUtcExclusive,
-    );
-  }
-
-  Future<void> customizeDashboard() async {
-    final updated = await showDialog<DashboardPreferences>(
-      context: context,
-      builder: (_) => DashboardPreferencesDialog(initial: preferences, onSave: api.saveDashboardPreferences),
-    );
-    if (updated != null && mounted) setState(() => preferences = updated);
-  }
-
-  Future<void> chooseCustomRange() async {
-    final today = DateUtils.dateOnly(DateTime.now());
-    final selected = await showDialog<DateTimeRange>(
-      context: context,
-      builder: (_) => _DashboardRangeDialog(initialRange: customRange, today: today),
-    );
-    if (selected == null || !mounted) return;
-    setState(() => customRange = DateTimeRange(
-          start: DateUtils.dateOnly(selected.start),
-          end: DateUtils.dateOnly(selected.end),
-        ));
-    await load();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading && dashboard == null) return const Center(child: CircularProgressIndicator());
-    if (error != null && dashboard == null) return AdminErrorState(error: error!, onRetry: load);
-    final data = dashboard!;
-    final session = OwnerSession.instance;
-    bool can(String permission) => !session.isAuthenticated || session.can(permission);
-    final sections = <String, Widget>{
-      'metrics': _metricsSection(data, can),
-      'quickActions': _quickActionsSection(data, can),
-      'alerts': _alertsPanel(),
-      'lowStock': _lowStockPanel(data, can),
-      'expiring': _expiringPanel(data, can),
-    };
-    return RefreshIndicator(
-      onRefresh: load,
-      child: ListView(
-        padding: const EdgeInsets.all(28),
-        children: [
-          if (error != null) AdminStaleBanner(detail: 'Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ ÙØ¹Ù„ÛŒ Ù…Ù…Ú©Ù† Ø§Ø³Øª ØªØ§Ø²Ù‡ Ù†Ø¨Ø§Ø´Ù†Ø¯. ${requestErrorMessage(error!)}', onRetry: load),
-          LayoutBuilder(builder: (context, constraints) {
-            final heading = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('ÙˆØ¶Ø¹ÛŒØª ÙØ±ÙˆØ´Ú¯Ø§Ù‡', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900, color: AdminColors.inkDeep)),
-              const SizedBox(height: 6),
-              const Text('Ù†Ù…Ø§ÛŒ Ø³Ø±ÛŒØ¹ Ø§Ø² ÙˆØ¶Ø¹ÛŒØª Ø§Ù…Ø±ÙˆØ² ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ùˆ Ú©Ø§Ø±Ù‡Ø§ÛŒÛŒ Ú©Ù‡ Ù†ÛŒØ§Ø² Ø¨Ù‡ ØªÙˆØ¬Ù‡ Ø¯Ø§Ø±Ù†Ø¯.', style: TextStyle(color: AdminColors.muted)),
-              if (lastLoadedAt != null) ...[
-                const SizedBox(height: 5),
-                Text('Ø¢Ø®Ø±ÛŒÙ† Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ: ${formatLocalizedDateTime(context, lastLoadedAt!)}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-              ],
-            ]);
-            final refresh = IconButton(onPressed: loading ? null : load, icon: const Icon(Icons.refresh_rounded), tooltip: 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ø¬Ø¯Ø¯');
-            final customize = IconButton(onPressed: customizeDashboard, icon: const Icon(Icons.tune_rounded), tooltip: 'ØªÙ†Ø¸ÛŒÙ… Ø¨Ø®Ø´â€ŒÙ‡Ø§ÛŒ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯');
-            return constraints.maxWidth < 500
-                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Align(alignment: AlignmentDirectional.centerEnd, child: Wrap(children: [customize, refresh])), heading])
-                : Row(children: [Expanded(child: heading), customize, refresh]);
-          }),
-          if (preferences.widgets.every((item) => !item.visible))
-            const Padding(
-              padding: EdgeInsets.only(top: 28),
-              child: AdminEmptyState(icon: Icons.dashboard_customize_outlined, title: 'Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø®Ù„ÙˆØª Ø§Ø³Øª', detail: 'Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¨Ø§Ù„Ø§ÛŒ ØµÙØ­Ù‡ØŒ Ø¨Ø®Ø´â€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ±Ø¯Ù†ÛŒØ§Ø² Ø±Ø§ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ÙØ¹Ø§Ù„ Ú©Ù†ÛŒØ¯.'),
-            ),
-          LayoutBuilder(builder: (context, constraints) {
-            final visible = preferences.widgets.where((item) => item.visible).toList();
-            final compact = constraints.maxWidth < 720;
-            return Wrap(spacing: 14, runSpacing: 14, children: [
-              for (final item in visible)
-                SizedBox(
-                  width: item.id == 'metrics' || item.id == 'quickActions' || compact
-                      ? constraints.maxWidth
-                      : (constraints.maxWidth - 14) / 2,
-                  child: sections[item.id],
-                ),
-            ]);
-          }),
-        ],
-      ),
-    );
-  }
-
-  String _periodLabel(int days, DateTimeRange? range) {
-    if (range != null) {
-      final locale = Localizations.localeOf(context);
-      final rangeText = '${formatCalendarDate(range.start, locale)} â€“ ${formatCalendarDate(range.end, locale)}';
-      return locale.languageCode == 'en' ? 'Sales $rangeText' : 'ÙØ±ÙˆØ´ $rangeText';
-    }
-    final english = Localizations.localeOf(context).languageCode == 'en';
-    return switch ((days, english)) {
-      (1, true) => 'Sales today',
-      (7, true) => 'Sales in the last 7 days',
-      (30, true) => 'Sales in the last 30 days',
-      (_, true) => 'Sales in selected range',
-      (1, false) => 'ÙØ±ÙˆØ´ Ø§Ù…Ø±ÙˆØ²',
-      (7, false) => 'ÙØ±ÙˆØ´ Û· Ø±ÙˆØ² Ø§Ø®ÛŒØ±',
-      (30, false) => 'ÙØ±ÙˆØ´ Û³Û° Ø±ÙˆØ² Ø§Ø®ÛŒØ±',
-      (_, false) => 'ÙØ±ÙˆØ´ Ø¨Ø§Ø²Ù‡Ù” Ø§Ù†ØªØ®Ø§Ø¨ÛŒ',
-    };
-  }
-
-  Widget _metricsSection(AdminDashboard data, bool Function(String) can) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _DashboardPeriodSelector(
-        selectedDays: dashboardDays,
-        customRange: customRange,
-        onChanged: (days) {
-          setState(() {
-            dashboardDays = days;
-            customRange = null;
-          });
-          load();
-        },
-        onChooseCustomRange: chooseCustomRange,
-      ),
-      const SizedBox(height: 14),
-      Wrap(spacing: 14, runSpacing: 14, children: [
-        if (data.financialsVisible) MetricCard(_periodLabel(dashboardDays, customRange), '${formatToman(data.periodRevenue)} ØªÙˆÙ…Ø§Ù†', Icons.payments_rounded, tint: AdminColors.mintSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
-        if (data.financialsVisible && can(AdminPermissions.reportsRead))
-          MetricCard(
-            'Ø³ÙˆØ¯ Ù¾Ø³ Ø§Ø² Ù‡Ø²ÛŒÙ†Ù‡Ù” Ú©Ø§Ù„Ø§ Ùˆ Ø§Ø±Ø³Ø§Ù„',
-            financialAnalytics != null
-                ? '${formatToman(financialAnalytics!.netProfit)} ØªÙˆÙ…Ø§Ù†'
-                : financialAnalyticsError != null
-                    ? 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù†Ø´Ø¯'
-                    : loading
-                        ? 'Ø¯Ø± Ø­Ø§Ù„ Ø¯Ø±ÛŒØ§ÙØªâ€¦'
-                        : 'â€”',
-            Icons.account_balance_wallet_rounded,
-            tint: financialAnalytics != null && financialAnalytics!.netProfit < 0
-                ? AdminColors.dangerSoft
-                : AdminColors.infoSoft,
-            onTap: financialAnalyticsError != null
-                ? load
-                : widget.onNavigate == null
-                    ? null
-                    : () => widget.onNavigate!(_periodReportsIntent()),
-          ),
-        if (can(AdminPermissions.ordersRead)) ...[
-          MetricCard('ØªØ¹Ø¯Ø§Ø¯ Ø³ÙØ§Ø±Ø´ Ø¨Ø§Ø²Ù‡', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
-          if (data.financialsVisible) MetricCard('Ù…ÛŒØ§Ù†Ú¯ÛŒÙ† Ø§Ø±Ø²Ø´ Ø³ÙØ§Ø±Ø´', '${formatToman(data.averageOrderValue)} ØªÙˆÙ…Ø§Ù†', Icons.insights_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
-          MetricCard('Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù¾Ø±Ø¯Ø§Ø®Øª', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
-          MetricCard('Ø¯Ø± Ø­Ø§Ù„ Ù¾Ø±Ø¯Ø§Ø²Ø´', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
-          MetricCard('Ø§Ø±Ø³Ø§Ù„â€ŒØ´Ø¯Ù‡', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
-          MetricCard('Ø³ÙØ§Ø±Ø´ Ù…Ø´Ú©Ù„â€ŒØ¯Ø§Ø±', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem))),
-        ],
-        if (can(AdminPermissions.customersRead)) MetricCard('Ù…Ø´ØªØ±ÛŒ Ø¬Ø¯ÛŒØ¯ Ø¨Ø§Ø²Ù‡', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: AdminColors.successSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
-        if (can(AdminPermissions.corporateRead)) MetricCard('Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ Ø¬Ø¯ÛŒØ¯', formatPersianInteger(data.corporateNewRequests), Icons.business_center_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.corporate))),
-      ]),
-      if (data.financialsVisible &&
-          can(AdminPermissions.reportsRead) &&
-          financialAnalytics != null) ...[
-        const SizedBox(height: 12),
-        AdminAnalyticsPanels(analytics: financialAnalytics!),
-        const SizedBox(height: 16),
-        _profitabilityBreakdown(financialAnalytics!),
-      ],
-    ],
-  );
-
-  Widget _profitabilityBreakdown(AdminAnalytics analytics) {
-    final components = <(String, num)>[
-      ('Ø¨Ù‡Ø§ÛŒ Ù…Ø­ØµÙˆÙ„', analytics.productCost),
-      ('Ø¨Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ', analytics.packagingCost),
-      ('Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ÛŒ Ø¬Ø§Ù†Ø¨ÛŒ', analytics.additionalCost),
-      ('Ø¯Ø±Ø¢Ù…Ø¯ Ø§Ø±Ø³Ø§Ù„', analytics.shippingRevenue),
-      ('Ù‡Ø²ÛŒÙ†Ù‡Ù” Ø§Ø±Ø³Ø§Ù„', analytics.shippingExpense),
-      ('Ø³ÙˆØ¯ Ù†Ø§Ø®Ø§Ù„Øµ', analytics.grossProfit),
-    ];
-    return _DashboardPanel(
-      title: 'Ø±ÛŒØ² Ø³ÙˆØ¯ Ùˆ Ù‡Ø²ÛŒÙ†Ù‡',
-      icon: Icons.account_balance_wallet_outlined,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (analytics.orderCount == 0)
-            const AdminEmptyState(
-              icon: Icons.receipt_long_outlined,
-              title: 'Ø³ÙØ§Ø±Ø´ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒØ´Ø¯Ù‡â€ŒØ§ÛŒ Ù†ÛŒØ³Øª',
-              detail: 'Ø¯Ø± Ø¨Ø§Ø²Ù‡Ù” Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡ Ø³ÙØ§Ø±Ø´ÛŒ Ø¨Ø±Ø§ÛŒ ØªØ­Ù„ÛŒÙ„ Ù‡Ø²ÛŒÙ†Ù‡ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.',
-            )
-          else ...[
-            LayoutBuilder(builder: (context, constraints) {
-              final columns = constraints.maxWidth < 460 ? 2 : 3;
-              final itemWidth =
-                  (constraints.maxWidth - (columns - 1) * 10) / columns;
-              return Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final item in components)
-                    SizedBox(
-                      width: itemWidth,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AdminColors.canvas,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(item.$1,
-                                style: const TextStyle(
-                                    color: AdminColors.muted,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700)),
-                            const SizedBox(height: 5),
-                            Text(
-                              '${formatToman(item.$2)} ØªÙˆÙ…Ø§Ù†',
-                              style: TextStyle(
-                                color: item.$2 < 0
-                                    ? AdminColors.coral
-                                    : AdminColors.inkDeep,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            }),
-            const SizedBox(height: 10),
-            const Text(
-              'Ø³ÙˆØ¯ Ù¾Ø³ Ø§Ø² Ù‡Ø²ÛŒÙ†Ù‡Ù” Ú©Ø§Ù„Ø§ Ùˆ Ø§Ø±Ø³Ø§Ù„ = Ø³ÙˆØ¯ Ù†Ø§Ø®Ø§Ù„Øµ + Ø¯Ø±Ø¢Ù…Ø¯ Ø§Ø±Ø³Ø§Ù„ âˆ’ Ù‡Ø²ÛŒÙ†Ù‡Ù” Ø§Ø±Ø³Ø§Ù„. Ù…Ø§Ù„ÛŒØ§Øª Ù¾Ø±Ø¯Ø§Ø®ØªÙ†ÛŒ Ø¯Ø± Ø³ÙˆØ¯ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ùˆ Ù‡Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ÛŒ Ø«Ø§Ø¨Øª Ù…Ø«Ù„ Ø§Ø¬Ø§Ø±Ù‡ Ùˆ Ø¯Ø³ØªÙ…Ø²Ø¯ Ù‡Ù… Ø¯Ø± Ø§ÛŒÙ† Ø´Ø§Ø®Øµ Ù†ÛŒØ³Øª.',
-              style: TextStyle(color: AdminColors.muted, fontSize: 11),
-            ),
-          ],
-          const SizedBox(height: 8),
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: TextButton.icon(
-              onPressed: widget.onNavigate == null
-                  ? null
-                  : () => widget.onNavigate!(_periodReportsIntent()),
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: const Text('Ø¬Ø²Ø¦ÛŒØ§Øª Ú©Ø§Ù…Ù„ Ø¯Ø± Ú¯Ø²Ø§Ø±Ø´ Ø³ÙˆØ¯'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _quickActionsSection(AdminDashboard data, bool Function(String) can) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _DashboardSectionTitle(
-            eyebrow: 'Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø³Ø±ÛŒØ¹',
-            title: 'Ø§Ù…Ø±ÙˆØ² Ú†Ù‡ Ú©Ø§Ø±ÛŒ Ø§Ù†Ø¬Ø§Ù… Ø¯Ù‡ÛŒØ¯ØŸ',
-            detail: 'Ø§ÙˆÙ„ Ú©Ø§Ø±Ù‡Ø§ÛŒ Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ø±Ø§ Ø¨Ø¨ÛŒÙ†ÛŒØ¯Ø› Ø¨Ø¹Ø¯ Ø§Ø² Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø³Ø±ÛŒØ¹ ÙˆØ§Ø±Ø¯ Ø¨Ø®Ø´ Ù…ÙˆØ±Ø¯Ù†Ø¸Ø± Ø´ÙˆÛŒØ¯.',
-          ),
-          const SizedBox(height: 12),
-          if ([AdminPermissions.ordersRead, AdminPermissions.inventoryRead, AdminPermissions.corporateRead].any(can)) ...[
-            _DashboardPriorityActions(actions: _priorityActions(data, can), onNavigate: widget.onNavigate),
-            const SizedBox(height: 12),
-          ],
-          _DashboardQuickActions(onNavigate: widget.onNavigate),
-        ],
-      );
-
-  List<_DashboardPriority> _priorityActions(AdminDashboard data, bool Function(String) can) => [
-        if (can(AdminPermissions.ordersRead) && data.problemOrders > 0)
-          _DashboardPriority(
-            id: 'problem-orders',
-            title: '${formatPersianInteger(data.problemOrders)} Ø³ÙØ§Ø±Ø´ Ù…Ø´Ú©Ù„â€ŒØ¯Ø§Ø±',
-            detail: 'ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª ÛŒØ§ Ø§Ø±Ø³Ø§Ù„ Ø§ÛŒÙ† Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.',
-            icon: Icons.report_problem_outlined,
-            destination: const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem),
-          ),
-        if (can(AdminPermissions.ordersRead) && data.awaitingPayment > 0)
-          _DashboardPriority(
-            id: 'awaiting-payment',
-            title: '${formatPersianInteger(data.awaitingPayment)} Ø³ÙØ§Ø±Ø´ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù¾Ø±Ø¯Ø§Ø®Øª',
-            detail: 'ÙÙ‡Ø±Ø³Øª Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ÛŒ Ù¾Ø±Ø¯Ø§Ø®Øªâ€ŒÙ†Ø´Ø¯Ù‡ Ø±Ø§ Ø¨Ø§Ø² Ú©Ù†ÛŒØ¯.',
-            icon: Icons.schedule_rounded,
-            destination: const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment),
-          ),
-        if (can(AdminPermissions.inventoryRead) && data.lowStock.isNotEmpty)
-          _DashboardPriority(
-            id: 'low-stock',
-            title: 'Ú©Ù…Ø¨ÙˆØ¯ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Â· ${formatPersianInteger(data.lowStock.length)} Ú©Ø§Ù„Ø§',
-            detail: 'ÙÙ‡Ø±Ø³Øª SKUÙ‡Ø§ÛŒ Ù¾Ø§ÛŒÛŒÙ†â€ŒØªØ± Ø§Ø² Ù†Ù‚Ø·Ù‡Ù” Ø³ÙØ§Ø±Ø´ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.',
-            icon: Icons.inventory_2_outlined,
-            destination: const AdminNavigationIntent(module: AdminModule.inventory),
-          ),
-        if (can(AdminPermissions.inventoryRead) && data.expiringSoon.isNotEmpty)
-          _DashboardPriority(
-            id: 'expiring-stock',
-            title: 'Ù†Ø²Ø¯ÛŒÚ© Ø§Ù†Ù‚Ø¶Ø§ Â· ${formatPersianInteger(data.expiringSoon.length)} Ø¨Ú†',
-            detail: 'Ø¨Ú†â€ŒÙ‡Ø§ÛŒ Ù†Ø²Ø¯ÛŒÚ© Ø¨Ù‡ Ø§Ù†Ù‚Ø¶Ø§ Ø±Ø§ Ø¨Ø±Ø§ÛŒ Ø§Ù‚Ø¯Ø§Ù… Ø¨Ø§Ø² Ú©Ù†ÛŒØ¯.',
-            icon: Icons.event_busy_rounded,
-            destination: const AdminNavigationIntent(module: AdminModule.inventory),
-          ),
-        if (can(AdminPermissions.corporateRead) && data.corporateNewRequests > 0)
-          _DashboardPriority(
-            id: 'corporate-requests',
-            title: '${formatPersianInteger(data.corporateNewRequests)} Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ Ø¬Ø¯ÛŒØ¯',
-            detail: 'Ø¨Ø±Ø§ÛŒ Ù‡Ø± Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù…Ø³Ø¦ÙˆÙ„ Ùˆ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ø¨Ø¹Ø¯ÛŒ ØªØ¹ÛŒÛŒÙ† Ú©Ù†ÛŒØ¯.',
-            icon: Icons.business_center_rounded,
-            destination: const AdminNavigationIntent(module: AdminModule.corporate),
-          ),
-      ];
-
-  Widget _alertsPanel() {
-    final items = notifications?.items ?? const <AdminNotification>[];
-    return _DashboardPanel(
-      title: 'Ù‡Ø´Ø¯Ø§Ø±Ù‡Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ',
-      icon: Icons.notifications_active_rounded,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _systemHealthPanel(),
-          const SizedBox(height: 10),
-          if (items.isEmpty)
-            const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'Ù‡Ù…Ù‡â€ŒÚ†ÛŒØ² Ø¢Ø±Ø§Ù… Ø§Ø³Øª', detail: 'Ù‡Ø´Ø¯Ø§Ø± ÙÙˆØ±ÛŒ Ø¨Ø±Ø§ÛŒ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯.')
-          else
-            for (final item in items.take(4)) AdminNotificationTile(item: item, onNavigate: widget.onNavigate),
-        ],
-      ),
-    );
-  }
-
-  Widget _systemHealthPanel() {
-    if (healthLoading) {
-      return const ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-        title: Text('Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±Ø±Ø³ÛŒ ÙˆØ¶Ø¹ÛŒØª Ø³Ø§Ù…Ø§Ù†Ù‡'),
-      );
-    }
-    if (systemHealth == null) {
-      return ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.cloud_off_outlined, color: AdminColors.coral),
-        title: const Text('ÙˆØ¶Ø¹ÛŒØª ÙÙ†ÛŒ Ø¯Ø± Ø¯Ø³ØªØ±Ø³ Ù†ÛŒØ³Øª'),
-        subtitle: const Text('Ø§Ø±ØªØ¨Ø§Ø· Ø¨Ø§ Ø³Ø±ÙˆÛŒØ³ ÙˆØ¶Ø¹ÛŒØª Ø¨Ø±Ù‚Ø±Ø§Ø± Ù†Ø´Ø¯. Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ø±Ø³ÛŒ Ø¯ÙˆØ¨Ø§Ø±Ù‡ ØªÙ„Ø§Ø´ Ú©Ù†ÛŒØ¯.'),
-        trailing: IconButton(
-          tooltip: 'Ø¨Ø±Ø±Ø³ÛŒ Ø¯ÙˆØ¨Ø§Ø±Ù‡Ù” ÙˆØ¶Ø¹ÛŒØª Ø³Ø§Ù…Ø§Ù†Ù‡',
-          onPressed: loading ? null : load,
-          icon: const Icon(Icons.refresh_rounded),
-        ),
-      );
-    }
-
-    final health = systemHealth!;
-    final recommendations = _healthRecommendations(health);
-    final healthyColor = health.ready ? AdminColors.ink : AdminColors.coral;
-    String label(String value) => switch (value) {
-          'healthy' || 'ready' || 'tracked' => 'Ø³Ø§Ù„Ù…',
-          'configured' => 'Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø´Ø¯Ù‡',
-          'zibal-configured' => 'Ø²ÛŒØ¨Ø§Ù„ Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø´Ø¯Ù‡',
-          'not-configured' => 'Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ù†Ø´Ø¯Ù‡',
-          'sandbox-enabled' => 'Ø­Ø§Ù„Øª Ø¢Ø²Ù…Ø§ÛŒØ´ÛŒ ÙØ¹Ø§Ù„',
-          'disabled' => 'ØºÛŒØ±ÙØ¹Ø§Ù„',
-          'local' => 'Ù…Ø­Ù„ÛŒ',
-          's3-configured' => 'S3 Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø´Ø¯Ù‡',
-          'empty' => 'Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ',
-          'unhealthy' || 'unavailable' || 'degraded' || 'not-ready' => 'Ù†ÛŒØ§Ø² Ø¨Ù‡ Ø¨Ø±Ø±Ø³ÛŒ',
-          _ => 'Ù†Ø§Ù…Ø´Ø®Øµ',
-        };
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: health.ready ? AdminColors.mintSoft : AdminColors.warningSoft,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Icon(health.ready ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded, color: healthyColor),
-            const SizedBox(width: 8),
-            Expanded(child: Text(health.ready ? 'API Ùˆ Ø²ÛŒØ±Ø³Ø§Ø®Øª Ù¾Ø§ÛŒÙ‡ Ø¢Ù…Ø§Ø¯Ù‡ Ø§Ø³Øª' : 'API ÛŒØ§ Ù¾Ø§ÛŒÚ¯Ø§Ù‡ Ø¯Ø§Ø¯Ù‡ Ù†ÛŒØ§Ø² Ø¨Ù‡ Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø§Ø±Ø¯', style: const TextStyle(fontWeight: FontWeight.w900))),
-          ]),
-          const SizedBox(height: 8),
-          for (final item in [
-            ('API', health.api),
-            ('Ù¾Ø§ÛŒÚ¯Ø§Ù‡ Ø¯Ø§Ø¯Ù‡', health.database),
-            ('Ù…Ù‡Ø§Ø¬Ø±Øªâ€ŒÙ‡Ø§ÛŒ Ù¾Ø§ÛŒÚ¯Ø§Ù‡ Ø¯Ø§Ø¯Ù‡', health.migrations),
-            ('ÙˆØ±ÙˆØ¯ Ù…Ø¯ÛŒØ±', health.adminAuthentication),
-            ('Ù¾Ø±Ø¯Ø§Ø®Øª', health.payment),
-            ('Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø±Ø³Ø§Ù†Ù‡', health.mediaStorage),
-          ])
-            Padding(
-              padding: const EdgeInsets.only(top: 3),
-              child: Text('${item.$1}: ${label(item.$2)}', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
-            ),
-          if (recommendations.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            const Text('Ø§Ù‚Ø¯Ø§Ù… Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ÛŒ', style: TextStyle(fontWeight: FontWeight.w900)),
-            for (final recommendation in recommendations)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(top: 6, start: 4),
-                child: Text('â€¢ $recommendation', style: const TextStyle(fontSize: 12, color: AdminColors.ink)),
-              ),
-          ],
-          const SizedBox(height: 6),
-          const Text(
-            'ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª Ùˆ Ø±Ø³Ø§Ù†Ù‡ Ø§Ø² Ø±ÙˆÛŒ Ù¾ÛŒÚ©Ø±Ø¨Ù†Ø¯ÛŒ Ø§Ø³ØªØ› Ø§ØªØµØ§Ù„ Ø¨ÛŒØ±ÙˆÙ†ÛŒ Ø¢Ù†â€ŒÙ‡Ø§ Ø§ÛŒÙ†Ø¬Ø§ Ø¢Ø²Ù…ÙˆØ¯Ù‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.',
-            style: TextStyle(fontSize: 11, color: AdminColors.muted),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _lowStockPanel(AdminDashboard data, bool Function(String) can) => _DashboardPanel(
-    title: 'Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ù…',
-    icon: Icons.warning_amber_rounded,
-    child: !can(AdminPermissions.inventoryRead)
-        ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'Ø¯Ø³ØªØ±Ø³ÛŒ Ø§Ù†Ø¨Ø§Ø± Ù„Ø§Ø²Ù… Ø§Ø³Øª', detail: 'Ø¨Ø±Ø§ÛŒ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù‡Ø´Ø¯Ø§Ø±Ù‡Ø§ÛŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒØŒ Ø¯Ø³ØªØ±Ø³ÛŒ Ø§Ù†Ø¨Ø§Ø± Ø±Ø§ Ø§Ø² Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ… Ø¨Ú¯ÛŒØ±ÛŒØ¯.')
-        : data.lowStock.isEmpty
-            ? const AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ù…Ù†Ø§Ø³Ø¨ Ø§Ø³Øª', detail: 'Ú©Ø§Ù„Ø§ÛŒÛŒ Ù¾Ø§ÛŒÛŒÙ†â€ŒØªØ± Ø§Ø² Ù†Ù‚Ø·Ù‡ Ø³ÙØ§Ø±Ø´ Ù†ÛŒØ³Øª.')
-            : Column(children: [for (final item in data.lowStock.take(4)) ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text('${item.variantLabel} Â· ${item.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                trailing: Text(formatPersianInteger(item.availablePackages), style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.coral)),
-                onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku)) : null,
-              )]),
-  );
-
-  Widget _expiringPanel(AdminDashboard data, bool Function(String) can) => _DashboardPanel(
-    title: 'Ù†Ø²Ø¯ÛŒÚ© Ø¨Ù‡ Ø§Ù†Ù‚Ø¶Ø§',
-    icon: Icons.event_busy_rounded,
-    child: !can(AdminPermissions.inventoryRead)
-        ? const AdminEmptyState(icon: Icons.lock_outline_rounded, title: 'Ø¯Ø³ØªØ±Ø³ÛŒ Ø§Ù†Ø¨Ø§Ø± Ù„Ø§Ø²Ù… Ø§Ø³Øª', detail: 'Ø¨Ø±Ø§ÛŒ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¨Ú†â€ŒÙ‡Ø§ÛŒ Ù†Ø²Ø¯ÛŒÚ© Ø§Ù†Ù‚Ø¶Ø§ØŒ Ø¯Ø³ØªØ±Ø³ÛŒ Ø§Ù†Ø¨Ø§Ø± Ø±Ø§ Ø§Ø² Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ… Ø¨Ú¯ÛŒØ±ÛŒØ¯.')
-        : data.expiringSoon.isEmpty
-            ? const AdminEmptyState(icon: Icons.check_circle_outline_rounded, title: 'Ø¨Ú† Ù†Ø²Ø¯ÛŒÚ© Ø§Ù†Ù‚Ø¶Ø§ Ù†Ø¯Ø§Ø±ÛŒÙ…', detail: 'ØªØ§ Û³Û° Ø±ÙˆØ² Ø¢ÛŒÙ†Ø¯Ù‡ Ù…ÙˆØ±Ø¯ÛŒ Ø¨Ø±Ø§ÛŒ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.')
-            : Column(children: [for (final item in data.expiringSoon.take(5)) LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 460;
-                  final expiryDate = formatLocalizedDateTime(context, item.expiresAt);
-                  final details = '${item.variantLabel} Â· ${item.sku} Â· ${formatPersianInteger(item.remainingPackages)} Ø¨Ø³ØªÙ‡';
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(item.productTitle, style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: compact
-                        ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(details, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                            const SizedBox(height: 4),
-                            Text('Ø§Ù†Ù‚Ø¶Ø§: $expiryDate', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
-                          ])
-                        : Text(details, style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
-                    trailing: compact
-                        ? null
-                        : Text(expiryDate, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AdminColors.coral)),
-                    onTap: can(AdminPermissions.inventoryRead) ? () => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.inventory, sku: item.sku, batchCode: item.batchCode)) : null,
-                  );
-                },
-              )]),
-  );
-
-}
-
-class _DashboardPeriodSelector extends StatelessWidget {
-  const _DashboardPeriodSelector({required this.selectedDays, required this.customRange, required this.onChanged, required this.onChooseCustomRange});
-  final int selectedDays;
-  final DateTimeRange? customRange;
-  final ValueChanged<int> onChanged;
-  final VoidCallback onChooseCustomRange;
-
-  @override
-  Widget build(BuildContext context) => Material(
-        type: MaterialType.transparency,
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Sales period' : 'Ø¨Ø§Ø²Ù‡Ù” ÙØ±ÙˆØ´', style: const TextStyle(fontWeight: FontWeight.w900)),
-            for (final option in Localizations.localeOf(context).languageCode == 'en'
-                ? const [(1, 'Today'), (7, '7 days'), (30, '30 days')]
-                : const [(1, 'Ø§Ù…Ø±ÙˆØ²'), (7, 'Û· Ø±ÙˆØ²'), (30, 'Û³Û° Ø±ÙˆØ²')])
-              ChoiceChip(
-                label: Text(option.$2),
-                selected: customRange == null && selectedDays == option.$1,
-                onSelected: (_) => onChanged(option.$1),
-              ),
-            OutlinedButton.icon(
-              key: const ValueKey('dashboard-custom-range'),
-              onPressed: onChooseCustomRange,
-              icon: const Icon(Icons.date_range_rounded),
-              label: Text(customRange == null
-                  ? (Localizations.localeOf(context).languageCode == 'en' ? 'Custom range' : 'Ø¨Ø§Ø²Ù‡Ù” Ø¯Ù„Ø®ÙˆØ§Ù‡')
-                  : '${formatCalendarDate(customRange!.start, Localizations.localeOf(context))} ${Localizations.localeOf(context).languageCode == 'en' ? 'to' : 'ØªØ§'} ${formatCalendarDate(customRange!.end, Localizations.localeOf(context))}'),
-            ),
-            Text(Localizations.localeOf(context).languageCode == 'en' ? 'Dates use this deviceâ€™s time zone.' : 'ØªØ§Ø±ÛŒØ®â€ŒÙ‡Ø§ Ø¨Ø± Ø§Ø³Ø§Ø³ Ù…Ù†Ø·Ù‚Ù‡Ù” Ø²Ù…Ø§Ù†ÛŒ Ø§ÛŒÙ† Ø¯Ø³ØªÚ¯Ø§Ù‡ Ù‡Ø³ØªÙ†Ø¯.', style: const TextStyle(fontSize: 12, color: AdminColors.muted)),
-          ],
-        ),
-      );
-}
-
-class _DashboardRangeDialog extends StatefulWidget {
-  const _DashboardRangeDialog({required this.initialRange, required this.today});
-
-  final DateTimeRange? initialRange;
-  final DateTime today;
-
-  @override
-  State<_DashboardRangeDialog> createState() => _DashboardRangeDialogState();
-}
-
-class _DashboardRangeDialogState extends State<_DashboardRangeDialog> {
-  late DateTime start = widget.initialRange?.start ?? widget.today;
-  late DateTime end = widget.initialRange?.end ?? widget.today;
-
-  Future<void> pickStart() async {
-    final selected = await showLocalizedDatePicker(
-      context: context,
-      initialDate: start,
-      firstDate: DateTime(widget.today.year, widget.today.month, widget.today.day - 365),
-      lastDate: end,
-      helpText: Localizations.localeOf(context).languageCode == 'en' ? 'Start date' : 'Ø±ÙˆØ² Ø´Ø±ÙˆØ¹',
-    );
-    if (selected == null) return;
-    setState(() => start = DateUtils.dateOnly(selected));
-  }
-
-  Future<void> pickEnd() async {
-    final selected = await showLocalizedDatePicker(
-      context: context,
-      initialDate: end,
-      firstDate: start,
-      lastDate: widget.today,
-      helpText: Localizations.localeOf(context).languageCode == 'en' ? 'End date' : 'Ø±ÙˆØ² Ù¾Ø§ÛŒØ§Ù†',
-    );
-    if (selected == null) return;
-    setState(() => end = DateUtils.dateOnly(selected));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final locale = Localizations.localeOf(context);
-    final english = locale.languageCode == 'en';
-    return AlertDialog(
-        title: Text(english ? 'Choose report range' : 'Ø¨Ø§Ø²Ù‡Ù” Ú¯Ø²Ø§Ø±Ø´ Ø±Ø§ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(english ? 'Start date' : 'Ø±ÙˆØ² Ø´Ø±ÙˆØ¹'),
-            const SizedBox(height: 6),
-            OutlinedButton.icon(
-              onPressed: pickStart,
-              icon: const Icon(Icons.calendar_today_rounded),
-              label: Text(formatCalendarDate(start, locale)),
-            ),
-            const SizedBox(height: 12),
-            Text(english ? 'End date' : 'Ø±ÙˆØ² Ù¾Ø§ÛŒØ§Ù†'),
-            const SizedBox(height: 6),
-            OutlinedButton.icon(
-              onPressed: pickEnd,
-              icon: const Icon(Icons.event_available_rounded),
-              label: Text(formatCalendarDate(end, locale)),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(english ? 'Cancel' : 'Ø§Ù†ØµØ±Ø§Ù')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, DateTimeRange(start: start, end: end)),
-            child: Text(english ? 'Apply range' : 'Ø§Ø¹Ù…Ø§Ù„ Ø¨Ø§Ø²Ù‡'),
-          ),
-        ],
-      );
-  }
-}
-
-class DashboardPreferencesDialog extends StatefulWidget {
-  const DashboardPreferencesDialog({super.key, required this.initial, required this.onSave});
-  final DashboardPreferences initial;
-  final Future<DashboardPreferences> Function(DashboardPreferences) onSave;
-  @override
-  State<DashboardPreferencesDialog> createState() => _DashboardPreferencesDialogState();
-}
-
-class _DashboardPreferencesDialogState extends State<DashboardPreferencesDialog> {
-  late DashboardPreferences draft = widget.initial;
-  bool saving = false;
-  String? error;
-  static const labels = {
-    'metrics': 'Ø´Ø§Ø®Øµâ€ŒÙ‡Ø§ÛŒ ÙØ±ÙˆØ´ Ùˆ Ø³ÙØ§Ø±Ø´',
-    'quickActions': 'Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø³Ø±ÛŒØ¹',
-    'alerts': 'Ù‡Ø´Ø¯Ø§Ø±Ù‡Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ',
-    'lowStock': 'Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ù…',
-    'expiring': 'Ú©Ø§Ù„Ø§Ù‡Ø§ÛŒ Ù†Ø²Ø¯ÛŒÚ© Ø¨Ù‡ Ø§Ù†Ù‚Ø¶Ø§',
-  };
-
-  Future<void> save() async {
-    setState(() { saving = true; error = null; });
-    try {
-      final saved = await widget.onSave(draft);
-      if (mounted) Navigator.of(context).pop(saved);
-    } catch (exception) {
-      if (mounted) setState(() => error = requestErrorMessage(exception));
-    } finally {
-      if (mounted) setState(() => saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => Dialog(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('ØªÙ†Ø¸ÛŒÙ… Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø§ÛŒÙ† Ù†Ù‚Ø´', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          const Text('Ø¨Ø®Ø´â€ŒÙ‡Ø§ Ø±Ø§ Ø±ÙˆØ´Ù† ÛŒØ§ Ø®Ø§Ù…ÙˆØ´ Ú©Ù†ÛŒØ¯ Ùˆ ØªØ±ØªÛŒØ¨ Ù†Ù…Ø§ÛŒØ´ Ø±Ø§ ØªØºÛŒÛŒØ± Ø¯Ù‡ÛŒØ¯.', style: TextStyle(color: AdminColors.muted)),
-          const SizedBox(height: 12),
-          Flexible(child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: draft.widgets.length,
-            itemBuilder: (context, index) {
-              final item = draft.widgets[index];
-              return Semantics(
-                container: true,
-                label: labels[item.id],
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(labels[item.id] ?? item.id, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  leading: Checkbox(
-                    value: item.visible,
-                    onChanged: saving ? null : (value) => setState(() => draft = draft.setVisible(index, value ?? false)),
-                  ),
-                  trailing: Wrap(spacing: 0, children: [
-                    IconButton(
-                      tooltip: 'Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ø¨Ø§Ù„Ø§',
-                      onPressed: saving || index == 0 ? null : () => setState(() => draft = draft.move(index, index - 1)),
-                      icon: const Icon(Icons.keyboard_arrow_up_rounded),
-                    ),
-                    IconButton(
-                      tooltip: 'Ø§Ù†ØªÙ‚Ø§Ù„ Ø¨Ù‡ Ù¾Ø§ÛŒÛŒÙ†',
-                      onPressed: saving || index == draft.widgets.length - 1 ? null : () => setState(() => draft = draft.move(index, index + 1)),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                    ),
-                  ]),
-                ),
-              );
-            },
-          )),
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Semantics(liveRegion: true, child: Text(error!, style: const TextStyle(color: AdminColors.coral))),
-          ],
-          const SizedBox(height: 12),
-          Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: [
-            TextButton(onPressed: saving ? null : () => Navigator.of(context).pop(), child: const Text('Ø§Ù†ØµØ±Ø§Ù')),
-            FilledButton.icon(
-              onPressed: saving ? null : save,
-              icon: saving ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_outlined),
-              label: Text(saving ? 'Ø¯Ø± Ø­Ø§Ù„ Ø°Ø®ÛŒØ±Ù‡' : 'Ø°Ø®ÛŒØ±Ù‡ Ú†ÛŒØ¯Ù…Ø§Ù†'),
-            ),
-          ]),
-        ]),
-      ),
-    ),
-  );
-}
-
-class _DashboardSectionTitle extends StatelessWidget {
-  const _DashboardSectionTitle({required this.eyebrow, required this.title, required this.detail});
-  final String eyebrow;
-  final String title;
-  final String detail;
-
-  @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(eyebrow, style: const TextStyle(color: AdminColors.ink, fontSize: 12, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Text(title, style: const TextStyle(color: AdminColors.inkDeep, fontSize: 20, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Text(detail, style: const TextStyle(color: AdminColors.muted, fontSize: 12)),
-      ]);
-}
-
-class _DashboardPriority {
-  const _DashboardPriority({
-    required this.id,
-    required this.title,
-    required this.detail,
-    required this.icon,
-    required this.destination,
-  });
-
-  final String id;
-  final String title;
-  final String detail;
-  final IconData icon;
-  final AdminNavigationIntent destination;
-}
-
-class _DashboardPriorityActions extends StatelessWidget {
-  const _DashboardPriorityActions({required this.actions, required this.onNavigate});
-
-  final List<_DashboardPriority> actions;
-  final ValueChanged<AdminNavigationIntent>? onNavigate;
-
-  @override
-  Widget build(BuildContext context) {
-    if (actions.isEmpty) {
-      return const AdminEmptyState(
-        icon: Icons.task_alt_rounded,
-        title: 'Ù…ÙˆØ±Ø¯ ÙÙˆØ±ÛŒ Ø¨Ø±Ø§ÛŒ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ù†Ø¯Ø§Ø±ÛŒØ¯',
-        detail: 'Ø³ÙØ§Ø±Ø´ØŒ Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ùˆ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¬Ø¯ÛŒØ¯ÛŒ Ø¨Ø±Ø§ÛŒ Ø§Ù‚Ø¯Ø§Ù… Ø¯Ø± Ø§ÛŒÙ† Ø¨Ø§Ø²Ù‡ Ø¯ÛŒØ¯Ù‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.',
-      );
-    }
-
-    return _DashboardPanel(
-      title: 'Ø§ÙˆÙ„ÙˆÛŒØªâ€ŒÙ‡Ø§ÛŒ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ',
-      icon: Icons.playlist_add_check_circle_outlined,
-      child: Column(
-        children: [
-          for (final action in actions)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                key: ValueKey('dashboard-priority-${action.id}'),
-                onTap: onNavigate == null ? null : () => onNavigate!(action.destination),
-                borderRadius: BorderRadius.circular(16),
-                focusColor: AdminColors.mintSoft,
-                child: ListTile(
-                  leading: Icon(action.icon, color: AdminColors.coral),
-                  title: Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900)),
-                  subtitle: Text(action.detail),
-                  trailing: const Icon(Icons.arrow_back_rounded, size: 20),
-                  minVerticalPadding: 10,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashboardQuickActions extends StatelessWidget {
-  const _DashboardQuickActions({required this.onNavigate});
-  final ValueChanged<AdminNavigationIntent>? onNavigate;
-
-  @override
-  Widget build(BuildContext context) {
-    final session = OwnerSession.instance;
-    bool can(String permission) => !session.isAuthenticated || session.can(permission);
-    final actions = [
-      if (can(AdminPermissions.productsRead))
-        can(AdminPermissions.productsWrite)
-            ? (title: 'Ø«Ø¨Øª Ù…Ø­ØµÙˆÙ„', detail: 'Ù…Ø­ØµÙˆÙ„ Ø¬Ø¯ÛŒØ¯ Ø±Ø§ Ø¨Ù‡â€ŒØµÙˆØ±Øª Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³ Ø¨Ø³Ø§Ø²ÛŒØ¯.', icon: Icons.add_box_rounded, destination: AdminModule.products)
-            : (title: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù…Ø­ØµÙˆÙ„Ø§Øª', detail: 'Ù…Ø´Ø®ØµØ§ØªØŒ Ù‚ÛŒÙ…Øª Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø§Ù†ØªØ´Ø§Ø± Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.', icon: Icons.inventory_2_outlined, destination: AdminModule.products),
-      if (can(AdminPermissions.ordersRead))
-        (title: 'Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§', detail: 'Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯ Ùˆ Ù…Ù†ØªØ¸Ø± Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø¨Ø¨ÛŒÙ†ÛŒØ¯.', icon: Icons.receipt_long_rounded, destination: AdminModule.orders),
-      if (can(AdminPermissions.inventoryRead))
-        can(AdminPermissions.inventoryWrite)
-            ? (title: 'Ø§ØµÙ„Ø§Ø­ Ù…ÙˆØ¬ÙˆØ¯ÛŒ', detail: 'Ø¯Ø±ÛŒØ§ÙØª Ú©Ø§Ù„Ø§ ÛŒØ§ Ø§ØµÙ„Ø§Ø­ ÛŒÚ© SKU Ø±Ø§ Ø«Ø¨Øª Ú©Ù†ÛŒØ¯.', icon: Icons.inventory_2_rounded, destination: AdminModule.inventory)
-            : (title: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù…ÙˆØ¬ÙˆØ¯ÛŒ', detail: 'Ù…ÙˆØ¬ÙˆØ¯ÛŒ Ú©Ø§Ù„Ø§ Ùˆ Ø¨Ú†â€ŒÙ‡Ø§ÛŒ Ù†Ø²Ø¯ÛŒÚ© Ø§Ù†Ù‚Ø¶Ø§ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯.', icon: Icons.warehouse_outlined, destination: AdminModule.inventory),
-      if (can(AdminPermissions.corporateRead))
-        (title: 'Ù¾ÛŒÚ¯ÛŒØ±ÛŒ ÙØ±ÙˆØ´ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ', detail: 'Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯ Ø±Ø§ Ø§Ø² Ø¯Ø³Øª Ù†Ø¯Ù‡ÛŒØ¯.', icon: Icons.business_center_rounded, destination: AdminModule.corporate),
-    ];
-    if (actions.isEmpty) {
-      return const AdminEmptyState(
-        icon: Icons.lock_outline_rounded,
-        title: 'Ù…Ø³ÛŒØ± Ø¹Ù…Ù„ÛŒØ§ØªÛŒ Ø¨Ø±Ø§ÛŒ Ù†Ù‚Ø´ Ø´Ù…Ø§ ÙØ¹Ø§Ù„ Ù†ÛŒØ³Øª',
-        detail: 'Ø¨Ø±Ø§ÛŒ Ø¯Ø³ØªØ±Ø³ÛŒ Ø¨Ù‡ Ù…Ø­ØµÙˆÙ„Ø§ØªØŒ Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ ÛŒØ§ Ø§Ù†Ø¨Ø§Ø± Ø¨Ø§ Ù…Ø¯ÛŒØ± ÙØ±ÙˆØ´Ú¯Ø§Ù‡ Ù‡Ù…Ø§Ù‡Ù†Ú¯ Ú©Ù†ÛŒØ¯. Ú¯Ø²Ø§Ø±Ø´ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ù‡Ù…Ú†Ù†Ø§Ù† Ù‚Ø§Ø¨Ù„ Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø§Ø³Øª.',
-      );
-    }
-    return LayoutBuilder(builder: (context, constraints) {
-      final columns = constraints.maxWidth >= 1050 ? 4 : constraints.maxWidth >= 650 ? 2 : 1;
-      final width = (constraints.maxWidth - ((columns - 1) * 12)) / columns;
-      return Wrap(spacing: 12, runSpacing: 12, children: [
-        for (final action in actions)
-          SizedBox(width: width, child: _DashboardQuickAction(action: action, onPressed: onNavigate == null ? null : () => onNavigate!(AdminNavigationIntent(module: action.destination, orderFilter: action.destination == AdminModule.orders ? AdminOrderFilter.awaitingPayment : AdminOrderFilter.all)))),
-      ]);
-    });
-  }
-}
-
-class _DashboardQuickAction extends StatelessWidget {
-  const _DashboardQuickAction({required this.action, required this.onPressed});
-  final ({String title, String detail, IconData icon, AdminModule destination}) action;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-        button: true,
-        enabled: onPressed != null,
-        label: '${action.title}: ${action.detail}',
-        child: Card(
-          child: InkWell(
-            key: ValueKey('dashboard-action-${action.destination.name}'),
-            onTap: onPressed,
-            focusColor: AdminColors.mintSoft,
-            borderRadius: BorderRadius.circular(6),
-            child: LayoutBuilder(builder: (context, constraints) {
-              final compact = constraints.maxWidth < 320;
-              final icon = Container(
-                width: 42,
-                height: 42,
-                decoration: const BoxDecoration(color: AdminColors.mintSoft, shape: BoxShape.circle),
-                child: Icon(action.icon, color: AdminColors.ink),
-              );
-              final title = Text(action.title, style: const TextStyle(fontWeight: FontWeight.w900, color: AdminColors.inkDeep));
-              final detail = Text(action.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, height: 1.5, color: AdminColors.ink));
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: compact
-                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Align(alignment: AlignmentDirectional.centerEnd, child: const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink)),
-                        icon,
-                        const SizedBox(height: 10),
-                        title,
-                        const SizedBox(height: 6),
-                        detail,
-                      ])
-                    : Row(children: [
-                        icon,
-                        const SizedBox(width: 12),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [title, const SizedBox(height: 4), detail])),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_back_rounded, size: 18, color: AdminColors.ink),
-                      ]),
-              );
-            }),
-          ),
-        ),
-      );
-}
-
-class _DashboardPanel extends StatelessWidget {
-  const _DashboardPanel({required this.title, required this.icon, required this.child});
-  final String title;
-  final IconData icon;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, children: [Icon(icon, color: AdminColors.ink), Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))]),
-    const SizedBox(height: 12), child,
-  ])));
-}
-
-class MetricCard extends StatelessWidget {
-  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft, this.onTap});
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color tint;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 224,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 126),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(padding: const EdgeInsets.all(18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
-            const SizedBox(height: 12),
-            Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 3),
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
-          ])),
-        ),
-      ),
-    ),
-  );
-}
-
-
-
-
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×½úñ:-jZ.¶›­–)Þ³V–×÷'BvæÇ—F–75÷æVÇ2æF'Bs°Ð¦–×÷'Bw6¶vS¦fÇWGFW"öÖFW&–ÂæF'Bs°Ð Ð¦–×÷'BvFÖ–åöæf–vF–öâæF'Bs°Ð¦–×÷'BvFÖ–å÷W&Ö—76–öç2æF'Bs°Ð¦–×÷'BvFÖ–å÷7FFRæF'Bs°Ð¦–×÷'BvFÖ–å÷F†VÖRæF'Bs°Ð¦–×÷'BvWF…÷6W76–öâæF'Bs°Ð¦–×÷'Bvf÷&ÖGFW'2æF'Bs°Ð¦–×÷'BvÆö6Æ—¦VEö6ÆVæF"æF'Bs°Ð¦–×÷'Bvæ÷F–f–6F–öå÷F–ÆRæF'Bs°Ð¦–×÷'Bv÷&FW%ö’æF'Bs°Ð¦–×÷'Bw7F÷&U÷F–ÖW¦öæRæF'Bs°Ð Ð¤Æ—7CÅ7G&–æsâö†VÇF…&V6öÖÖVæFF–öç2„FÖ–äF6†&ö&D†VÇF‚†VÇF‚’Óâ°Ð¢–b††VÇF‚æFF&6RÓÒwVæ†VÇF‡’rÇÂ†VÇF‚æFF&6RÓÒvæ÷BÖ6öæf–wW&VBr’}Š}Š­‹]Š}˜B›íŠ}¸ÍªýŠ}˜rŠýŠ}Šý˜r‹ŠrŠ‹‹‹=¸Âª˜m¸ÍŠý‰²Š-˜]Š}‹˜‚‹˜]˜M¸ÍŠ}Š¢˜‹˜‹MªýŠ}˜rŠ˜rŠ-˜b˜Š}Š‹=Š­˜rŠ}‹=Š¢ârÀÐ¢–b††VÇF‚æÖ–w&F–öç2ÓÒvV×G’rÇÂ†VÇF‚æÖ–w&F–öç2ÓÒwVæf–Æ&ÆRr’}˜‹m‹¸ÍŠ¢˜]˜}Š}ŠÍ‹Š®(Í˜}Š}¸Â›íŠ}¸ÍªýŠ}˜rŠýŠ}Šý˜r‹ŠrŠ‹‹‹=¸Âª˜m¸ÍŠòârÀÐ¢–b††VÇF‚æFÖ–äWF†VçF–6F–öâÓÒvæ÷BÖ6öæf–wW&VBr’}˜‹˜ŠòŠ}˜]˜b˜]Šý¸Í‹Šý‹Š­˜m‹¸Í˜]Š}Š¢˜]ŠÝ¸Í‹r‹Š}˜~(ÍŠ}˜mŠýŠ}‹-¸Â˜m‹MŠý˜rŠ}‹=Š¢ârÀÐ¢–b††VÇF‚ç–ÖVçBÓÒvF—6&ÆVBr’}Šý‹ªýŠ}˜r›í‹ŠýŠ}ŠíŠ¢‹­¸Í‹˜‹Š}˜BŠ}‹=Š­‰²›í‹ŠýŠ}ŠíŠ¢Š}¸Í˜mŠ­‹˜mŠ­¸Â‹=˜Š}‹‹N(Í˜}ŠrŠ}˜mŠÍŠ}˜R˜m˜]¸Î(Í‹M˜ŠòârÀÐ¢–b††VÇF‚ç–ÖVçBÓÒw6æF&÷‚ÖVæ&ÆVBr’}›í‹ŠýŠ}ŠíŠ¢Š-‹-˜]Š}¸Í‹M¸Â˜‹Š}˜BŠ}‹=Š­‰²›í¸Í‹BŠ}‹"˜‹˜‹B˜Š}˜-‹¸ÍˆÂŠý‹ªýŠ}˜r‹˜]˜M¸ÍŠ}Š­¸Â‹ŠrŠ­˜m‹¸Í˜Rª˜m¸ÍŠòârÀÐ¢–b††VÇF‚æÖVF–7F÷&vRÓÒvæ÷BÖ6öæf–wW&VBr’}‹Ší¸Í‹˜~(Í‹=Š}‹-¸Â‹‹=Š}˜m˜r‹Š}˜~(ÍŠ}˜mŠýŠ}‹-¸Â˜m‹MŠý˜rŠ}‹=Š­‰²Š­˜m‹¸Í˜]Š}Š¢‹=‹˜¸Í‹2˜Š}¸Í˜B‹ŠrŠ‹‹‹=¸Âª˜m¸ÍŠòârÀÐ¥Ó°Ð Ð¦6Æ72F6†&ö&EvRW‡FVæG27FFVgVÅv–FvWB°Ð¢6öç7BF6†&ö&EvR‡°Ð¢7WW"æ¶W’ÀÐ¢F†—2æ’ÀÐ¢F†—2æöäæf–vFRÀÐ¢F†—2ç&Vg&W6…&Wf—6–öâÒÀÐ¢Ò“°Ð¢f–æÂ÷&FW$”6Æ–VçCò“°Ð¢f–æÂfÇVT6†ævVCÄFÖ–äæf–vF–öä–çFVçCãòöäæf–vFS°Ð¢f–æÂ–çB&Vg&W6…&Wf—6–öã°Ð¢÷fW'&–FPÐ¢7FFSÄF6†&ö&EvSâ7&VFU7FFR‚’ÓâôF6†&ö&EvU7FFR‚“°Ð§ÐÐ Ð¦6Æ72ôF6†&ö&EvU7FFRW‡FVæG27FFSÄF6†&ö&EvSâ°Ð¢ÆFRf–æÂ÷&FW$”6Æ–VçB’Òv–FvWBæ’óò÷&FW$”6Æ–VçB‚“°Ð¢FÖ–äF6†&ö&CòF6†&ö&C°Ð¢FÖ–äæÇ—F–73òf–ææ6–ÄæÇ—F–73°Ð¢ö&¦V7Còf–ææ6–ÄæÇ—F–74W'&÷#°Ð¢FÖ–äF6†&ö&D†VÇFƒò7—7FVÔ†VÇFƒ°Ð¢FÖ–äæ÷F–f–6F–öç3òæ÷F–f–6F–öç3°Ð¢F6†&ö&E&VfW&Væ6W2&VfW&Væ6W2ÒF6†&ö&E&VfW&Væ6W2æFVfVÇG3°Ð¢ö&¦V7CòW'&÷#°Ð¢&ööÂÆöF–ærÒG'VS°Ð¢&ööÂ†VÇF„ÆöF–ærÒG'VS°Ð¢FFUF–ÖSòÆ7DÆöFVDC°Ð¢–çBF6†&ö&DF—2Ò°Ð¢FFUF–ÖU&ævSò7W7FöÕ&ævS°Ð Ð¢÷fW'&–FPÐ¢fö–B–æ—E7FFR‚’²7WW"æ–æ—E7FFR‚“²ÆöB‚“²ÐÐ Ð¢÷fW'&–FPÐ¢fö–BF–EWFFUv–FvWB†6÷f&–çBF6†&ö&EvRöÆEv–FvWB’°Ð¢7WW"æF–EWFFUv–FvWB†öÆEv–FvWB“°Ð¢–b†öÆEv–FvWBç&Vg&W6…&Wf—6–öâÒv–FvWBç&Vg&W6…&Wf—6–öâ’ÆöB‚“°Ð¢ÐÐ Ð¢gWGW&SÇfö–CâÆöB‚’7–æ2°Ð¢f–æÂ6W76–öâÒ÷væW%6W76–öâæ–ç7Fæ6S°Ð¢f–æÂ6å&VDf–ææ6–Ç2ÐÐ¢6W76–öâæ—4WF†VçF–6FVBÇÂ6W76–öâæ6â„FÖ–åW&Ö—76–öç2ç&W÷'G5&VB“°Ð¢6WE7FFR‚‚’°Ð¢ÆöF–ærÒG'VS°Ð¢†VÇF„ÆöF–ærÒG'VS°Ð¢W'&÷"ÒçVÆÃ°Ð¢f–ææ6–ÄæÇ—F–72ÒçVÆÃ°Ð¢f–ææ6–ÄæÇ—F–74W'&÷"ÒçVÆÃ°Ð¢7—7FVÔ†VÇF‚ÒçVÆÃ°Ð¢Ò“°Ð¢f–æÂ†VÇF„gWGW&RÒ’æfWF6„F6†&ö&D†VÇF‚‚Ð¢çF†VãÄö&¦V7Cóâ‚‡fÇVR’ÓâfÇVRÐ¢æ6F6„W'&÷"‚„ö&¦V7BW†6WF–öâ’ÓâW†6WF–öâ“°Ð¢G'’°Ð¢f–æÂFöF’ÒFFUWF–Ç2æFFTöæÇ’‡7F÷&UvÆÅF–ÖTæ÷r‚’“°Ð¢f–æÂ&ævU7F'BÒ÷6VÆV7FVE&ævU7F'B‡FöF’“°Ð¢f–æÂ&ævTVæBÒ÷6VÆV7FVE&ævTVæB‡FöF’“°Ð¢f–æÂ&ævU7F'EWF2Ò7F÷&UvÆÅF–ÖUFõWF2‡&ævU7F'B“°Ð¢f–æÂ&ævTVæEWF4W†6ÇW6—fRÐÐ¢7F÷&UvÆÅF–ÖUFõWF2„FFUF–ÖR‡&ævTVæBç–V"Â&ævTVæBæÖöçF‚Â&ævTVæBæF’²’“°Ð¢f–æÂæÇ—F–74gWGW&RÒ6å&VDf–ææ6–Ç0Ð¢òÐ¢æfWF6„æÇ—F–72€Ð¢F—3¢F6†&ö&DF—2ÀÐ¢g&öÕWF3¢&ævU7F'EWF2ÀÐ¢FõWF4W†6ÇW6—fS¢&ævTVæEWF4W†6ÇW6—fRÀÐ¢Ð¢çF†VãÄö&¦V7Cóâ‚‡fÇVR’ÓâfÇVRÐ¢æ6F6„W'&÷"‚„ö&¦V7BW†6WF–öâ’ÓâW†6WF–öâÐ¢¢gWGW&SÄö&¦V7CóâçfÇVR†çVÆÂ“°Ð¢f–æÂ&W7VÇBÒv—BgWGW&Rçv—B…°Ð¢’æfWF6„F6†&ö&B€Ð¢F—3¢F6†&ö&DF—2ÀÐ¢g&öÕWF3¢&ævU7F'EWF2ÀÐ¢FõWF4W†6ÇW6—fS¢&ævTVæEWF4W†6ÇW6—fRÀÐ¢’ÀÐ¢’æfWF6„æ÷F–f–6F–öç2‚’ÀÐ¢’æfWF6„F6†&ö&E&VfW&Væ6W2‚’ÀÐ¢æÇ—F–74gWGW&RÀÐ¢Ò“°Ð¢–b†Ö÷VçFVB’6WE7FFR‚‚’°Ð¢F6†&ö&BÒ&W7VÇE³Ò2FÖ–äF6†&ö&C°Ð¢æ÷F–f–6F–öç2Ò&W7VÇE³Ò2FÖ–äæ÷F–f–6F–öç3°Ð¢&VfW&Væ6W2Ò&W7VÇE³%Ò2F6†&ö&E&VfW&Væ6W3°Ð¢f–æÂæÇ—F–75&W7VÇBÒ&W7VÇE³5Ó°Ð¢–b†æÇ—F–75&W7VÇB—2FÖ–äæÇ—F–72’°Ð¢f–ææ6–ÄæÇ—F–72ÒæÇ—F–75&W7VÇC°Ð¢ÒVÇ6R–b†æÇ—F–75&W7VÇBÒçVÆÂ’°Ð¢f–ææ6–ÄæÇ—F–74W'&÷"ÒæÇ—F–75&W7VÇC°Ð¢ÐÐ¢Æ7DÆöFVDBÒFFUF–ÖRææ÷r‚“°Ð¢Ò“°Ð¢Ò6F6‚†W†6WF–öâ’°Ð¢–b†Ö÷VçFVB’6WE7FFR‚‚’ÓâW'&÷"ÒW†6WF–öâ“°Ð¢Òf–æÆÇ’°Ð¢–b†Ö÷VçFVB’6WE7FFR‚‚’ÓâÆöF–ærÒfÇ6R“°Ð¢ÐÐ¢f–æÂ†VÇF…&W7VÇBÒv—B†VÇF„gWGW&S°Ð¢–b†Ö÷VçFVB’6WE7FFR‚‚’°Ð¢†VÇF„ÆöF–ærÒfÇ6S°Ð¢–b††VÇF…&W7VÇB—2FÖ–äF6†&ö&D†VÇF‚’°Ð¢7—7FVÔ†VÇF‚Ò†VÇF…&W7VÇC°Ð¢ÐÐ¢Ò“°Ð¢ÐÐ Ð¢FFUF–ÖR÷6VÆV7FVE&ævU7F'B„FFUF–ÖRFöF’’ÓàÐ¢7W7FöÕ&ævSòç7F'BóòFFUF–ÖR‡FöF’ç–V"ÂFöF’æÖöçF‚ÂFöF’æF’ÒF6†&ö&DF—2²“°Ð Ð¢FFUF–ÖR÷6VÆV7FVE&ævTVæB„FFUF–ÖRFöF’’Óâ7W7FöÕ&ævSòæVæBóòFöF“°Ð Ð¢FÖ–äæf–vF–öä–çFVçB÷W&–öD÷&FW'4–çFVçB‚’°Ð¢f–æÂFöF’ÒFFUWF–Ç2æFFTöæÇ’‡7F÷&UvÆÅF–ÖTæ÷r‚’“°Ð¢f–æÂ7F'BÒ÷6VÆV7FVE&ævU7F'B‡FöF’“°Ð¢f–æÂVæBÒ÷6VÆV7FVE&ævTVæB‡FöF’“°Ð¢&WGW&âFÖ–äæf–vF–öä–çFVçB€Ð¢ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2ÀÐ¢7&VFVDg&öÕWF3¢7F÷&UvÆÅF–ÖUFõWF2‡7F'B’ÀÐ¢7&VFVEFõWF4W†6ÇW6—fS¢7F÷&UvÆÅF–ÖUFõWF2„FFUF–ÖR†VæBç–V"ÂVæBæÖöçF‚ÂVæBæF’²’’ÀÐ¢“°Ð¢ÐÐ Ð¢FÖ–äæf–vF–öä–çFVçB÷W&–öE&W÷'G4–çFVçB‚’°Ð¢f–æÂ÷&FW$–çFVçBÒ÷W&–öD÷&FW'4–çFVçB‚“°Ð¢&WGW&âFÖ–äæf–vF–öä–çFVçB€Ð¢ÖöGVÆS¢FÖ–äÖöGVÆRç&W÷'G2ÀÐ¢7&VFVDg&öÕWF3¢÷&FW$–çFVçBæ7&VFVDg&öÕWF2ÀÐ¢7&VFVEFõWF4W†6ÇW6—fS¢÷&FW$–çFVçBæ7&VFVEFõWF4W†6ÇW6—fRÀÐ¢“°Ð¢ÐÐ Ð¢gWGW&SÇfö–Câ7W7FöÖ—¦TF6†&ö&B‚’7–æ2°Ð¢f–æÂWFFVBÒv—B6†÷tF–ÆösÄF6†&ö&E&VfW&Væ6W3â€Ð¢6öçFW‡C¢6öçFW‡BÀÐ¢'V–ÆFW#¢…ò’ÓâF6†&ö&E&VfW&Væ6W4F–Æör†–æ—F–Ã¢&VfW&Væ6W2Âöå6fS¢’ç6fTF6†&ö&E&VfW&Væ6W2’ÀÐ¢“°Ð¢–b‡WFFVBÒçVÆÂbbÖ÷VçFVB’6WE7FFR‚‚’Óâ&VfW&Væ6W2ÒWFFVB“°Ð¢ÐÐ Ð¢gWGW&SÇfö–Câ6†ö÷6T7W7FöÕ&ævR‚’7–æ2°Ð¢f–æÂFöF’ÒFFUWF–Ç2æFFTöæÇ’‡7F÷&UvÆÅF–ÖTæ÷r‚’“°Ð¢f–æÂ6VÆV7FVBÒv—B6†÷tF–ÆösÄFFUF–ÖU&ævSâ€Ð¢6öçFW‡C¢6öçFW‡BÀÐ¢'V–ÆFW#¢…ò’ÓâôF6†&ö&E&ævTF–Æör†–æ—F–Å&ævS¢7W7FöÕ&ævRÂFöF“¢FöF’’ÀÐ¢“°Ð¢–b‡6VÆV7FVBÓÒçVÆÂÇÂÖ÷VçFVB’&WGW&ã°Ð¢6WE7FFR‚‚’Óâ7W7FöÕ&ævRÒFFUF–ÖU&ævR€Ð¢7F'C¢FFUWF–Ç2æFFTöæÇ’‡6VÆV7FVBç7F'B’ÀÐ¢VæC¢FFUWF–Ç2æFFTöæÇ’‡6VÆV7FVBæVæB’ÀÐ¢’“°Ð¢v—BÆöB‚“°Ð¢ÐÐ Ð¢÷fW'&–FPÐ¢v–FvWB'V–ÆB„'V–ÆD6öçFW‡B6öçFW‡B’°Ð¢–b†ÆöF–ærbbF6†&ö&BÓÒçVÆÂ’&WGW&â6öç7B6VçFW"†6†–ÆC¢6—&7VÆ%&öw&W74–æF–6F÷"‚’“°Ð¢–b†W'&÷"ÒçVÆÂbbF6†&ö&BÓÒçVÆÂ’&WGW&âFÖ–äW'&÷%7FFR†W'&÷#¢W'&÷"Âöå&WG'“¢ÆöB“°Ð¢f–æÂFFÒF6†&ö&B°Ð¢f–æÂ6W76–öâÒ÷væW%6W76–öâæ–ç7Fæ6S°Ð¢&ööÂ6â…7G&–ærW&Ö—76–öâ’Óâ6W76–öâæ—4WF†VçF–6FVBÇÂ6W76–öâæ6â‡W&Ö—76–öâ“°Ð¢f–æÂ6V7F–öç2ÒÅ7G&–ærÂv–FvWCç°Ð¢vÖWG&–72s¢öÖWG&–756V7F–öâ†FFÂ6â’ÀÐ¢wV–6´7F–öç2s¢÷V–6´7F–öç56V7F–öâ†FFÂ6â’ÀÐ¢vÆW'G2s¢öÆW'G5æVÂ‚’ÀÐ¢vÆ÷u7Fö6²s¢öÆ÷u7Fö6µæVÂ†FFÂ6â’ÀÐ¢vW‡—&–ærs¢öW‡—&–æuæVÂ†FFÂ6â’ÀÐ¢Ó°Ð¢&WGW&â&Vg&W6„–æF–6F÷"€Ð¢öå&Vg&W6ƒ¢ÆöBÀÐ¢6†–ÆC¢Æ—7Ef–Wr€Ð¢FF–æs¢6öç7BVFvT–ç6WG2æÆÂƒ#‚’ÀÐ¢6†–ÆG&Vã¢°Ð¢–b†W'&÷"ÒçVÆÂ’FÖ–å7FÆT&ææW"†FWF–Ã¢}ŠýŠ}Šý˜~(Í˜}Š}¸Â˜‹˜M¸Â˜]˜]ª˜bŠ}‹=Š¢Š­Š}‹-˜r˜mŠŠ}‹M˜mŠòâG·&WVW7DW'&÷$ÖW76vR†W'&÷"—ÒrÂöå&WG'“¢ÆöB’ÀÐ¢Æ–÷WD'V–ÆFW"†'V–ÆFW#¢†6öçFW‡BÂ6öç7G&–çG2’°Ð¢f–æÂ†VF–ærÒ6öÇVÖâ†7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7F'BÂ6†–ÆG&Vã¢°Ð¢FW‡B‚}˜‹m‹¸ÍŠ¢˜‹˜‹MªýŠ}˜rrÂ7G–ÆS¢F†VÖRæöb†6öçFW‡B’çFW‡EF†VÖRæ†VFÆ–æTÖVF—VÓòæ6÷•v—F‚†föçEvV–v‡C¢föçEvV–v‡Bçs“Â6öÆ÷#¢FÖ–ä6öÆ÷'2æ–æ´FVW’’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢b’ÀÐ¢6öç7BFW‡B‚}˜m˜]Š}¸Â‹=‹¸Í‹’Š}‹"˜‹m‹¸ÍŠ¢Š}˜]‹˜‹"˜‹˜‹MªýŠ}˜r˜‚ªŠ}‹˜}Š}¸Í¸Âª˜r˜m¸ÍŠ}‹"Š˜rŠ­˜ŠÍ˜rŠýŠ}‹˜mŠòârÂ7G–ÆS¢FW‡E7G–ÆR†6öÆ÷#¢FÖ–ä6öÆ÷'2æ×WFVB’’ÀÐ¢–b†Æ7DÆöFVDBÒçVÆÂ’ââå°Ð¢6öç7B6—¦VD&÷‚††V–v‡C¢R’ÀÐ¢FW‡B‚}Š-Ší‹¸Í˜bŠ˜~(Í‹˜‹-‹‹=Š}˜m¸Ã¢G¶f÷&ÖDÆö6Æ—¦VDFFUF–ÖR†6öçFW‡BÂÆ7DÆöFVDB—ÒrÂ7G–ÆS¢6öç7BFW‡E7G–ÆR†föçE6—¦S¢Â6öÆ÷#¢FÖ–ä6öÆ÷'2æ×WFVB’’ÀÐ¢ÒÀÐ¢Ò“°Ð¢f–æÂ&Vg&W6‚Ò–6öä'WGFöâ†öå&W76VC¢ÆöF–æròçVÆÂ¢ÆöBÂ–6öã¢6öç7B–6öâ„–6öç2ç&Vg&W6…÷&÷VæFVB’ÂFööÇF—¢}ŠŠ}‹ªý‹Š}‹¸Â˜]ŠÍŠýŠòr“°Ð¢f–æÂ7W7FöÖ—¦RÒ–6öä'WGFöâ†öå&W76VC¢7W7FöÖ—¦TF6†&ö&BÂ–6öã¢6öç7B–6öâ„–6öç2çGVæU÷&÷VæFVB’ÂFööÇF—¢}Š­˜m‹¸Í˜RŠŠí‹N(Í˜}Š}¸ÂŠýŠ}‹MŠ˜‹Šòr“°Ð¢&WGW&â6öç7G&–çG2æÖ…v–GF‚ÂS Ð¢ò6öÇVÖâ†7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7G&WF6‚Â6†–ÆG&Vã¢´Æ–vâ†Æ–væÖVçC¢Æ–væÖVçDF—&V7F–öæÂæ6VçFW$VæBÂ6†–ÆC¢w&†6†–ÆG&Vã¢¶7W7FöÖ—¦RÂ&Vg&W6…Ò’’Â†VF–æuÒÐ¢¢&÷r†6†–ÆG&Vã¢´W‡æFVB†6†–ÆC¢†VF–ær’Â7W7FöÖ—¦RÂ&Vg&W6…Ò“°Ð¢Ò’ÀÐ¢–b‡&VfW&Væ6W2çv–FvWG2æWfW'’‚†—FVÒ’Óâ—FVÒçf—6–&ÆR’Ð¢6öç7BFF–ær€Ð¢FF–æs¢VFvT–ç6WG2æöæÇ’‡F÷¢#‚’ÀÐ¢6†–ÆC¢FÖ–äV×G•7FFR†–6öã¢–6öç2æF6†&ö&Eö7W7FöÖ—¦Uö÷WFÆ–æVBÂF—FÆS¢}ŠýŠ}‹MŠ˜‹ŠòŠí˜M˜Š¢Š}‹=Š¢rÂFWF–Ã¢}Š}‹"Š­˜m‹¸Í˜]Š}Š¢ŠŠ}˜MŠ}¸Â‹]˜ŠÝ˜}ˆÂŠŠí‹N(Í˜}Š}¸Â˜]˜‹Šý˜m¸ÍŠ}‹"‹ŠrŠý˜ŠŠ}‹˜r˜‹Š}˜Bª˜m¸ÍŠòâr’ÀÐ¢’ÀÐ¢Æ–÷WD'V–ÆFW"†'V–ÆFW#¢†6öçFW‡BÂ6öç7G&–çG2’°Ð¢f–æÂf—6–&ÆRÒ&VfW&Væ6W2çv–FvWG2çv†W&R‚†—FVÒ’Óâ—FVÒçf—6–&ÆR’çFôÆ—7B‚“°Ð¢f–æÂ6ö×7BÒ6öç7G&–çG2æÖ…v–GF‚Âs#°Ð¢&WGW&âw&‡76–æs¢BÂ'Vå76–æs¢BÂ6†–ÆG&Vã¢°Ð¢f÷"†f–æÂ—FVÒ–âf—6–&ÆRÐ¢6—¦VD&÷‚€Ð¢v–GFƒ¢—FVÒæ–BÓÒvÖWG&–72rÇÂ—FVÒæ–BÓÒwV–6´7F–öç2rÇÂ6ö×7@Ð¢ò6öç7G&–çG2æÖ…v–GF€Ð¢¢†6öç7G&–çG2æÖ…v–GF‚ÒB’ò"ÀÐ¢6†–ÆC¢6V7F–öç5¶—FVÒæ–EÒÀÐ¢’ÀÐ¢Ò“°Ð¢Ò’ÀÐ¢ÒÀÐ¢’ÀÐ¢“°Ð¢ÐÐ Ð¢7G&–ær÷W&–öDÆ&VÂ†–çBF—2ÂFFUF–ÖU&ævSò&ævR’°Ð¢–b‡&ævRÒçVÆÂ’°Ð¢f–æÂÆö6ÆRÒÆö6Æ—¦F–öç2æÆö6ÆTöb†6öçFW‡B“°Ð¢f–æÂ&ævUFW‡BÒrG¶f÷&ÖD6ÆVæF$FFR‡&ævRç7F'BÂÆö6ÆR—Ò(	2G¶f÷&ÖD6ÆVæF$FFR‡&ævRæVæBÂÆö6ÆR—Òs°Ð¢&WGW&âÆö6ÆRæÆæwVvT6öFRÓÒvVâròu6ÆW2G&ævUFW‡Br¢}˜‹˜‹BG&ævUFW‡Bs°Ð¢ÐÐ¢f–æÂVævÆ—6‚ÒÆö6Æ—¦F–öç2æÆö6ÆTöb†6öçFW‡B’æÆæwVvT6öFRÓÒvVâs°Ð¢&WGW&â7v—F6‚‚†F—2ÂVævÆ—6‚’’°Ð¢ƒÂG'VR’Óâu6ÆW2FöF’rÀÐ¢ƒrÂG'VR’Óâu6ÆW2–âF†RÆ7BrF—2rÀÐ¢ƒ3ÂG'VR’Óâu6ÆW2–âF†RÆ7B3F—2rÀÐ¢…òÂG'VR’Óâu6ÆW2–â6VÆV7FVB&ævRrÀÐ¢ƒÂfÇ6R’Óâ}˜‹˜‹BŠ}˜]‹˜‹"rÀÐ¢ƒrÂfÇ6R’Óâ}˜‹˜‹B»r‹˜‹"Š}Ší¸Í‹rÀÐ¢ƒ3ÂfÇ6R’Óâ}˜‹˜‹B»=»‹˜‹"Š}Ší¸Í‹rÀÐ¢…òÂfÇ6R’Óâ}˜‹˜‹BŠŠ}‹-˜}™BŠ}˜mŠ­ŠíŠ}Š¸ÂrÀÐ¢Ó°Ð¢ÐÐ Ð¢v–FvWBöÖWG&–756V7F–öâ„FÖ–äF6†&ö&BFFÂ&ööÂgVæ7F–öâ…7G&–ær’6â’Óâ6öÇVÖâ€Ð¢7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7G&WF6‚ÀÐ¢6†–ÆG&Vã¢°Ð¢ôF6†&ö&EW&–öE6VÆV7F÷"€Ð¢6VÆV7FVDF—3¢F6†&ö&DF—2ÀÐ¢7W7FöÕ&ævS¢7W7FöÕ&ævRÀÐ¢öä6†ævVC¢†F—2’°Ð¢6WE7FFR‚‚’°Ð¢F6†&ö&DF—2ÒF—3°Ð¢7W7FöÕ&ævRÒçVÆÃ°Ð¢Ò“°Ð¢ÆöB‚“°Ð¢ÒÀÐ¢öä6†ö÷6T7W7FöÕ&ævS¢6†ö÷6T7W7FöÕ&ævRÀÐ¢’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢B’ÀÐ¢w&‡76–æs¢BÂ'Vå76–æs¢BÂ6†–ÆG&Vã¢°Ð¢–b†FFæf–ææ6–Ç5f—6–&ÆR’ÖWG&–46&B…÷W&–öDÆ&VÂ†F6†&ö&DF—2Â7W7FöÕ&ævR’ÂrG¶f÷&ÖEFöÖâ†FFçW&–öE&WfVçVR—ÒŠ­˜˜]Š}˜brÂ–6öç2ç–ÖVçG5÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2æÖ–çE6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR…÷W&–öE&W÷'G4–çFVçB‚’’’ÀÐ¢–b†FFæf–ææ6–Ç5f—6–&ÆRbb6â„FÖ–åW&Ö—76–öç2ç&W÷'G5&VB’Ð¢ÖWG&–46&B€Ð¢}‹=˜Šò›í‹2Š}‹"˜}‹-¸Í˜m˜}™BªŠ}˜MŠr˜‚Š}‹‹=Š}˜BrÀÐ¢f–ææ6–ÄæÇ—F–72ÒçVÆÀÐ¢òrG¶f÷&ÖEFöÖâ†f–ææ6–ÄæÇ—F–72ææWE&öf—B—ÒŠ­˜˜]Š}˜bpÐ¢¢f–ææ6–ÄæÇ—F–74W'&÷"ÒçVÆÀÐ¢ò}ŠŠ}‹ªý‹Š}‹¸Â˜m‹MŠòpÐ¢¢ÆöF–æpÐ¢ò}Šý‹ŠÝŠ}˜BŠý‹¸ÍŠ}˜Š®(
+bpÐ¢¢~(	BrÀÐ¢–6öç2æ66÷VçEö&Ææ6U÷vÆÆWE÷&÷VæFVBÀÐ¢F–çC¢f–ææ6–ÄæÇ—F–72ÒçVÆÂbbf–ææ6–ÄæÇ—F–72ææWE&öf—BÂ Ð¢òFÖ–ä6öÆ÷'2æFævW%6ög@Ð¢¢FÖ–ä6öÆ÷'2æ–æfõ6ögBÀÐ¢öåF¢f–ææ6–ÄæÇ—F–74W'&÷"ÒçVÆÀÐ¢òÆö@Ð¢¢v–FvWBæöäæf–vFRÓÒçVÆÀÐ¢òçVÆÀÐ¢¢‚’Óâv–FvWBæöäæf–vFR…÷W&–öE&W÷'G4–çFVçB‚’’ÀÐ¢’ÀÐ¢–b†6â„FÖ–åW&Ö—76–öç2æ÷&FW'5&VB’’ââå°Ð¢ÖWG&–46&B‚}Š­‹ŠýŠ}Šò‹=˜Š}‹‹BŠŠ}‹-˜rrÂf÷&ÖEW'6–ä–çFVvW"†FFçW&–öD÷&FW$6÷VçB’Â–6öç2ç6†÷–æuö&u÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2æ–æfõ6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR…÷W&–öD÷&FW'4–çFVçB‚’’’ÀÐ¢–b†FFæf–ææ6–Ç5f—6–&ÆR’ÖWG&–46&B‚}˜]¸ÍŠ}˜mªý¸Í˜bŠ}‹‹-‹B‹=˜Š}‹‹BrÂrG¶f÷&ÖEFöÖâ†FFæfW&vT÷&FW%fÇVR—ÒŠ­˜˜]Š}˜brÂ–6öç2æ–ç6–v‡G5÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2çv&æ–æu6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR…÷W&–öE&W÷'G4–çFVçB‚’’’ÀÐ¢ÖWG&–46&B‚}Šý‹Š}˜mŠ­‹Š}‹›í‹ŠýŠ}ŠíŠ¢rÂf÷&ÖEW'6–ä–çFVvW"†FFæv—F–æu–ÖVçB’Â–6öç2ç66†VGVÆU÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2çv&æ–æu6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"æv—F–æu–ÖVçB’’’ÀÐ¢ÖWG&–46&B‚}Šý‹ŠÝŠ}˜B›í‹ŠýŠ}‹-‹BrÂf÷&ÖEW'6–ä–çFVvW"†FFç&ö6W76–ær’Â–6öç2æ–çfVçF÷'•ó%÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2æ–æfõ6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"ç&ö6W76–ær’’’ÀÐ¢ÖWG&–46&B‚}Š}‹‹=Š}˜N(Í‹MŠý˜rrÂf÷&ÖEW'6–ä–çFVvW"†FFç6†—VB’Â–6öç2æÆö6Å÷6†—–æu÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2æFævW%6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"ç6†—VB’’’ÀÐ¢ÖWG&–46&B‚}‹=˜Š}‹‹B˜]‹Mª˜N(ÍŠýŠ}‹rÂf÷&ÖEW'6–ä–çFVvW"†FFç&ö&ÆVÔ÷&FW'2’Â–6öç2ç&W÷'E÷&ö&ÆVÕö÷WFÆ–æVBÂF–çC¢FÖ–ä6öÆ÷'2æFævW%6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"ç&ö&ÆVÒ’’’ÀÐ¢ÒÀÐ¢–b†6â„FÖ–åW&Ö—76–öç2æ7W7FöÖW'5&VB’’ÖWG&–46&B‚}˜]‹MŠ­‹¸ÂŠÍŠý¸ÍŠòŠŠ}‹-˜rrÂf÷&ÖEW'6–ä–çFVvW"†FFææWt7W7FöÖW'2’Â–6öç2çW'6öåöFEöÇEó÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2ç7V66W756ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ7W7FöÖW'2’’’ÀÐ¢–b†6â„FÖ–åW&Ö—76–öç2æ6÷'÷&FU&VB’’ÖWG&–46&B‚}Šý‹Ší˜Š}‹=Š¢‹=Š}‹-˜]Š}˜m¸ÂŠÍŠý¸ÍŠòrÂf÷&ÖEW'6–ä–çFVvW"†FFæ6÷'÷&FTæWu&WVW7G2’Â–6öç2æ'W6–æW75ö6VçFW%÷&÷VæFVBÂF–çC¢FÖ–ä6öÆ÷'2æ–æfõ6ögBÂöåF¢v–FvWBæöäæf–vFRÓÒçVÆÂòçVÆÂ¢‚’Óâv–FvWBæöäæf–vFR†6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ6÷'÷&FR’’’ÀÐ¢Ò’ÀÐ¢–b†FFæf–ææ6–Ç5f—6–&ÆRb`Ð¢6â„FÖ–åW&Ö—76–öç2ç&W÷'G5&VB’b`Ð¢f–ææ6–ÄæÇ—F–72ÒçVÆÂ’ââå°Ð¢6öç7B6—¦VD&÷‚††V–v‡C¢"’ÀÐ¢FÖ–äæÇ—F–75æVÇ2†æÇ—F–73¢f–ææ6–ÄæÇ—F–72’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢b’ÀÐ¢÷&öf—F&–Æ—G”'&V¶F÷vâ†f–ææ6–ÄæÇ—F–72’ÀÐ¢ÒÀÐ¢ÒÀÐ¢“°Ð Ð¢v–FvWB÷&öf—F&–Æ—G”'&V¶F÷vâ„FÖ–äæÇ—F–72æÇ—F–72’°Ð¢f–æÂ6ö×öæVçG2ÒÂ…7G&–ærÂçVÒ“å°Ð¢‚}Š˜}Š}¸Â˜]ŠÝ‹]˜˜BrÂæÇ—F–72ç&öGV7D6÷7B’ÀÐ¢‚}Š‹=Š­˜~(ÍŠ˜mŠý¸ÂrÂæÇ—F–72ç6¶v–æt6÷7B’ÀÐ¢‚}˜}‹-¸Í˜m˜~(Í˜}Š}¸ÂŠÍŠ}˜mŠ¸ÂrÂæÇ—F–72æFF—F–öæÄ6÷7B’ÀÐ¢‚}Šý‹Š-˜]ŠòŠ}‹‹=Š}˜BrÂæÇ—F–72ç6†—–æu&WfVçVR’ÀÐ¢‚}˜}‹-¸Í˜m˜}™BŠ}‹‹=Š}˜BrÂæÇ—F–72ç6†—–ætW‡Vç6R’ÀÐ¢‚}‹=˜Šò˜mŠ}ŠíŠ}˜M‹RrÂæÇ—F–72æw&÷75&öf—B’ÀÐ¢Ó°Ð¢&WGW&âôF6†&ö&EæVÂ€Ð¢F—FÆS¢}‹¸Í‹"‹=˜Šò˜‚˜}‹-¸Í˜m˜rrÀÐ¢–6öã¢–6öç2æ66÷VçEö&Ææ6U÷vÆÆWEö÷WFÆ–æVBÀÐ¢6†–ÆC¢6öÇVÖâ€Ð¢7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7G&WF6‚ÀÐ¢6†–ÆG&Vã¢°Ð¢–b†æÇ—F–72æ÷&FW$6÷VçBÓÒÐ¢6öç7BFÖ–äV×G•7FFR€Ð¢–6öã¢–6öç2ç&V6V—EöÆöæuö÷WFÆ–æVBÀÐ¢F—FÆS¢}‹=˜Š}‹‹B›í‹ŠýŠ}ŠíŠ®(Í‹MŠý˜~(ÍŠ}¸Â˜m¸Í‹=Š¢rÀÐ¢FWF–Ã¢}Šý‹ŠŠ}‹-˜}™BŠ}˜mŠ­ŠíŠ}ŠŽ(Í‹MŠý˜r‹=˜Š}‹‹M¸ÂŠ‹Š}¸ÂŠ­ŠÝ˜M¸Í˜B˜}‹-¸Í˜m˜rŠ½ŠŠ¢˜m‹MŠý˜rŠ}‹=Š¢ârÀÐ¢Ð¢VÇ6Rââå°Ð¢Æ–÷WD'V–ÆFW"†'V–ÆFW#¢†6öçFW‡BÂ6öç7G&–çG2’°Ð¢f–æÂ6öÇVÖç2Ò6öç7G&–çG2æÖ…v–GF‚ÂCcò"¢3°Ð¢f–æÂ—FVÕv–GF‚ÐÐ¢†6öç7G&–çG2æÖ…v–GF‚Ò†6öÇVÖç2Ò’¢’ò6öÇVÖç3°Ð¢&WGW&âw&€Ð¢76–æs¢ÀÐ¢'Vå76–æs¢ÀÐ¢6†–ÆG&Vã¢°Ð¢f÷"†f–æÂ—FVÒ–â6ö×öæVçG2Ð¢6—¦VD&÷‚€Ð¢v–GFƒ¢—FVÕv–GF‚ÀÐ¢6†–ÆC¢6öçF–æW"€Ð¢FF–æs¢6öç7BVFvT–ç6WG2æÆÂƒ"’ÀÐ¢FV6÷&F–öã¢&÷„FV6÷&F–öâ€Ð¢6öÆ÷#¢FÖ–ä6öÆ÷'2æ6çf2ÀÐ¢&÷&FW%&F—W3¢&÷&FW%&F—W2æ6—&7VÆ"ƒ"’ÀÐ¢’ÀÐ¢6†–ÆC¢6öÇVÖâ€Ð¢7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7F'BÀÐ¢6†–ÆG&Vã¢°Ð¢FW‡B†—FVÒâCÀÐ¢7G–ÆS¢6öç7BFW‡E7G–ÆR€Ð¢6öÆ÷#¢FÖ–ä6öÆ÷'2æ×WFVBÀÐ¢föçE6—¦S¢ÀÐ¢föçEvV–v‡C¢föçEvV–v‡Bçss’’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢R’ÀÐ¢FW‡B€Ð¢rG¶f÷&ÖEFöÖâ†—FVÒâC"—ÒŠ­˜˜]Š}˜brÀÐ¢7G–ÆS¢FW‡E7G–ÆR€Ð¢6öÆ÷#¢—FVÒâC"Â Ð¢òFÖ–ä6öÆ÷'2æ6÷&ÀÐ¢¢FÖ–ä6öÆ÷'2æ–æ´FVWÀÐ¢föçE6—¦S¢2ÀÐ¢föçEvV–v‡C¢föçEvV–v‡Bçs“ÀÐ¢’ÀÐ¢’ÀÐ¢ÒÀÐ¢’ÀÐ¢’ÀÐ¢’ÀÐ¢ÒÀÐ¢“°Ð¢Ò’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢’ÀÐ¢6öç7BFW‡B€Ð¢}‹=˜Šò›í‹2Š}‹"˜}‹-¸Í˜m˜}™BªŠ}˜MŠr˜‚Š}‹‹=Š}˜BÒ‹=˜Šò˜mŠ}ŠíŠ}˜M‹R²Šý‹Š-˜]ŠòŠ}‹‹=Š}˜B(‰"˜}‹-¸Í˜m˜}™BŠ}‹‹=Š}˜Bâ˜]Š}˜M¸ÍŠ}Š¢›í‹ŠýŠ}ŠíŠ­˜m¸ÂŠý‹‹=˜Šò˜]ŠÝŠ}‹=Š˜r˜m˜]¸Î(Í‹M˜Šò˜‚˜}‹-¸Í˜m˜~(Í˜}Š}¸ÂŠ½Š}ŠŠ¢˜]Š½˜BŠ}ŠÍŠ}‹˜r˜‚Šý‹=Š­˜]‹-Šò˜}˜RŠý‹Š}¸Í˜b‹MŠ}Ší‹R˜m¸Í‹=Š¢ârÀÐ¢7G–ÆS¢FW‡E7G–ÆR†6öÆ÷#¢FÖ–ä6öÆ÷'2æ×WFVBÂföçE6—¦S¢’ÀÐ¢’ÀÐ¢ÒÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢‚’ÀÐ¢Æ–vâ€Ð¢Æ–væÖVçC¢Æ–væÖVçDF—&V7F–öæÂæ6VçFW$VæBÀÐ¢6†–ÆC¢FW‡D'WGFöâæ–6öâ€Ð¢öå&W76VC¢v–FvWBæöäæf–vFRÓÒçVÆÀÐ¢òçVÆÀÐ¢¢‚’Óâv–FvWBæöäæf–vFR…÷W&–öE&W÷'G4–çFVçB‚’’ÀÐ¢–6öã¢6öç7B–6öâ„–6öç2æ÷Våö–åöæWu÷&÷VæFVB’ÀÐ¢Æ&VÃ¢6öç7BFW‡B‚}ŠÍ‹-Šm¸ÍŠ}Š¢ªŠ}˜]˜BŠý‹ªý‹-Š}‹‹B‹=˜Šòr’ÀÐ¢’ÀÐ¢’ÀÐ¢ÒÀÐ¢’ÀÐ¢“°Ð¢ÐÐ Ð¢v–FvWB÷V–6´7F–öç56V7F–öâ„FÖ–äF6†&ö&BFFÂ&ööÂgVæ7F–öâ…7G&–ær’6â’Óâ6öÇVÖâ€Ð¢7&÷74†—4Æ–væÖVçC¢7&÷74†—4Æ–væÖVçBç7G&WF6‚ÀÐ¢6†–ÆG&Vã¢°Ð¢6öç7BôF6†&ö&E6V7F–öåF—FÆR€Ð¢W–V'&÷s¢}˜]‹=¸Í‹˜}Š}¸Â‹=‹¸Í‹’rÀÐ¢F—FÆS¢}Š}˜]‹˜‹"¨m˜rªŠ}‹¸ÂŠ}˜mŠÍŠ}˜RŠý˜}¸ÍŠý‰òrÀÐ¢FWF–Ã¢}Š}˜˜BªŠ}‹˜}Š}¸Â˜m¸ÍŠ}‹-˜]˜mŠò›í¸Íªý¸Í‹¸Â‹ŠrŠŠ¸Í˜m¸ÍŠý‰²Š‹ŠòŠ}‹"˜]‹=¸Í‹˜}Š}¸Â‹=‹¸Í‹’˜Š}‹ŠòŠŠí‹B˜]˜‹Šý˜m‹‹‹M˜¸ÍŠòârÀÐ¢’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢"’ÀÐ¢–b…´FÖ–åW&Ö—76–öç2æ÷&FW'5&VBÂFÖ–åW&Ö—76–öç2æ–çfVçF÷'•&VBÂFÖ–åW&Ö—76–öç2æ6÷'÷&FU&VEÒæç’†6â’’ââå°Ð¢ôF6†&ö&E&–÷&—G”7F–öç2†7F–öç3¢÷&–÷&—G”7F–öç2†FFÂ6â’Âöäæf–vFS¢v–FvWBæöäæf–vFR’ÀÐ¢6öç7B6—¦VD&÷‚††V–v‡C¢"’ÀÐ¢ÒÀÐ¢ôF6†&ö&EV–6´7F–öç2†öäæf–vFS¢v–FvWBæöäæf–vFR’ÀÐ¢ÒÀÐ¢“°Ð Ð¢Æ—7CÅôF6†&ö&E&–÷&—G“â÷&–÷&—G”7F–öç2„FÖ–äF6†&ö&BFFÂ&ööÂgVæ7F–öâ…7G&–ær’6â’Óâ°Ð¢–b†6â„FÖ–åW&Ö—76–öç2æ÷&FW'5&VB’bbFFç&ö&ÆVÔ÷&FW'2âÐ¢ôF6†&ö&E&–÷&—G’€Ð¢–C¢w&ö&ÆVÒÖ÷&FW'2rÀÐ¢F—FÆS¢rG¶f÷&ÖEW'6–ä–çFVvW"†FFç&ö&ÆVÔ÷&FW'2—Ò‹=˜Š}‹‹B˜]‹Mª˜N(ÍŠýŠ}‹rÀÐ¢FWF–Ã¢}˜‹m‹¸ÍŠ¢›í‹ŠýŠ}ŠíŠ¢¸ÍŠrŠ}‹‹=Š}˜BŠ}¸Í˜b‹=˜Š}‹‹N(Í˜}Šr‹ŠrŠ‹‹‹=¸Âª˜m¸ÍŠòârÀÐ¢–6öã¢–6öç2ç&W÷'E÷&ö&ÆVÕö÷WFÆ–æVBÀÐ¢FW7F–æF–öã¢6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"ç&ö&ÆVÒ’ÀÐ¢’ÀÐ¢–b†6â„FÖ–åW&Ö—76–öç2æ÷&FW'5&VB’bbFFæv—F–æu–ÖVçBâÐ¢ôF6†&ö&E&–÷&—G’€Ð¢–C¢vv—F–ær×–ÖVçBrÀÐ¢F—FÆS¢rG¶f÷&ÖEW'6–ä–çFVvW"†FFæv—F–æu–ÖVçB—Ò‹=˜Š}‹‹BŠý‹Š}˜mŠ­‹Š}‹›í‹ŠýŠ}ŠíŠ¢rÀÐ¢FWF–Ã¢}˜˜}‹‹=Š¢‹=˜Š}‹‹N(Í˜}Š}¸Â›í‹ŠýŠ}ŠíŠ®(Í˜m‹MŠý˜r‹ŠrŠŠ}‹"ª˜m¸ÍŠòârÀÐ¢–6öã¢–6öç2ç66†VGVÆU÷&÷VæFVBÀÐ¢FW7F–æF–öã¢6öç7BFÖ–äæf–vF–öä–çFVçB†ÖöGVÆS¢FÖ–äÖöGVÆRæ÷&FW'2Â÷&FW$f–ÇFW#¢FÖ–ä÷&FW$f–ÇFW"æv—F–æu–ÖVçB’ÀÐ¢’ÀÐ¢–b†6â„FÖ–åW&Ö—76–öç2æ–çfVçF÷'•&VB’bbFFæÆ÷u7Fö6²æ—4æ÷DV×G’Ð¢ôF6†&ö&E&–÷&—G’€Ð¢–C¢vÆ÷r×7Fö6²rÀÐ¢F—FÆS¢}ª˜]Š˜Šò˜]˜ŠÍ˜Šý¸Â+rG¶f÷&ÖEW'6–ä–çFVvW"†FFæÆ÷u7Fö6²æÆVæwF‚—ÒªŠ}˜MŠrrÀÐ¢FWF–Ã¢}˜˜}‹‹=Š­·ëËh‘éì¶»§q«^t€€€€€€ÍÕ‰Ñ¥Ñ±”èQ•áÐ œ‘í¥Ñ•´¹Ù…É¥…¹Ñ1…‰•±ôƒ
+Ü€‘í¥Ñ•´¹Í­Õôœ°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÄ°½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•¤¤°4(€€€€€€€€€€€€€€€ÑÉ…¥±¥¹œèQ•áÐ¡™½Éµ…ÑA•ÉÍ¥…¹%¹Ñ••È¡¥Ñ•´¹…Ù…¥±…‰±•A…­…•Ì¤°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ°½±½Èè‘µ¥¹½±½ÉÌ¹½É…°¤¤°4(€€€€€€€€€€€€€€€½¹Q…Àè…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹¥¹Ù•¹Ñ½ÉåI•…¤€ü€ ¤€ôøÝ¥‘•Ð¹½¹9…Ù¥…Ñ”ü¹…±°¡‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ð¡µ½‘Õ±”è‘µ¥¹5½‘Õ±”¹¥¹Ù•¹Ñ½Éä°Í­Ôè¥Ñ•´¹Í­Ô¤¤€è¹Õ±°°4(€€€€€€€€€€€€€€¥t¤°4(€€¤ì4(4(€]¥‘•Ð}•áÁ¥É¥¹A…¹•°¡‘µ¥¹…Í¡‰½…É‘…Ñ„°‰½½°Õ¹Ñ¥½¸¡MÑÉ¥¹œ¤…¸¤€ôø}…Í¡‰½…É‘A…¹•° 4(€€€Ñ¥Ñ±”è€ŸfbËb¿n3j¤ƒb£fƒbŸffbÛbœœ°4(€€€¥½¸è%½¹Ì¹•Ù•¹Ñ}‰ÕÍå}É½Õ¹‘•°4(€€€¡¥±è€……¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹¥¹Ù•¹Ñ½ÉåI•…¤4(€€€€€€€€ü½¹ÍÐ‘µ¥¹µÁÑåMÑ…Ñ”¡¥½¸è%½¹Ì¹±½­}½ÕÑ±¥¹•}É½Õ¹‘•°Ñ¥Ñ±”è€Ÿb¿bÏb«bÇbÏn0ƒbŸfb£bŸbÄƒfbŸbËfƒbŸbÏb¨œ°‘•Ñ…¥°è€Ÿb£bÇbŸn0ƒfbÓbŸfb¿fƒb£jŠ3fbŸn0ƒfbËb¿n3j¤ƒbŸffbÛbŸb0ƒb¿bÏb«bÇbÏn0ƒbŸfb£bŸbÄƒbÇbœƒbŸbÈƒfb¿n3bÄƒbÏn3bÏb«fƒb£j¿n3bÇn3b¼¸œ¤4(€€€€€€€€è‘…Ñ„¹•áÁ¥É¥¹M½½¸¹¥ÍµÁÑä4(€€€€€€€€€€€€ü½¹ÍÐ‘µ¥¹µÁÑåMÑ…Ñ”¡¥½¸è%½¹Ì¹¡•­}¥É±•}½ÕÑ±¥¹•}É½Õ¹‘•°Ñ¥Ñ±”è€Ÿb£jƒfbËb¿n3j¤ƒbŸffbÛbœƒfb¿bŸbÇn3fœ°‘•Ñ…¥°è€Ÿb«bœƒnÏnÀƒbÇf#bÈƒb‹n3fb¿fƒff#bÇb¿n0ƒb£bÇbŸn0ƒfûn3j¿n3bÇn0ƒb¯b£b¨ƒfbÓb¿fƒbŸbÏb¨¸œ¤4(€€€€€€€€€€€€è½±Õµ¸¡¡¥±‘É•¸èm™½È€¡™¥¹…°¥Ñ•´¥¸‘…Ñ„¹•áÁ¥É¥¹M½½¸¹Ñ…­” Ô¤¤1…å½ÕÑ	Õ¥±‘•È 4(€€€€€€€€€€€€€€€‰Õ¥±‘•Èè€¡½¹Ñ•áÐ°½¹ÍÑÉ…¥¹ÑÌ¤ì4(€€€€€€€€€€€€€€€€€™¥¹…°½µÁ…Ð€ô½¹ÍÑÉ…¥¹ÑÌ¹µ…á]¥‘Ñ €ð€ÐØÀì4(€€€€€€€€€€€€€€€€€™¥¹…°•áÁ¥Éå…Ñ”€ô™½Éµ…Ñ1½…±¥é•‘…Ñ•Q¥µ”¡½¹Ñ•áÐ°¥Ñ•´¹•áÁ¥É•ÍÐ¤ì4(€€€€€€€€€€€€€€€€€™¥¹…°‘•Ñ…¥±Ì€ô€œ‘í¥Ñ•´¹Ù…É¥…¹Ñ1…‰•±ôƒ
+Ü€‘í¥Ñ•´¹Í­Õôƒ
+Ü€‘í™½Éµ…ÑA•ÉÍ¥…¹%¹Ñ••È¡¥Ñ•´¹É•µ…¥¹¥¹A…­…•Ì¥ôƒb£bÏb«fœì4(€€€€€€€€€€€€€€€€€É•ÑÕÉ¸1¥ÍÑQ¥±” 4(€€€€€€€€€€€€€€€€€€€½¹Ñ•¹ÑA…‘‘¥¹œè‘•%¹Í•ÑÌ¹é•É¼°4(€€€€€€€€€€€€€€€€€€€Ñ¥Ñ±”èQ•áÐ¡¥Ñ•´¹ÁÉ½‘ÕÑQ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜàÀÀ¤¤°4(€€€€€€€€€€€€€€€€€€€ÍÕ‰Ñ¥Ñ±”è½µÁ…Ð4(€€€€€€€€€€€€€€€€€€€€€€€€ü½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áÐ¡‘•Ñ…¥±Ì°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÄ°½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•¤¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ð¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€Q•áÐ ŸbŸffbÛbœè€‘•áÁ¥Éå…Ñ”œ°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÄ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜàÀÀ°½±½Èè‘µ¥¹½±½ÉÌ¹½É…°¤¤°4(€€€€€€€€€€€€€€€€€€€€€€€€€t¤4(€€€€€€€€€€€€€€€€€€€€€€€€èQ•áÐ¡‘•Ñ…¥±Ì°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÄ°½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•¤¤°4(€€€€€€€€€€€€€€€€€€€ÑÉ…¥±¥¹œè½µÁ…Ð4(€€€€€€€€€€€€€€€€€€€€€€€€ü¹Õ±°4(€€€€€€€€€€€€€€€€€€€€€€€€èQ•áÐ¡•áÁ¥Éå…Ñ”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÄ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜàÀÀ°½±½Èè‘µ¥¹½±½ÉÌ¹½É…°¤¤°4(€€€€€€€€€€€€€€€€€€€½¹Q…Àè…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹¥¹Ù•¹Ñ½ÉåI•…¤€ü€ ¤€ôøÝ¥‘•Ð¹½¹9…Ù¥…Ñ”ü¹…±°¡‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ð¡µ½‘Õ±”è‘µ¥¹5½‘Õ±”¹¥¹Ù•¹Ñ½Éä°Í­Ôè¥Ñ•´¹Í­Ô°‰…Ñ¡½‘”è¥Ñ•´¹‰…Ñ¡½‘”¤¤€è¹Õ±°°4(€€€€€€€€€€€€€€€€€€¤ì4(€€€€€€€€€€€€€€€ô°4(€€€€€€€€€€€€€€¥t¤°4(€€¤ì4(4)ô4(4)±…ÍÌ}…Í¡‰½…É‘A•É¥½‘M•±•Ñ½È•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘A•É¥½‘M•±•Ñ½È¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹Í•±•Ñ•‘…åÌ°É•ÅÕ¥É•Ñ¡¥Ì¹ÕÍÑ½µI…¹”°É•ÅÕ¥É•Ñ¡¥Ì¹½¹¡…¹•°É•ÅÕ¥É•Ñ¡¥Ì¹½¹¡½½Í•ÕÍÑ½µI…¹•ô¤ì4(€™¥¹…°¥¹ÐÍ•±•Ñ•‘…åÌì4(€™¥¹…°…Ñ•Q¥µ•I…¹”üÕÍÑ½µI…¹”ì4(€™¥¹…°Y…±Õ•¡…¹•ñ¥¹Ðø½¹¡…¹•ì4(€™¥¹…°Y½¥‘…±±‰…¬½¹¡½½Í•ÕÍÑ½µI…¹”ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø5…Ñ•É¥…° 4(€€€€€€€ÑåÁ”è5…Ñ•É¥…±QåÁ”¹ÑÉ…¹ÍÁ…É•¹ä°4(€€€€€€€¡¥±è]É…À 4(€€€€€€€€€ÍÁ…¥¹œè€à°4(€€€€€€€€€ÉÕ¹MÁ…¥¹œè€à°4(€€€€€€€€€É½ÍÍá¥Í±¥¹µ•¹Ðè]É…ÁÉ½ÍÍ±¥¹µ•¹Ð¹•¹Ñ•È°4(€€€€€€€€€¡¥±‘É•¸èl4(€€€€€€€€€€€Q•áÐ¡1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€M…±•ÌÁ•É¥½œ€è€Ÿb£bŸbËffPƒfbÇf#bÐœ°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€€€€€™½È€¡™¥¹…°½ÁÑ¥½¸¥¸1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ4(€€€€€€€€€€€€€€€€ü½¹ÍÐl Ä°€Q½‘…äœ¤°€ Ü°€œÜ‘…åÌœ¤°€ ÌÀ°€œÌÀ‘…åÌœ¥t4(€€€€€€€€€€€€€€€€è½¹ÍÐl Ä°€ŸbŸfbÇf#bÈœ¤°€ Ü°€ŸnÜƒbÇf#bÈœ¤°€ ÌÀ°€ŸnÏnÀƒbÇf#bÈœ¥t¤4(€€€€€€€€€€€€€¡½¥•¡¥À 4(€€€€€€€€€€€€€€€±…‰•°èQ•áÐ¡½ÁÑ¥½¸¸È¤°4(€€€€€€€€€€€€€€€Í•±•Ñ•èÕÍÑ½µI…¹”€ôô¹Õ±°€˜˜Í•±•Ñ•‘…åÌ€ôô½ÁÑ¥½¸¸Ä°4(€€€€€€€€€€€€€€€½¹M•±•Ñ•è€¡|¤€ôø½¹¡…¹•¡½ÁÑ¥½¸¸Ä¤°4(€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€=ÕÑ±¥¹•‘	ÕÑÑ½¸¹¥½¸ 4(€€€€€€€€€€€€€­•äè½¹ÍÐY…±Õ•-•ä ‘…Í¡‰½…ÉµÕÍÑ½´µÉ…¹”œ¤°4(€€€€€€€€€€€€€½¹AÉ•ÍÍ•è½¹¡½½Í•ÕÍÑ½µI…¹”°4(€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹‘…Ñ•}É…¹•}É½Õ¹‘•¤°4(€€€€€€€€€€€€€±…‰•°èQ•áÐ¡ÕÍÑ½µI…¹”€ôô¹Õ±°4(€€€€€€€€€€€€€€€€€€ü€¡1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€ÕÍÑ½´É…¹”œ€è€Ÿb£bŸbËffPƒb¿fb»f#bŸfœ¤4(€€€€€€€€€€€€€€€€€€è€œ‘í™½Éµ…Ñ…±•¹‘…É…Ñ”¡ÕÍÑ½µI…¹”„¹ÍÑ…ÉÐ°1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¥ô€‘í1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€Ñ¼œ€è€Ÿb«bœô€‘í™½Éµ…Ñ…±•¹‘…É…Ñ”¡ÕÍÑ½µI…¹”„¹•¹°1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¥ôœ¤°4(€€€€€€€€€€€€¤°4(€€€€€€€€€€€Q•áÐ¡1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€MÑ½É”Ñ¥µ”é½¹”èÍ¥„½Q•¡É…¸¸œ€è€ŸffbßfffPƒbËfbŸfn0ƒfbÇf#bÓj¿bŸfèƒb«fbÇbŸf¸œ°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÈ°½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•¤¤°4(€€€€€€€€€t°4(€€€€€€€€¤°4(€€€€€€¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘I…¹•¥…±½œ•áÑ•¹‘ÌMÑ…Ñ•™Õ±]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘I…¹•¥…±½œ¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹¥¹¥Ñ¥…±I…¹”°É•ÅÕ¥É•Ñ¡¥Ì¹Ñ½‘…åô¤ì4(4(€™¥¹…°…Ñ•Q¥µ•I…¹”ü¥¹¥Ñ¥…±I…¹”ì4(€™¥¹…°…Ñ•Q¥µ”Ñ½‘…äì4(4(€½Ù•ÉÉ¥‘”4(€MÑ…Ñ”ñ}…Í¡‰½…É‘I…¹•¥…±½œøÉ•…Ñ•MÑ…Ñ” ¤€ôø}…Í¡‰½…É‘I…¹•¥…±½MÑ…Ñ” ¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘I…¹•¥…±½MÑ…Ñ”•áÑ•¹‘ÌMÑ…Ñ”ñ}…Í¡‰½…É‘I…¹•¥…±½œøì4(€±…Ñ”…Ñ•Q¥µ”ÍÑ…ÉÐ€ôÝ¥‘•Ð¹¥¹¥Ñ¥…±I…¹”ü¹ÍÑ…ÉÐ€üüÝ¥‘•Ð¹Ñ½‘…äì4(€±…Ñ”…Ñ•Q¥µ”•¹€ôÝ¥‘•Ð¹¥¹¥Ñ¥…±I…¹”ü¹•¹€üüÝ¥‘•Ð¹Ñ½‘…äì4(4(€ÕÑÕÉ”ñÙ½¥øÁ¥­MÑ…ÉÐ ¤…Íå¹Œì4(€€€™¥¹…°Í•±•Ñ•€ô…Ý…¥ÐÍ¡½Ý1½…±¥é•‘…Ñ•A¥­•È 4(€€€€€½¹Ñ•áÐè½¹Ñ•áÐ°4(€€€€€¥¹¥Ñ¥…±…Ñ”èÍÑ…ÉÐ°4(€€€€€™¥ÉÍÑ…Ñ”è…Ñ•Q¥µ”¡Ý¥‘•Ð¹Ñ½‘…ä¹å•…È°Ý¥‘•Ð¹Ñ½‘…ä¹µ½¹Ñ °Ý¥‘•Ð¹Ñ½‘…ä¹‘…ä€´€ÌØÔ¤°4(€€€€€±…ÍÑ…Ñ”è•¹°4(€€€€€¡•±ÁQ•áÐè1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€MÑ…ÉÐ‘…Ñ”œ€è€ŸbÇf#bÈƒbÓbÇf#bäœ°4(€€€€¤ì4(€€€¥˜€¡Í•±•Ñ•€ôô¹Õ±°¤É•ÑÕÉ¸ì4(€€€Í•ÑMÑ…Ñ”  ¤€ôøÍÑ…ÉÐ€ô…Ñ•UÑ¥±Ì¹‘…Ñ•=¹±ä¡Í•±•Ñ•¤¤ì4(€ô4(4(€ÕÑÕÉ”ñÙ½¥øÁ¥­¹ ¤…Íå¹Œì4(€€€™¥¹…°Í•±•Ñ•€ô…Ý…¥ÐÍ¡½Ý1½…±¥é•‘…Ñ•A¥­•È 4(€€€€€½¹Ñ•áÐè½¹Ñ•áÐ°4(€€€€€¥¹¥Ñ¥…±…Ñ”è•¹°4(€€€€€™¥ÉÍÑ…Ñ”èÍÑ…ÉÐ°4(€€€€€±…ÍÑ…Ñ”èÝ¥‘•Ð¹Ñ½‘…ä°4(€€€€€¡•±ÁQ•áÐè1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤¹±…¹Õ…•½‘”€ôô€•¸œ€ü€¹‘…Ñ”œ€è€ŸbÇf#bÈƒfûbŸn3bŸfœ°4(€€€€¤ì4(€€€¥˜€¡Í•±•Ñ•€ôô¹Õ±°¤É•ÑÕÉ¸ì4(€€€Í•ÑMÑ…Ñ”  ¤€ôø•¹€ô…Ñ•UÑ¥±Ì¹‘…Ñ•=¹±ä¡Í•±•Ñ•¤¤ì4(€ô4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤ì4(€€€™¥¹…°±½…±”€ô1½…±¥é…Ñ¥½¹Ì¹±½…±•=˜¡½¹Ñ•áÐ¤ì4(€€€™¥¹…°•¹±¥Í €ô±½…±”¹±…¹Õ…•½‘”€ôô€•¸œì4(€€€É•ÑÕÉ¸±•ÉÑ¥…±½œ 4(€€€€€€€Ñ¥Ñ±”èQ•áÐ¡•¹±¥Í €ü€¡½½Í”É•Á½ÉÐÉ…¹”œ€è€Ÿb£bŸbËffPƒj¿bËbŸbÇbÐƒbÇbœƒbŸfb«b»bŸb ƒj§fn3b¼œ¤°4(€€€€€€€½¹Ñ•¹Ðè½±Õµ¸ 4(€€€€€€€€€µ…¥¹á¥ÍM¥é”è5…¥¹á¥ÍM¥é”¹µ¥¸°4(€€€€€€€€€É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑÉ•Ñ °4(€€€€€€€€€¡¥±‘É•¸èl4(€€€€€€€€€€€Q•áÐ¡•¹±¥Í €ü€MÑ…ÉÐ‘…Ñ”œ€è€ŸbÇf#bÈƒbÓbÇf#bäœ¤°4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ø¤°4(€€€€€€€€€€€=ÕÑ±¥¹•‘	ÕÑÑ½¸¹¥½¸ 4(€€€€€€€€€€€€€½¹AÉ•ÍÍ•èÁ¥­MÑ…ÉÐ°4(€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹…±•¹‘…É}Ñ½‘…å}É½Õ¹‘•¤°4(€€€€€€€€€€€€€±…‰•°èQ•áÐ¡™½Éµ…Ñ…±•¹‘…É…Ñ”¡ÍÑ…ÉÐ°±½…±”¤¤°4(€€€€€€€€€€€€¤°4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÈ¤°4(€€€€€€€€€€€Q•áÐ¡•¹±¥Í €ü€¹‘…Ñ”œ€è€ŸbÇf#bÈƒfûbŸn3bŸfœ¤°4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ø¤°4(€€€€€€€€€€€=ÕÑ±¥¹•‘	ÕÑÑ½¸¹¥½¸ 4(€€€€€€€€€€€€€½¹AÉ•ÍÍ•èÁ¥­¹°4(€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹•Ù•¹Ñ}…Ù…¥±…‰±•}É½Õ¹‘•¤°4(€€€€€€€€€€€€€±…‰•°èQ•áÐ¡™½Éµ…Ñ…±•¹‘…É…Ñ”¡•¹°±½…±”¤¤°4(€€€€€€€€€€€€¤°4(€€€€€€€€€t°4(€€€€€€€€¤°4(€€€€€€€…Ñ¥½¹Ìèl4(€€€€€€€€€Q•áÑ	ÕÑÑ½¸¡½¹AÉ•ÍÍ•è€ ¤€ôø9…Ù¥…Ñ½È¹Á½À¡½¹Ñ•áÐ¤°¡¥±èQ•áÐ¡•¹±¥Í €ü€…¹•°œ€è€ŸbŸfb×bÇbŸfœ¤¤°4(€€€€€€€€€¥±±•‘	ÕÑÑ½¸ 4(€€€€€€€€€€€½¹AÉ•ÍÍ•è€ ¤€ôø9…Ù¥…Ñ½È¹Á½À¡½¹Ñ•áÐ°…Ñ•Q¥µ•I…¹”¡ÍÑ…ÉÐèÍÑ…ÉÐ°•¹è•¹¤¤°4(€€€€€€€€€€€¡¥±èQ•áÐ¡•¹±¥Í €ü€ÁÁ±äÉ…¹”œ€è€ŸbŸbçfbŸfƒb£bŸbËfœ¤°4(€€€€€€€€€€¤°4(€€€€€€€t°4(€€€€€€¤ì4(€ô4)ô4(4)±…ÍÌ…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½œ•áÑ•¹‘ÌMÑ…Ñ•™Õ±]¥‘•Ðì4(€½¹ÍÐ…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½œ¡íÍÕÁ•È¹­•ä°É•ÅÕ¥É•Ñ¡¥Ì¹¥¹¥Ñ¥…°°É•ÅÕ¥É•Ñ¡¥Ì¹½¹M…Ù•ô¤ì4(€™¥¹…°…Í¡‰½…É‘AÉ•™•É•¹•Ì¥¹¥Ñ¥…°ì4(€™¥¹…°ÕÑÕÉ”ñ…Í¡‰½…É‘AÉ•™•É•¹•ÌøÕ¹Ñ¥½¸¡…Í¡‰½…É‘AÉ•™•É•¹•Ì¤½¹M…Ù”ì4(€½Ù•ÉÉ¥‘”4(€MÑ…Ñ”ñ…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½œøÉ•…Ñ•MÑ…Ñ” ¤€ôø}…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½MÑ…Ñ” ¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½MÑ…Ñ”•áÑ•¹‘ÌMÑ…Ñ”ñ…Í¡‰½…É‘AÉ•™•É•¹•Í¥…±½œøì4(€±…Ñ”…Í¡‰½…É‘AÉ•™•É•¹•Ì‘É…™Ð€ôÝ¥‘•Ð¹¥¹¥Ñ¥…°ì4(€‰½½°Í…Ù¥¹œ€ô™…±Í”ì4(€MÑÉ¥¹œü•ÉÉ½Èì4(€ÍÑ…Ñ¥Œ½¹ÍÐ±…‰•±Ì€ôì4(€€€€µ•ÑÉ¥Ìœè€ŸbÓbŸb»b×Š3fbŸn0ƒfbÇf#bÐƒf ƒbÏfbŸbÇbÐœ°4(€€€€ÅÕ¥­Ñ¥½¹Ìœè€ŸfbÏn3bÇfbŸn0ƒbÏbÇn3bäœ°4(€€€€…±•ÉÑÌœè€ŸfbÓb¿bŸbÇfbŸn0ƒbçffn3bŸb«n0œ°4(€€€€±½ÝMÑ½¬œè€Ÿff#b³f#b¿n0ƒj§fœ°4(€€€€•áÁ¥É¥¹œœè€Ÿj§bŸfbŸfbŸn0ƒfbËb¿n3j¤ƒb£fƒbŸffbÛbœœ°4(€ôì4(4(€ÕÑÕÉ”ñÙ½¥øÍ…Ù” ¤…Íå¹Œì4(€€€Í•ÑMÑ…Ñ”  ¤ìÍ…Ù¥¹œ€ôÑÉÕ”ì•ÉÉ½È€ô¹Õ±°ìô¤ì4(€€€ÑÉäì4(€€€€€™¥¹…°Í…Ù•€ô…Ý…¥ÐÝ¥‘•Ð¹½¹M…Ù”¡‘É…™Ð¤ì4(€€€€€¥˜€¡µ½Õ¹Ñ•¤9…Ù¥…Ñ½È¹½˜¡½¹Ñ•áÐ¤¹Á½À¡Í…Ù•¤ì4(€€€ô…Ñ €¡•á•ÁÑ¥½¸¤ì4(€€€€€¥˜€¡µ½Õ¹Ñ•¤Í•ÑMÑ…Ñ”  ¤€ôø•ÉÉ½È€ôÉ•ÅÕ•ÍÑÉÉ½É5•ÍÍ…”¡•á•ÁÑ¥½¸¤¤ì4(€€€ô™¥¹…±±äì4(€€€€€¥˜€¡µ½Õ¹Ñ•¤Í•ÑMÑ…Ñ”  ¤€ôøÍ…Ù¥¹œ€ô™…±Í”¤ì4(€€€ô4(€ô4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø¥…±½œ 4(€€€¡¥±è½¹ÍÑÉ…¥¹•‘	½à 4(€€€€€½¹ÍÑÉ…¥¹ÑÌè½¹ÍÐ	½á½¹ÍÑÉ…¥¹ÑÌ¡µ…á]¥‘Ñ è€ÐàÀ°µ…á!•¥¡Ðè€ØàÀ¤°4(€€€€€¡¥±èA…‘‘¥¹œ 4(€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÈÀ¤°4(€€€€€€€¡¥±è½±Õµ¸¡µ…¥¹á¥ÍM¥é”è5…¥¹á¥ÍM¥é”¹µ¥¸°É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑÉ•Ñ °¡¥±‘É•¸èl4(€€€€€€€€€Q•áÐ Ÿb«fbãn3fƒb¿bŸbÓb£f#bÇb¼ƒbŸn3fƒffbÐœ°ÍÑå±”èQ¡•µ”¹½˜¡½¹Ñ•áÐ¤¹Ñ•áÑQ¡•µ”¹Ñ¥Ñ±•1…É”ü¹½Áå]¥Ñ ¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ø¤°4(€€€€€€€€€½¹ÍÐQ•áÐ Ÿb£b»bÓŠ3fbœƒbÇbœƒbÇf#bÓfƒn3bœƒb»bŸff#bÐƒj§fn3b¼ƒf ƒb«bÇb«n3b ƒffbŸn3bÐƒbÇbœƒb«bën3n3bÄƒb¿fn3b¼¸œ°ÍÑå±”èQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•¤¤°4(€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÈ¤°4(€€€€€€€€€±•á¥‰±”¡¡¥±è1¥ÍÑY¥•Ü¹‰Õ¥±‘•È 4(€€€€€€€€€€€Í¡É¥¹­]É…ÀèÑÉÕ”°4(€€€€€€€€€€€¥Ñ•µ½Õ¹Ðè‘É…™Ð¹Ý¥‘•ÑÌ¹±•¹Ñ °4(€€€€€€€€€€€¥Ñ•µ	Õ¥±‘•Èè€¡½¹Ñ•áÐ°¥¹‘•à¤ì4(€€€€€€€€€€€€€™¥¹…°¥Ñ•´€ô‘É…™Ð¹Ý¥‘•ÑÍm¥¹‘•átì4(€€€€€€€€€€€€€É•ÑÕÉ¸M•µ…¹Ñ¥Ì 4(€€€€€€€€€€€€€€€½¹Ñ…¥¹•ÈèÑÉÕ”°4(€€€€€€€€€€€€€€€±…‰•°è±…‰•±Ím¥Ñ•´¹¥‘t°4(€€€€€€€€€€€€€€€¡¥±è1¥ÍÑQ¥±” 4(€€€€€€€€€€€€€€€€€½¹Ñ•¹ÑA…‘‘¥¹œè‘•%¹Í•ÑÌ¹é•É¼°4(€€€€€€€€€€€€€€€€€Ñ¥Ñ±”èQ•áÐ¡±…‰•±Ím¥Ñ•´¹¥‘t€üü¥Ñ•´¹¥°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜÜÀÀ¤¤°4(€€€€€€€€€€€€€€€€€±•…‘¥¹œè¡•­‰½à 4(€€€€€€€€€€€€€€€€€€€Ù…±Õ”è¥Ñ•´¹Ù¥Í¥‰±”°4(€€€€€€€€€€€€€€€€€€€½¹¡…¹•èÍ…Ù¥¹œ€ü¹Õ±°€è€¡Ù…±Õ”¤€ôøÍ•ÑMÑ…Ñ”  ¤€ôø‘É…™Ð€ô‘É…™Ð¹Í•ÑY¥Í¥‰±”¡¥¹‘•à°Ù…±Õ”€üü™…±Í”¤¤°4(€€€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€€€€ÑÉ…¥±¥¹œè]É…À¡ÍÁ…¥¹œè€À°¡¥±‘É•¸èl4(€€€€€€€€€€€€€€€€€€€%½¹	ÕÑÑ½¸ 4(€€€€€€€€€€€€€€€€€€€€€Ñ½½±Ñ¥Àè€ŸbŸfb«fbŸfƒb£fƒb£bŸfbœœ°4(€€€€€€€€€€€€€€€€€€€€€½¹AÉ•ÍÍ•èÍ…Ù¥¹œñð¥¹‘•à€ôô€À€ü¹Õ±°€è€ ¤€ôøÍ•ÑMÑ…Ñ”  ¤€ôø‘É…™Ð€ô‘É…™Ð¹µ½Ù”¡¥¹‘•à°¥¹‘•à€´€Ä¤¤°4(€€€€€€€€€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹­•å‰½…É‘}…ÉÉ½Ý}ÕÁ}É½Õ¹‘•¤°4(€€€€€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€€€€€€%½¹	ÕÑÑ½¸ 4(€€€€€€€€€€€€€€€€€€€€€Ñ½½±Ñ¥Àè€ŸbŸfb«fbŸfƒb£fƒfûbŸn3n3fœ°4(€€€€€€€€€€€€€€€€€€€€€½¹AÉ•ÍÍ•èÍ…Ù¥¹œñð¥¹‘•à€ôô‘É…™Ð¹Ý¥‘•ÑÌ¹±•¹Ñ €´€Ä€ü¹Õ±°€è€ ¤€ôøÍ•ÑMÑ…Ñ”  ¤€ôø‘É…™Ð€ô‘É…™Ð¹µ½Ù”¡¥¹‘•à°¥¹‘•à€¬€Ä¤¤°4(€€€€€€€€€€€€€€€€€€€€€¥½¸è½¹ÍÐ%½¸¡%½¹Ì¹­•å‰½…É‘}…ÉÉ½Ý}‘½Ý¹}É½Õ¹‘•¤°4(€€€€€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€€€€t¤°4(€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€¤ì4(€€€€€€€€€€€ô°4(€€€€€€€€€€¤¤°4(€€€€€€€€€¥˜€¡•ÉÉ½È€„ô¹Õ±°¤€¸¸¹l4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€à¤°4(€€€€€€€€€€€M•µ…¹Ñ¥Ì¡±¥Ù•I•¥½¸èÑÉÕ”°¡¥±èQ•áÐ¡•ÉÉ½È„°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹½É…°¤¤¤°4(€€€€€€€€€t°4(€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÈ¤°4(€€€€€€€€€]É…À¡…±¥¹µ•¹Ðè]É…Á±¥¹µ•¹Ð¹•¹°ÍÁ…¥¹œè€à°ÉÕ¹MÁ…¥¹œè€à°¡¥±‘É•¸èl4(€€€€€€€€€€€Q•áÑ	ÕÑÑ½¸¡½¹AÉ•ÍÍ•èÍ…Ù¥¹œ€ü¹Õ±°€è€ ¤€ôø9…Ù¥…Ñ½È¹½˜¡½¹Ñ•áÐ¤¹Á½À ¤°¡¥±è½¹ÍÐQ•áÐ ŸbŸfb×bÇbŸfœ¤¤°4(€€€€€€€€€€€¥±±•‘	ÕÑÑ½¸¹¥½¸ 4(€€€€€€€€€€€€€½¹AÉ•ÍÍ•èÍ…Ù¥¹œ€ü¹Õ±°€èÍ…Ù”°4(€€€€€€€€€€€€€¥½¸èÍ…Ù¥¹œ€ü½¹ÍÐM¥é•‘	½à¹ÍÅÕ…É”¡‘¥µ•¹Í¥½¸è€ÄØ°¡¥±è¥ÉÕ±…ÉAÉ½É•ÍÍ%¹‘¥…Ñ½È¡ÍÑÉ½­•]¥‘Ñ è€È¤¤€è½¹ÍÐ%½¸¡%½¹Ì¹Í…Ù•}½ÕÑ±¥¹•¤°4(€€€€€€€€€€€€€±…‰•°èQ•áÐ¡Í…Ù¥¹œ€ü€Ÿb¿bÄƒb·bŸfƒbÃb»n3bÇfœ€è€ŸbÃb»n3bÇfƒjn3b¿fbŸfœ¤°4(€€€€€€€€€€€€¤°4(€€€€€€€€€t¤°4(€€€€€€€t¤°4(€€€€€€¤°4(€€€€¤°4(€€¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘M•Ñ¥½¹Q¥Ñ±”•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘M•Ñ¥½¹Q¥Ñ±”¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹•å•‰É½Ü°É•ÅÕ¥É•Ñ¡¥Ì¹Ñ¥Ñ±”°É•ÅÕ¥É•Ñ¡¥Ì¹‘•Ñ…¥±ô¤ì4(€™¥¹…°MÑÉ¥¹œ•å•‰É½Üì4(€™¥¹…°MÑÉ¥¹œÑ¥Ñ±”ì4(€™¥¹…°MÑÉ¥¹œ‘•Ñ…¥°ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€Q•áÐ¡•å•‰É½Ü°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬°™½¹ÑM¥é”è€ÄÈ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ð¤°4(€€€€€€€Q•áÐ¡Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹¥¹­••À°™½¹ÑM¥é”è€ÈÀ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ð¤°4(€€€€€€€Q•áÐ¡‘•Ñ…¥°°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•°™½¹ÑM¥é”è€ÄÈ¤¤°4(€€€€€t¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘AÉ¥½É¥Ñäì4(€½¹ÍÐ}…Í¡‰½…É‘AÉ¥½É¥Ñä¡ì4(€€€É•ÅÕ¥É•Ñ¡¥Ì¹¥°4(€€€É•ÅÕ¥É•Ñ¡¥Ì¹Ñ¥Ñ±”°4(€€€É•ÅÕ¥É•Ñ¡¥Ì¹‘•Ñ…¥°°4(€€€É•ÅÕ¥É•Ñ¡¥Ì¹¥½¸°4(€€€É•ÅÕ¥É•Ñ¡¥Ì¹‘•ÍÑ¥¹…Ñ¥½¸°4(€ô¤ì4(4(€™¥¹…°MÑÉ¥¹œ¥ì4(€™¥¹…°MÑÉ¥¹œÑ¥Ñ±”ì4(€™¥¹…°MÑÉ¥¹œ‘•Ñ…¥°ì4(€™¥¹…°%½¹…Ñ„¥½¸ì4(€™¥¹…°‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ð‘•ÍÑ¥¹…Ñ¥½¸ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘AÉ¥½É¥ÑåÑ¥½¹Ì•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘AÉ¥½É¥ÑåÑ¥½¹Ì¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹…Ñ¥½¹Ì°É•ÅÕ¥É•Ñ¡¥Ì¹½¹9…Ù¥…Ñ•ô¤ì4(4(€™¥¹…°1¥ÍÐñ}…Í¡‰½…É‘AÉ¥½É¥Ñäø…Ñ¥½¹Ìì4(€™¥¹…°Y…±Õ•¡…¹•ñ‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ðøü½¹9…Ù¥…Ñ”ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤ì4(€€€¥˜€¡…Ñ¥½¹Ì¹¥ÍµÁÑä¤ì4(€€€€€É•ÑÕÉ¸½¹ÍÐ‘µ¥¹µÁÑåMÑ…Ñ” 4(€€€€€€€¥½¸è%½¹Ì¹Ñ…Í­}…±Ñ}É½Õ¹‘•°4(€€€€€€€Ñ¥Ñ±”è€Ÿff#bÇb¼ƒff#bÇn0ƒb£bÇbŸn0ƒfûn3j¿n3bÇn0ƒfb¿bŸbÇn3b¼œ°4(€€€€€€€‘•Ñ…¥°è€ŸbÏfbŸbÇbÓb0ƒff#b³f#b¿n0ƒf ƒb¿bÇb»f#bŸbÏb¨ƒb³b¿n3b¿n0ƒb£bÇbŸn0ƒbŸfb¿bŸfƒb¿bÄƒbŸn3fƒb£bŸbËfƒb¿n3b¿fƒffn3Š3bÓf#b¼¸œ°4(€€€€€€¤ì4(€€€ô4(4(€€€É•ÑÕÉ¸}…Í¡‰½…É‘A…¹•° 4(€€€€€Ñ¥Ñ±”è€ŸbŸf#ff#n3b«Š3fbŸn0ƒfûn3j¿n3bÇn0œ°4(€€€€€¥½¸è%½¹Ì¹Á±…å±¥ÍÑ}…‘‘}¡•­}¥É±•}½ÕÑ±¥¹•°4(€€€€€¡¥±è½±Õµ¸ 4(€€€€€€€¡¥±‘É•¸èl4(€€€€€€€€€™½È€¡™¥¹…°…Ñ¥½¸¥¸…Ñ¥½¹Ì¤4(€€€€€€€€€€€…É 4(€€€€€€€€€€€€€µ…É¥¸è½¹ÍÐ‘•%¹Í•ÑÌ¹½¹±ä¡‰½ÑÑ½´è€à¤°4(€€€€€€€€€€€€€¡¥±è%¹­]•±° 4(€€€€€€€€€€€€€€€­•äèY…±Õ•-•ä ‘…Í¡‰½…ÉµÁÉ¥½É¥Ñä´‘í…Ñ¥½¸¹¥‘ôœ¤°4(€€€€€€€€€€€€€€€½¹Q…Àè½¹9…Ù¥…Ñ”€ôô¹Õ±°€ü¹Õ±°€è€ ¤€ôø½¹9…Ù¥…Ñ”„¡…Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸¤°4(€€€€€€€€€€€€€€€‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹¥ÉÕ±…È ÄØ¤°4(€€€€€€€€€€€€€€€™½ÕÍ½±½Èè‘µ¥¹½±½ÉÌ¹µ¥¹ÑM½™Ð°4(€€€€€€€€€€€€€€€¡¥±è1¥ÍÑQ¥±” 4(€€€€€€€€€€€€€€€€€±•…‘¥¹œè%½¸¡…Ñ¥½¸¹¥½¸°½±½Èè‘µ¥¹½±½ÉÌ¹½É…°¤°4(€€€€€€€€€€€€€€€€€Ñ¥Ñ±”èQ•áÐ¡…Ñ¥½¸¹Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ¤¤°4(€€€€€€€€€€€€€€€€€ÍÕ‰Ñ¥Ñ±”èQ•áÐ¡…Ñ¥½¸¹‘•Ñ…¥°¤°4(€€€€€€€€€€€€€€€€€ÑÉ…¥±¥¹œè½¹ÍÐ%½¸¡%½¹Ì¹…ÉÉ½Ý}‰…­}É½Õ¹‘•°Í¥é”è€ÈÀ¤°4(€€€€€€€€€€€€€€€€€µ¥¹Y•ÉÑ¥…±A…‘‘¥¹œè€ÄÀ°4(€€€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€€€¤°4(€€€€€€€€€€€€¤°4(€€€€€€€t°4(€€€€€€¤°4(€€€€¤ì4(€ô4)ô4(4)±…ÍÌ}…Í¡‰½…É‘EÕ¥­Ñ¥½¹Ì•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘EÕ¥­Ñ¥½¹Ì¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹½¹9…Ù¥…Ñ•ô¤ì4(€™¥¹…°Y…±Õ•¡…¹•ñ‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ðøü½¹9…Ù¥…Ñ”ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤ì4(€€€™¥¹…°Í•ÍÍ¥½¸€ô=Ý¹•ÉM•ÍÍ¥½¸¹¥¹ÍÑ…¹”ì4(€€€‰½½°…¸¡MÑÉ¥¹œÁ•Éµ¥ÍÍ¥½¸¤€ôø€…Í•ÍÍ¥½¸¹¥ÍÕÑ¡•¹Ñ¥…Ñ•ñðÍ•ÍÍ¥½¸¹…¸¡Á•Éµ¥ÍÍ¥½¸¤ì4(€€€™¥¹…°…Ñ¥½¹Ì€ôl4(€€€€€¥˜€¡…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹ÁÉ½‘ÕÑÍI•…¤¤4(€€€€€€€…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹ÁÉ½‘ÕÑÍ]É¥Ñ”¤4(€€€€€€€€€€€€ü€¡Ñ¥Ñ±”è€Ÿb¯b£b¨ƒfb·b×f#fœ°‘•Ñ…¥°è€Ÿfb·b×f#fƒb³b¿n3b¼ƒbÇbœƒb£fŠ3b×f#bÇb¨ƒfûn3bÓŠ3ff#n3bÌƒb£bÏbŸbËn3b¼¸œ°¥½¸è%½¹Ì¹…‘‘}‰½á}É½Õ¹‘•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹ÁÉ½‘ÕÑÌ¤4(€€€€€€€€€€€€è€¡Ñ¥Ñ±”è€ŸfbÓbŸfb¿fƒfb·b×f#fbŸb¨œ°‘•Ñ…¥°è€ŸfbÓb»b×bŸb«b0ƒfn3fb¨ƒf ƒf#bÛbçn3b¨ƒbŸfb«bÓbŸbÄƒbÇbœƒb£bÇbÇbÏn0ƒj§fn3b¼¸œ°¥½¸è%½¹Ì¹¥¹Ù•¹Ñ½Éå|É}½ÕÑ±¥¹•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹ÁÉ½‘ÕÑÌ¤°4(€€€€€¥˜€¡…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹½É‘•ÉÍI•…¤¤4(€€€€€€€€¡Ñ¥Ñ±”è€Ÿfûn3j¿n3bÇn0ƒbÏfbŸbÇbÓŠ3fbœœ°‘•Ñ…¥°è€ŸbÏfbŸbÇbÓŠ3fbŸn0ƒb³b¿n3b¼ƒf ƒffb«bãbÄƒfûbÇb¿bŸb»b¨ƒbÇbœƒb£b£n3fn3b¼¸œ°¥½¸è%½¹Ì¹É••¥ÁÑ}±½¹}É½Õ¹‘•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹½É‘•ÉÌ¤°4(€€€€€¥˜€¡…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹¥¹Ù•¹Ñ½ÉåI•…¤¤4(€€€€€€€…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹¥¹Ù•¹Ñ½Éå]É¥Ñ”¤4(€€€€€€€€€€€€ü€¡Ñ¥Ñ±”è€ŸbŸb×fbŸb´ƒff#b³f#b¿n0œ°‘•Ñ…¥°è€Ÿb¿bÇn3bŸfb¨ƒj§bŸfbœƒn3bœƒbŸb×fbŸb´ƒn3j¤M-TƒbÇbœƒb¯b£b¨ƒj§fn3b¼¸œ°¥½¸è%½¹Ì¹¥¹Ù•¹Ñ½Éå|É}É½Õ¹‘•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹¥¹Ù•¹Ñ½Éä¤4(€€€€€€€€€€€€è€¡Ñ¥Ñ±”è€ŸfbÓbŸfb¿fƒff#b³f#b¿n0œ°‘•Ñ…¥°è€Ÿff#b³f#b¿n0ƒj§bŸfbœƒf ƒb£jŠ3fbŸn0ƒfbËb¿n3j¤ƒbŸffbÛbœƒbÇbœƒb£bÇbÇbÏn0ƒj§fn3b¼¸œ°¥½¸è%½¹Ì¹Ý…É•¡½ÕÍ•}½ÕÑ±¥¹•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹¥¹Ù•¹Ñ½Éä¤°4(€€€€€¥˜€¡…¸¡‘µ¥¹A•Éµ¥ÍÍ¥½¹Ì¹½ÉÁ½É…Ñ•I•…¤¤4(€€€€€€€€¡Ñ¥Ñ±”è€Ÿfûn3j¿n3bÇn0ƒfbÇf#bÐƒbÏbŸbËfbŸfn0œ°‘•Ñ…¥°è€Ÿb¿bÇb»f#bŸbÏb«Š3fbŸn0ƒb³b¿n3b¼ƒbÇbœƒbŸbÈƒb¿bÏb¨ƒfb¿fn3b¼¸œ°¥½¸è%½¹Ì¹‰ÕÍ¥¹•ÍÍ}•¹Ñ•É}É½Õ¹‘•°‘•ÍÑ¥¹…Ñ¥½¸è‘µ¥¹5½‘Õ±”¹½ÉÁ½É…Ñ”¤°4(€€€tì4(€€€¥˜€¡…Ñ¥½¹Ì¹¥ÍµÁÑä¤ì4(€€€€€É•ÑÕÉ¸½¹ÍÐ‘µ¥¹µÁÑåMÑ…Ñ” 4(€€€€€€€¥½¸è%½¹Ì¹±½­}½ÕÑ±¥¹•}É½Õ¹‘•°4(€€€€€€€Ñ¥Ñ±”è€ŸfbÏn3bÄƒbçffn3bŸb«n0ƒb£bÇbŸn0ƒffbÐƒbÓfbœƒfbçbŸfƒfn3bÏb¨œ°4(€€€€€€€‘•Ñ…¥°è€Ÿb£bÇbŸn0ƒb¿bÏb«bÇbÏn0ƒb£fƒfb·b×f#fbŸb«b0ƒbÏfbŸbÇbÓŠ3fbœƒn3bœƒbŸfb£bŸbÄƒb£bœƒfb¿n3bÄƒfbÇf#bÓj¿bŸfƒffbŸffj¼ƒj§fn3b¼¸ƒj¿bËbŸbÇbÐƒb¿bŸbÓb£f#bÇb¼ƒffjfbŸfƒfbŸb£fƒfbÓbŸfb¿fƒbŸbÏb¨¸œ°4(€€€€€€¤ì4(€€€ô4(€€€É•ÑÕÉ¸1…å½ÕÑ	Õ¥±‘•È¡‰Õ¥±‘•Èè€¡½¹Ñ•áÐ°½¹ÍÑÉ…¥¹ÑÌ¤ì4(€€€€€™¥¹…°½±Õµ¹Ì€ô½¹ÍÑÉ…¥¹ÑÌ¹µ…á]¥‘Ñ €øô€ÄÀÔÀ€ü€Ð€è½¹ÍÑÉ…¥¹ÑÌ¹µ…á]¥‘Ñ €øô€ØÔÀ€ü€È€è€Äì4(€€€€€™¥¹…°Ý¥‘Ñ €ô€¡½¹ÍÑÉ…¥¹ÑÌ¹µ…á]¥‘Ñ €´€ ¡½±Õµ¹Ì€´€Ä¤€¨€ÄÈ¤¤€¼½±Õµ¹Ìì4(€€€€€É•ÑÕÉ¸]É…À¡ÍÁ…¥¹œè€ÄÈ°ÉÕ¹MÁ…¥¹œè€ÄÈ°¡¥±‘É•¸èl4(€€€€€€€™½È€¡™¥¹…°…Ñ¥½¸¥¸…Ñ¥½¹Ì¤4(€€€€€€€€€M¥é•‘	½à¡Ý¥‘Ñ èÝ¥‘Ñ °¡¥±è}…Í¡‰½…É‘EÕ¥­Ñ¥½¸¡…Ñ¥½¸è…Ñ¥½¸°½¹AÉ•ÍÍ•è½¹9…Ù¥…Ñ”€ôô¹Õ±°€ü¹Õ±°€è€ ¤€ôø½¹9…Ù¥…Ñ”„¡‘µ¥¹9…Ù¥…Ñ¥½¹%¹Ñ•¹Ð¡µ½‘Õ±”è…Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸°½É‘•É¥±Ñ•Èè…Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸€ôô‘µ¥¹5½‘Õ±”¹½É‘•ÉÌ€ü‘µ¥¹=É‘•É¥±Ñ•È¹…Ý…¥Ñ¥¹A…åµ•¹Ð€è‘µ¥¹=É‘•É¥±Ñ•È¹…±°¤¤¤¤°4(€€€€€t¤ì4(€€€ô¤ì4(€ô4)ô4(4)±…ÍÌ}…Í¡‰½…É‘EÕ¥­Ñ¥½¸•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘EÕ¥­Ñ¥½¸¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹…Ñ¥½¸°É•ÅÕ¥É•Ñ¡¥Ì¹½¹AÉ•ÍÍ•‘ô¤ì4(€™¥¹…°€¡íMÑÉ¥¹œÑ¥Ñ±”°MÑÉ¥¹œ‘•Ñ…¥°°%½¹…Ñ„¥½¸°‘µ¥¹5½‘Õ±”‘•ÍÑ¥¹…Ñ¥½¹ô¤…Ñ¥½¸ì4(€™¥¹…°Y½¥‘…±±‰…¬ü½¹AÉ•ÍÍ•ì4(4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôøM•µ…¹Ñ¥Ì 4(€€€€€€€‰ÕÑÑ½¸èÑÉÕ”°4(€€€€€€€•¹…‰±•è½¹AÉ•ÍÍ•€„ô¹Õ±°°4(€€€€€€€±…‰•°è€œ‘í…Ñ¥½¸¹Ñ¥Ñ±•ôè€‘í…Ñ¥½¸¹‘•Ñ…¥±ôœ°4(€€€€€€€¡¥±è…É 4(€€€€€€€€€¡¥±è%¹­]•±° 4(€€€€€€€€€€€­•äèY…±Õ•-•ä ‘…Í¡‰½…Éµ…Ñ¥½¸´‘í…Ñ¥½¸¹‘•ÍÑ¥¹…Ñ¥½¸¹¹…µ•ôœ¤°4(€€€€€€€€€€€½¹Q…Àè½¹AÉ•ÍÍ•°4(€€€€€€€€€€€™½ÕÍ½±½Èè‘µ¥¹½±½ÉÌ¹µ¥¹ÑM½™Ð°4(€€€€€€€€€€€‰½É‘•ÉI…‘¥ÕÌè	½É‘•ÉI…‘¥ÕÌ¹¥ÉÕ±…È Ø¤°4(€€€€€€€€€€€¡¥±è1…å½ÕÑ	Õ¥±‘•È¡‰Õ¥±‘•Èè€¡½¹Ñ•áÐ°½¹ÍÑÉ…¥¹ÑÌ¤ì4(€€€€€€€€€€€€€™¥¹…°½µÁ…Ð€ô½¹ÍÑÉ…¥¹ÑÌ¹µ…á]¥‘Ñ €ð€ÌÈÀì4(€€€€€€€€€€€€€™¥¹…°¥½¸€ô½¹Ñ…¥¹•È 4(€€€€€€€€€€€€€€€Ý¥‘Ñ è€ÐÈ°4(€€€€€€€€€€€€€€€¡•¥¡Ðè€ÐÈ°4(€€€€€€€€€€€€€€€‘•½É…Ñ¥½¸è½¹ÍÐ	½á•½É…Ñ¥½¸¡½±½Èè‘µ¥¹½±½ÉÌ¹µ¥¹ÑM½™Ð°Í¡…Á”è	½áM¡…Á”¹¥É±”¤°4(€€€€€€€€€€€€€€€¡¥±è%½¸¡…Ñ¥½¸¹¥½¸°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬¤°4(€€€€€€€€€€€€€€¤ì4(€€€€€€€€€€€€€™¥¹…°Ñ¥Ñ±”€ôQ•áÐ¡…Ñ¥½¸¹Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹­••À¤¤ì4(€€€€€€€€€€€€€™¥¹…°‘•Ñ…¥°€ôQ•áÐ¡…Ñ¥½¸¹‘•Ñ…¥°°µ…á1¥¹•Ìè€È°½Ù•É™±½ÜèQ•áÑ=Ù•É™±½Ü¹•±±¥ÁÍ¥Ì°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹ÑM¥é”è€ÄÈ°¡•¥¡Ðè€Ä¸Ô°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬¤¤ì4(€€€€€€€€€€€€€É•ÑÕÉ¸A…‘‘¥¹œ 4(€€€€€€€€€€€€€€€Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÄØ¤°4(€€€€€€€€€€€€€€€¡¥±è½µÁ…Ð4(€€€€€€€€€€€€€€€€€€€€ü½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€€€€€€€€€€€€€€€€€±¥¸¡…±¥¹µ•¹Ðè±¥¹µ•¹Ñ¥É•Ñ¥½¹…°¹•¹Ñ•É¹°¡¥±è½¹ÍÐ%½¸¡%½¹Ì¹…ÉÉ½Ý}‰…­}É½Õ¹‘•°Í¥é”è€Äà°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬¤¤°4(€€€€€€€€€€€€€€€€€€€€€€€¥½¸°4(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÀ¤°4(€€€€€€€€€€€€€€€€€€€€€€€Ñ¥Ñ±”°4(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ø¤°4(€€€€€€€€€€€€€€€€€€€€€€€‘•Ñ…¥°°4(€€€€€€€€€€€€€€€€€€€€€t¤4(€€€€€€€€€€€€€€€€€€€€èI½Ü¡¡¥±‘É•¸èl4(€€€€€€€€€€€€€€€€€€€€€€€¥½¸°4(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡Ý¥‘Ñ è€ÄÈ¤°4(€€€€€€€€€€€€€€€€€€€€€€€áÁ…¹‘•¡¡¥±è½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èmÑ¥Ñ±”°½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ð¤°‘•Ñ…¥±t¤¤°4(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡Ý¥‘Ñ è€Ø¤°4(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍÐ%½¸¡%½¹Ì¹…ÉÉ½Ý}‰…­}É½Õ¹‘•°Í¥é”è€Äà°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬¤°4(€€€€€€€€€€€€€€€€€€€€€t¤°4(€€€€€€€€€€€€€€¤ì4(€€€€€€€€€€€ô¤°4(€€€€€€€€€€¤°4(€€€€€€€€¤°4(€€€€€€¤ì4)ô4(4)±…ÍÌ}…Í¡‰½…É‘A…¹•°•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ}…Í¡‰½…É‘A…¹•°¡íÉ•ÅÕ¥É•Ñ¡¥Ì¹Ñ¥Ñ±”°É•ÅÕ¥É•Ñ¡¥Ì¹¥½¸°É•ÅÕ¥É•Ñ¡¥Ì¹¡¥±‘ô¤ì4(€™¥¹…°MÑÉ¥¹œÑ¥Ñ±”ì4(€™¥¹…°%½¹…Ñ„¥½¸ì4(€™¥¹…°]¥‘•Ð¡¥±ì4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôø…É¡¡¥±èA…‘‘¥¹œ¡Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° ÈÀ¤°¡¥±è½±Õµ¸¡É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€]É…À¡É½ÍÍá¥Í±¥¹µ•¹Ðè]É…ÁÉ½ÍÍ±¥¹µ•¹Ð¹•¹Ñ•È°ÍÁ…¥¹œè€à°¡¥±‘É•¸èm%½¸¡¥½¸°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬¤°Q•áÐ¡Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ°™½¹ÑM¥é”è€ÄØ¤¥t¤°4(€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÈ¤°¡¥±°4(€t¤¤¤ì4)ô4(4)±…ÍÌ5•ÑÉ¥…É•áÑ•¹‘ÌMÑ…Ñ•±•ÍÍ]¥‘•Ðì4(€½¹ÍÐ5•ÑÉ¥…É¡Ñ¡¥Ì¹Ñ¥Ñ±”°Ñ¡¥Ì¹Ù…±Õ”°Ñ¡¥Ì¹¥½¸°íÍÕÁ•È¹­•ä°Ñ¡¥Ì¹Ñ¥¹Ð€ô‘µ¥¹½±½ÉÌ¹µ¥¹ÑM½™Ð°Ñ¡¥Ì¹½¹Q…Áô¤ì4(€™¥¹…°MÑÉ¥¹œÑ¥Ñ±”ì4(€™¥¹…°MÑÉ¥¹œÙ…±Õ”ì4(€™¥¹…°%½¹…Ñ„¥½¸ì4(€™¥¹…°½±½ÈÑ¥¹Ðì4(€™¥¹…°Y½¥‘…±±‰…¬ü½¹Q…Àì4(€½Ù•ÉÉ¥‘”4(€]¥‘•Ð‰Õ¥±¡	Õ¥±‘½¹Ñ•áÐ½¹Ñ•áÐ¤€ôøM¥é•‘	½à 4(€€€Ý¥‘Ñ è€ÈÈÐ°4(€€€¡¥±è½¹ÍÑÉ…¥¹•‘	½à 4(€€€€€½¹ÍÑÉ…¥¹ÑÌè½¹ÍÐ	½á½¹ÍÑÉ…¥¹ÑÌ¡µ¥¹!•¥¡Ðè€ÄÈØ¤°4(€€€€€¡¥±è…É 4(€€€€€€€±¥Á	•¡…Ù¥½Èè±¥À¹…¹Ñ¥±¥…Ì°4(€€€€€€€¡¥±è%¹­]•±° 4(€€€€€€€€€½¹Q…Àè½¹Q…À°4(€€€€€€€€€¡¥±èA…‘‘¥¹œ¡Á…‘‘¥¹œè½¹ÍÐ‘•%¹Í•ÑÌ¹…±° Äà¤°¡¥±è½±Õµ¸¡µ…¥¹á¥ÍM¥é”è5…¥¹á¥ÍM¥é”¹µ¥¸°É½ÍÍá¥Í±¥¹µ•¹ÐèÉ½ÍÍá¥Í±¥¹µ•¹Ð¹ÍÑ…ÉÐ°¡¥±‘É•¸èl4(€€€€€€€€€€€¥É±•Ù…Ñ…È¡‰…­É½Õ¹‘½±½ÈèÑ¥¹Ð°™½É•É½Õ¹‘½±½Èè‘µ¥¹½±½ÉÌ¹¥¹¬°¡¥±è%½¸¡¥½¸¤¤°4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€ÄÈ¤°4(€€€€€€€€€€€Q•áÐ¡Ñ¥Ñ±”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡½±½Èè‘µ¥¹½±½ÉÌ¹µÕÑ•°™½¹ÑM¥é”è€ÄÈ°™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜÜÀÀ¤¤°4(€€€€€€€€€€€½¹ÍÐM¥é•‘	½à¡¡•¥¡Ðè€Ì¤°4(€€€€€€€€€€€Q•áÐ¡Ù…±Õ”°ÍÑå±”è½¹ÍÐQ•áÑMÑå±”¡™½¹Ñ]•¥¡Ðè½¹Ñ]•¥¡Ð¹ÜäÀÀ°™½¹ÑM¥é”è€ÄÜ°½±½Èè‘µ¥¹½±½ÉÌ¹¥¹­••À¤¤°4(€€€€€€€€€t¤¤°4(€€€€€€€€¤°4(€€€€€€¤°4(€€€€¤°4(€€¤ì4)ô4(4(4(4(4

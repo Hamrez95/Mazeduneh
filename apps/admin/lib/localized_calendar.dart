@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'formatters.dart';
+import 'store_timezone.dart';
 
 const _jalaliMonths = <String>[
   'فروردین',
@@ -77,7 +78,11 @@ String formatCalendarDate(DateTime gregorian, Locale locale) {
 }
 
 String formatCalendarDateTime(DateTime value, Locale locale) {
-  final date = value.toLocal();
+  return formatStoreWallDateTime(storeUtcToWallTime(value), locale);
+}
+
+/// Formats a date/time whose components already represent store wall time.
+String formatStoreWallDateTime(DateTime date, Locale locale) {
   final clock =
       '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   if (usesJalaliCalendar(locale)) {
@@ -95,6 +100,9 @@ String formatLocalizedDate(BuildContext context, DateTime value) =>
 
 String formatLocalizedDateTime(BuildContext context, DateTime value) =>
     formatCalendarDateTime(value, Localizations.localeOf(context));
+
+String formatLocalizedStoreWallDateTime(BuildContext context, DateTime value) =>
+    formatStoreWallDateTime(value, Localizations.localeOf(context));
 
 DateTime? parseCalendarDate(String? value, Locale locale) {
   final text = value?.trim() ?? '';
@@ -188,7 +196,7 @@ class JalaliCalendarDelegate extends CalendarDelegate<DateTime> {
   const JalaliCalendarDelegate();
 
   @override
-  DateTime now() => _toJalaliDate(DateTime.now());
+  DateTime now() => _toJalaliDate(storeWallTimeNow());
 
   @override
   DateTime dateOnly(DateTime date) => DateUtils.dateOnly(date);

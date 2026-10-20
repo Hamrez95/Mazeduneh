@@ -1,1697 +1,1 @@
-using System.Text.Json;
-using System.Text;
-using System.Security.Cryptography;
-using Microsoft.Extensions.Options;
-using Npgsql;
-
-public static class OrderManagementModule
-{
-    public static IServiceCollection AddOrderManagement(this IServiceCollection services)
-    {
-        services.AddSingleton<OrderManagementDatabase>();
-        return services;
-    }
-
-    public static IEndpointRouteBuilder MapOrderManagement(this IEndpointRouteBuilder endpoints)
-    {
-        var admin = endpoints.MapGroup("/api/v1/admin").WithTags("Admin Orders");
-
-        admin.MapGet("/orders", async (
-            string? state,
-            string? q,
-            int? limit,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!IsValidOrderFilter(state))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["ÙˆØ¶Ø¹ÛŒØª Ø³ÙØ§Ø±Ø´ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª."] });
-            if (q?.Length > 120)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["Ø¹Ø¨Ø§Ø±Øª Ø¬Ø³Øªâ€ŒÙˆØ¬Ùˆ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û²Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."] });
-            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["Ø¨Ø§Ø²Ù‡Ù” Ø²Ù…Ø§Ù†ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³ØªØ› Ø´Ø±ÙˆØ¹ Ùˆ Ù¾Ø§ÛŒØ§Ù† Ù…Ø¹ØªØ¨Ø± Ø±Ø§ Ø­Ø¯Ø§Ú©Ø«Ø± Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ø³Ø§Ù„ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯."] });
-            var rows = await database.ListAsync(
-                state, q, Math.Clamp(limit ?? 100, 1, 250), cancellationToken,
-                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
-            return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/orders/export.csv", async (
-            string? state,
-            string? q,
-            int? limit,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!IsValidOrderFilter(state))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["state"] = ["ÙˆØ¶Ø¹ÛŒØª Ø³ÙØ§Ø±Ø´ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª."] });
-            if (q?.Length > 120)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["q"] = ["Ø¹Ø¨Ø§Ø±Øª Ø¬Ø³Øªâ€ŒÙˆØ¬Ùˆ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û²Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."] });
-            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["Ø¨Ø§Ø²Ù‡Ù” Ø²Ù…Ø§Ù†ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³ØªØ› Ø´Ø±ÙˆØ¹ Ùˆ Ù¾Ø§ÛŒØ§Ù† Ù…Ø¹ØªØ¨Ø± Ø±Ø§ Ø­Ø¯Ø§Ú©Ø«Ø± Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ø³Ø§Ù„ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯."] });
-            var orders = await database.ListAsync(
-                state, q, Math.Clamp(limit ?? 1_000, 1, 5_000), cancellationToken,
-                CustomerPrivacy.CanReadPii(context), period?.From, period?.To);
-            static string Csv(object? value)
-            {
-                var text = value?.ToString() ?? string.Empty;
-                return $"\"{text.Replace("\"", "\"\"")}\"";
-            }
-            var builder = new StringBuilder("\uFEFFØ´Ù†Ø§Ø³Ù‡ Ø³ÙØ§Ø±Ø´,Ù†ÙˆØ¹ Ø³ÙØ§Ø±Ø´,Ù…Ø´ØªØ±ÛŒ,Ù…ÙˆØ¨Ø§ÛŒÙ„,Ø´Ù‡Ø±,ÙˆØ¶Ø¹ÛŒØª,Ù…Ø¨Ù„Øº,Ø§Ø±Ø²,ØªØ¹Ø¯Ø§Ø¯ Ø§Ù‚Ù„Ø§Ù…,Ø²Ù…Ø§Ù† Ø«Ø¨Øª,ÙˆØ¶Ø¹ÛŒØª Ù¾Ø±Ø¯Ø§Ø®Øª,Ø´Ù†Ø§Ø³Ù‡ Ù¾Ø±Ø¯Ø§Ø®Øª\n");
-            foreach (var rawOrder in orders)
-            {
-                var order = OrderPrivacy.Project(rawOrder, context);
-                builder.AppendJoin(',', new[] { Csv(order.Id), Csv(order.IsPrivate ? "Ø®ØµÙˆØµÛŒ" : "Ø³Ø§ÛŒØª"), Csv(order.CustomerName), Csv(order.Mobile), Csv($"{order.Province}ØŒ {order.City}"),
-                    Csv(order.State), Csv(order.Payable.ToString("0.##")), Csv(order.Currency), Csv(order.LineCount),
-                    Csv(order.CreatedAt.ToString("O")), Csv(order.PaymentState), Csv(order.PaymentReference) }).Append('\n');
-            }
-            return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-orders.csv");
-        }).AddEndpointFilter<OwnerAuthorizationFilter>()
-          .AddEndpointFilter<StepUpAuthorizationFilter>()
-          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.OrdersExport));
-
-        admin.MapGet("/orders/{orderId:guid}", async (
-            Guid orderId,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var detail = await database.GetDetailAsync(orderId, cancellationToken);
-            return detail is null ? Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." }) : Results.Ok(OrderPrivacy.Project(detail, context));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/orders/{orderId:guid}/invoice", async (
-            Guid orderId,
-            OrderManagementDatabase database,
-            HttpResponse response,
-            CancellationToken cancellationToken) =>
-        {
-            var detail = await database.GetDetailAsync(orderId, cancellationToken);
-            if (detail is null) return Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." });
-            response.Headers.ContentDisposition = $"inline; filename=\"mazeduneh-invoice-{orderId:N}.html\"";
-            return Results.Content(InvoiceRenderer.Render(detail.ToCheckoutOrder()), "text/html; charset=utf-8", Encoding.UTF8);
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/orders/{orderId:guid}/packing-slip", async (
-            Guid orderId,
-            OrderManagementDatabase database,
-            HttpResponse response,
-            CancellationToken cancellationToken) =>
-        {
-            var detail = await database.GetDetailAsync(orderId, cancellationToken);
-            if (detail is null) return Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." });
-            response.Headers.ContentDisposition = $"inline; filename=\"mazeduneh-packing-slip-{orderId:N}.html\"";
-            return Results.Content(PackingSlipRenderer.Render(detail.ToCheckoutOrder()), "text/html; charset=utf-8", Encoding.UTF8);
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPost("/orders/{orderId:guid}/notes", async (
-            Guid orderId,
-            AdminOrderNoteInput input,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (string.IsNullOrWhiteSpace(input.Note) || input.Note.Trim().Length > 2_000)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(input.Note)] = ["ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û± ØªØ§ Û²Û°Û°Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."] });
-            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var note = await database.AddNoteAsync(orderId, input.Note, actor, cancellationToken);
-            return note is null ? Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." }) : Results.Created($"/api/v1/admin/orders/{orderId}/notes/{note.Id}", OrderPrivacy.Project(note, context));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPost("/orders/private", async (
-            CheckoutRequest request,
-            CheckoutDatabase checkout,
-            AdminAuditLogDatabase audit,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var cleanRequest = request with { CouponCode = null, MarketingConsent = false };
-            var errors = cleanRequest.Validate();
-            if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
-            if (principal is null) return Results.Unauthorized();
-            var idempotencyKey = $"private-order:{Guid.NewGuid():N}";
-            var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(cleanRequest))));
-            var created = await checkout.CreateAsync(idempotencyKey, fingerprint, cleanRequest, cancellationToken, isPrivate: true);
-            if (created.Status == CheckoutStatus.OutOfStock)
-                return Results.Conflict(new { message = created.Message, unavailableSkus = created.UnavailableSkus });
-            if (created.Status == CheckoutStatus.Conflict)
-                return Results.Conflict(new { message = created.Message });
-            if (created.Status != CheckoutStatus.Created || created.Order is null)
-                return Results.Problem("Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø®ØµÙˆØµÛŒ Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯.", statusCode: StatusCodes.Status503ServiceUnavailable);
-            var order = created.Order;
-            await audit.RecordAsync(principal.Email, "order.private-created", "Order", order.Id.ToString("D"), null,
-                new { order.Payable, Currency = order.Currency, LineCount = order.Lines.Count, order.ShippingMethod },
-                "Ø«Ø¨Øª Ø³ÙØ§Ø±Ø´ Ø³ÙØ§Ø±Ø´ÛŒ ÙÙ‚Ø· Ø¨Ø±Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§Øª Ø¯Ø§Ø®Ù„ÛŒØ› Ø¯Ø± Ø³Ø§ÛŒØª Ùˆ Ø­Ø³Ø§Ø¨ Ù…Ø´ØªØ±ÛŒ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.", context.TraceIdentifier,
-                cancellationToken, principal.StoreId);
-            return Results.Created($"/api/v1/admin/orders/{order.Id}", new
-            {
-                id = order.Id,
-                order.Payable,
-                order.Currency,
-                state = order.State,
-                lineCount = order.Lines.Count,
-                createdAt = order.CreatedAt,
-                isPrivate = true
-            });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPost("/orders/{orderId:guid}/internal-costs", async (
-            Guid orderId,
-            AdminOrderInternalCostInput input,
-            OrderManagementDatabase database,
-            AdminAuditLogDatabase audit,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var errors = new Dictionary<string, string[]>();
-            if (string.IsNullOrWhiteSpace(input.Title) || input.Title.Trim().Length > 160)
-                errors[nameof(input.Title)] = ["Ø¹Ù†ÙˆØ§Ù† Ù‡Ø²ÛŒÙ†Ù‡ Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û± ØªØ§ Û±Û¶Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."];
-            if (input.Amount is <= 0 or > 1_000_000_000_000)
-                errors[nameof(input.Amount)] = ["Ù…Ø¨Ù„Øº Ù‡Ø²ÛŒÙ†Ù‡ Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ØµÙØ± Ùˆ Ø­Ø¯Ø§Ú©Ø«Ø± ÛŒÚ©â€ŒÙ‡Ø²Ø§Ø± Ù…ÛŒÙ„ÛŒØ§Ø±Ø¯ Ø±ÛŒØ§Ù„ Ø¨Ø§Ø´Ø¯."];
-            if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
-            if (principal is null) return Results.Unauthorized();
-            var cost = await database.AddInternalCostAsync(orderId, input, principal.Email,
-                context.TraceIdentifier, principal.StoreId, audit, cancellationToken);
-            return cost is null
-                ? Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." })
-                : Results.Created($"/api/v1/admin/orders/{orderId}/internal-costs/{cost.Id}", cost);
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapDelete("/orders/{orderId:guid}/internal-costs/{costId:guid}", async (
-            Guid orderId,
-            Guid costId,
-            OrderManagementDatabase database,
-            AdminAuditLogDatabase audit,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
-            if (principal is null) return Results.Unauthorized();
-            var removed = await database.RemoveInternalCostAsync(orderId, costId, principal.Email,
-                context.TraceIdentifier, principal.StoreId, audit, cancellationToken);
-            return removed ? Results.NoContent() : Results.NotFound(new { message = "Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø§Ø®Ù„ÛŒ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPatch("/orders/{orderId:guid}/shipping", async (
-            Guid orderId,
-            AdminShipmentUpdateInput input,
-            OrderManagementDatabase database,
-            AdminAuditLogDatabase audit,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var errors = new Dictionary<string, string[]>();
-            if (input.Carrier is { Length: > 120 }) errors[nameof(input.Carrier)] = ["Ù†Ø§Ù… Ø´Ø±Ú©Øª Ø­Ù…Ù„ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û²Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."];
-            if (input.TrackingCode is { Length: > 120 }) errors[nameof(input.TrackingCode)] = ["Ú©Ø¯ Ø±Ù‡Ú¯ÛŒØ±ÛŒ Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û²Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."];
-            if (input.UpdateActualShippingCost && (input.ActualShippingCost is < 0 or > 1_000_000_000)) errors[nameof(input.ActualShippingCost)] = ["Ù‡Ø²ÛŒÙ†Ù‡ ÙˆØ§Ù‚Ø¹ÛŒ Ø§Ø±Ø³Ø§Ù„ Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† ØµÙØ± ØªØ§ ÛŒÚ© Ù…ÛŒÙ„ÛŒØ§Ø±Ø¯ Ø¨Ø§Ø´Ø¯."];
-            if (string.IsNullOrWhiteSpace(input.Reason) || input.Reason.Trim().Length > 500)
-                errors[nameof(input.Reason)] = ["Ø¯Ù„ÛŒÙ„ Ø«Ø¨Øª ÛŒØ§ Ø§ØµÙ„Ø§Ø­ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ø§Ø±Ø³Ø§Ù„ Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û± ØªØ§ ÛµÛ°Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."];
-            if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
-            if (principal is null) return Results.Unauthorized();
-            var updated = await database.UpdateShippingAsync(
-                orderId, input, principal.Email, context.TraceIdentifier, audit, cancellationToken);
-            return updated is null ? Results.NotFound(new { message = "Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯." }) : Results.Ok(OrderPrivacy.Project(updated, context));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>()
-          .AddEndpointFilter<OrderShippingCostStepUpAuthorizationFilter>();
-
-        admin.MapGet("/dashboard", async (
-            int? days,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
-            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.BadRequest(new { message = "Ø¨Ø§Ø²Ù‡Ù” Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³ØªØ› ØªØ§Ø±ÛŒØ® Ù¾Ø§ÛŒØ§Ù† Ø¨Ø§ÛŒØ¯ Ø¨Ø¹Ø¯ Ø§Ø² Ø´Ø±ÙˆØ¹ Ùˆ Ø­Ø¯Ø§Ú©Ø«Ø± ÛŒÚ© Ø³Ø§Ù„ Ø¨Ø§Ø´Ø¯." });
-            var dashboard = await database.DashboardAsync(Math.Clamp(days ?? 1, 1, 365), cancellationToken, period);
-            var canReadOrders = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead);
-            var canReadInventory = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead);
-            var canReadCustomers = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CustomersRead);
-            var canReadCorporate = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CorporateRead);
-            var canReadReports = AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.ReportsRead);
-            dashboard = dashboard with
-            {
-                AwaitingPayment = canReadOrders ? dashboard.AwaitingPayment : 0,
-                Processing = canReadOrders ? dashboard.Processing : 0,
-                Shipped = canReadOrders ? dashboard.Shipped : 0,
-                Delivered = canReadOrders ? dashboard.Delivered : 0,
-                PeriodOrderCount = canReadOrders ? dashboard.PeriodOrderCount : 0,
-                ProblemOrders = canReadOrders ? dashboard.ProblemOrders : 0,
-                LowStock = canReadInventory ? dashboard.LowStock : Array.Empty<LowStockItem>(),
-                ExpiringSoon = canReadInventory ? dashboard.ExpiringSoon : Array.Empty<ExpiringStockItem>(),
-                NewCustomers = canReadCustomers ? dashboard.NewCustomers : 0,
-                CorporateNewRequests = canReadCorporate ? dashboard.CorporateNewRequests : 0,
-                PaidRevenue = canReadReports ? dashboard.PaidRevenue : 0,
-                TodayRevenue = canReadReports ? dashboard.TodayRevenue : 0,
-                PeriodRevenue = canReadReports ? dashboard.PeriodRevenue : 0,
-                AverageOrderValue = canReadReports ? dashboard.AverageOrderValue : 0,
-                FinancialsVisible = canReadReports
-            };
-            return Results.Ok(dashboard);
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/dashboard/health", async (
-            ApiHealthProbe healthProbe,
-            AdminTokenService adminTokens,
-            PaymentDatabase payments,
-            ZibalGateway zibal,
-            IOptions<MediaStorageOptions> mediaOptions,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (context.Items["AdminPrincipal"] is not AdminPrincipal) return Results.Unauthorized();
-            context.Response.Headers.CacheControl = "no-store";
-            var database = await healthProbe.CheckDatabaseAsync(cancellationToken);
-            var authentication = adminTokens.IsConfigured ? "configured" : "not-configured";
-            var payment = zibal.IsConfigured ? "zibal-configured" : payments.SandboxEnabled ? "sandbox-enabled" : "disabled";
-            var storageOptions = mediaOptions.Value;
-            var storage = storageOptions.Provider.Trim().ToLowerInvariant() switch
-            {
-                "local" or "" => "local",
-                "s3" or "s3-compatible" => string.IsNullOrWhiteSpace(storageOptions.S3.Endpoint) ||
-                    string.IsNullOrWhiteSpace(storageOptions.S3.Bucket) ||
-                    string.IsNullOrWhiteSpace(storageOptions.S3.AccessKey) ||
-                    string.IsNullOrWhiteSpace(storageOptions.S3.SecretKey)
-                        ? "not-configured"
-                        : "s3-configured",
-                _ => "unknown"
-            };
-            var ready = database.IsReady && adminTokens.IsConfigured;
-            return Results.Ok(new AdminDashboardHealth(
-                "healthy", database.Database, database.MigrationStatus, authentication, payment, storage, ready));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/dashboard/preferences", async (
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
-            return Results.Ok(await database.GetDashboardPreferencesAsync(
-                principal.StoreId, principal.Role,
-                principal.UserId?.ToString("N") ?? principal.Email.Trim().ToLowerInvariant(), cancellationToken));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPut("/dashboard/preferences", async (
-            DashboardPreferencesInput input,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal) return Results.Unauthorized();
-            var errors = DashboardPreferences.Validate(input);
-            if (errors.Count > 0) return Results.ValidationProblem(errors);
-            var saved = await database.SaveDashboardPreferencesAsync(
-                principal.StoreId, principal.Role,
-                principal.UserId?.ToString("N") ?? principal.Email.Trim().ToLowerInvariant(),
-                principal.Email, input.Widgets!, cancellationToken);
-            return Results.Ok(saved);
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/analytics", async (
-            int? days,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            CancellationToken cancellationToken) =>
-        {
-            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["Ø¨Ø§Ø²Ù‡Ù” Ø²Ù…Ø§Ù†ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³ØªØ› Ø´Ø±ÙˆØ¹ Ùˆ Ù¾Ø§ÛŒØ§Ù† Ù…Ø¹ØªØ¨Ø± Ø±Ø§ Ø­Ø¯Ø§Ú©Ø«Ø± Ø¨Ø±Ø§ÛŒ ÛŒÚ© Ø³Ø§Ù„ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯."] });
-            return Results.Ok(await database.AnalyticsAsync(Math.Clamp(days ?? 30, 1, 365), cancellationToken, period));
-        })
-            .AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/analytics/products", async (
-            int? days,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            CancellationToken cancellationToken) =>
-        {
-            var windowDays = days ?? 30;
-            if ((from is null && (windowDays is < 1 or > 365)) || !DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["Ø¨Ø§Ø²Ù‡Ù” Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³ØªØ› ØªØ§Ø±ÛŒØ®â€ŒÙ‡Ø§ Ø¨Ø§ÛŒØ¯ Ù…Ø¹ØªØ¨Ø± Ùˆ Ø­Ø¯Ø§Ú©Ø«Ø± ÛŒÚ©â€ŒØ³Ø§Ù„ Ø¨Ø§Ø´Ù†Ø¯."] });
-            return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken, period));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/analytics/price-history", async (
-            string? sku,
-            int? days,
-            DateTimeOffset? from,
-            DateTimeOffset? to,
-            OrderManagementDatabase database,
-            CancellationToken cancellationToken) =>
-        {
-            if (string.IsNullOrWhiteSpace(sku) || sku.Trim().Length > 100)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["sku"] = ["Ú¯ÙˆÙ†Ù‡Ù” Ú©Ø§Ù„Ø§ Ø±Ø§ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯."] });
-            var windowDays = Math.Clamp(days ?? 90, 1, 365);
-            if (!DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["Ø¨Ø§Ø²Ù‡Ù” Ø²Ù…Ø§Ù†ÛŒ Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª."] });
-            return Results.Ok(await database.PriceHistoryAsync(sku.Trim(), windowDays, period, cancellationToken));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/analytics/price-history/skus", async (
-            OrderManagementDatabase database,
-            CancellationToken cancellationToken) => Results.Ok(await database.PriceHistorySkusAsync(cancellationToken)))
-            .AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/notifications", async (
-            OrderManagementDatabase database, HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (context.Items["AdminPrincipal"] is not AdminPrincipal principal)
-                return Results.Unauthorized();
-            return Results.Ok(await database.NotificationsAsync(
-                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.OrdersRead),
-                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.InventoryRead),
-                AdminPermissionCatalog.Allows(principal, AdminPermissionCatalog.CorporateRead),
-                cancellationToken));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapGet("/shipping/overdue", async (
-            int? days,
-            OrderManagementDatabase database,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            var windowDays = days ?? 3;
-            if (windowDays is < 1 or > 60)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { ["days"] = ["Ø¨Ø§Ø²Ù‡ ØªØ£Ø®ÛŒØ± Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û± ØªØ§ Û¶Û° Ø±ÙˆØ² Ø¨Ø§Ø´Ø¯."] });
-            var rows = await database.ListOverdueShipmentsAsync(windowDays, cancellationToken);
-            return Results.Ok(rows.Select(row => OrderPrivacy.Project(row, context)));
-        }).AddEndpointFilter<OwnerAuthorizationFilter>();
-
-        admin.MapPatch("/orders/{orderId:guid}/state", async (
-            Guid orderId,
-            SetOrderStateRequest request,
-            OrderManagementDatabase database,
-            AdminAuditLogDatabase audit,
-            ProductCatalog catalog,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!Enum.TryParse<OrderState>(request.State, true, out var requestedState))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.State)] = ["ÙˆØ¶Ø¹ÛŒØª Ø³ÙØ§Ø±Ø´ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª."] });
-
-            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, context.TraceIdentifier, audit, cancellationToken);
-            if (result.StockLevels is not null)
-                foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
-
-            return result.Status switch
-            {
-                OrderOperationStatus.Updated => Results.Ok(result.Order is null ? null : OrderPrivacy.Project(result.Order, context)),
-                OrderOperationStatus.NotFound => Results.NotFound(new { message = result.Message }),
-                _ => Results.Conflict(new { message = result.Message })
-            };
-        }).AddEndpointFilter<OwnerAuthorizationFilter>()
-          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
-
-        admin.MapPost("/orders/bulk-state", async (
-            BulkOrderStateRequest request,
-            OrderManagementDatabase database,
-            AdminAuditLogDatabase audit,
-            ProductCatalog catalog,
-            HttpContext context,
-            CancellationToken cancellationToken) =>
-        {
-            if (!Enum.TryParse<OrderState>(request.State, true, out var requestedState))
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.State)] = ["ÙˆØ¶Ø¹ÛŒØª Ø³ÙØ§Ø±Ø´ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª."] });
-            if (request.OrderIds is null || request.OrderIds.Count is < 1 or > 50)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.OrderIds)] = ["Ø¨Ø±Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§Øª Ú¯Ø±ÙˆÙ‡ÛŒ Ø¨ÛŒÙ† Û± ØªØ§ ÛµÛ° Ø³ÙØ§Ø±Ø´ Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯."] });
-            if (request.OrderIds.Distinct().Count() != request.OrderIds.Count)
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.OrderIds)] = ["Ø´Ù†Ø§Ø³Ù‡ Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ Ù†Ø¨Ø§ÛŒØ¯ ØªÚ©Ø±Ø§Ø±ÛŒ Ø¨Ø§Ø´Ø¯."] });
-            if (request.Reason is { Length: > 500 })
-                return Results.ValidationProblem(new Dictionary<string, string[]> { [nameof(request.Reason)] = ["Ø¯Ù„ÛŒÙ„ Ø¹Ù…Ù„ÛŒØ§Øª Ù†Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ÛµÛ°Û° Ù†ÙˆÛŒØ³Ù‡ Ø¨Ø§Ø´Ø¯."] });
-
-            var actor = ((AdminPrincipal?)context.Items["AdminPrincipal"])?.Email ?? "admin";
-            var updated = new List<AdminOrderSummary>();
-            var failed = new List<object>();
-            foreach (var orderId in request.OrderIds)
-            {
-                var result = await database.TransitionAsync(orderId, requestedState, request.Reason, actor, context.TraceIdentifier, audit, cancellationToken);
-                if (result.Status == OrderOperationStatus.Updated && result.Order is not null)
-                {
-                    updated.Add(OrderPrivacy.Project(result.Order, context));
-                    if (result.StockLevels is not null)
-                        foreach (var item in result.StockLevels) catalog.SetAvailablePackages(item.Sku, item.AvailablePackages);
-                }
-                else failed.Add(new { id = orderId, message = result.Message ?? "ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯." });
-            }
-
-            return Results.Ok(new { updated, failed });
-        }).AddEndpointFilter<OwnerAuthorizationFilter>()
-          .AddEndpointFilter<OrderCancellationStepUpAuthorizationFilter>();
-
-        return endpoints;
-    }
-
-    private static bool IsValidOrderFilter(string? state) =>
-        string.IsNullOrWhiteSpace(state) ||
-        state.Equals("Processing", StringComparison.OrdinalIgnoreCase) ||
-        state.Equals("Problem", StringComparison.OrdinalIgnoreCase) ||
-        Enum.TryParse<OrderState>(state, true, out _);
-}
-
-public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger, InventoryLedgerDatabase ledger)
-{
-    private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
-
-    public async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return;
-        const string sql = """
-            alter table checkout_orders drop constraint if exists checkout_orders_state_check;
-            alter table checkout_orders add constraint checkout_orders_state_check
-                check (state in ('AwaitingPayment','Paid','Preparing','Shipped','Delivered','Cancelled','Expired'));
-            alter table checkout_order_transitions drop constraint if exists checkout_order_transitions_state_check;
-            alter table checkout_order_transitions add constraint checkout_order_transitions_state_check
-                check (state in ('AwaitingPayment','Paid','Preparing','Shipped','Delivered','Cancelled','Expired'));
-            create index if not exists ix_checkout_orders_created_desc on checkout_orders(created_at desc);
-            """;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "001-bootstrap", sql, cancellationToken);
-        const string notesSql = """
-            create table if not exists order_internal_notes (
-                id uuid primary key,
-                order_id uuid not null references checkout_orders(id) on delete cascade,
-                note text not null check (char_length(note) between 1 and 2000),
-                actor varchar(180) not null,
-                created_at timestamptz not null
-            );
-            create index if not exists ix_order_internal_notes_order on order_internal_notes(order_id, created_at desc);
-            """;
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "002-internal-notes", notesSql, cancellationToken);
-        const string shippingDetailsSql = """
-            alter table checkout_orders add column if not exists shipping_carrier varchar(120);
-            alter table checkout_orders add column if not exists tracking_code varchar(120);
-            alter table checkout_orders add column if not exists shipped_at timestamptz;
-            create index if not exists ix_checkout_orders_tracking_code on checkout_orders(tracking_code);
-            """;
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "003-shipping-details", shippingDetailsSql, cancellationToken);
-        const string internalCostsSql = """
-            create table if not exists order_internal_costs (
-                id uuid primary key,
-                order_id uuid not null references checkout_orders(id) on delete cascade,
-                title varchar(160) not null check (char_length(title) between 1 and 160),
-                amount numeric(18,2) not null check (amount > 0),
-                actor varchar(180) not null,
-                created_at timestamptz not null
-            );
-            create index if not exists ix_order_internal_costs_order on order_internal_costs(order_id, created_at desc);
-            """;
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "006-internal-accounting-costs", internalCostsSql, cancellationToken);
-        const string dashboardPreferencesSql = """
-            create table if not exists admin_dashboard_role_preferences (
-                store_id varchar(120) not null,
-                role varchar(80) not null,
-                widgets jsonb not null,
-                updated_by varchar(180) not null,
-                updated_at timestamptz not null,
-                primary key (store_id, role)
-            );
-            """;
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "004-dashboard-role-preferences", dashboardPreferencesSql, cancellationToken);
-        const string dashboardUserPreferencesSql = """
-            create table if not exists admin_dashboard_user_preferences (
-                store_id varchar(120) not null,
-                role varchar(80) not null,
-                user_key text not null,
-                widgets jsonb not null,
-                updated_by varchar(320) not null,
-                updated_at timestamptz not null,
-                primary key (store_id, role, user_key)
-            );
-            """;
-        await DatabaseMigrationRunner.ApplyAsync(connection, "orders", "005-dashboard-user-preferences", dashboardUserPreferencesSql, cancellationToken);
-        logger.LogInformation("Order-management schema constraints are ready.");
-    }
-
-    public async Task<IReadOnlyCollection<AdminOrderSummary>> ListAsync(
-        string? state,
-        string? query,
-        int limit,
-        CancellationToken cancellationToken,
-        bool allowContactSearch = true,
-        DateTimeOffset? createdFrom = null,
-        DateTimeOffset? createdTo = null)
-    {
-        if (!IsConfigured) return Array.Empty<AdminOrderSummary>();
-        const string sql = """
-            select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
-                   o.created_at,o.reservation_expires_at,count(l.id)::int,
-                   coalesce(p.reference,''),coalesce(p.state,''),o.is_private
-            from checkout_orders o
-            left join checkout_order_lines l on l.order_id=o.id
-            left join payments p on p.order_id=o.id
-            where (@state = ''
-                or (lower(@state) = 'processing' and o.state in ('Paid','Preparing'))
-                or (lower(@state) = 'problem' and o.state in ('Cancelled','Expired'))
-                or lower(o.state)=lower(@state))
-              and (@query = '' or o.id::text ilike '%' || @query || '%'
-                   or exists (select 1 from checkout_order_lines searched_line
-                              where searched_line.order_id = o.id
-                                and searched_line.sku ilike '%' || @query || '%')
-                   or (@contact_search and (o.customer_name ilike '%' || @query || '%'
-                   or o.mobile ilike '%' || @query || '%'
-                   or o.city ilike '%' || @query || '%')))
-              and (@created_from is null or o.created_at >= @created_from)
-              and (@created_to is null or o.created_at < @created_to)
-            group by o.id,p.reference,p.state
-            order by o.created_at desc
-            limit @limit;
-            """;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("state", state?.Trim() ?? string.Empty);
-        command.Parameters.AddWithValue("query", query?.Trim() ?? string.Empty);
-        command.Parameters.AddWithValue("limit", limit);
-        command.Parameters.AddWithValue("contact_search", allowContactSearch);
-        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_from", NpgsqlTypes.NpgsqlDbType.TimestampTz)
-        {
-            Value = createdFrom is null ? DBNull.Value : createdFrom.Value
-        });
-        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_to", NpgsqlTypes.NpgsqlDbType.TimestampTz)
-        {
-            Value = createdTo is null ? DBNull.Value : createdTo.Value
-        });
-        var result = new List<AdminOrderSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            result.Add(new AdminOrderSummary(
-                reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
-                reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)), reader.GetBoolean(13)));
-        }
-        return result;
-    }
-
-    public async Task<AdminOrderDetail?> GetDetailAsync(Guid orderId, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        const string orderSql = """
-            select o.id,o.customer_name,o.mobile,o.province,o.city,o.address,o.postal_code,
-                   o.currency,o.subtotal,o.shipping,o.shipping_expense,o.discount,o.payable,
-                   o.tax_rate_percent,o.tax,o.shipping_method,o.shipping_carrier,o.tracking_code,o.shipped_at,
-                   o.state,o.created_at,o.reservation_expires_at,
-                   count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,''),o.is_private
-            from checkout_orders o
-            left join checkout_order_lines l on l.order_id=o.id
-            left join payments p on p.order_id=o.id
-            where o.id=@id
-            group by o.id,p.reference,p.state;
-            """;
-        await using var orderCommand = new NpgsqlCommand(orderSql, connection);
-        orderCommand.Parameters.AddWithValue("id", orderId);
-        await using var reader = await orderCommand.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return null;
-
-        var summary = new AdminOrderSummary(
-            reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-            reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(19)),
-            reader.GetFieldValue<DateTimeOffset>(20), reader.GetFieldValue<DateTimeOffset>(21), reader.GetInt32(22),
-            EmptyToNull(reader.GetString(23)), EmptyToNull(reader.GetString(24)), reader.GetBoolean(25));
-        var detail = new AdminOrderDetail(
-            summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
-            reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
-            reader.GetString(15), reader.IsDBNull(16) ? null : EmptyToNull(reader.GetString(16)),
-            reader.IsDBNull(17) ? null : EmptyToNull(reader.GetString(17)),
-            reader.IsDBNull(18) ? null : reader.GetFieldValue<DateTimeOffset>(18),
-            Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
-        await reader.CloseAsync();
-
-        var lines = new List<AdminOrderLine>();
-        const string linesSql = "select product_title,sku,variant_label,quantity,unit_price,line_total from checkout_order_lines where order_id=@id order by id;";
-        await using (var command = new NpgsqlCommand(linesSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var lineReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await lineReader.ReadAsync(cancellationToken))
-                lines.Add(new AdminOrderLine(lineReader.GetString(0), lineReader.GetString(1), lineReader.GetString(2), lineReader.GetInt32(3), lineReader.GetDecimal(4), lineReader.GetDecimal(5)));
-        }
-
-        var transitions = new List<AdminOrderTransition>();
-        const string transitionsSql = "select state,actor,occurred_at,reason from checkout_order_transitions where order_id=@id order by occurred_at;";
-        await using (var command = new NpgsqlCommand(transitionsSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var transitionReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await transitionReader.ReadAsync(cancellationToken))
-                transitions.Add(new AdminOrderTransition(Enum.Parse<OrderState>(transitionReader.GetString(0)), transitionReader.GetString(1), transitionReader.GetFieldValue<DateTimeOffset>(2), transitionReader.GetString(3)));
-        }
-
-        var notes = new List<AdminOrderNote>();
-        const string notesSql = "select id,note,actor,created_at from order_internal_notes where order_id=@id order by created_at desc;";
-        await using (var command = new NpgsqlCommand(notesSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var noteReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await noteReader.ReadAsync(cancellationToken))
-                notes.Add(new AdminOrderNote(noteReader.GetGuid(0), noteReader.GetString(1), noteReader.GetString(2), noteReader.GetFieldValue<DateTimeOffset>(3)));
-        }
-
-        var internalCosts = new List<AdminOrderInternalCost>();
-        const string internalCostsSelectSql = "select id,title,amount,actor,created_at from order_internal_costs where order_id=@id order by created_at desc;";
-        await using (var command = new NpgsqlCommand(internalCostsSelectSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var costReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await costReader.ReadAsync(cancellationToken))
-                internalCosts.Add(new AdminOrderInternalCost(costReader.GetGuid(0), costReader.GetString(1),
-                    costReader.GetDecimal(2), costReader.GetString(3), costReader.GetFieldValue<DateTimeOffset>(4)));
-        }
-
-        AdminPayment? payment = null;
-        const string paymentSql = "select provider,amount,currency,state,reference,created_at,completed_at from payments where order_id=@id;";
-        await using (var command = new NpgsqlCommand(paymentSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var paymentReader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await paymentReader.ReadAsync(cancellationToken))
-                payment = new AdminPayment(paymentReader.GetString(0), paymentReader.GetDecimal(1), paymentReader.GetString(2), Enum.Parse<PaymentState>(paymentReader.GetString(3)), EmptyToNull(paymentReader.GetString(4)), paymentReader.GetFieldValue<DateTimeOffset>(5), paymentReader.IsDBNull(6) ? null : paymentReader.GetFieldValue<DateTimeOffset>(6));
-        }
-
-        return detail with { Lines = lines, Transitions = transitions, Notes = notes, InternalCosts = internalCosts, Payment = payment };
-    }
-
-    public async Task<AdminOrderInternalCost?> AddInternalCostAsync(Guid orderId, AdminOrderInternalCostInput input,
-        string actor, string requestId, string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        var id = Guid.NewGuid();
-        const string sql = """
-            insert into order_internal_costs(id,order_id,title,amount,actor,created_at)
-            select @id,@order_id,@title,@amount,@actor,now()
-            where exists(select 1 from checkout_orders where id=@order_id)
-            returning id,title,amount,actor,created_at;
-            """;
-        AdminOrderInternalCost? added = null;
-        await using (var command = new NpgsqlCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("id", id);
-            command.Parameters.AddWithValue("order_id", orderId);
-            command.Parameters.AddWithValue("title", input.Title.Trim());
-            command.Parameters.AddWithValue("amount", input.Amount);
-            command.Parameters.AddWithValue("actor", actor);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-                added = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
-        }
-        if (added is not null)
-            await audit.RecordAsync(actor, "order.internal-cost.added", "order", orderId.ToString("D"), null,
-                added, "Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø§Ø®Ù„ÛŒ Ùˆ ØºÛŒØ±Ù‚Ø§Ø¨Ù„â€ŒÙ…Ø´Ø§Ù‡Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ù…Ø´ØªØ±ÛŒ Ø«Ø¨Øª Ø´Ø¯.", requestId, cancellationToken, storeId);
-        return added;
-    }
-
-    public async Task<bool> RemoveInternalCostAsync(Guid orderId, Guid costId, string actor, string requestId,
-        string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return false;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        AdminOrderInternalCost? removed = null;
-        const string sql = "delete from order_internal_costs where id=@cost and order_id=@order returning id,title,amount,actor,created_at;";
-        await using (var command = new NpgsqlCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("cost", costId);
-            command.Parameters.AddWithValue("order", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-                removed = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
-        }
-        if (removed is not null)
-            await audit.RecordAsync(actor, "order.internal-cost.removed", "order", orderId.ToString("D"),
-                removed, null, "Ù‡Ø²ÛŒÙ†Ù‡ Ø¯Ø§Ø®Ù„ÛŒ Ø§Ø² Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ø­Ø°Ù Ø´Ø¯.", requestId, cancellationToken, storeId);
-        return removed is not null;
-    }
-
-    public async Task<AdminOrderNote?> AddNoteAsync(Guid orderId, string note, string actor, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        const string sql = """
-            insert into order_internal_notes(id,order_id,note,actor,created_at)
-            select @id,@order_id,@note,@actor,now()
-            where exists(select 1 from checkout_orders where id=@order_id)
-            returning id,note,actor,created_at;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        var id = Guid.NewGuid();
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("order_id", orderId);
-        command.Parameters.AddWithValue("note", note.Trim());
-        command.Parameters.AddWithValue("actor", actor);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new AdminOrderNote(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3))
-            : null;
-    }
-
-    public async Task<AdminOrderDetail?> UpdateShippingAsync(
-        Guid orderId,
-        AdminShipmentUpdateInput input,
-        string actor,
-        string requestId,
-        AdminAuditLogDatabase audit,
-        CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        const string beforeSql = """
-            select shipping_carrier,tracking_code,shipping_expense,shipped_at
-            from checkout_orders where id=@id for update;
-            """;
-        AdminShippingAuditSnapshot before;
-        await using (var command = new NpgsqlCommand(beforeSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return null;
-            }
-            before = new AdminShippingAuditSnapshot(
-                reader.IsDBNull(0) ? null : reader.GetString(0),
-                reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.GetDecimal(2),
-                reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3));
-        }
-
-        const string sql = """
-            update checkout_orders
-            set shipping_carrier=@carrier, tracking_code=@tracking_code,
-                shipping_expense=case when @update_expense then @expense else shipping_expense end,
-                shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
-            where id=@id
-            returning shipped_at;
-            """;
-        DateTimeOffset? shippedAt;
-        await using (var command = new NpgsqlCommand(sql, connection, transaction))
-        {
-            command.Parameters.Add("carrier", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.Carrier?.Trim() ?? DBNull.Value;
-            command.Parameters.Add("tracking_code", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.TrackingCode?.Trim() ?? DBNull.Value;
-            command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
-            command.Parameters.AddWithValue("update_expense", input.UpdateActualShippingCost);
-            command.Parameters.AddWithValue("id", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
-                ? reader.GetFieldValue<DateTimeOffset>(0)
-                : null;
-        }
-
-        var after = new AdminShippingAuditSnapshot(
-            input.Carrier?.Trim(),
-            input.TrackingCode?.Trim(),
-            input.UpdateActualShippingCost ? input.ActualShippingCost ?? 0m : before.actualShippingCost,
-            shippedAt);
-        await audit.RecordAsync(
-            connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
-            before, after, input.Reason!.Trim(), requestId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return await GetDetailAsync(orderId, cancellationToken);
-    }
-
-    public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
-    {
-        if (!IsConfigured) return new AdminDashboard(0, 0, 0, 0, 0, 0, Array.Empty<LowStockItem>());
-        var end = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? (days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days));
-        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((end - from).TotalDays), 1, 366);
-        const string orderSql = """
-            select
-              count(*) filter (where state='AwaitingPayment')::int,
-              count(*) filter (where state in ('Paid','Preparing'))::int,
-              count(*) filter (where state='Shipped')::int,
-              count(*) filter (where state='Delivered')::int,
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered')),0),
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0),
-              count(*) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to)::int,
-              coalesce(avg(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0)
-            from checkout_orders;
-            """;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        int awaiting, processing, shipped, delivered;
-        int periodOrderCount;
-        decimal paidRevenue, periodRevenue, averageOrderValue;
-        await using (var command = new NpgsqlCommand(orderSql, connection))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", end);
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-        {
-            await reader.ReadAsync(cancellationToken);
-            awaiting = reader.GetInt32(0);
-            processing = reader.GetInt32(1);
-            shipped = reader.GetInt32(2);
-            delivered = reader.GetInt32(3);
-            paidRevenue = reader.GetDecimal(4);
-            periodRevenue = reader.GetDecimal(5);
-            periodOrderCount = reader.GetInt32(6);
-            averageOrderValue = reader.GetDecimal(7);
-        }
-        }
-
-        const string stockSql = """
-            select p.title,v.sku,v.display_label,v.available_packages
-            from product_variants v join products p on p.id=v.product_id
-            where v.available_packages <= 5
-            order by v.available_packages,p.title
-            limit 20;
-            """;
-        var lowStock = new List<LowStockItem>();
-        await using (var command = new NpgsqlCommand(stockSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-                lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
-
-        const string expirySql = """
-            select p.title,v.sku,v.display_label,b.batch_code,b.expires_at,b.remaining_packages
-            from inventory_batches b
-            join product_variants v on upper(v.sku)=upper(b.sku)
-            join products p on p.id=v.product_id
-            where b.remaining_packages > 0 and b.expires_at > now() and b.expires_at <= now() + interval '30 days'
-            order by b.expires_at,p.title,b.batch_code
-            limit 20;
-            """;
-        var expiringSoon = new List<ExpiringStockItem>();
-        await using (var command = new NpgsqlCommand(expirySql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-                expiringSoon.Add(new ExpiringStockItem(
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetFieldValue<DateTimeOffset>(4),
-                    reader.GetInt32(5)));
-
-        const string summarySql = """
-            select
-              (select count(*)::int from customers where created_at >= @from and created_at < @to),
-              (select count(*)::int from corporate_requests where status='New' and created_at >= @from and created_at < @to),
-              (select count(*)::int from checkout_orders where state in ('Cancelled','Expired') and created_at >= @from and created_at < @to);
-            """;
-        int newCustomers, corporateNewRequests, problemOrders;
-        await using (var command = new NpgsqlCommand(summarySql, connection))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", end);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            newCustomers = reader.GetInt32(0);
-            corporateNewRequests = reader.GetInt32(1);
-            problemOrders = reader.GetInt32(2);
-        }
-
-        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, periodDays, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
-    }
-
-    public async Task<DashboardPreferences> GetDashboardPreferencesAsync(
-        string storeId, string role, string userKey, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return DashboardPreferences.Default;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var userCommand = new NpgsqlCommand(
-            "select widgets from admin_dashboard_user_preferences where store_id=@store and role=@role and user_key=@userKey;", connection);
-        userCommand.Parameters.AddWithValue("store", storeId);
-        userCommand.Parameters.AddWithValue("role", role);
-        userCommand.Parameters.AddWithValue("userKey", userKey);
-        var userJson = await userCommand.ExecuteScalarAsync(cancellationToken) as string;
-        if (userJson is not null) return ParseDashboardPreferences(userJson);
-
-        await using var command = new NpgsqlCommand(
-            "select widgets from admin_dashboard_role_preferences where store_id=@store and role=@role;", connection);
-        command.Parameters.AddWithValue("store", storeId);
-        command.Parameters.AddWithValue("role", role);
-        var json = await command.ExecuteScalarAsync(cancellationToken) as string;
-        return json is null ? DashboardPreferences.Default : ParseDashboardPreferences(json);
-    }
-
-    private static DashboardPreferences ParseDashboardPreferences(string json)
-    {
-        try
-        {
-            var widgets = JsonSerializer.Deserialize<DashboardWidgetPreference[]>(json);
-            return DashboardPreferences.IsValid(widgets) ? new DashboardPreferences(widgets!) : DashboardPreferences.Default;
-        }
-        catch (JsonException)
-        {
-            return DashboardPreferences.Default;
-        }
-    }
-
-    public async Task<DashboardPreferences> SaveDashboardPreferencesAsync(
-        string storeId, string role, string userKey, string actor,
-        IReadOnlyList<DashboardWidgetPreference> widgets, CancellationToken cancellationToken)
-    {
-        var preferences = new DashboardPreferences(widgets.ToArray());
-        if (!IsConfigured) return preferences;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            insert into admin_dashboard_user_preferences (store_id,role,user_key,widgets,updated_by,updated_at)
-            values (@store,@role,@userKey,@widgets::jsonb,@actor,now())
-            on conflict (store_id,role,user_key) do update
-              set widgets=excluded.widgets,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
-            """, connection);
-        command.Parameters.AddWithValue("store", storeId);
-        command.Parameters.AddWithValue("role", role);
-        command.Parameters.AddWithValue("userKey", userKey);
-        command.Parameters.AddWithValue("widgets", JsonSerializer.Serialize(widgets));
-        command.Parameters.AddWithValue("actor", actor);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        return preferences;
-    }
-
-    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
-    {
-        if (!IsConfigured) return new AdminAnalytics(days, 0, 0, 0, 0, 0, 0);
-        var to = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? to.AddDays(-days);
-        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((to - from).TotalDays), 1, 366);
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
-        const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
-                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0),
-                   coalesce(sum((select sum(c.amount) from order_internal_costs c where c.order_id=checkout_orders.id)),0)
-            from checkout_orders
-            where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
-            """;
-        int orderCount;
-        decimal revenue;
-        decimal tax;
-        decimal shippingExpense;
-        decimal shippingRevenue;
-        decimal discount;
-        decimal internalCosts;
-        await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", to);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            orderCount = reader.GetInt32(0);
-            revenue = reader.GetDecimal(1);
-            tax = reader.GetDecimal(2);
-            shippingExpense = reader.GetDecimal(3);
-            shippingRevenue = reader.GetDecimal(4);
-            discount = reader.GetDecimal(5);
-            internalCosts = reader.GetDecimal(6);
-        }
-
-        const string lineSql = """
-            select coalesce(sum(l.quantity),0)::int,
-                   coalesce(sum(l.quantity*l.cost_price),0),
-                   coalesce(sum(l.quantity*l.packaging_cost),0),
-                   coalesce(sum(l.quantity*l.additional_cost),0),
-                   coalesce(sum(l.line_total),0)
-            from checkout_order_lines l join checkout_orders o on o.id=l.order_id
-            where o.created_at >= @from and o.created_at < @to and o.state in ('Paid','Preparing','Shipped','Delivered');
-            """;
-        int units;
-        decimal productCost;
-        decimal packagingCost;
-        decimal additionalCost;
-        decimal merchandiseRevenue;
-        await using (var command = new NpgsqlCommand(lineSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", to);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            units = reader.GetInt32(0);
-            productCost = reader.GetDecimal(1);
-            packagingCost = reader.GetDecimal(2);
-            additionalCost = reader.GetDecimal(3);
-            merchandiseRevenue = reader.GetDecimal(4);
-        }
-
-        // Aggregate line costs per order before joining to avoid multiplying order totals.
-        const string dailySql = """
-            with line_costs as (
-                select l.order_id, sum(l.line_total) as merchandise,
-                       sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)) as cost,
-                       coalesce((select sum(c.amount) from order_internal_costs c where c.order_id=l.order_id),0) as internal_cost
-                from checkout_order_lines l join checkout_orders o on o.id=l.order_id
-                where o.created_at >= @from and o.created_at < @to
-                  and o.state in ('Paid','Preparing','Shipped','Delivered')
-                group by l.order_id
-            )
-            select (o.created_at at time zone 'UTC')::date as day, count(*)::int,
-                   coalesce(sum(o.payable),0),
-                   coalesce(sum(coalesce(l.merchandise,0)-o.discount-coalesce(l.cost,0)+o.shipping-o.shipping_expense-coalesce(l.internal_cost,0)),0)
-            from checkout_orders o left join line_costs l on l.order_id=o.id
-            where o.created_at >= @from and o.created_at < @to
-              and o.state in ('Paid','Preparing','Shipped','Delivered')
-            group by day order by day;
-            """;
-        var dailySales = new List<AdminDailySales>();
-        await using (var command = new NpgsqlCommand(dailySql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", to);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-                dailySales.Add(new AdminDailySales(reader.GetFieldValue<DateOnly>(0), reader.GetInt32(1), reader.GetDecimal(2), reader.GetDecimal(3)));
-        }
-        const string statesSql = """
-            select state,count(*)::int from checkout_orders
-            where created_at >= @from and created_at < @to group by state order by state;
-            """;
-        var orderStates = new List<AdminOrderStateCount>();
-        await using (var command = new NpgsqlCommand(statesSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", to);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
-                orderStates.Add(new AdminOrderStateCount(reader.GetString(0), reader.GetInt32(1)));
-        }
-        await transaction.CommitAsync(cancellationToken);
-
-        var cost = productCost + packagingCost + additionalCost + internalCosts;
-        // Customer payments include shipping and tax; tax is payable to the tax authority, not profit.
-        var netMerchandiseRevenue = merchandiseRevenue - discount;
-        var profit = netMerchandiseRevenue - cost;
-        var netProfit = profit + shippingRevenue - shippingExpense;
-        var margin = netMerchandiseRevenue <= 0 ? 0 : profit / netMerchandiseRevenue * 100;
-        return new AdminAnalytics(
-            periodDays, orderCount, units, revenue, cost, profit, margin, tax, netProfit, shippingExpense,
-            merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost, dailySales, orderStates, internalCosts);
-    }
-
-    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
-    {
-        if (!IsConfigured) return Array.Empty<AdminProductProfitability>();
-        var to = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? to.AddDays(-days);
-        const string sql = """
-            with grouped as (
-                select l.product_title,l.sku,l.variant_label,
-                       sum(l.quantity)::int as units_sold,
-                       coalesce(sum(l.line_total),0) as revenue,
-                       coalesce(sum(case when o.subtotal > 0
-                           then o.discount * l.line_total / o.subtotal else 0 end),0) as discount,
-                       coalesce(sum(l.quantity * (l.cost_price + l.packaging_cost + l.additional_cost)),0) as cost,
-                        coalesce(sum(l.quantity * l.cost_price),0) as product_cost,
-                        coalesce(sum(l.quantity * l.packaging_cost),0) as packaging_cost,
-                        coalesce(sum(l.quantity * l.additional_cost),0) as additional_cost,
-                       sum(l.quantity * l.item_quantity) as quantity_sold,
-                       max(l.base_unit) as base_unit,
-                       coalesce(sum(case when o.subtotal > 0 then
-                           (select sum(c.amount) from order_internal_costs c where c.order_id=o.id) * l.line_total / o.subtotal
-                           else 0 end),0) as allocated_internal_cost
-                from checkout_order_lines l
-                join checkout_orders o on o.id=l.order_id
-                where o.created_at >= @from and o.created_at < @to
-                  and o.state in ('Paid','Preparing','Shipped','Delivered')
-                group by l.product_title,l.sku,l.variant_label
-            )
-            select product_title,sku,variant_label,units_sold,revenue,discount,cost,
-                   product_cost,packaging_cost,additional_cost,quantity_sold,base_unit,allocated_internal_cost
-            from grouped
-            order by (revenue - discount - cost) desc, product_title
-            limit 200;
-            """;
-
-        var rows = new List<AdminProductProfitability>();
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("from", from);
-        command.Parameters.AddWithValue("to", to);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            var revenue = reader.GetDecimal(4);
-            var discount = reader.GetDecimal(5);
-            var cost = reader.GetDecimal(6) + reader.GetDecimal(12);
-            var productCost = reader.GetDecimal(7);
-            var packagingCost = reader.GetDecimal(8);
-            var additionalCost = reader.GetDecimal(9);
-            rows.Add(new AdminProductProfitability(
-                reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetInt32(3), revenue, cost, revenue - discount - cost, discount,
-                productCost, packagingCost, additionalCost,
-                reader.IsDBNull(10) ? null : reader.GetDecimal(10),
-                reader.IsDBNull(11) ? null : reader.GetString(11), reader.GetDecimal(12)));
-        }
-        return rows;
-    }
-
-    public async Task<IReadOnlyCollection<AdminPriceHistoryPoint>> PriceHistoryAsync(
-        string sku, int days, DashboardPeriod? period, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return Array.Empty<AdminPriceHistoryPoint>();
-        var to = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? to.AddDays(-days);
-        const string sql = """
-            select occurred_at,kind,amount,reference from (
-                select coalesce(purchased_at,created_at) as occurred_at, 'purchase'::text as kind,
-                       cost_price+packaging_cost+additional_cost as amount, batch_code as reference
-                from inventory_batches
-                where upper(sku)=upper(@sku) and coalesce(purchased_at,created_at)>=@from and coalesce(purchased_at,created_at)<@to
-                union all
-                select occurred_at, 'sale'::text,
-                       coalesce(nullif(after_json->>'Price','')::numeric,
-                                nullif(after_json->>'price','')::numeric,
-                                nullif(after_json #>> '{Quote,SellingPrice}','')::numeric,
-                                nullif(after_json #>> '{quote,sellingPrice}','')::numeric),
-                       action
-                from admin_audit_logs
-                where entity_type='ProductVariant' and upper(entity_id)=upper(@sku)
-                  and action in ('product.variant-added','product.selling-price-updated','inventory.price.applied')
-                  and occurred_at>=@from and occurred_at<@to
-            ) history
-            where amount is not null and amount>=0
-            order by occurred_at;
-            """;
-        var rows = new List<AdminPriceHistoryPoint>();
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("sku", sku);
-        command.Parameters.AddWithValue("from", from);
-        command.Parameters.AddWithValue("to", to);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-            rows.Add(new AdminPriceHistoryPoint(reader.GetFieldValue<DateTimeOffset>(0), reader.GetString(1),
-                reader.GetDecimal(2), reader.GetString(3)));
-        return rows;
-    }
-
-    public async Task<IReadOnlyCollection<AdminPriceHistorySku>> PriceHistorySkusAsync(CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return Array.Empty<AdminPriceHistorySku>();
-        const string sql = """
-            select v.sku,p.title,v.display_label
-            from product_variants v join products p on p.id=v.product_id
-            order by p.title,v.display_label
-            limit 500;
-            """;
-        var rows = new List<AdminPriceHistorySku>();
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-            rows.Add(new AdminPriceHistorySku(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
-        return rows;
-    }
-
-    public async Task<AdminNotifications> NotificationsAsync(bool includeOrders, bool includeInventory, bool includeCorporate, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured || (!includeOrders && !includeInventory && !includeCorporate))
-            return new AdminNotifications(0, 0, Array.Empty<AdminNotification>());
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        const string orderSql = """
-            select count(*) filter (where state='AwaitingPayment')::int,
-                   count(*) filter (where created_at >= now() - interval '24 hours' and state not in ('Cancelled','Expired'))::int
-            from checkout_orders;
-            """;
-        var awaitingPayment = 0;
-        var recentOrders = 0;
-        var corporateOverdueFollowUps = 0;
-        if (includeOrders)
-        {
-            await using (var command = new NpgsqlCommand(orderSql, connection))
-            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            {
-                await reader.ReadAsync(cancellationToken);
-                awaitingPayment = reader.GetInt32(0);
-                recentOrders = reader.GetInt32(1);
-            }
-        }
-
-        const string stockSql = "select p.title,v.sku,v.available_packages from product_variants v join products p on p.id=v.product_id where v.available_packages <= 5 order by v.available_packages,p.title limit 20;";
-        var items = new List<AdminNotification>();
-        if (includeInventory)
-        {
-            await using (var command = new NpgsqlCommand(stockSql, connection))
-            await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-                while (await reader.ReadAsync(cancellationToken))
-                    items.Add(new AdminNotification(
-                        "low-stock",
-                        $"Ù…ÙˆØ¬ÙˆØ¯ÛŒ {reader.GetString(0)} Ú©Ù… Ø§Ø³Øª.",
-                        $"{reader.GetString(1)} Â· {reader.GetInt32(2)} Ø¨Ø³ØªÙ‡",
-                        new AdminNavigationTarget("inventory", Sku: reader.GetString(1))));
-        }
-
-        if (includeCorporate)
-        {
-            const string countSql = """
-                select count(*)::int
-                from corporate_requests
-                where status not in ('Finalized','Cancelled')
-                  and next_follow_up_at is not null and next_follow_up_at<=now();
-                """;
-            await using (var command = new NpgsqlCommand(countSql, connection))
-                corporateOverdueFollowUps = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
-
-            const string remindersSql = """
-                select company_name,assigned_to,next_follow_up_at
-                from corporate_requests
-                where status not in ('Finalized','Cancelled')
-                  and next_follow_up_at is not null and next_follow_up_at<=now()
-                order by next_follow_up_at asc
-                limit 10;
-                """;
-            await using var reminders = new NpgsqlCommand(remindersSql, connection);
-            await using var reminderReader = await reminders.ExecuteReaderAsync(cancellationToken);
-            while (await reminderReader.ReadAsync(cancellationToken))
-            {
-                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(2);
-                var assignedTo = reminderReader.IsDBNull(1) || string.IsNullOrWhiteSpace(reminderReader.GetString(1))
-                    ? "Ø¨Ø¯ÙˆÙ† Ù…Ø³Ø¦ÙˆÙ„"
-                    : reminderReader.GetString(1);
-                items.Add(new AdminNotification(
-                    "corporate-follow-up",
-                    "Ù…ÙˆØ¹Ø¯ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ ÙØ±ÙˆØ´ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ Ú¯Ø°Ø´ØªÙ‡ Ø§Ø³Øª.",
-                    $"{reminderReader.GetString(0)} Â· {assignedTo} Â· {dueAt:yyyy-MM-dd HH:mm} UTC",
-                    new AdminNavigationTarget("corporate")));
-            }
-        }
-
-        if (awaitingPayment > 0)
-            items.Insert(0, new AdminNotification(
-                "awaiting-payment",
-                $"{awaitingPayment} Ø³ÙØ§Ø±Ø´ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù¾Ø±Ø¯Ø§Ø®Øª Ø§Ø³Øª.",
-                "Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø¨Ø±Ø±Ø³ÛŒ Ù¾Ù†Ù„ Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§",
-                new AdminNavigationTarget("orders", Filter: "AwaitingPayment")));
-        if (recentOrders > 0)
-            items.Insert(0, new AdminNotification(
-                "new-orders",
-                $"{recentOrders} Ø³ÙØ§Ø±Ø´ Ø¯Ø± Û²Û´ Ø³Ø§Ø¹Øª Ø§Ø®ÛŒØ± Ø«Ø¨Øª ÛŒØ§ Ù¾Ø±Ø¯Ø§Ø²Ø´ Ø´Ø¯Ù‡.",
-                "Ù…Ø±ÙˆØ± Ø³ÙØ§Ø±Ø´â€ŒÙ‡Ø§ Ùˆ ÙˆØ¶Ø¹ÛŒØª Ø§Ø±Ø³Ø§Ù„",
-                new AdminNavigationTarget("orders")));
-        return new AdminNotifications(awaitingPayment, items.Count(item => item.Type == "low-stock"), items, corporateOverdueFollowUps);
-    }
-
-    public async Task<IReadOnlyCollection<AdminOverdueShipment>> ListOverdueShipmentsAsync(int days, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return Array.Empty<AdminOverdueShipment>();
-
-        const string sql = """
-            select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
-                   o.created_at,o.reservation_expires_at,
-                   coalesce((select count(*) from checkout_order_lines l where l.order_id=o.id),0)::int,
-                   coalesce(o.shipping_carrier,''),coalesce(o.tracking_code,''),o.shipped_at,
-                   greatest(1, floor(extract(epoch from (now() - o.shipped_at)) / 86400))::int
-            from checkout_orders o
-            where o.state='Shipped'
-              and o.shipped_at is not null
-              and o.shipped_at <= now() - (@days * interval '1 day')
-            order by o.shipped_at asc
-            limit 250;
-            """;
-
-        var shipments = new List<AdminOverdueShipment>();
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand(sql, connection);
-        command.Parameters.AddWithValue("days", days);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            shipments.Add(new AdminOverdueShipment(
-                reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
-                reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)),
-                reader.GetFieldValue<DateTimeOffset>(13), reader.GetInt32(14)));
-        }
-        return shipments;
-    }
-
-    public async Task<OrderOperationResult> TransitionAsync(
-        Guid orderId,
-        OrderState requestedState,
-        string? reason,
-        string actor,
-        string requestId,
-        AdminAuditLogDatabase audit,
-        CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return OrderOperationResult.Conflict("Ø¯ÛŒØªØ§Ø¨ÛŒØ³ Ø³ÙØ§Ø±Ø´ ØªÙ†Ø¸ÛŒÙ… Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.");
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        const string selectSql = """
-            select state,reservation_expires_at,is_private from checkout_orders where id=@id for update;
-            """;
-        OrderState currentState;
-        DateTimeOffset expiresAt;
-        bool isPrivate;
-        await using (var command = new NpgsqlCommand(selectSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return OrderOperationResult.NotFound("Ø³ÙØ§Ø±Ø´ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯.");
-            }
-            currentState = Enum.Parse<OrderState>(reader.GetString(0));
-            expiresAt = reader.GetFieldValue<DateTimeOffset>(1);
-            isPrivate = reader.GetBoolean(2);
-        }
-
-        if (currentState == requestedState)
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            var existing = (await ListOneAsync(connection, null, orderId, cancellationToken))!;
-            return OrderOperationResult.Updated(existing);
-        }
-
-        if (isPrivate && currentState == OrderState.AwaitingPayment && requestedState == OrderState.Paid && string.IsNullOrWhiteSpace(reason))
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return OrderOperationResult.Conflict("Ø¨Ø±Ø§ÛŒ ØªØ£ÛŒÛŒØ¯ Ù¾Ø±Ø¯Ø§Ø®Øª Ø³ÙØ§Ø±Ø´ Ø®ØµÙˆØµÛŒØŒ ØªÙˆØ¶ÛŒØ­ Ù¾Ø±Ø¯Ø§Ø®Øª Ø±Ø§ Ø«Ø¨Øª Ú©Ù†ÛŒØ¯.");
-        }
-
-        if (!IsAllowed(currentState, requestedState, isPrivate))
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            return OrderOperationResult.Conflict($"Ø§Ù†ØªÙ‚Ø§Ù„ Ø³ÙØ§Ø±Ø´ Ø§Ø² {currentState} Ø¨Ù‡ {requestedState} Ù…Ø¬Ø§Ø² Ù†ÛŒØ³Øª.");
-        }
-
-        var stockLevels = new List<StockLevelChange>();
-        if (requestedState == OrderState.Cancelled)
-        {
-            if (expiresAt <= DateTimeOffset.UtcNow)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return OrderOperationResult.Conflict("Ø±Ø²Ø±Ùˆ Ø³ÙØ§Ø±Ø´ Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡ Ùˆ ØªÙˆØ³Ø· Ø³ÛŒØ³ØªÙ… Ø¢Ø²Ø§Ø¯ Ø®ÙˆØ§Ù‡Ø¯ Ø´Ø¯.");
-            }
-            const string linesSql = "select sku,quantity,batch_allocations from checkout_order_lines where order_id=@id;";
-            var lines = new List<(string Sku, int Quantity, string BatchAllocationsJson)>();
-            await using (var command = new NpgsqlCommand(linesSql, connection, transaction))
-            {
-                command.Parameters.AddWithValue("id", orderId);
-                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-                while (await reader.ReadAsync(cancellationToken))
-                    lines.Add((reader.GetString(0), reader.GetInt32(1), reader.GetString(2)));
-            }
-            foreach (var sku in lines.Select(line => line.Sku)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(value => value, StringComparer.Ordinal))
-            {
-                await using var variantLock = new NpgsqlCommand(
-                    "select sku from product_variants where upper(sku)=upper(@sku) for update;", connection, transaction);
-                variantLock.Parameters.AddWithValue("sku", sku);
-                await variantLock.ExecuteScalarAsync(cancellationToken);
-            }
-
-            foreach (var line in lines)
-            {
-                var allocations = JsonSerializer.Deserialize<IReadOnlyCollection<CheckoutBatchAllocation>>(line.BatchAllocationsJson)
-                    ?? Array.Empty<CheckoutBatchAllocation>();
-                foreach (var allocation in allocations)
-                {
-                    await using var batchCommand = new NpgsqlCommand(
-                        "update inventory_batches set remaining_packages=least(received_packages,remaining_packages+@quantity) where upper(sku)=upper(@sku) and batch_code=@batch_code;",
-                        connection, transaction);
-                    batchCommand.Parameters.AddWithValue("quantity", allocation.Quantity);
-                    batchCommand.Parameters.AddWithValue("sku", line.Sku);
-                    batchCommand.Parameters.AddWithValue("batch_code", allocation.BatchCode);
-                    await batchCommand.ExecuteNonQueryAsync(cancellationToken);
-                }
-
-                await using var command = new NpgsqlCommand(
-                    "update product_variants set available_packages=available_packages+@quantity where upper(sku)=upper(@sku) returning available_packages;",
-                    connection, transaction);
-                command.Parameters.AddWithValue("quantity", line.Quantity);
-                command.Parameters.AddWithValue("sku", line.Sku);
-                var available = await command.ExecuteScalarAsync(cancellationToken);
-                if (available is not null)
-                {
-                    var availablePackages = Convert.ToInt32(available);
-                    await ledger.RecordAsync(
-                        connection, transaction, line.Sku, line.Quantity, "ReservationReleased",
-                        availablePackages, orderId, actor, "owner-cancelled-before-payment", cancellationToken);
-                    stockLevels.Add(new StockLevelChange(line.Sku, availablePackages));
-                }
-            }        }
-
-        var transitionReason = string.IsNullOrWhiteSpace(reason)
-            ? $"owner-{requestedState.ToString().ToLowerInvariant()}"
-            : reason.Trim();
-        var now = DateTimeOffset.UtcNow;
-        await using (var command = new NpgsqlCommand("update checkout_orders set state=@state where id=@id;", connection, transaction))
-        {
-            command.Parameters.AddWithValue("state", requestedState.ToString());
-            command.Parameters.AddWithValue("id", orderId);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        await using (var command = new NpgsqlCommand(
-            "insert into checkout_order_transitions (id,order_id,state,actor,occurred_at,reason) values (@transition_id,@order_id,@state,@actor,@at,@reason);",
-            connection, transaction))
-        {
-            command.Parameters.AddWithValue("transition_id", Guid.NewGuid());
-            command.Parameters.AddWithValue("order_id", orderId);
-            command.Parameters.AddWithValue("state", requestedState.ToString());
-            command.Parameters.AddWithValue("actor", actor);
-            command.Parameters.AddWithValue("at", now);
-            command.Parameters.AddWithValue("reason", transitionReason);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        await audit.RecordAsync(
-            connection, transaction, actor, "order.state-changed", "Order", orderId.ToString(),
-            new { state = currentState.ToString() },
-            new { state = requestedState.ToString() },
-            transitionReason, requestId, cancellationToken);
-
-        await transaction.CommitAsync(cancellationToken);
-        var updated = await FindAsync(orderId, cancellationToken)
-            ?? throw new InvalidOperationException("Updated order could not be read.");
-        return OrderOperationResult.Updated(updated, stockLevels);
-    }
-
-    private async Task<AdminOrderSummary?> FindAsync(Guid orderId, CancellationToken cancellationToken)
-    {
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        return await ListOneAsync(connection, null, orderId, cancellationToken);
-    }
-
-    private static async Task<AdminOrderSummary?> ListOneAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction? transaction,
-        Guid orderId,
-        CancellationToken cancellationToken)
-    {
-        const string sql = """
-            select o.id,o.customer_name,o.mobile,o.province,o.city,o.payable,o.currency,o.state,
-                   o.created_at,o.reservation_expires_at,count(l.id)::int,
-                   coalesce(p.reference,''),coalesce(p.state,''),o.is_private
-            from checkout_orders o
-            left join checkout_order_lines l on l.order_id=o.id
-            left join payments p on p.order_id=o.id
-            where o.id=@id
-            group by o.id,p.reference,p.state;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection, transaction);
-        command.Parameters.AddWithValue("id", orderId);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return null;
-        return new AdminOrderSummary(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-            reader.GetString(4), reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
-            reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-            EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)), reader.GetBoolean(13));
-    }
-
-    private static bool IsAllowed(OrderState current, OrderState requested, bool isPrivate) => (current, requested) switch
-    {
-        (OrderState.AwaitingPayment, OrderState.Cancelled) => true,
-        (OrderState.AwaitingPayment, OrderState.Paid) => isPrivate,
-        (OrderState.Paid, OrderState.Preparing) => true,
-        (OrderState.Preparing, OrderState.Shipped) => true,
-        (OrderState.Shipped, OrderState.Delivered) => true,
-        _ => false
-    };
-
-    private static string? EmptyToNull(string value) => string.IsNullOrEmpty(value) ? null : value;
-}
-
-public sealed record SetOrderStateRequest(string State, string? Reason);
-public sealed record BulkOrderStateRequest(IReadOnlyCollection<Guid> OrderIds, string State, string? Reason);
-public sealed record AdminOrderNoteInput(string Note);
-public sealed record AdminShipmentUpdateInput(
-    string? Carrier,
-    string? TrackingCode,
-    decimal? ActualShippingCost,
-    string? Reason,
-    bool UpdateActualShippingCost = true);
-public sealed record AdminShippingAuditSnapshot(string? carrier, string? trackingCode, decimal actualShippingCost, DateTimeOffset? shippedAt);
-public sealed record AdminOverdueShipment(Guid Id, string CustomerName, string Mobile, string Province, string City,
-    decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
-    int LineCount, string? ShippingCarrier, string? TrackingCode, DateTimeOffset ShippedAt, int DaysOverdue);
-
-public sealed record AdminOrderSummary(Guid Id, string CustomerName, string Mobile, string Province, string City,
-    decimal Payable, string Currency, OrderState State, DateTimeOffset CreatedAt, DateTimeOffset ReservationExpiresAt,
-    int LineCount, string? PaymentReference, string? PaymentState, bool IsPrivate = false);
-public sealed record AdminOrderDetail(AdminOrderSummary Summary, string Address, string PostalCode, decimal Subtotal,
-    decimal Shipping, decimal ShippingExpense, decimal Discount, decimal Tax, decimal TaxRatePercent, string ShippingMethod,
-    string? ShippingCarrier, string? TrackingCode, DateTimeOffset? ShippedAt,
-    IReadOnlyCollection<AdminOrderLine> Lines, IReadOnlyCollection<AdminOrderTransition> Transitions,
-    IReadOnlyCollection<AdminOrderNote> Notes, AdminPayment? Payment = null,
-    IReadOnlyCollection<AdminOrderInternalCost>? InternalCosts = null)
-{
-    public Guid Id => Summary.Id;
-    public string CustomerName => Summary.CustomerName;
-    public string Mobile => Summary.Mobile;
-    public string Province => Summary.Province;
-    public string City => Summary.City;
-    public decimal Payable => Summary.Payable;
-    public string Currency => Summary.Currency;
-    public OrderState State => Summary.State;
-    public DateTimeOffset CreatedAt => Summary.CreatedAt;
-    public DateTimeOffset ReservationExpiresAt => Summary.ReservationExpiresAt;
-    public int LineCount => Summary.LineCount;
-    public string? PaymentReference => Summary.PaymentReference;
-    public string? PaymentState => Summary.PaymentState;
-    public bool IsPrivate => Summary.IsPrivate;
-
-    public CheckoutOrder ToCheckoutOrder() => new(
-        Id, string.Empty, CustomerName, Mobile, Province, City, Address, PostalCode, Currency,
-        Lines.Select(line => new CheckoutLine(line.ProductTitle, line.Sku, line.VariantLabel, line.Quantity, line.UnitPrice, line.LineTotal)).ToArray(),
-        ShippingMethod, Subtotal, Shipping, ShippingExpense, Discount, TaxRatePercent, Tax, Payable, State, CreatedAt,
-        ReservationExpiresAt, Transitions.Select(item => new OrderTransition(item.State, item.Actor, item.OccurredAt, item.Reason)).ToArray());
-}
-public sealed record AdminOrderLine(string ProductTitle, string Sku, string VariantLabel, int Quantity, decimal UnitPrice, decimal LineTotal);
-public sealed record AdminOrderTransition(OrderState State, string Actor, DateTimeOffset OccurredAt, string Reason);
-public sealed record AdminOrderNote(Guid Id, string Note, string Actor, DateTimeOffset CreatedAt);
-public sealed record AdminOrderInternalCost(Guid Id, string Title, decimal Amount, string Actor, DateTimeOffset CreatedAt);
-public sealed record AdminOrderInternalCostInput(string Title, decimal Amount);
-public sealed record AdminPayment(string Provider, decimal Amount, string Currency, PaymentState State, string? Reference, DateTimeOffset CreatedAt, DateTimeOffset? CompletedAt);
-public sealed record LowStockItem(string ProductTitle, string Sku, string VariantLabel, int AvailablePackages);
-public sealed record ExpiringStockItem(
-    string ProductTitle,
-    string Sku,
-    string VariantLabel,
-    string BatchCode,
-    DateTimeOffset ExpiresAt,
-    int RemainingPackages);
-public sealed record AdminNavigationTarget(
-    string Module,
-    string? Filter = null,
-    string? Sku = null,
-    string? BatchCode = null);
-public sealed record AdminDashboard(int AwaitingPayment, int Processing, int Shipped, int Delivered,
-    decimal PaidRevenue, decimal TodayRevenue, IReadOnlyCollection<LowStockItem> LowStock,
-    int PeriodDays = 1, int PeriodOrderCount = 0, decimal PeriodRevenue = 0, decimal AverageOrderValue = 0,
-    IReadOnlyCollection<ExpiringStockItem>? ExpiringSoon = null, int NewCustomers = 0, int CorporateNewRequests = 0, int ProblemOrders = 0, bool FinancialsVisible = true);
-public sealed record AdminDashboardHealth(
-    string Api,
-    string Database,
-    string Migrations,
-    string AdminAuthentication,
-    string Payment,
-    string MediaStorage,
-    bool Ready);
-public sealed record DashboardPeriod(DateTimeOffset From, DateTimeOffset To)
-{
-    public static bool TryCreate(DateTimeOffset? from, DateTimeOffset? to, DateTimeOffset now, out DashboardPeriod? period)
-    {
-        period = null;
-        if (from is null && to is null) return true;
-        if (from is null || to is null) return false;
-
-        var start = from.Value.ToUniversalTime();
-        var end = to.Value.ToUniversalTime();
-        if (start >= end || start > now || end > now.AddDays(2) || end - start > TimeSpan.FromDays(366)) return false;
-        period = new DashboardPeriod(start, end);
-        return true;
-    }
-}
-public sealed record DashboardWidgetPreference(string Id, bool Visible);
-public sealed record DashboardPreferencesInput(IReadOnlyList<DashboardWidgetPreference>? Widgets);
-public sealed record DashboardPreferences(IReadOnlyList<DashboardWidgetPreference> Widgets)
-{
-    public static readonly string[] AvailableWidgets = ["metrics", "quickActions", "alerts", "lowStock", "expiring"];
-    public static readonly DashboardPreferences Default = new(AvailableWidgets.Select(id => new DashboardWidgetPreference(id, true)).ToArray());
-
-    public static bool IsValid(IReadOnlyList<DashboardWidgetPreference>? widgets) =>
-        widgets is { Count: 5 } && widgets.All(widget => widget is not null && AvailableWidgets.Contains(widget.Id, StringComparer.Ordinal)) &&
-        widgets.Select(widget => widget.Id).Distinct(StringComparer.Ordinal).Count() == AvailableWidgets.Length;
-
-    public static Dictionary<string, string[]> Validate(DashboardPreferencesInput input) => IsValid(input.Widgets)
-        ? new Dictionary<string, string[]>()
-        : new Dictionary<string, string[]> { [nameof(input.Widgets)] = ["ØªØ±ØªÛŒØ¨ Ø¨Ø§ÛŒØ¯ Ù‡Ø± Ù¾Ù†Ø¬ Ø¨Ø®Ø´ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø±Ø§ Ø¯Ù‚ÛŒÙ‚Ø§Ù‹ ÛŒÚ© Ø¨Ø§Ø± Ø¯Ø§Ø´ØªÙ‡ Ø¨Ø§Ø´Ø¯."] };
-}
-public sealed record AdminProductProfitability(
-    string ProductTitle,
-    string Sku,
-    string VariantLabel,
-    int UnitsSold,
-    decimal Revenue,
-    decimal Cost,
-    decimal GrossProfit,
-    decimal Discount = 0,
-    decimal ProductCost = 0,
-    decimal PackagingCost = 0,
-    decimal AdditionalCost = 0,
-    decimal? QuantitySold = null,
-    string? BaseUnit = null,
-    decimal OrderInternalCost = 0);
-public sealed record AdminAnalytics(
-    int Days, int OrderCount, int UnitsSold, decimal Revenue, decimal Cost, decimal GrossProfit,
-    decimal GrossMarginPercent, decimal Tax = 0, decimal NetProfit = 0, decimal ShippingExpense = 0,
-    decimal MerchandiseRevenue = 0, decimal Discount = 0, decimal ShippingRevenue = 0,
-    decimal ProductCost = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0,
-    IReadOnlyCollection<AdminDailySales>? DailySales = null,
-    IReadOnlyCollection<AdminOrderStateCount>? OrderStates = null,
-    decimal OrderInternalCosts = 0);
-public sealed record AdminDailySales(DateOnly Day, int OrderCount, decimal Revenue, decimal NetProfit);
-public sealed record AdminOrderStateCount(string State, int Count);
-public sealed record AdminPriceHistoryPoint(DateTimeOffset OccurredAt, string Kind, decimal Amount, string Reference);
-public sealed record AdminPriceHistorySku(string Sku, string ProductTitle, string VariantLabel);
-public sealed record AdminNotification(
-    string Type,
-    string Title,
-    string Detail,
-    AdminNavigationTarget? Target = null);
-public sealed record AdminNotifications(int AwaitingPayment, int LowStockItems, IReadOnlyCollection<AdminNotification> Items, int CorporateOverdueFollowUps = 0);
-public enum OrderOperationStatus { Updated, NotFound, Conflict }
-public sealed record OrderOperationResult(OrderOperationStatus Status, AdminOrderSummary? Order = null,
-    string? Message = null, IReadOnlyCollection<StockLevelChange>? StockLevels = null)
-{
-    public static OrderOperationResult Updated(AdminOrderSummary order, IReadOnlyCollection<StockLevelChange>? levels = null) =>
-        new(OrderOperationStatus.Updated, order, StockLevels: levels);
-    public static OrderOperationResult NotFound(string message) => new(OrderOperationStatus.NotFound, Message: message);
-    public static OrderOperationResult Conflict(string message) => new(OrderOperationStatus.Conflict, Message: message);
-}
-
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíß·á:-jZ.¶›­–)Ş³WW6–ær7—7FVÒåFW‡Bä§6öã°Ğ§W6–ær7—7FVÒåFW‡C°Ğ§W6–ær7—7FVÒå6V7W&—G’ä7'—Föw&‡“°Ğ§W6–ærÖ–7&÷6ögBäW‡FVç6–öç2ä÷F–öç3°Ğ§W6–ærçw7Ã°Ğ Ğ§V&Æ–27FF–26Æ72÷&FW$ÖævVÖVçDÖöGVÆPĞ§°Ğ¢V&Æ–27FF–2•6W'f–6T6öÆÆV7F–öâFD÷&FW$ÖævVÖVçB‡F†—2•6W'f–6T6öÆÆV7F–öâ6W'f–6W2Ğ¢°Ğ¢6W'f–6W2äFE6–ævÆWFöãÄ÷&FW$ÖævVÖVçDFF&6Sâ‚“°Ğ¢&WGW&â6W'f–6W3°Ğ¢ĞĞ Ğ¢V&Æ–27FF–2”VæGö–çE&÷WFT'V–ÆFW"Ö÷&FW$ÖævVÖVçB‡F†—2”VæGö–çE&÷WFT'V–ÆFW"VæGö–çG2Ğ¢°Ğ¢f"FÖ–âÒVæGö–çG2äÖw&÷W‚"ö’÷cöFÖ–â"’åv—F…Fw2‚$FÖ–â÷&FW'2"“°Ğ Ğ¢FÖ–âäÖvWB‚"ö÷&FW'2"Â7–æ2€Ğ¢7G&–æsò7FFRÀĞ¢7G&–æsòÀĞ¢–çCòÆ–Ö—BÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b‚—5fÆ–D÷&FW$f–ÇFW"‡7FFR’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²'7FFR%ÒÒ²-˜‹m‹¸ÍŠ¢‹=˜Š}‹‹B˜]‹Š­Š‹˜m¸Í‹=Š¢â%ÒÒ“°Ğ¢–b‡òäÆVæwF‚â#Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²'%ÒÒ²-‹ŠŠ}‹Š¢ŠÍ‹=Š®(Í˜ŠÍ˜‚˜m˜]¸Î(ÍŠ­˜Š}˜mŠòŠ¸Í‹MŠ­‹Š}‹"»»-»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%ÒÒ“°Ğ¢–b‚F6†&ö&EW&–öBåG'”7&VFR†g&öÒÂFòÂFFUF–ÖTöfg6WBåWF4æ÷rÂ÷WBf"W&–öB’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²&g&öÒ%ÒÒ²-ŠŠ}‹-˜}™B‹-˜]Š}˜m¸Â˜mŠ}˜]‹Š­Š‹Š}‹=Š­‰²‹M‹˜‹’˜‚›íŠ}¸ÍŠ}˜b˜]‹Š­Š‹‹ŠrŠİŠıŠ}ªŠ½‹Š‹Š}¸Â¸Íª’‹=Š}˜BŠ}˜mŠ­ŠíŠ}Š‚ª˜m¸ÍŠòâ%ÒÒ“°Ğ¢f"&÷w2Òv—BFF&6RäÆ—7D7–æ2€Ğ¢7FFRÂÂÖF‚ä6Æ×†Æ–Ö—BóòÂÂ#S’Â6æ6VÆÆF–öåFö¶VâÀĞ¢7W7FöÖW%&—f7’ä6å&VE–’†6öçFW‡B’ÂW&–öCòäg&öÒÂW&–öCòåFò“°Ğ¢&WGW&â&W7VÇG2äö²‡&÷w2å6VÆV7B‡&÷rÓâ÷&FW%&—f7’å&ö¦V7B‡&÷rÂ6öçFW‡B’’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"ö÷&FW'2öW‡÷'Bæ77b"Â7–æ2€Ğ¢7G&–æsò7FFRÀĞ¢7G&–æsòÀĞ¢–çCòÆ–Ö—BÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b‚—5fÆ–D÷&FW$f–ÇFW"‡7FFR’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²'7FFR%ÒÒ²-˜‹m‹¸ÍŠ¢‹=˜Š}‹‹B˜]‹Š­Š‹˜m¸Í‹=Š¢â%ÒÒ“°Ğ¢–b‡òäÆVæwF‚â#Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²'%ÒÒ²-‹ŠŠ}‹Š¢ŠÍ‹=Š®(Í˜ŠÍ˜‚˜m˜]¸Î(ÍŠ­˜Š}˜mŠòŠ¸Í‹MŠ­‹Š}‹"»»-»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%ÒÒ“°Ğ¢–b‚F6†&ö&EW&–öBåG'”7&VFR†g&öÒÂFòÂFFUF–ÖTöfg6WBåWF4æ÷rÂ÷WBf"W&–öB’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²&g&öÒ%ÒÒ²-ŠŠ}‹-˜}™B‹-˜]Š}˜m¸Â˜mŠ}˜]‹Š­Š‹Š}‹=Š­‰²‹M‹˜‹’˜‚›íŠ}¸ÍŠ}˜b˜]‹Š­Š‹‹ŠrŠİŠıŠ}ªŠ½‹Š‹Š}¸Â¸Íª’‹=Š}˜BŠ}˜mŠ­ŠíŠ}Š‚ª˜m¸ÍŠòâ%ÒÒ“°Ğ¢f"÷&FW'2Òv—BFF&6RäÆ—7D7–æ2€Ğ¢7FFRÂÂÖF‚ä6Æ×†Æ–Ö—BóòóÂÂUó’Â6æ6VÆÆF–öåFö¶VâÀĞ¢7W7FöÖW%&—f7’ä6å&VE–’†6öçFW‡B’ÂW&–öCòäg&öÒÂW&–öCòåFò“°Ğ¢7FF–27G&–ær77b†ö&¦V7CòfÇVRĞ¢°Ğ¢f"FW‡BÒfÇVSòåFõ7G&–ær‚’óò7G&–æräV×G“°Ğ¢&WGW&âB%Â'·FW‡Bå&WÆ6R‚%Â""Â%Â%Â""—ÕÂ"#°Ğ¢ĞĞ¢f"'V–ÆFW"ÒæWr7G&–æt'V–ÆFW"‚%ÇTdTdm‹M˜mŠ}‹=˜r‹=˜Š}‹‹BÍ˜m˜‹’‹=˜Š}‹‹BÍ˜]‹MŠ­‹¸ÂÍ˜]˜ŠŠ}¸Í˜BÍ‹M˜}‹Í˜‹m‹¸ÍŠ¢Í˜]Š˜M‹¢ÍŠ}‹‹"ÍŠ­‹ŠıŠ}ŠòŠ}˜-˜MŠ}˜RÍ‹-˜]Š}˜bŠ½ŠŠ¢Í˜‹m‹¸ÍŠ¢›í‹ŠıŠ}ŠíŠ¢Í‹M˜mŠ}‹=˜r›í‹ŠıŠ}ŠíŠ¥Æâ"“°Ğ¢f÷&V6‚‡f"&t÷&FW"–â÷&FW'2Ğ¢°Ğ¢f"÷&FW"Ò÷&FW%&—f7’å&ö¦V7B‡&t÷&FW"Â6öçFW‡B“°Ğ¢'V–ÆFW"äVæD¦ö–â‚rÂrÂæWuµÒ²77b†÷&FW"ä–B’Â77b†÷&FW"ä—5&—fFRò-Ší‹]˜‹]¸Â"¢-‹=Š}¸ÍŠ¢"’Â77b†÷&FW"ä7W7FöÖW$æÖR’Â77b†÷&FW"äÖö&–ÆR’Â77b‚B'¶÷&FW"å&÷f–æ6WİˆÂ¶÷&FW"ä6—G—Ò"’ÀĞ¢77b†÷&FW"å7FFR’Â77b†÷&FW"å–&ÆRåFõ7G&–ær‚#â22"’’Â77b†÷&FW"ä7W'&Væ7’’Â77b†÷&FW"äÆ–æT6÷VçB’ÀĞ¢77b†÷&FW"ä7&VFVDBåFõ7G&–ær‚$ò"’’Â77b†÷&FW"å–ÖVçE7FFR’Â77b†÷&FW"å–ÖVçE&VfW&Væ6R’Ò’äVæB‚uÆâr“°Ğ¢ĞĞ¢&WGW&â&W7VÇG2äf–ÆR„Væ6öF–æråUDc‚ävWD'—FW2†'V–ÆFW"åFõ7G&–ær‚’’Â'FW‡Bö77c²6†'6WC×WFbÓ‚"Â&Ö¦VGVæV‚Ö÷&FW'2æ77b"“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚Ğ¢äFDVæGö–çDf–ÇFW#Å7FWWWF†÷&—¦F–öäf–ÇFW#â‚Ğ¢åv—F„ÖWFFF†æWr7FWWW&Ö—76–öå&WV—&VÖVçB„FÖ–åW&Ö—76–öä6FÆörä÷&FW'4W‡÷'B’“°Ğ Ğ¢FÖ–âäÖvWB‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒ"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"FWF–ÂÒv—BFF&6RävWDFWF–Ä7–æ2†÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&âFWF–Â—2çVÆÂò&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"Ò’¢&W7VÇG2äö²„÷&FW%&—f7’å&ö¦V7B†FWF–ÂÂ6öçFW‡B’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒö–çfö–6R"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG&W7öç6R&W7öç6RÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"FWF–ÂÒv—BFF&6RävWDFWF–Ä7–æ2†÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢–b†FWF–Â—2çVÆÂ’&WGW&â&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"Ò“°Ğ¢&W7öç6Rä†VFW'2ä6öçFVçDF—7÷6—F–öâÒB&–æÆ–æS²f–ÆVæÖSÕÂ&Ö¦VGVæV‚Ö–çfö–6R×¶÷&FW$–C¤çÒæ‡FÖÅÂ"#°Ğ¢&WGW&â&W7VÇG2ä6öçFVçB„–çfö–6U&VæFW&W"å&VæFW"†FWF–ÂåFô6†V6¶÷WD÷&FW"‚’’Â'FW‡Bö‡FÖÃ²6†'6WC×WFbÓ‚"ÂVæ6öF–æråUDc‚“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒ÷6¶–ær×6Æ—"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG&W7öç6R&W7öç6RÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"FWF–ÂÒv—BFF&6RävWDFWF–Ä7–æ2†÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢–b†FWF–Â—2çVÆÂ’&WGW&â&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"Ò“°Ğ¢&W7öç6Rä†VFW'2ä6öçFVçDF—7÷6—F–öâÒB&–æÆ–æS²f–ÆVæÖSÕÂ&Ö¦VGVæV‚×6¶–ær×6Æ—×¶÷&FW$–C¤çÒæ‡FÖÅÂ"#°Ğ¢&WGW&â&W7VÇG2ä6öçFVçB…6¶–æu6Æ—&VæFW&W"å&VæFW"†FWF–ÂåFô6†V6¶÷WD÷&FW"‚’’Â'FW‡Bö‡FÖÃ²6†'6WC×WFbÓ‚"ÂVæ6öF–æråUDc‚“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖ÷7B‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒöæ÷FW2"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢FÖ–ä÷&FW$æ÷FT–çWB–çWBÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b‡7G&–ærä—4çVÆÄ÷%v†—FU76R†–çWBäæ÷FR’ÇÂ–çWBäæ÷FRåG&–Ò‚’äÆVæwF‚â%óĞ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²¶æÖVöb†–çWBäæ÷FR•ÒÒ²-¸ÍŠ}ŠıŠıŠ}‹MŠ¢ŠŠ}¸ÍŠòŠ¸Í˜b»Š­Šr»-»»»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%ÒÒ“°Ğ¢f"7F÷"Ò‚„FÖ–å&–æ6—Ãò–6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ò“òäVÖ–Âóò&FÖ–â#°Ğ¢f"æ÷FRÒv—BFF&6RäFDæ÷FT7–æ2†÷&FW$–BÂ–çWBäæ÷FRÂ7F÷"Â6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&âæ÷FR—2çVÆÂò&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"Ò’¢&W7VÇG2ä7&VFVB‚B"ö’÷cöFÖ–âö÷&FW'2÷¶÷&FW$–GÒöæ÷FW2÷¶æ÷FRä–GÒ"Â÷&FW%&—f7’å&ö¦V7B†æ÷FRÂ6öçFW‡B’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖ÷7B‚"ö÷&FW'2÷&—fFR"Â7–æ2€Ğ¢6†V6¶÷WE&WVW7B&WVW7BÀĞ¢6†V6¶÷WDFF&6R6†V6¶÷WBÀĞ¢FÖ–äVF—DÆötFF&6RVF—BÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"6ÆVå&WVW7BÒ&WVW7Bv—F‚²6÷Wöä6öFRÒçVÆÂÂÖ&¶WF–æt6öç6VçBÒfÇ6RÓ°Ğ¢f"W'&÷'2Ò6ÆVå&WVW7BåfÆ–FFR‚“°Ğ¢–b†W'&÷'2ä6÷VçBâ’&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†W'&÷'2“°Ğ¢f"&–æ6—ÂÒ„FÖ–å&–æ6—Ãò–6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ó°Ğ¢–b‡&–æ6—Â—2çVÆÂ’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢f"–FV×÷FVæ7”¶W’ÒB'&—fFRÖ÷&FW#§´wV–BäæWtwV–B‚“¤çÒ#°Ğ¢f"f–ævW'&–çBÒ6öçfW'BåFô†W…7G&–ær…4„#Sbä†6„FF„Væ6öF–æråUDc‚ävWD'—FW2„§6öå6W&–Æ—¦W"å6W&–Æ—¦R†6ÆVå&WVW7B’’’“°Ğ¢f"7&VFVBÒv—B6†V6¶÷WBä7&VFT7–æ2†–FV×÷FVæ7”¶W’Âf–ævW'&–çBÂ6ÆVå&WVW7BÂ6æ6VÆÆF–öåFö¶VâÂ—5&—fFS¢G'VR“°Ğ¢–b†7&VFVBå7FGW2ÓÒ6†V6¶÷WE7FGW2ä÷WDöe7Fö6²Ğ¢&WGW&â&W7VÇG2ä6öæfÆ–7B†æWr²ÖW76vRÒ7&VFVBäÖW76vRÂVæf–Æ&ÆU6·W2Ò7&VFVBåVæf–Æ&ÆU6·W2Ò“°Ğ¢–b†7&VFVBå7FGW2ÓÒ6†V6¶÷WE7FGW2ä6öæfÆ–7BĞ¢&WGW&â&W7VÇG2ä6öæfÆ–7B†æWr²ÖW76vRÒ7&VFVBäÖW76vRÒ“°Ğ¢–b†7&VFVBå7FGW2Ò6†V6¶÷WE7FGW2ä7&VFVBÇÂ7&VFVBä÷&FW"—2çVÆÂĞ¢&WGW&â&W7VÇG2å&ö&ÆVÒ‚-Š½ŠŠ¢‹=˜Š}‹‹BŠí‹]˜‹]¸ÂŠ}˜mŠÍŠ}˜R˜m‹MŠòâ"Â7FGW46öFS¢7FGW46öFW2å7FGW3S56W'f–6UVæf–Æ&ÆR“°Ğ¢f"÷&FW"Ò7&VFVBä÷&FW#°Ğ¢v—BVF—Bå&V6÷&D7–æ2‡&–æ6—ÂäVÖ–ÂÂ&÷&FW"ç&—fFRÖ7&VFVB"Â$÷&FW""Â÷&FW"ä–BåFõ7G&–ær‚$B"’ÂçVÆÂÀĞ¢æWr²÷&FW"å–&ÆRÂ7W'&Væ7’Ò÷&FW"ä7W'&Væ7’ÂÆ–æT6÷VçBÒ÷&FW"äÆ–æW2ä6÷VçBÂ÷&FW"å6†—–ætÖWF†öBÒÀĞ¢-Š½ŠŠ¢‹=˜Š}‹‹B‹=˜Š}‹‹M¸Â˜˜-‹rŠ‹Š}¸Â‹˜]˜M¸ÍŠ}Š¢ŠıŠ}Ší˜M¸Í‰²Šı‹‹=Š}¸ÍŠ¢˜‚Šİ‹=Š}Š‚˜]‹MŠ­‹¸Â˜m˜]Š}¸Í‹BŠıŠ}Šı˜r˜m˜]¸Î(Í‹M˜Šòâ"Â6öçFW‡BåG&6T–FVçF–f–W"ÀĞ¢6æ6VÆÆF–öåFö¶VâÂ&–æ6—Âå7F÷&T–B“°Ğ¢&WGW&â&W7VÇG2ä7&VFVB‚B"ö’÷cöFÖ–âö÷&FW'2÷¶÷&FW"ä–GÒ"ÂæWpĞ¢°Ğ¢–BÒ÷&FW"ä–BÀĞ¢÷&FW"å–&ÆRÀĞ¢÷&FW"ä7W'&Væ7’ÀĞ¢7FFRÒ÷&FW"å7FFRÀĞ¢Æ–æT6÷VçBÒ÷&FW"äÆ–æW2ä6÷VçBÀĞ¢7&VFVDBÒ÷&FW"ä7&VFVDBÀĞ¢—5&—fFRÒG'VPĞ¢Ò“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖ÷7B‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒö–çFW&æÂÖ6÷7G2"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢FÖ–ä÷&FW$–çFW&æÄ6÷7D–çWB–çWBÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢FÖ–äVF—DÆötFF&6RVF—BÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"W'&÷'2ÒæWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ‚“°Ğ¢–b‡7G&–ærä—4çVÆÄ÷%v†—FU76R†–çWBåF—FÆR’ÇÂ–çWBåF—FÆRåG&–Ò‚’äÆVæwF‚âcĞ¢W'&÷'5¶æÖVöb†–çWBåF—FÆR•ÒÒ²-‹˜m˜Š}˜b˜}‹-¸Í˜m˜rŠŠ}¸ÍŠòŠ¸Í˜b»Š­Šr»»m»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%Ó°Ğ¢–b†–çWBäÖ÷VçB—2ÃÒ÷"âóóóóĞ¢W'&÷'5¶æÖVöb†–çWBäÖ÷VçB•ÒÒ²-˜]Š˜M‹¢˜}‹-¸Í˜m˜rŠŠ}¸ÍŠòŠ¸Í‹MŠ­‹Š}‹"‹]˜‹˜‚ŠİŠıŠ}ªŠ½‹¸Íª(Í˜}‹-Š}‹˜]¸Í˜M¸ÍŠ}‹Šò‹¸ÍŠ}˜BŠŠ}‹MŠòâ%Ó°Ğ¢–b†W'&÷'2ä6÷VçBâ’&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†W'&÷'2“°Ğ¢f"&–æ6—ÂÒ„FÖ–å&–æ6—Ãò–6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ó°Ğ¢–b‡&–æ6—Â—2çVÆÂ’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢f"6÷7BÒv—BFF&6RäFD–çFW&æÄ6÷7D7–æ2†÷&FW$–BÂ–çWBÂ&–æ6—ÂäVÖ–ÂÀĞ¢6öçFW‡BåG&6T–FVçF–f–W"Â&–æ6—Âå7F÷&T–BÂVF—BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â6÷7B—2çVÆÀĞ¢ò&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"ÒĞ¢¢&W7VÇG2ä7&VFVB‚B"ö’÷cöFÖ–âö÷&FW'2÷¶÷&FW$–GÒö–çFW&æÂÖ6÷7G2÷¶6÷7Bä–GÒ"Â6÷7B“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖFVÆWFR‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒö–çFW&æÂÖ6÷7G2÷¶6÷7D–C¦wV–GÒ"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢wV–B6÷7D–BÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢FÖ–äVF—DÆötFF&6RVF—BÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"&–æ6—ÂÒ„FÖ–å&–æ6—Ãò–6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ó°Ğ¢–b‡&–æ6—Â—2çVÆÂ’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢f"&VÖ÷fVBÒv—BFF&6Rå&VÖ÷fT–çFW&æÄ6÷7D7–æ2†÷&FW$–BÂ6÷7D–BÂ&–æ6—ÂäVÖ–ÂÀĞ¢6öçFW‡BåG&6T–FVçF–f–W"Â&–æ6—Âå7F÷&T–BÂVF—BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â&VÖ÷fVBò&W7VÇG2äæô6öçFVçB‚’¢&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-˜}‹-¸Í˜m˜rŠıŠ}Ší˜M¸Â›í¸ÍŠıŠr˜m‹MŠòâ"Ò“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖF6‚‚"ö÷&FW'2÷¶÷&FW$–C¦wV–GÒ÷6†—–ær"Â7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢FÖ–å6†—ÖVçEWFFT–çWB–çWBÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢FÖ–äVF—DÆötFF&6RVF—BÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"W'&÷'2ÒæWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ‚“°Ğ¢–b†–çWBä6'&–W"—2²ÆVæwFƒ¢â#Ò’W'&÷'5¶æÖVöb†–çWBä6'&–W"•ÒÒ²-˜mŠ}˜R‹M‹ªŠ¢Šİ˜]˜B˜m˜]¸Î(ÍŠ­˜Š}˜mŠòŠ¸Í‹MŠ­‹Š}‹"»»-»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%Ó°Ğ¢–b†–çWBåG&6¶–æt6öFR—2²ÆVæwFƒ¢â#Ò’W'&÷'5¶æÖVöb†–çWBåG&6¶–æt6öFR•ÒÒ²-ªŠò‹˜}ªı¸Í‹¸Â˜m˜]¸Î(ÍŠ­˜Š}˜mŠòŠ¸Í‹MŠ­‹Š}‹"»»-»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%Ó°Ğ¢–b†–çWBåWFFT7GVÅ6†—–æt6÷7Bbb†–çWBä7GVÅ6†—–æt6÷7B—2Â÷"âóóó’’W'&÷'5¶æÖVöb†–çWBä7GVÅ6†—–æt6÷7B•ÒÒ²-˜}‹-¸Í˜m˜r˜Š}˜-‹¸ÂŠ}‹‹=Š}˜BŠŠ}¸ÍŠòŠ¸Í˜b‹]˜‹Š­Šr¸Íª’˜]¸Í˜M¸ÍŠ}‹ŠòŠŠ}‹MŠòâ%Ó°Ğ¢–b‡7G&–ærä—4çVÆÄ÷%v†—FU76R†–çWBå&V6öâ’ÇÂ–çWBå&V6öâåG&–Ò‚’äÆVæwF‚âSĞ¢W'&÷'5¶æÖVöb†–çWBå&V6öâ•ÒÒ²-Šı˜M¸Í˜BŠ½ŠŠ¢¸ÍŠrŠ}‹]˜MŠ}ŠÒŠ}‹}˜MŠ}‹Š}Š¢Š}‹‹=Š}˜BŠŠ}¸ÍŠòŠ¸Í˜b»Š­Šr»]»»˜m˜¸Í‹=˜rŠŠ}‹MŠòâ%Ó°Ğ¢–b†W'&÷'2ä6÷VçBâ’&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†W'&÷'2“°Ğ¢f"&–æ6—ÂÒ„FÖ–å&–æ6—Ãò–6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ó°Ğ¢–b‡&–æ6—Â—2çVÆÂ’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢f"WFFVBÒv—BFF&6RåWFFU6†—–æt7–æ2€Ğ¢÷&FW$–BÂ–çWBÂ&–æ6—ÂäVÖ–ÂÂ6öçFW‡BåG&6T–FVçF–f–W"ÂVF—BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&âWFFVB—2çVÆÂò&W7VÇG2äæ÷Df÷VæB†æWr²ÖW76vRÒ-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"Ò’¢&W7VÇG2äö²„÷&FW%&—f7’å&ö¦V7B‡WFFVBÂ6öçFW‡B’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚Ğ¢äFDVæGö–çDf–ÇFW#Ä÷&FW%6†—–æt6÷7E7FWWWF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öF6†&ö&B"Â7–æ2€Ğ¢–çCòF—2ÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b†6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ò—2æ÷BFÖ–å&–æ6—Â&–æ6—Â’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢–b‚F6†&ö&EW&–öBåG'”7&VFR†g&öÒÂFòÂFFUF–ÖTöfg6WBåWF4æ÷rÂ÷WBf"W&–öB’Ğ¢&WGW&â&W7VÇG2ä&E&WVW7B†æWr²ÖW76vRÒ-ŠŠ}‹-˜}™BŠ}˜mŠ­ŠíŠ}Š¸Â˜mŠ}˜]‹Š­Š‹Š}‹=Š­‰²Š­Š}‹¸ÍŠâ›íŠ}¸ÍŠ}˜bŠŠ}¸ÍŠòŠ‹ŠòŠ}‹"‹M‹˜‹’˜‚ŠİŠıŠ}ªŠ½‹¸Íª’‹=Š}˜BŠŠ}‹MŠòâ"Ò“°Ğ¢f"F6†&ö&BÒv—BFF&6RäF6†&ö&D7–æ2„ÖF‚ä6Æ×†F—2óòÂÂ3cR’Â6æ6VÆÆF–öåFö¶VâÂW&–öB“°Ğ¢f"6å&VD÷&FW'2ÒFÖ–åW&Ö—76–öä6FÆöräÆÆ÷w2‡&–æ6—ÂÂFÖ–åW&Ö—76–öä6FÆörä÷&FW'5&VB“°Ğ¢f"6å&VD–çfVçF÷'’ÒFÖ–åW&Ö—76–öä6FÆöräÆÆ÷w2‡&–æ6—ÂÂFÖ–åW&Ö—76–öä6FÆörä–çfVçF÷'•&VB“°Ğ¢f"6å&VD7W7FöÖW'2ÒFÖ–åW&Ö—76–öä6FÆöräÆÆ÷w2‡&–æ6—ÂÂFÖ–åW&Ö—76–öä6FÆörä7W7FöÖW'5&VB“°Ğ¢f"6å&VD6÷'÷&FRÒFÖ–åW&Ö—76–öä6FÆöräÆÆ÷w2‡&–æ6—ÂÂFÖ–åW&Ö—76–öä6FÆörä6÷'÷&FU&VB“°Ğ¢f"6å&VE&W÷'G2ÒFÖ–åW&Ö—76–öä6FÆöräÆÆ÷w2‡&–æ6—ÂÂFÖ–åW&Ö—76–öä6FÆörå&W÷'G5&VB“°Ğ¢F6†&ö&BÒF6†&ö&Bv—F€Ğ¢°Ğ¢v—F–æu–ÖVçBÒ6å&VD÷&FW'2òF6†&ö&Bäv—F–æu–ÖVçB¢ÀĞ¢&ö6W76–ærÒ6å&VD÷&FW'2òF6†&ö&Bå&ö6W76–ær¢ÀĞ¢6†—VBÒ6å&VD÷&FW'2òF6†&ö&Bå6†—VB¢ÀĞ¢FVÆ—fW&VBÒ6å&VD÷&FW'2òF6†&ö&BäFVÆ—fW&VB¢ÀĞ¢W&–öD÷&FW$6÷VçBÒ6å&VD÷&FW'2òF6†&ö&BåW&–öD÷&FW$6÷VçB¢ÀĞ¢&ö&ÆVÔ÷&FW'2Ò6å&VD÷&FW'2òF6†&ö&Bå&ö&ÆVÔ÷&FW'2¢ÀĞ¢Æ÷u7Fö6²Ò6å&VD–çfVçF÷'’òF6†&ö&BäÆ÷u7Fö6²¢'&’äV×G“ÄÆ÷u7Fö6´—FVÓâ‚’ÀĞ¢W‡—&–æu6ööâÒ6å&VD–çfVçF÷'’òF6†&ö&BäW‡—&–æu6ööâ¢'&’äV×G“ÄW‡—&–æu7Fö6´—FVÓâ‚’ÀĞ¢æWt7W7FöÖW'2Ò6å&VD7W7FöÖW'2òF6†&ö&BäæWt7W7FöÖW'2¢ÀĞ¢6÷'÷&FTæWu&WVW7G2Ò6å&VD6÷'÷&FRòF6†&ö&Bä6÷'÷&FTæWu&WVW7G2¢ÀĞ¢–E&WfVçVRÒ6å&VE&W÷'G2òF6†&ö&Bå–E&WfVçVR¢ÀĞ¢FöF•&WfVçVRÒ6å&VE&W÷'G2òF6†&ö&BåFöF•&WfVçVR¢ÀĞ¢W&–öE&WfVçVRÒ6å&VE&W÷'G2òF6†&ö&BåW&–öE&WfVçVR¢ÀĞ¢fW&vT÷&FW%fÇVRÒ6å&VE&W÷'G2òF6†&ö&BäfW&vT÷&FW%fÇVR¢ÀĞ¢f–ææ6–Ç5f—6–&ÆRÒ6å&VE&W÷'G0Ğ¢Ó°Ğ¢&WGW&â&W7VÇG2äö²†F6†&ö&B“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öF6†&ö&Bö†VÇF‚"Â7–æ2€Ğ¢”†VÇF…&ö&R†VÇF…&ö&RÀĞ¢FÖ–åFö¶Vå6W'f–6RFÖ–åFö¶Vç2ÀĞ¢–ÖVçDFF&6R–ÖVçG2ÀĞ¢¦–&ÄvFWv’¦–&ÂÀĞ¢”÷F–öç3ÄÖVF–7F÷&vT÷F–öç3âÖVF–÷F–öç2ÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b†6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ò—2æ÷BFÖ–å&–æ6—Â’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢6öçFW‡Bå&W7öç6Rä†VFW'2ä66†T6öçG&öÂÒ&æò×7F÷&R#°Ğ¢f"FF&6RÒv—B†VÇF…&ö&Rä6†V6´FF&6T7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢f"WF†VçF–6F–öâÒFÖ–åFö¶Vç2ä—46öæf–wW&VBò&6öæf–wW&VB"¢&æ÷BÖ6öæf–wW&VB#°Ğ¢f"–ÖVçBÒ¦–&Âä—46öæf–wW&VBò'¦–&ÂÖ6öæf–wW&VB"¢–ÖVçG2å6æF&÷„Væ&ÆVBò'6æF&÷‚ÖVæ&ÆVB"¢&F—6&ÆVB#°Ğ¢f"7F÷&vT÷F–öç2ÒÖVF–÷F–öç2åfÇVS°Ğ¢f"7F÷&vRÒ7F÷&vT÷F–öç2å&÷f–FW"åG&–Ò‚’åFôÆ÷vW$–çf&–çB‚’7v—F6€Ğ¢°Ğ¢&Æö6Â"÷"""Óâ&Æö6Â"ÀĞ¢'32"÷"'32Ö6ö×F–&ÆR"Óâ7G&–ærä—4çVÆÄ÷%v†—FU76R‡7F÷&vT÷F–öç2å32äVæGö–çB’ÇÀĞ¢7G&–ærä—4çVÆÄ÷%v†—FU76R‡7F÷&vT÷F–öç2å32ä'V6¶WB’ÇÀĞ¢7G&–ærä—4çVÆÄ÷%v†—FU76R‡7F÷&vT÷F–öç2å32ä66W74¶W’’ÇÀĞ¢7G&–ærä—4çVÆÄ÷%v†—FU76R‡7F÷&vT÷F–öç2å32å6V7&WD¶W’Ğ¢ò&æ÷BÖ6öæf–wW&VB Ğ¢¢'32Ö6öæf–wW&VB"ÀĞ¢òÓâ'Væ¶æ÷vâ Ğ¢Ó°Ğ¢f"&VG’ÒFF&6Rä—5&VG’bbFÖ–åFö¶Vç2ä—46öæf–wW&VC°Ğ¢&WGW&â&W7VÇG2äö²†æWrFÖ–äF6†&ö&D†VÇF‚€Ğ¢&†VÇF‡’"ÂFF&6RäFF&6RÂFF&6RäÖ–w&F–öå7FGW2ÂWF†VçF–6F–öâÂ–ÖVçBÂ7F÷&vRÂ&VG’’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öF6†&ö&B÷&VfW&Væ6W2"Â7–æ2€Ğ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b†6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ò—2æ÷BFÖ–å&–æ6—Â&–æ6—Â’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢&WGW&â&W7VÇG2äö²†v—BFF&6RävWDF6†&ö&E&VfW&Væ6W47–æ2€Ğ¢&–æ6—Âå7F÷&T–BÂ&–æ6—Âå&öÆRÀĞ¢&–æ6—ÂåW6W$–CòåFõ7G&–ær‚$â"’óò&–æ6—ÂäVÖ–ÂåG&–Ò‚’åFôÆ÷vW$–çf&–çB‚’Â6æ6VÆÆF–öåFö¶Vâ’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖWB‚"öF6†&ö&B÷&VfW&Væ6W2"Â7–æ2€Ğ¢F6†&ö&E&VfW&Væ6W4–çWB–çWBÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢‡GG6öçFW‡B6öçFW‡BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b†6öçFW‡Bä—FV×5²$FÖ–å&–æ6—Â%Ò—2æ÷BFÖ–å&–æ6—Â&–æ6—Â’&WGW&â&W7VÇG2åVæWF†÷&—¦VB‚“°Ğ¢f"W'&÷'2ÒF6†&ö&E&VfW&Væ6W2åfÆ–FFR†–çWB“°Ğ¢–b†W'&÷'2ä6÷VçBâ’&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†W'&÷'2“°Ğ¢f"6fVBÒv—BFF&6Rå6fTF6†&ö&E&VfW&Væ6W47–æ2€Ğ¢&–æ6—Âå7F÷&T–BÂ&–æ6—Âå&öÆRÀĞ¢&–æ6—ÂåW6W$–CòåFõ7G&–ær‚$â"’óò&–æ6—ÂäVÖ–ÂåG&–Ò‚’åFôÆ÷vW$–çf&–çB‚’ÀĞ¢&–æ6—ÂäVÖ–ÂÂ–çWBåv–FvWG2Â6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â&W7VÇG2äö²‡6fVB“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öæÇ—F–72"Â7–æ2€Ğ¢–çCòF—2ÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢–b‚F6†&ö&EW&–öBåG'”7&VFR†g&öÒÂFòÂFFUF–ÖTöfg6WBåWF4æ÷rÂ÷WBf"W&–öB’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²&g&öÒ%ÒÒ²-ŠŠ}‹-˜}™B‹-˜]Š}˜m¸Â˜mŠ}˜]‹Š­Š‹Š}‹=Š­‰²‹M‹˜‹’˜‚›íŠ}¸ÍŠ}˜b˜]‹Š­Š‹‹ŠrŠİŠıŠ}ªŠ½‹Š‹Š}¸Â¸Íª’‹=Š}˜BŠ}˜mŠ­ŠíŠ}Š‚ª˜m¸ÍŠòâ%ÒÒ“°Ğ¢&WGW&â&W7VÇG2äö²†v—BFF&6RäæÇ—F–747–æ2„ÖF‚ä6Æ×†F—2óò3ÂÂ3cR’Â6æ6VÆÆF–öåFö¶VâÂW&–öB’“°Ğ¢ÒĞ¢äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öæÇ—F–72÷&öGV7G2"Â7–æ2€Ğ¢–çCòF—2ÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶Vâ’ÓàĞ¢°Ğ¢f"v–æF÷tF—2ÒF—2óò3°Ğ¢–b‚†g&öÒ—2çVÆÂbb‡v–æF÷tF—2—2Â÷"â3cR’’ÇÂF6†&ö&EW&–öBåG'”7&VFR†g&öÒÂFòÂFFUF–ÖTöfg6WBåWF4æ÷rÂ÷WBf"W&–öB’Ğ¢&WGW&â&W7VÇG2åfÆ–FF–öå&ö&ÆVÒ†æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²²&g&öÒ%ÒÒ²-ŠŠ}‹-˜}™BŠ}˜mŠ­ŠíŠ}Š¸Â˜mŠ}˜]‹Š­Š‹Š}‹=Š­‰²Š­Š}‹¸ÍŠî(Í˜}ŠrŠŠ}¸ÍŠò˜]‹Š­Š‹˜‚ŠİŠıŠ}ªŠ½‹¸Íª(Í‹=Š}˜BŠŠ}‹M˜mŠòâ%ÒÒ“°Ğ¢&WGW&â&W7VÇG2äö²†v—BFF&6Rå&öGV7E&öf—F&–Æ—G”7–æ2‡v–æF÷tF—2Â6æ6VÆÆF–öåFö¶VâÂW&–öB’“°Ğ¢Ò’äFDVæGö–çDf–ÇFW#Ä÷væW$WF†÷&—¦F–öäf–ÇFW#â‚“°Ğ Ğ¢FÖ–âäÖvWB‚"öæÇ—F–72÷&–6RÖ†—7F÷'’"Â7–æ2€Ğ¢7G&–æsò6·RÀĞ¢–çCòF—2ÀĞ¢FFUF–ÖTöfg6WCòg&öÒÀĞ¢FFUF–ÖTöfg6WCòFòÀĞ¢÷&FW$ÖævVÖVçDFF&6RFF&6RÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öí}Û~-¢G§²ÚîÆ­yÖW'2"ÀĞ¢B'·&V6VçD÷&FW'7Ò‹=˜Š}‹‹BŠı‹»-»B‹=Š}‹Š¢Š}Ší¸Í‹Š½ŠŠ¢¸ÍŠr›í‹ŠıŠ}‹-‹B‹MŠı˜râ"ÀĞ¢-˜]‹˜‹‹=˜Š}‹‹N(Í˜}Šr˜‚˜‹m‹¸ÍŠ¢Š}‹‹=Š}˜B"ÀĞ¢æWrFÖ–äæf–vF–öåF&vWB‚&÷&FW'2"’’“°Ğ¢&WGW&âæWrFÖ–äæ÷F–f–6F–öç2†v—F–æu–ÖVçBÂ—FV×2ä6÷VçB†—FVÒÓâ—FVÒåG—RÓÒ&Æ÷r×7Fö6²"’Â—FV×2Â6÷'÷&FT÷fW&GVTföÆÆ÷uW2“°Ğ¢ĞĞ Ğ¢V&Æ–27–æ2F6³Ä•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷fW&GVU6†—ÖVçCãâÆ—7D÷fW&GVU6†—ÖVçG47–æ2†–çBF—2Â6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶VâĞ¢°Ğ¢–b‚—46öæf–wW&VB’&WGW&â'&’äV×G“ÄFÖ–ä÷fW&GVU6†—ÖVçCâ‚“°Ğ Ğ¢6öç7B7G&–ær7ÂÒ"" Ğ¢6VÆV7Bòæ–BÆòæ7W7FöÖW%öæÖRÆòæÖö&–ÆRÆòç&÷f–æ6RÆòæ6—G’Æòç–&ÆRÆòæ7W'&Væ7’Æòç7FFRÀĞ¢òæ7&VFVEöBÆòç&W6W'fF–öåöW‡—&W5öBÀĞ¢6öÆW66R‚‡6VÆV7B6÷VçB‚¢’g&öÒ6†V6¶÷WEö÷&FW%öÆ–æW2Âv†W&RÂæ÷&FW%ö–CÖòæ–B’Ã“£¦–çBÀĞ¢6öÆW66R†òç6†—–æuö6'&–W"Ârr’Æ6öÆW66R†òçG&6¶–æuö6öFRÂrr’Æòç6†—VEöBÀĞ¢w&VFW7BƒÂfÆö÷"†W‡G&7B†Wö6‚g&öÒ†æ÷r‚’Òòç6†—VEöB’’òƒcC’“£¦–ç@Ğ¢g&öÒ6†V6¶÷WEö÷&FW'2ğĞ¢v†W&Ròç7FFSÒu6†—VBpĞ¢æBòç6†—VEöB—2æ÷BçVÆÀĞ¢æBòç6†—VEöBÃÒæ÷r‚’Ò„F—2¢–çFW'fÂsF’rĞ¢÷&FW"'’òç6†—VEöB60Ğ¢Æ–Ö—B#S°Ğ¢""#°Ğ Ğ¢f"6†—ÖVçG2ÒæWrÆ—7CÄFÖ–ä÷fW&GVU6†—ÖVçCâ‚“°Ğ¢v—BW6–ærf"6öææV7F–öâÒæWrçw7Ä6öææV7F–öâ…ö6öææV7F–öå7G&–ær“°Ğ¢v—B6öææV7F–öâä÷Vä7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢v—BW6–ærf"6öÖÖæBÒæWrçw7Ä6öÖÖæB‡7ÂÂ6öææV7F–öâ“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&F—2"ÂF—2“°Ğ¢v—BW6–ærf"&VFW"Òv—B6öÖÖæBäW†V7WFU&VFW$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢v†–ÆR†v—B&VFW"å&VD7–æ2†6æ6VÆÆF–öåFö¶Vâ’Ğ¢°Ğ¢6†—ÖVçG2äFB†æWrFÖ–ä÷fW&GVU6†—ÖVçB€Ğ¢&VFW"ävWDwV–Bƒ’Â&VFW"ävWE7G&–ærƒ’Â&VFW"ävWE7G&–ærƒ"’Â&VFW"ävWE7G&–ærƒ2’Â&VFW"ävWE7G&–ærƒB’ÀĞ¢&VFW"ävWDFV6–ÖÂƒR’Â&VFW"ävWE7G&–ærƒb’ÂVçVÒå'6SÄ÷&FW%7FFSâ‡&VFW"ävWE7G&–ærƒr’’ÀĞ¢&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ‚’Â&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ’’Â&VFW"ävWD–çC3"ƒ’ÀĞ¢V×G•FôçVÆÂ‡&VFW"ävWE7G&–ærƒ’’ÂV×G•FôçVÆÂ‡&VFW"ävWE7G&–ærƒ"’’ÀĞ¢&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ2’Â&VFW"ävWD–çC3"ƒB’’“°Ğ¢ĞĞ¢&WGW&â6†—ÖVçG3°Ğ¢ĞĞ Ğ¢V&Æ–27–æ2F6³Ä÷&FW$÷W&F–öå&W7VÇCâG&ç6—F–öä7–æ2€Ğ¢wV–B÷&FW$–BÀĞ¢÷&FW%7FFR&WVW7FVE7FFRÀĞ¢7G&–æsò&V6öâÀĞ¢7G&–ær7F÷"ÀĞ¢7G&–ær&WVW7D–BÀĞ¢FÖ–äVF—DÆötFF&6RVF—BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶VâĞ¢°Ğ¢–b‚—46öæf–wW&VB’&WGW&â÷&FW$÷W&F–öå&W7VÇBä6öæfÆ–7B‚-Šı¸ÍŠ­Š}Š¸Í‹2‹=˜Š}‹‹BŠ­˜m‹¸Í˜R˜m‹MŠı˜rŠ}‹=Š¢â"“°Ğ¢v—BW6–ærf"6öææV7F–öâÒæWrçw7Ä6öææV7F–öâ…ö6öææV7F–öå7G&–ær“°Ğ¢v—B6öææV7F–öâä÷Vä7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢v—BW6–ærf"G&ç67F–öâÒv—B6öææV7F–öâä&Vv–åG&ç67F–öä7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ Ğ¢6öç7B7G&–ær6VÆV7E7ÂÒ"" Ğ¢6VÆV7B7FFRÇ&W6W'fF–öåöW‡—&W5öBÆ—5÷&—fFRg&öÒ6†V6¶÷WEö÷&FW'2v†W&R–CÔ–Bf÷"WFFS°Ğ¢""#°Ğ¢÷&FW%7FFR7W'&VçE7FFS°Ğ¢FFUF–ÖTöfg6WBW‡—&W4C°Ğ¢&ööÂ—5&—fFS°Ğ¢v—BW6–ær‡f"6öÖÖæBÒæWrçw7Ä6öÖÖæB‡6VÆV7E7ÂÂ6öææV7F–öâÂG&ç67F–öâ’Ğ¢°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&–B"Â÷&FW$–B“°Ğ¢v—BW6–ærf"&VFW"Òv—B6öÖÖæBäW†V7WFU&VFW$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢–b‚v—B&VFW"å&VD7–æ2†6æ6VÆÆF–öåFö¶Vâ’Ğ¢°Ğ¢v—BG&ç67F–öâå&öÆÆ&6´7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBäæ÷Df÷VæB‚-‹=˜Š}‹‹B›í¸ÍŠıŠr˜m‹MŠòâ"“°Ğ¢ĞĞ¢7W'&VçE7FFRÒVçVÒå'6SÄ÷&FW%7FFSâ‡&VFW"ävWE7G&–ærƒ’“°Ğ¢W‡—&W4BÒ&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ“°Ğ¢—5&—fFRÒ&VFW"ävWD&ööÆVâƒ"“°Ğ¢ĞĞ Ğ¢–b†7W'&VçE7FFRÓÒ&WVW7FVE7FFRĞ¢°Ğ¢v—BG&ç67F–öâå&öÆÆ&6´7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢f"W†—7F–ærÒ†v—BÆ—7DöæT7–æ2†6öææV7F–öâÂçVÆÂÂ÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ’’°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBåWFFVB†W†—7F–ær“°Ğ¢ĞĞ Ğ¢–b†—5&—fFRbb7W'&VçE7FFRÓÒ÷&FW%7FFRäv—F–æu–ÖVçBbb&WVW7FVE7FFRÓÒ÷&FW%7FFRå–Bbb7G&–ærä—4çVÆÄ÷%v†—FU76R‡&V6öâ’Ğ¢°Ğ¢v—BG&ç67F–öâå&öÆÆ&6´7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBä6öæfÆ–7B‚-Š‹Š}¸ÂŠ­Š=¸Í¸ÍŠò›í‹ŠıŠ}ŠíŠ¢‹=˜Š}‹‹BŠí‹]˜‹]¸ÍˆÂŠ­˜‹m¸ÍŠÒ›í‹ŠıŠ}ŠíŠ¢‹ŠrŠ½ŠŠ¢ª˜m¸ÍŠòâ"“°Ğ¢ĞĞ Ğ¢–b‚—4ÆÆ÷vVB†7W'&VçE7FFRÂ&WVW7FVE7FFRÂ—5&—fFR’Ğ¢°Ğ¢v—BG&ç67F–öâå&öÆÆ&6´7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBä6öæfÆ–7B‚B-Š}˜mŠ­˜-Š}˜B‹=˜Š}‹‹BŠ}‹"¶7W'&VçE7FFWÒŠ˜r·&WVW7FVE7FFWÒ˜]ŠÍŠ}‹"˜m¸Í‹=Š¢â"“°Ğ¢ĞĞ Ğ¢f"7Fö6´ÆWfVÇ2ÒæWrÆ—7CÅ7Fö6´ÆWfVÄ6†ævSâ‚“°Ğ¢–b‡&WVW7FVE7FFRÓÒ÷&FW%7FFRä6æ6VÆÆVBĞ¢°Ğ¢–b†W‡—&W4BÃÒFFUF–ÖTöfg6WBåWF4æ÷rĞ¢°Ğ¢v—BG&ç67F–öâå&öÆÆ&6´7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBä6öæfÆ–7B‚-‹‹-‹˜‚‹=˜Š}‹‹B˜]˜m˜-‹m¸Â‹MŠı˜r˜‚Š­˜‹=‹r‹=¸Í‹=Š­˜RŠ-‹-Š}ŠòŠí˜Š}˜}Šò‹MŠòâ"“°Ğ¢ĞĞ¢6öç7B7G&–ærÆ–æW57ÂÒ'6VÆV7B6·RÇVçF—G’Æ&F6…öÆÆö6F–öç2g&öÒ6†V6¶÷WEö÷&FW%öÆ–æW2v†W&R÷&FW%ö–CÔ–C²#°Ğ¢f"Æ–æW2ÒæWrÆ—7CÂ‡7G&–ær6·RÂ–çBVçF—G’Â7G&–ær&F6„ÆÆö6F–öç4§6öâ“â‚“°Ğ¢v—BW6–ær‡f"6öÖÖæBÒæWrçw7Ä6öÖÖæB†Æ–æW57ÂÂ6öææV7F–öâÂG&ç67F–öâ’Ğ¢°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&–B"Â÷&FW$–B“°Ğ¢v—BW6–ærf"&VFW"Òv—B6öÖÖæBäW†V7WFU&VFW$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢v†–ÆR†v—B&VFW"å&VD7–æ2†6æ6VÆÆF–öåFö¶Vâ’Ğ¢Æ–æW2äFB‚‡&VFW"ävWE7G&–ærƒ’Â&VFW"ävWD–çC3"ƒ’Â&VFW"ävWE7G&–ærƒ"’’“°Ğ¢ĞĞ¢f÷&V6‚‡f"6·R–âÆ–æW2å6VÆV7B†Æ–æRÓâÆ–æRå6·RĞ¢äF—7F–æ7B…7G&–æt6ö×&W"ä÷&F–æÄ–væ÷&T66RĞ¢ä÷&FW$'’‡fÇVRÓâfÇVRÂ7G&–æt6ö×&W"ä÷&F–æÄ–væ÷&T66RĞ¢åF†Vä'’‡fÇVRÓâfÇVRÂ7G&–æt6ö×&W"ä÷&F–æÂ’Ğ¢°Ğ¢v—BW6–ærf"f&–çDÆö6²ÒæWrçw7Ä6öÖÖæB€Ğ¢'6VÆV7B6·Rg&öÒ&öGV7E÷f&–çG2v†W&RWW"‡6·R“×WW"„6·R’f÷"WFFS²"Â6öææV7F–öâÂG&ç67F–öâ“°Ğ¢f&–çDÆö6²å&ÖWFW'2äFEv—F…fÇVR‚'6·R"Â6·R“°Ğ¢v—Bf&–çDÆö6²äW†V7WFU66Æ$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢ĞĞ Ğ¢f÷&V6‚‡f"Æ–æR–âÆ–æW2Ğ¢°Ğ¢f"ÆÆö6F–öç2Ò§6öå6W&–Æ—¦W"äFW6W&–Æ—¦SÄ•&VDöæÇ”6öÆÆV7F–öãÄ6†V6¶÷WD&F6„ÆÆö6F–öããâ†Æ–æRä&F6„ÆÆö6F–öç4§6öâĞ¢óò'&’äV×G“Ä6†V6¶÷WD&F6„ÆÆö6F–öãâ‚“°Ğ¢f÷&V6‚‡f"ÆÆö6F–öâ–âÆÆö6F–öç2Ğ¢°Ğ¢v—BW6–ærf"&F6„6öÖÖæBÒæWrçw7Ä6öÖÖæB€Ğ¢'WFFR–çfVçF÷'•ö&F6†W26WB&VÖ–æ–æu÷6¶vW3ÖÆV7B‡&V6V—fVE÷6¶vW2Ç&VÖ–æ–æu÷6¶vW2´VçF—G’’v†W&RWW"‡6·R“×WW"„6·R’æB&F6…ö6öFSÔ&F6…ö6öFS²"ÀĞ¢6öææV7F–öâÂG&ç67F–öâ“°Ğ¢&F6„6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'VçF—G’"ÂÆÆö6F–öâåVçF—G’“°Ğ¢&F6„6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'6·R"ÂÆ–æRå6·R“°Ğ¢&F6„6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&&F6…ö6öFR"ÂÆÆö6F–öâä&F6„6öFR“°Ğ¢v—B&F6„6öÖÖæBäW†V7WFTæöåVW'”7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢ĞĞ Ğ¢v—BW6–ærf"6öÖÖæBÒæWrçw7Ä6öÖÖæB€Ğ¢'WFFR&öGV7E÷f&–çG26WBf–Æ&ÆU÷6¶vW3Öf–Æ&ÆU÷6¶vW2´VçF—G’v†W&RWW"‡6·R“×WW"„6·R’&WGW&æ–ærf–Æ&ÆU÷6¶vW3²"ÀĞ¢6öææV7F–öâÂG&ç67F–öâ“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'VçF—G’"ÂÆ–æRåVçF—G’“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'6·R"ÂÆ–æRå6·R“°Ğ¢f"f–Æ&ÆRÒv—B6öÖÖæBäW†V7WFU66Æ$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢–b†f–Æ&ÆR—2æ÷BçVÆÂĞ¢°Ğ¢f"f–Æ&ÆU6¶vW2Ò6öçfW'BåFô–çC3"†f–Æ&ÆR“°Ğ¢v—BÆVFvW"å&V6÷&D7–æ2€Ğ¢6öææV7F–öâÂG&ç67F–öâÂÆ–æRå6·RÂÆ–æRåVçF—G’Â%&W6W'fF–öå&VÆV6VB"ÀĞ¢f–Æ&ÆU6¶vW2Â÷&FW$–BÂ7F÷"Â&÷væW"Ö6æ6VÆÆVBÖ&Vf÷&R×–ÖVçB"Â6æ6VÆÆF–öåFö¶Vâ“°Ğ¢7Fö6´ÆWfVÇ2äFB†æWr7Fö6´ÆWfVÄ6†ævR†Æ–æRå6·RÂf–Æ&ÆU6¶vW2’“°Ğ¢ĞĞ¢ÒĞĞ Ğ¢f"G&ç6—F–öå&V6öâÒ7G&–ærä—4çVÆÄ÷%v†—FU76R‡&V6öâĞ¢òB&÷væW"×·&WVW7FVE7FFRåFõ7G&–ær‚’åFôÆ÷vW$–çf&–çB‚—Ò Ğ¢¢&V6öâåG&–Ò‚“°Ğ¢f"æ÷rÒFFUF–ÖTöfg6WBåWF4æ÷s°Ğ¢v—BW6–ær‡f"6öÖÖæBÒæWrçw7Ä6öÖÖæB‚'WFFR6†V6¶÷WEö÷&FW'26WB7FFSÔ7FFRv†W&R–CÔ–C²"Â6öææV7F–öâÂG&ç67F–öâ’Ğ¢°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'7FFR"Â&WVW7FVE7FFRåFõ7G&–ær‚’“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&–B"Â÷&FW$–B“°Ğ¢v—B6öÖÖæBäW†V7WFTæöåVW'”7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢ĞĞ¢v—BW6–ær‡f"6öÖÖæBÒæWrçw7Ä6öÖÖæB€Ğ¢&–ç6W'B–çFò6†V6¶÷WEö÷&FW%÷G&ç6—F–öç2†–BÆ÷&FW%ö–BÇ7FFRÆ7F÷"Æö67W'&VEöBÇ&V6öâ’fÇVW2„G&ç6—F–öåö–BÄ÷&FW%ö–BÄ7FFRÄ7F÷"ÄBÄ&V6öâ“²"ÀĞ¢6öææV7F–öâÂG&ç67F–öâ’Ğ¢°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'G&ç6—F–öåö–B"ÂwV–BäæWtwV–B‚’“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&÷&FW%ö–B"Â÷&FW$–B“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'7FFR"Â&WVW7FVE7FFRåFõ7G&–ær‚’“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&7F÷""Â7F÷"“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&B"Âæ÷r“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚'&V6öâ"ÂG&ç6—F–öå&V6öâ“°Ğ¢v—B6öÖÖæBäW†V7WFTæöåVW'”7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢ĞĞ Ğ¢v—BVF—Bå&V6÷&D7–æ2€Ğ¢6öææV7F–öâÂG&ç67F–öâÂ7F÷"Â&÷&FW"ç7FFRÖ6†ævVB"Â$÷&FW""Â÷&FW$–BåFõ7G&–ær‚’ÀĞ¢æWr²7FFRÒ7W'&VçE7FFRåFõ7G&–ær‚’ÒÀĞ¢æWr²7FFRÒ&WVW7FVE7FFRåFõ7G&–ær‚’ÒÀĞ¢G&ç6—F–öå&V6öâÂ&WVW7D–BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ Ğ¢v—BG&ç67F–öâä6öÖÖ—D7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢f"WFFVBÒv—Bf–æD7–æ2†÷&FW$–BÂ6æ6VÆÆF–öåFö¶VâĞ¢óòF‡&÷ræWr–çfÆ–D÷W&F–öäW†6WF–öâ‚%WFFVB÷&FW"6÷VÆBæ÷B&R&VBâ"“°Ğ¢&WGW&â÷&FW$÷W&F–öå&W7VÇBåWFFVB‡WFFVBÂ7Fö6´ÆWfVÇ2“°Ğ¢ĞĞ Ğ¢&—fFR7–æ2F6³ÄFÖ–ä÷&FW%7VÖÖ'“óâf–æD7–æ2„wV–B÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶VâĞ¢°Ğ¢v—BW6–ærf"6öææV7F–öâÒæWrçw7Ä6öææV7F–öâ…ö6öææV7F–öå7G&–ær“°Ğ¢v—B6öææV7F–öâä÷Vä7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢&WGW&âv—BÆ—7DöæT7–æ2†6öææV7F–öâÂçVÆÂÂ÷&FW$–BÂ6æ6VÆÆF–öåFö¶Vâ“°Ğ¢ĞĞ Ğ¢&—fFR7FF–27–æ2F6³ÄFÖ–ä÷&FW%7VÖÖ'“óâÆ—7DöæT7–æ2€Ğ¢çw7Ä6öææV7F–öâ6öææV7F–öâÀĞ¢çw7ÅG&ç67F–öãòG&ç67F–öâÀĞ¢wV–B÷&FW$–BÀĞ¢6æ6VÆÆF–öåFö¶Vâ6æ6VÆÆF–öåFö¶VâĞ¢°Ğ¢6öç7B7G&–ær7ÂÒ"" Ğ¢6VÆV7Bòæ–BÆòæ7W7FöÖW%öæÖRÆòæÖö&–ÆRÆòç&÷f–æ6RÆòæ6—G’Æòç–&ÆRÆòæ7W'&Væ7’Æòç7FFRÀĞ¢òæ7&VFVEöBÆòç&W6W'fF–öåöW‡—&W5öBÆ6÷VçB†Âæ–B“£¦–çBÀĞ¢6öÆW66R‡ç&VfW&Væ6RÂrr’Æ6öÆW66R‡ç7FFRÂrr’Æòæ—5÷&—fFPĞ¢g&öÒ6†V6¶÷WEö÷&FW'2ğĞ¢ÆVgB¦ö–â6†V6¶÷WEö÷&FW%öÆ–æW2ÂöâÂæ÷&FW%ö–CÖòæ–@Ğ¢ÆVgB¦ö–â–ÖVçG2öâæ÷&FW%ö–CÖòæ–@Ğ¢v†W&Ròæ–CÔ–@Ğ¢w&÷W'’òæ–BÇç&VfW&Væ6RÇç7FFS°Ğ¢""#°Ğ¢v—BW6–ærf"6öÖÖæBÒæWrçw7Ä6öÖÖæB‡7ÂÂ6öææV7F–öâÂG&ç67F–öâ“°Ğ¢6öÖÖæBå&ÖWFW'2äFEv—F…fÇVR‚&–B"Â÷&FW$–B“°Ğ¢v—BW6–ærf"&VFW"Òv—B6öÖÖæBäW†V7WFU&VFW$7–æ2†6æ6VÆÆF–öåFö¶Vâ“°Ğ¢–b‚v—B&VFW"å&VD7–æ2†6æ6VÆÆF–öåFö¶Vâ’’&WGW&âçVÆÃ°Ğ¢&WGW&âæWrFÖ–ä÷&FW%7VÖÖ'’‡&VFW"ävWDwV–Bƒ’Â&VFW"ävWE7G&–ærƒ’Â&VFW"ävWE7G&–ærƒ"’Â&VFW"ävWE7G&–ærƒ2’ÀĞ¢&VFW"ävWE7G&–ærƒB’Â&VFW"ävWDFV6–ÖÂƒR’Â&VFW"ävWE7G&–ærƒb’ÂVçVÒå'6SÄ÷&FW%7FFSâ‡&VFW"ävWE7G&–ærƒr’’ÀĞ¢&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ‚’Â&VFW"ävWDf–VÆEfÇVSÄFFUF–ÖTöfg6WCâƒ’’Â&VFW"ävWD–çC3"ƒ’ÀĞ¢V×G•FôçVÆÂ‡&VFW"ävWE7G&–ærƒ’’ÂV×G•FôçVÆÂ‡&VFW"ävWE7G&–ærƒ"’’Â&VFW"ävWD&ööÆVâƒ2’“°Ğ¢ĞĞ Ğ¢&—fFR7FF–2&ööÂ—4ÆÆ÷vVB„÷&FW%7FFR7W'&VçBÂ÷&FW%7FFR&WVW7FVBÂ&ööÂ—5&—fFR’Óâ†7W'&VçBÂ&WVW7FVB’7v—F6€Ğ¢°Ğ¢„÷&FW%7FFRäv—F–æu–ÖVçBÂ÷&FW%7FFRä6æ6VÆÆVB’ÓâG'VRÀĞ¢„÷&FW%7FFRäv—F–æu–ÖVçBÂ÷&FW%7FFRå–B’Óâ—5&—fFRÀĞ¢„÷&FW%7FFRå–BÂ÷&FW%7FFRå&W&–ær’ÓâG'VRÀĞ¢„÷&FW%7FFRå&W&–ærÂ÷&FW%7FFRå6†—VB’ÓâG'VRÀĞ¢„÷&FW%7FFRå6†—VBÂ÷&FW%7FFRäFVÆ—fW&VB’ÓâG'VRÀĞ¢òÓâfÇ6PĞ¢Ó°Ğ Ğ¢&—fFR7FF–27G&–æsòV×G•FôçVÆÂ‡7G&–ærfÇVR’Óâ7G&–ærä—4çVÆÄ÷$V×G’‡fÇVR’òçVÆÂ¢fÇVS°Ğ§ĞĞ Ğ§V&Æ–26VÆVB&V6÷&B6WD÷&FW%7FFU&WVW7B‡7G&–ær7FFRÂ7G&–æsò&V6öâ“°Ğ§V&Æ–26VÆVB&V6÷&B'VÆ´÷&FW%7FFU&WVW7B„•&VDöæÇ”6öÆÆV7F–öãÄwV–Câ÷&FW$–G2Â7G&–ær7FFRÂ7G&–æsò&V6öâ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$æ÷FT–çWB‡7G&–æræ÷FR“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–å6†—ÖVçEWFFT–çWB€Ğ¢7G&–æsò6'&–W"ÀĞ¢7G&–æsòG&6¶–æt6öFRÀĞ¢FV6–ÖÃò7GVÅ6†—–æt6÷7BÀĞ¢7G&–æsò&V6öâÀĞ¢&ööÂWFFT7GVÅ6†—–æt6÷7BÒG'VR“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–å6†—–ætVF—E6æ6†÷B‡7G&–æsò6'&–W"Â7G&–æsòG&6¶–æt6öFRÂFV6–ÖÂ7GVÅ6†—–æt6÷7BÂFFUF–ÖTöfg6WCò6†—VDB“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷fW&GVU6†—ÖVçB„wV–B–BÂ7G&–ær7W7FöÖW$æÖRÂ7G&–ærÖö&–ÆRÂ7G&–ær&÷f–æ6RÂ7G&–ær6—G’ÀĞ¢FV6–ÖÂ–&ÆRÂ7G&–ær7W'&Væ7’Â÷&FW%7FFR7FFRÂFFUF–ÖTöfg6WB7&VFVDBÂFFUF–ÖTöfg6WB&W6W'fF–öäW‡—&W4BÀĞ¢–çBÆ–æT6÷VçBÂ7G&–æsò6†—–æt6'&–W"Â7G&–æsòG&6¶–æt6öFRÂFFUF–ÖTöfg6WB6†—VDBÂ–çBF—4÷fW&GVR“°Ğ Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW%7VÖÖ'’„wV–B–BÂ7G&–ær7W7FöÖW$æÖRÂ7G&–ærÖö&–ÆRÂ7G&–ær&÷f–æ6RÂ7G&–ær6—G’ÀĞ¢FV6–ÖÂ–&ÆRÂ7G&–ær7W'&Væ7’Â÷&FW%7FFR7FFRÂFFUF–ÖTöfg6WB7&VFVDBÂFFUF–ÖTöfg6WB&W6W'fF–öäW‡—&W4BÀĞ¢–çBÆ–æT6÷VçBÂ7G&–æsò–ÖVçE&VfW&Væ6RÂ7G&–æsò–ÖVçE7FFRÂ&ööÂ—5&—fFRÒfÇ6R“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$FWF–Â„FÖ–ä÷&FW%7VÖÖ'’7VÖÖ'’Â7G&–ærFG&W72Â7G&–ær÷7FÄ6öFRÂFV6–ÖÂ7V'F÷FÂÀĞ¢FV6–ÖÂ6†—–ærÂFV6–ÖÂ6†—–ætW‡Vç6RÂFV6–ÖÂF—66÷VçBÂFV6–ÖÂF‚ÂFV6–ÖÂF…&FUW&6VçBÂ7G&–ær6†—–ætÖWF†öBÀĞ¢7G&–æsò6†—–æt6'&–W"Â7G&–æsòG&6¶–æt6öFRÂFFUF–ÖTöfg6WCò6†—VDBÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷&FW$Æ–æSâÆ–æW2Â•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷&FW%G&ç6—F–öãâG&ç6—F–öç2ÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷&FW$æ÷FSâæ÷FW2ÂFÖ–å–ÖVçCò–ÖVçBÒçVÆÂÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷&FW$–çFW&æÄ6÷7Cãò–çFW&æÄ6÷7G2ÒçVÆÂĞ§°Ğ¢V&Æ–2wV–B–BÓâ7VÖÖ'’ä–C°Ğ¢V&Æ–27G&–ær7W7FöÖW$æÖRÓâ7VÖÖ'’ä7W7FöÖW$æÖS°Ğ¢V&Æ–27G&–ærÖö&–ÆRÓâ7VÖÖ'’äÖö&–ÆS°Ğ¢V&Æ–27G&–ær&÷f–æ6RÓâ7VÖÖ'’å&÷f–æ6S°Ğ¢V&Æ–27G&–ær6—G’Óâ7VÖÖ'’ä6—G“°Ğ¢V&Æ–2FV6–ÖÂ–&ÆRÓâ7VÖÖ'’å–&ÆS°Ğ¢V&Æ–27G&–ær7W'&Væ7’Óâ7VÖÖ'’ä7W'&Væ7“°Ğ¢V&Æ–2÷&FW%7FFR7FFRÓâ7VÖÖ'’å7FFS°Ğ¢V&Æ–2FFUF–ÖTöfg6WB7&VFVDBÓâ7VÖÖ'’ä7&VFVDC°Ğ¢V&Æ–2FFUF–ÖTöfg6WB&W6W'fF–öäW‡—&W4BÓâ7VÖÖ'’å&W6W'fF–öäW‡—&W4C°Ğ¢V&Æ–2–çBÆ–æT6÷VçBÓâ7VÖÖ'’äÆ–æT6÷VçC°Ğ¢V&Æ–27G&–æsò–ÖVçE&VfW&Væ6RÓâ7VÖÖ'’å–ÖVçE&VfW&Væ6S°Ğ¢V&Æ–27G&–æsò–ÖVçE7FFRÓâ7VÖÖ'’å–ÖVçE7FFS°Ğ¢V&Æ–2&ööÂ—5&—fFRÓâ7VÖÖ'’ä—5&—fFS°Ğ Ğ¢V&Æ–26†V6¶÷WD÷&FW"Fô6†V6¶÷WD÷&FW"‚’ÓâæWr€Ğ¢–BÂ7G&–æräV×G’Â7W7FöÖW$æÖRÂÖö&–ÆRÂ&÷f–æ6RÂ6—G’ÂFG&W72Â÷7FÄ6öFRÂ7W'&Væ7’ÀĞ¢Æ–æW2å6VÆV7B†Æ–æRÓâæWr6†V6¶÷WDÆ–æR†Æ–æRå&öGV7EF—FÆRÂÆ–æRå6·RÂÆ–æRåf&–çDÆ&VÂÂÆ–æRåVçF—G’ÂÆ–æRåVæ—E&–6RÂÆ–æRäÆ–æUF÷FÂ’’åFô'&’‚’ÀĞ¢6†—–ætÖWF†öBÂ7V'F÷FÂÂ6†—–ærÂ6†—–ætW‡Vç6RÂF—66÷VçBÂF…&FUW&6VçBÂF‚Â–&ÆRÂ7FFRÂ7&VFVDBÀĞ¢&W6W'fF–öäW‡—&W4BÂG&ç6—F–öç2å6VÆV7B†—FVÒÓâæWr÷&FW%G&ç6—F–öâ†—FVÒå7FFRÂ—FVÒä7F÷"Â—FVÒäö67W'&VDBÂ—FVÒå&V6öâ’’åFô'&’‚’“°Ğ§ĞĞ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$Æ–æR‡7G&–ær&öGV7EF—FÆRÂ7G&–ær6·RÂ7G&–ærf&–çDÆ&VÂÂ–çBVçF—G’ÂFV6–ÖÂVæ—E&–6RÂFV6–ÖÂÆ–æUF÷FÂ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW%G&ç6—F–öâ„÷&FW%7FFR7FFRÂ7G&–ær7F÷"ÂFFUF–ÖTöfg6WBö67W'&VDBÂ7G&–ær&V6öâ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$æ÷FR„wV–B–BÂ7G&–æræ÷FRÂ7G&–ær7F÷"ÂFFUF–ÖTöfg6WB7&VFVDB“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$–çFW&æÄ6÷7B„wV–B–BÂ7G&–ærF—FÆRÂFV6–ÖÂÖ÷VçBÂ7G&–ær7F÷"ÂFFUF–ÖTöfg6WB7&VFVDB“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW$–çFW&æÄ6÷7D–çWB‡7G&–ærF—FÆRÂFV6–ÖÂÖ÷VçB“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–å–ÖVçB‡7G&–ær&÷f–FW"ÂFV6–ÖÂÖ÷VçBÂ7G&–ær7W'&Væ7’Â–ÖVçE7FFR7FFRÂ7G&–æsò&VfW&Væ6RÂFFUF–ÖTöfg6WB7&VFVDBÂFFUF–ÖTöfg6WCò6ö×ÆWFVDB“°Ğ§V&Æ–26VÆVB&V6÷&BÆ÷u7Fö6´—FVÒ‡7G&–ær&öGV7EF—FÆRÂ7G&–ær6·RÂ7G&–ærf&–çDÆ&VÂÂ–çBf–Æ&ÆU6¶vW2“°Ğ§V&Æ–26VÆVB&V6÷&BW‡—&–æu7Fö6´—FVÒ€Ğ¢7G&–ær&öGV7EF—FÆRÀĞ¢7G&–ær6·RÀĞ¢7G&–ærf&–çDÆ&VÂÀĞ¢7G&–ær&F6„6öFRÀĞ¢FFUF–ÖTöfg6WBW‡—&W4BÀĞ¢–çB&VÖ–æ–æu6¶vW2“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äæf–vF–öåF&vWB€Ğ¢7G&–ærÖöGVÆRÀĞ¢7G&–æsòf–ÇFW"ÒçVÆÂÀĞ¢7G&–æsò6·RÒçVÆÂÀĞ¢7G&–æsò&F6„6öFRÒçVÆÂ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äF6†&ö&B†–çBv—F–æu–ÖVçBÂ–çB&ö6W76–ærÂ–çB6†—VBÂ–çBFVÆ—fW&VBÀĞ¢FV6–ÖÂ–E&WfVçVRÂFV6–ÖÂFöF•&WfVçVRÂ•&VDöæÇ”6öÆÆV7F–öãÄÆ÷u7Fö6´—FVÓâÆ÷u7Fö6²ÀĞ¢–çBW&–öDF—2ÒÂ–çBW&–öD÷&FW$6÷VçBÒÂFV6–ÖÂW&–öE&WfVçVRÒÂFV6–ÖÂfW&vT÷&FW%fÇVRÒÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄW‡—&–æu7Fö6´—FVÓãòW‡—&–æu6ööâÒçVÆÂÂ–çBæWt7W7FöÖW'2ÒÂ–çB6÷'÷&FTæWu&WVW7G2ÒÂ–çB&ö&ÆVÔ÷&FW'2ÒÂ&ööÂf–ææ6–Ç5f—6–&ÆRÒG'VR“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äF6†&ö&D†VÇF‚€Ğ¢7G&–ær’ÀĞ¢7G&–ærFF&6RÀĞ¢7G&–ærÖ–w&F–öç2ÀĞ¢7G&–ærFÖ–äWF†VçF–6F–öâÀĞ¢7G&–ær–ÖVçBÀĞ¢7G&–ærÖVF–7F÷&vRÀĞ¢&ööÂ&VG’“°Ğ§V&Æ–26VÆVB&V6÷&BF6†&ö&EW&–öB„FFUF–ÖTöfg6WBg&öÒÂFFUF–ÖTöfg6WBFòĞ§°Ğ¢V&Æ–27FF–2&ööÂG'”7&VFR„FFUF–ÖTöfg6WCòg&öÒÂFFUF–ÖTöfg6WCòFòÂFFUF–ÖTöfg6WBæ÷rÂ÷WBF6†&ö&EW&–öCòW&–öBĞ¢°Ğ¢W&–öBÒçVÆÃ°Ğ¢–b†g&öÒ—2çVÆÂbbFò—2çVÆÂ’&WGW&âG'VS°Ğ¢–b†g&öÒ—2çVÆÂÇÂFò—2çVÆÂ’&WGW&âfÇ6S°Ğ Ğ¢f"7F'BÒg&öÒåfÇVRåFõVæ—fW'6ÅF–ÖR‚“°Ğ¢f"VæBÒFòåfÇVRåFõVæ—fW'6ÅF–ÖR‚“°Ğ¢–b‡7F'BãÒVæBÇÂ7F'Bâæ÷rÇÂVæBâæ÷räFDF—2ƒ"’ÇÂVæBÒ7F'BâF–ÖU7âäg&öÔF—2ƒ3cb’’&WGW&âfÇ6S°Ğ¢W&–öBÒæWrF6†&ö&EW&–öB‡7F'BÂVæB“°Ğ¢&WGW&âG'VS°Ğ¢ĞĞ§ĞĞ§V&Æ–26VÆVB&V6÷&BF6†&ö&Ev–FvWE&VfW&Væ6R‡7G&–ær–BÂ&ööÂf—6–&ÆR“°Ğ§V&Æ–26VÆVB&V6÷&BF6†&ö&E&VfW&Væ6W4–çWB„•&VDöæÇ”Æ—7CÄF6†&ö&Ev–FvWE&VfW&Væ6Sãòv–FvWG2“°Ğ§V&Æ–26VÆVB&V6÷&BF6†&ö&E&VfW&Væ6W2„•&VDöæÇ”Æ—7CÄF6†&ö&Ev–FvWE&VfW&Væ6Sâv–FvWG2Ğ§°Ğ¢V&Æ–27FF–2&VFöæÇ’7G&–æuµÒf–Æ&ÆUv–FvWG2Ò²&ÖWG&–72"Â'V–6´7F–öç2"Â&ÆW'G2"Â&Æ÷u7Fö6²"Â&W‡—&–ær%Ó°Ğ¢V&Æ–27FF–2&VFöæÇ’F6†&ö&E&VfW&Væ6W2FVfVÇBÒæWr„f–Æ&ÆUv–FvWG2å6VÆV7B†–BÓâæWrF6†&ö&Ev–FvWE&VfW&Væ6R†–BÂG'VR’’åFô'&’‚’“°Ğ Ğ¢V&Æ–27FF–2&ööÂ—5fÆ–B„•&VDöæÇ”Æ—7CÄF6†&ö&Ev–FvWE&VfW&Væ6Sãòv–FvWG2’ÓàĞ¢v–FvWG2—2²6÷VçC¢RÒbbv–FvWG2äÆÂ‡v–FvWBÓâv–FvWB—2æ÷BçVÆÂbbf–Æ&ÆUv–FvWG2ä6öçF–ç2‡v–FvWBä–BÂ7G&–æt6ö×&W"ä÷&F–æÂ’’b`Ğ¢v–FvWG2å6VÆV7B‡v–FvWBÓâv–FvWBä–B’äF—7F–æ7B…7G&–æt6ö×&W"ä÷&F–æÂ’ä6÷VçB‚’ÓÒf–Æ&ÆUv–FvWG2äÆVæwFƒ°Ğ Ğ¢V&Æ–27FF–2F–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâfÆ–FFR„F6†&ö&E&VfW&Væ6W4–çWB–çWB’Óâ—5fÆ–B†–çWBåv–FvWG2Ğ¢òæWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ‚Ğ¢¢æWrF–7F–öæ'“Ç7G&–ærÂ7G&–æuµÓâ²¶æÖVöb†–çWBåv–FvWG2•ÒÒ²-Š­‹Š­¸ÍŠ‚ŠŠ}¸ÍŠò˜}‹›í˜mŠÂŠŠí‹BŠıŠ}‹MŠ˜‹Šò‹ŠrŠı˜-¸Í˜-Š}˜²¸Íª’ŠŠ}‹ŠıŠ}‹MŠ­˜rŠŠ}‹MŠòâ%ÒÓ°Ğ§ĞĞ§V&Æ–26VÆVB&V6÷&BFÖ–å&öGV7E&öf—F&–Æ—G’€Ğ¢7G&–ær&öGV7EF—FÆRÀĞ¢7G&–ær6·RÀĞ¢7G&–ærf&–çDÆ&VÂÀĞ¢–çBVæ—G56öÆBÀĞ¢FV6–ÖÂ&WfVçVRÀĞ¢FV6–ÖÂ6÷7BÀĞ¢FV6–ÖÂw&÷75&öf—BÀĞ¢FV6–ÖÂF—66÷VçBÒÀĞ¢FV6–ÖÂ&öGV7D6÷7BÒÀĞ¢FV6–ÖÂ6¶v–æt6÷7BÒÀĞ¢FV6–ÖÂFF—F–öæÄ6÷7BÒÀĞ¢FV6–ÖÃòVçF—G•6öÆBÒçVÆÂÀĞ¢7G&–æsò&6UVæ—BÒçVÆÂÀĞ¢FV6–ÖÂ÷&FW$–çFW&æÄ6÷7BÒ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äæÇ—F–72€Ğ¢–çBF—2Â–çB÷&FW$6÷VçBÂ–çBVæ—G56öÆBÂFV6–ÖÂ&WfVçVRÂFV6–ÖÂ6÷7BÂFV6–ÖÂw&÷75&öf—BÀĞ¢FV6–ÖÂw&÷74Ö&v–åW&6VçBÂFV6–ÖÂF‚ÒÂFV6–ÖÂæWE&öf—BÒÂFV6–ÖÂ6†—–ætW‡Vç6RÒÀĞ¢FV6–ÖÂÖW&6†æF—6U&WfVçVRÒÂFV6–ÖÂF—66÷VçBÒÂFV6–ÖÂ6†—–æu&WfVçVRÒÀĞ¢FV6–ÖÂ&öGV7D6÷7BÒÂFV6–ÖÂ6¶v–æt6÷7BÒÂFV6–ÖÂFF—F–öæÄ6÷7BÒÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄFÖ–äF–Ç•6ÆW3ãòF–Ç•6ÆW2ÒçVÆÂÀĞ¢•&VDöæÇ”6öÆÆV7F–öãÄFÖ–ä÷&FW%7FFT6÷VçCãò÷&FW%7FFW2ÒçVÆÂÀĞ¢FV6–ÖÂ÷&FW$–çFW&æÄ6÷7G2Ò“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äF–Ç•6ÆW2„FFTöæÇ’F’Â–çB÷&FW$6÷VçBÂFV6–ÖÂ&WfVçVRÂFV6–ÖÂæWE&öf—B“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–ä÷&FW%7FFT6÷VçB‡7G&–ær7FFRÂ–çB6÷VçB“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–å&–6T†—7F÷'•ö–çB„FFUF–ÖTöfg6WBö67W'&VDBÂ7G&–ær¶–æBÂFV6–ÖÂÖ÷VçBÂ7G&–ær&VfW&Væ6R“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–å&–6T†—7F÷'•6·R‡7G&–ær6·RÂ7G&–ær&öGV7EF—FÆRÂ7G&–ærf&–çDÆ&VÂ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äæ÷F–f–6F–öâ€Ğ¢7G&–ærG—RÀĞ¢7G&–ærF—FÆRÀĞ¢7G&–ærFWF–ÂÀĞ¢FÖ–äæf–vF–öåF&vWCòF&vWBÒçVÆÂ“°Ğ§V&Æ–26VÆVB&V6÷&BFÖ–äæ÷F–f–6F–öç2†–çBv—F–æu–ÖVçBÂ–çBÆ÷u7Fö6´—FV×2Â•&VDöæÇ”6öÆÆV7F–öãÄFÖ–äæ÷F–f–6F–öãâ—FV×2Â–çB6÷'÷&FT÷fW&GVTföÆÆ÷uW2Ò“°Ğ§V&Æ–2VçVÒ÷&FW$÷W&F–öå7FGW2²WFFVBÂæ÷Df÷VæBÂ6öæfÆ–7BĞĞ§V&Æ–26VÆVB&V6÷&B÷&FW$÷W&F–öå&W7VÇB„÷&FW$÷W&F–öå7FGW27FGW2ÂFÖ–ä÷&FW%7VÖÖ'“ò÷&FW"ÒçVÆÂÀĞ¢7G&–æsòÖW76vRÒçVÆÂÂ•&VDöæÇ”6öÆÆV7F–öãÅ7Fö6´ÆWfVÄ6†ævSãò7Fö6´ÆWfVÇ2ÒçVÆÂĞ§°Ğ¢V&Æ–27FF–2÷&FW$÷W&F–öå&W7VÇBWFFVB„FÖ–ä÷&FW%7VÖÖ'’÷&FW"Â•&VDöæÇ”6öÆÆV7F–öãÅ7Fö6´ÆWfVÄ6†ævSãòÆWfVÇ2ÒçVÆÂ’ÓàĞ¢æWr„÷&FW$÷W&F–öå7FGW2åWFFVBÂ÷&FW"Â7Fö6´ÆWfVÇ3¢ÆWfVÇ2“°Ğ¢V&Æ–27FF–2÷&FW$÷W&F–öå&W7VÇBæ÷Df÷VæB‡7G&–ærÖW76vR’ÓâæWr„÷&FW$÷W&F–öå7FGW2äæ÷Df÷VæBÂÖW76vS¢ÖW76vR“°Ğ¢V&Æ–27FF–2÷&FW$÷W&F–öå&W7VÇB6öæfÆ–7B‡7G&–ærÖW76vR’ÓâæWr„÷&FW$÷W&F–öå7FGW2ä6öæfÆ–7BÂÖW76vS¢ÖW76vR“°Ğ§ĞĞ Ğ

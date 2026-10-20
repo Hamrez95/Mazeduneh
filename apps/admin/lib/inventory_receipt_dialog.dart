@@ -3,6 +3,7 @@ import 'catalog_api.dart';
 import 'formatters.dart';
 import 'localized_calendar.dart';
 import 'order_api.dart';
+import 'store_timezone.dart';
 
 class InventoryReceiptCommand {
   const InventoryReceiptCommand({required this.sku, required this.batchCode, required this.receivedPackages,
@@ -59,7 +60,7 @@ class _BatchDialogState extends State<BatchDialog> {
     super.didChangeDependencies();
     if (_purchaseDateInitialized) return;
     _purchaseDateInitialized = true;
-    fields['purchased']!.text = formatCalendarDate(DateTime.now(), Localizations.localeOf(context));
+    fields['purchased']!.text = formatCalendarDate(storeWallTimeNow(), Localizations.localeOf(context));
   }
 
   DateTime? date(String? value) => parseCalendarDate(value, Localizations.localeOf(context));
@@ -87,7 +88,7 @@ class _BatchDialogState extends State<BatchDialog> {
         suffixIcon: IconButton(
           tooltip: english ? 'Choose $label' : 'انتخاب $label',
           onPressed: saving ? null : () async {
-            final now = DateTime.now();
+            final now = storeWallTimeNow();
             final selected = await showLocalizedDatePicker(
               context: context,
               initialDate: date(fields[key]!.text) ?? now,
@@ -103,7 +104,7 @@ class _BatchDialogState extends State<BatchDialog> {
       validator: (value) {
         final parsed = date(value);
         if (parsed == null) return english ? 'Enter a valid date.' : 'تاریخ معتبر وارد کنید.';
-        if (key == 'purchased' && parsed.isAfter(DateTime.now())) {
+        if (key == 'purchased' && parsed.isAfter(DateUtils.dateOnly(storeWallTimeNow()))) {
           return english ? 'Purchase date cannot be in the future.' : 'تاریخ خرید در آینده نباشد.';
         }
         if (key == 'expires' && date(fields['produced']!.text) != null && !parsed.isAfter(date(fields['produced']!.text)!)) {

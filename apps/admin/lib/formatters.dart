@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'store_timezone.dart';
 
 String toPersianDigits(Object? value) {
   final text = value?.toString() ?? '';
@@ -152,7 +153,7 @@ String formatPersianDate(DateTime value) {
 }
 
 String formatPersianDateTime(DateTime value) {
-  final local = value.toLocal();
+  final local = storeUtcToWallTime(value);
   String two(int number) => number.toString().padLeft(2, '0');
   return toPersianDigits(
     '${local.year}/${two(local.month)}/${two(local.day)} ${two(local.hour)}:${two(local.minute)}',
