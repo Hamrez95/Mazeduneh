@@ -22,6 +22,43 @@ class PersianDigitsInputFormatter extends TextInputFormatter {
   }
 }
 
+class PersianDigitsOnlyInputFormatter extends TextInputFormatter {
+  const PersianDigitsOnlyInputFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final normalized = const PersianDigitsInputFormatter().formatEditUpdate(
+      oldValue,
+      newValue,
+    );
+    final digitsOnly = RegExp(r'[^۰-۹]');
+    final text = normalized.text.replaceAll(digitsOnly, '');
+    final cursor = normalized.selection.extentOffset
+        .clamp(0, normalized.text.length)
+        .toInt();
+    final selectionOffset = normalized.text
+        .substring(0, cursor)
+        .replaceAll(digitsOnly, '')
+        .length;
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: selectionOffset),
+      composing: TextRange.empty,
+    );
+  }
+}
+
+/// Converts Persian/Arabic digits to API digits and preserves phone punctuation.
+String toLatinDigits(String value) =>
+    String.fromCharCodes(value.runes.map((rune) {
+      if (rune >= 0x06F0 && rune <= 0x06F9) return rune - 0x06F0 + 0x30;
+      if (rune >= 0x0660 && rune <= 0x0669) return rune - 0x0660 + 0x30;
+      return rune;
+    }));
+
 class PersianGroupedIntegerInputFormatter extends TextInputFormatter {
   const PersianGroupedIntegerInputFormatter();
 
