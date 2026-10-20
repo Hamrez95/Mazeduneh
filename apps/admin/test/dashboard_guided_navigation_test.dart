@@ -10,6 +10,7 @@ import 'package:mazeduneh_admin/auth_session.dart';
 import 'package:mazeduneh_admin/admin_navigation.dart';
 import 'package:mazeduneh_admin/dashboard_page.dart';
 import 'package:mazeduneh_admin/order_api.dart';
+import 'package:mazeduneh_admin/store_timezone.dart';
 
 void main() {
   setUp(() {
@@ -133,9 +134,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('میانگین ارزش سفارش'));
     expect(destination?.module, AdminModule.reports);
-    final today = DateUtils.dateOnly(DateTime.now());
-    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
-    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
+    expect(destination?.createdFromUtc, storeWallTimeToUtc(DateTime(today.year, today.month, today.day)));
+    expect(destination?.createdToUtcExclusive, storeWallTimeToUtc(DateTime(today.year, today.month, today.day + 1)));
 
     destination = null;
     await tester.scrollUntilVisible(find.text('پسته اکبری'), 350, maxScrolls: 20);
@@ -162,7 +163,7 @@ void main() {
           'sku': 'PI-AKB-250',
           'variantLabel': '۲۵۰ گرم',
           'batchCode': 'LOT-1405-01',
-          'expiresAt': '2026-01-02T03:04:00',
+          'expiresAt': '2026-01-02T03:04:00+03:30',
           'remainingPackages': 3,
         },
       ],
@@ -200,7 +201,7 @@ void main() {
   });
 
   testWidgets('period order KPI carries the selected local day into the orders route', (tester) async {
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
     AdminNavigationIntent? destination;
     await tester.pumpWidget(_dashboardHarness(onNavigate: (value) => destination = value));
     await tester.pumpAndSettle();
@@ -211,12 +212,12 @@ void main() {
     await tester.tap(find.text('تعداد سفارش بازه'));
 
     expect(destination?.module, AdminModule.orders);
-    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
-    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    expect(destination?.createdFromUtc, storeWallTimeToUtc(DateTime(today.year, today.month, today.day)));
+    expect(destination?.createdToUtcExclusive, storeWallTimeToUtc(DateTime(today.year, today.month, today.day + 1)));
   });
 
   testWidgets('net profit KPI uses and opens the selected report period', (tester) async {
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
     final analyticsRequests = <Uri>[];
     AdminNavigationIntent? destination;
     await tester.pumpWidget(_dashboardHarness(
@@ -230,11 +231,11 @@ void main() {
     expect(analyticsRequests.single.path, '/api/v1/admin/analytics');
     expect(
       analyticsRequests.single.queryParameters['from'],
-      DateTime(today.year, today.month, today.day).toUtc().toIso8601String(),
+      storeWallTimeToUtc(DateTime(today.year, today.month, today.day)).toIso8601String(),
     );
     expect(
       analyticsRequests.single.queryParameters['to'],
-      DateTime(today.year, today.month, today.day + 1).toUtc().toIso8601String(),
+      storeWallTimeToUtc(DateTime(today.year, today.month, today.day + 1)).toIso8601String(),
     );
 
     await tester.scrollUntilVisible(
@@ -247,8 +248,8 @@ void main() {
     await tester.tap(find.text('سود پس از هزینهٔ کالا و ارسال'));
 
     expect(destination?.module, AdminModule.reports);
-    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
-    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    expect(destination?.createdFromUtc, storeWallTimeToUtc(DateTime(today.year, today.month, today.day)));
+    expect(destination?.createdToUtcExclusive, storeWallTimeToUtc(DateTime(today.year, today.month, today.day + 1)));
     expect(tester.takeException(), isNull);
   });
 
@@ -257,7 +258,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final today = DateUtils.dateOnly(DateTime.now());
+    final today = DateUtils.dateOnly(storeWallTimeNow());
     AdminNavigationIntent? destination;
 
     await tester.pumpWidget(_dashboardHarness(
@@ -284,8 +285,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(detailsButton);
     expect(destination?.module, AdminModule.reports);
-    expect(destination?.createdFromUtc, DateTime(today.year, today.month, today.day).toUtc());
-    expect(destination?.createdToUtcExclusive, DateTime(today.year, today.month, today.day + 1).toUtc());
+    expect(destination?.createdFromUtc, storeWallTimeToUtc(DateTime(today.year, today.month, today.day)));
+    expect(destination?.createdToUtcExclusive, storeWallTimeToUtc(DateTime(today.year, today.month, today.day + 1)));
     expect(tester.takeException(), isNull);
   });
 
@@ -303,7 +304,7 @@ void main() {
         'sku': 'PI-AKB-250',
         'variantLabel': '۲۵۰ گرم',
         'batchCode': 'LOT-1405-01',
-        'expiresAt': '2026-01-02T03:04:00',
+        'expiresAt': '2026-01-02T03:04:00+03:30',
         'remainingPackages': 3,
       },
     ]));
