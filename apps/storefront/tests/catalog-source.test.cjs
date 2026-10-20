@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL = 'https://catalog.test';
 const { initialCatalog, catalogSuccess, catalogFailure } = require('../.test-build/catalog-state.js');
 const { mapApiProduct, fetchLiveProducts, fetchLiveCategories } = require('../.test-build/api-catalog.js');
+const { formatRialsAsTomans } = require('../.test-build/formatters.js');
 const preview = [{ id: 'preview-only' }];
 
 test('configured API never uses preview products while loading, empty or failed', () => {
@@ -22,18 +23,22 @@ test('failed refresh retains only the last live snapshot with stale state', () =
 const source = {
   id: 'server-id', slug: 'admin-product', title: 'محصول 12', category: 'دسته مدیر', origin: 'ایران',
   currency: 'IRR', unitType: 'Weight', isPublished: true,
-  variants: [{ sku: 'ADMIN-250', quantity: 250, displayLabel: '250 گرم', price: 60000, availablePackages: 0 },
-    { sku: 'ADMIN-500', quantity: 500, displayLabel: '500 گرم', price: 110000, availablePackages: 3 }],
+  variants: [{ sku: 'ADMIN-250', quantity: 250, displayLabel: '250 گرم', price: 60005, availablePackages: 0 },
+    { sku: 'ADMIN-500', quantity: 500, displayLabel: '500 گرم', price: 110005, availablePackages: 3 }],
 };
 test('adapter uses server SKU, prices and stock, and retains sold-out variants/products', () => {
   const product = mapApiProduct(source);
   assert.equal(product.sku, 'ADMIN-500');
-  assert.equal(product.price, 11000);
+  assert.equal(product.price, 11000.5);
+  assert.equal(product.variants[0].price, 6000.5);
   assert.equal(product.title, 'محصول ۱۲');
   assert.equal(product.variants.length, 2);
   assert.equal(mapApiProduct({ ...source, variants: [source.variants[0]] }).stock, 0);
   assert.equal(mapApiProduct({ ...source, isPublished: false }), null);
   assert.equal(source.variants[0].sku, 'ADMIN-250');
+});
+test('rial totals keep the tenth-of-a-toman fraction in Persian storefront text', () => {
+  assert.equal(formatRialsAsTomans(1234565), '۱۲۳٬۴۵۶٫۵');
 });
 test('catalog fetch rejects server errors, respects empty results and active categories', async () => {
   const old = global.fetch;

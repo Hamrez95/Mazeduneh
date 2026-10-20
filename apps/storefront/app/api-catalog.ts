@@ -1,7 +1,7 @@
 "use client";
 
 import type { DemoProduct, ProductArt } from "./demo/catalog";
-import { toPersianDigits } from "./formatters";
+import { rialsToTomans, toPersianDigits } from "./formatters";
 
 type ApiProductVariant = {
   sku: string;
@@ -84,7 +84,7 @@ function inferAccent(slug: string) {
 }
 
 function tomanFromApiPrice(price: number) {
-  return Math.max(0, Math.round(price / 10));
+  return Math.max(0, rialsToTomans(price));
 }
 
 export function mapApiProduct(product: ApiProduct): DemoProduct | null {

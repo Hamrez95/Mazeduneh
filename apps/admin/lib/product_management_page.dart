@@ -548,14 +548,10 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
             sku: variant.sku,
             quantity: toPersianDigits(variant.quantity),
             label: variant.displayLabel,
-            priceToman: toPersianDigits((variant.price / 10).round()),
-            costPriceToman: toPersianDigits((variant.costPrice / 10).round()),
-            packagingCostToman: toPersianDigits(
-              (variant.packagingCost / 10).round(),
-            ),
-            additionalCostToman: toPersianDigits(
-              (variant.additionalCost / 10).round(),
-            ),
+            priceToman: formatToman(variant.price),
+            costPriceToman: formatToman(variant.costPrice),
+            packagingCostToman: formatToman(variant.packagingCost),
+            additionalCostToman: formatToman(variant.additionalCost),
             stock: toPersianDigits(variant.availablePackages),
           ),
         )
@@ -663,13 +659,14 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
                 sku: variant.sku.text.trim().toUpperCase(),
                 quantity: parsePersianNumber(variant.quantity.text)!,
                 displayLabel: variant.label.text.trim(),
-                price: parsePersianInteger(variant.priceToman.text)! * 10,
-                costPrice:
-                    parsePersianInteger(variant.costPriceToman.text)! * 10,
-                packagingCost:
-                    parsePersianInteger(variant.packagingCostToman.text)! * 10,
-                additionalCost:
-                    parsePersianInteger(variant.additionalCostToman.text)! * 10,
+                price: parseTomanToRial(variant.priceToman.text)!,
+                costPrice: parseTomanToRial(variant.costPriceToman.text)!,
+                packagingCost: parseTomanToRial(
+                  variant.packagingCostToman.text,
+                )!,
+                additionalCost: parseTomanToRial(
+                  variant.additionalCostToman.text,
+                )!,
                 availablePackages: parsePersianInteger(variant.stock.text)!,
               ),
             )
@@ -1292,7 +1289,9 @@ String? _nonNegativeInt(String? value) {
 }
 
 String? _nonNegativeToman(String? value) {
-  return _nonNegativeWhole(value, max: maxSafeTomanAmount);
+  final rial = parseTomanToRial(value);
+  if (rial == null || rial < 0) return 'مبلغ صفر یا بیشتر وارد کنید.';
+  return null;
 }
 
 String? _nonNegativeWhole(String? value, {required int max}) {

@@ -443,14 +443,12 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     final promotionValue =
         (rule?['value'] as num? ?? 10) / (kind == 'Fixed' ? 10 : 1);
     field('value').text = kind == 'Fixed'
-        ? formatPersianInteger(promotionValue)
+        ? formatToman(rule?['value'] as num? ?? 0)
         : toPersianDigits(promotionValue);
-    field('min').text = formatPersianInteger(
-      (rule?['minSubtotal'] as num? ?? 0) / 10,
-    );
+    field('min').text = formatToman(rule?['minSubtotal'] as num? ?? 0);
     field('max').text = rule?['maxDiscount'] == null
         ? ''
-        : formatPersianInteger((rule!['maxDiscount'] as num) / 10);
+        : formatToman(rule!['maxDiscount'] as num);
     field('uses').text = toPersianDigits(rule?['maxUses'] ?? '');
     field('skus').text = (rule?['skus'] as List? ?? []).join(', ');
     startsAt =
@@ -478,7 +476,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     field('applications').text = '${rule?['maxApplications'] ?? ''}';
     field('bundlePrice').text = rule?['bundlePrice'] == null
         ? ''
-        : '${(rule!['bundlePrice'] as num) / 10}';
+        : formatToman(rule!['bundlePrice'] as num);
     bundleBasket.addAll(
       (rule?['bundleItems'] as List? ?? []).map(
         (item) => {
