@@ -80,6 +80,8 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
         if (draft[entry.key] is String) entry.value.text = draft[entry.key] as String;
       }
       if (draft['category'] is String) _category = draft['category'] as String;
+      if (draft['primaryImage'] is String) _primaryImage.text = draft['primaryImage'] as String;
+      if (draft['galleryImages'] is String) _galleryImages.text = draft['galleryImages'] as String;
       final savedVariants = draft['variants'];
       if (savedVariants is List) {
         for (var i = 0; i < _variants.length && i < savedVariants.length; i++) {
@@ -116,6 +118,8 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     'seoDescription': _seoDescription.text,
     'seoKeywords': _seoKeywords.text,
     'specifications': _specifications.text,
+    'primaryImage': _primaryImage.text,
+    'galleryImages': _galleryImages.text,
     'category': _category,
     'variants': [for (final item in _variants) {
       'sku': item.sku.text,

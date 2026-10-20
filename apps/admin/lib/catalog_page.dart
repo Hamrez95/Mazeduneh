@@ -417,6 +417,8 @@ class _ProductDialogState extends State<ProductDialog> {
         final value = draft[_controllerKey(controller)];
         if (value is String) controller.text = value;
       }
+      if (draft['primaryImage'] is String) primaryImage.text = draft['primaryImage'] as String;
+      if (draft['galleryImages'] is String) galleryImages.text = draft['galleryImages'] as String;
       final draftCategory = draft['category'];
       if (draftCategory is String) category = draftCategory;
       if (draft['unitType'] == 'Weight' || draft['unitType'] == 'Count') unitType = draft['unitType'] as String;
@@ -467,6 +469,8 @@ class _ProductDialogState extends State<ProductDialog> {
     'seoDescription': seoDescription.text,
     'seoKeywords': seoKeywords.text,
     'specifications': specifications.text,
+    'primaryImage': primaryImage.text,
+    'galleryImages': galleryImages.text,
     'category': category,
     'unitType': unitType,
     'packages': [for (final item in packages) {
@@ -869,43 +873,112 @@ class _ProductDialogState extends State<ProductDialog> {
   }
 
   Widget _galleryPreview() {
-    final primary = primaryImage.text.trim().isEmpty
-        ? null
-        : resolveMediaUri(primaryImage.text).toString();
-    final urls = galleryImages.text
-        .split('\n')
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty);
-    final uniqueUrls = urls
-        .map((value) => resolveMediaUri(value).toString())
-        .where((value) => value != primary)
-        .toSet();
+    final urls = _galleryUrls();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
-        for (final url in uniqueUrls)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.network(
-                resolveMediaUri(url).toString(),
-                width: 72,
-                height: 72,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 72,
-                  height: 72,
-                  color: AdminColors.canvas,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.broken_image_outlined, size: 20),
+          for (var index = 0; index < urls.length; index++)
+            SizedBox(
+              width: 132,
+              child: Card(
+                color: AdminColors.canvas,
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    Image.network(
+                      urls[index],
+                      width: 116,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(
+                        width: 116,
+                        height: 72,
+                        child: Icon(Icons.broken_image_outlined, size: 20),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          tooltip: 'تصویر اصلی',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _makePrimaryImage(index),
+                          icon: const Icon(Icons.star_outline_rounded, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: 'بالا بردن تصویر',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: index == 0 ? null : () => _moveGalleryImage(index, -1),
+                          icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 18),
+                        ),
+                        IconButton(
+                          tooltip: 'حذف تصویر',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _removeGalleryImage(index),
+                          icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  List<String> _galleryUrls() {
+    final primary = primaryImage.text.trim().isEmpty
+        ? null
+        : resolveMediaUri(primaryImage.text).toString();
+    final seen = <String>{};
+    return galleryImages.text
+        .split('\n')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .where((value) {
+          final resolved = resolveMediaUri(value).toString();
+          return resolved != primary && seen.add(resolved);
+        })
+        .toList();
+  }
+
+  void _writeGalleryUrls(List<String> urls) {
+    galleryImages.text = urls.join('\n');
+    _dirty = true;
+    _persistDraft();
+    setState(() {});
+  }
+
+  void _removeGalleryImage(int index) {
+    final urls = _galleryUrls()..removeAt(index);
+    _writeGalleryUrls(urls);
+  }
+
+  void _moveGalleryImage(int index, int offset) {
+    final urls = _galleryUrls();
+    final destination = index + offset;
+    if (destination < 0 || destination >= urls.length) return;
+    final image = urls.removeAt(index);
+    urls.insert(destination, image);
+    _writeGalleryUrls(urls);
+  }
+
+  void _makePrimaryImage(int index) {
+    final urls = _galleryUrls();
+    if (index < 0 || index >= urls.length) return;
+    final previousPrimary = primaryImage.text.trim();
+    final nextPrimary = urls.removeAt(index);
+    if (previousPrimary.isNotEmpty &&
+        resolveMediaUri(previousPrimary).toString() != resolveMediaUri(nextPrimary).toString()) {
+      urls.insert(0, previousPrimary);
+    }
+    primaryImage.text = nextPrimary;
+    _writeGalleryUrls(urls);
   }
 
   Future<void> pickImage() async {
@@ -1027,11 +1100,7 @@ class _ProductDialogState extends State<ProductDialog> {
         unitType: unitType,
         isPublished: false,
         primaryImage: primaryImage.text.trim(),
-        galleryImages: galleryImages.text
-            .split('\n')
-            .map((value) => value.trim())
-            .where((value) => value.isNotEmpty)
-            .toList(),
+        galleryImages: _galleryUrls(),
         variants: [for(var i=0;i<packages.length;i++) packages[i].command(unitType,generatedSku:codes[i],canWriteCosts:widget.canWriteCosts)],
       ),
     );
