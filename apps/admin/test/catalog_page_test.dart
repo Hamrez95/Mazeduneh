@@ -74,6 +74,36 @@ void main() {
     );
   });
 
+  testWidgets('product gallery removes duplicates and supports primary selection', (tester) async {
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: ProductDialog(canWriteCosts: true)),
+    ));
+    final primary = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == 'تصویر اصلی',
+    );
+    final gallery = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == 'پیوند تصاویر گالری (اختیاری)',
+    );
+    await tester.enterText(primary, 'https://images.example/main.webp');
+    await tester.enterText(gallery, 'https://images.example/main.webp\nhttps://images.example/extra.webp\nhttps://images.example/extra.webp');
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('تصویر اصلی'), findsOneWidget);
+    expect(find.byTooltip('حذف تصویر'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('تصویر اصلی'));
+    await tester.tap(find.byTooltip('تصویر اصلی'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<TextField>(primary).controller!.text, 'https://images.example/extra.webp');
+    expect(tester.widget<TextField>(gallery).controller!.text, 'https://images.example/main.webp');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('opens related orders for the selected product variant', (tester) async {
     AdminNavigationIntent? destination;
     final api = CatalogApiClient(
