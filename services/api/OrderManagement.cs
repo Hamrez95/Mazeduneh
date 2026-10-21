@@ -501,6 +501,12 @@ public static class OrderManagementModule
 
 public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger, InventoryLedgerDatabase ledger)
 {
+    private static string StableNotificationId(string category, string key)
+    {
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return $"{category}_{Convert.ToHexString(digest.AsSpan(0, 12)).ToLowerInvariant()}";
+    }
+
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
@@ -1298,6 +1304,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
                 while (await reader.ReadAsync(cancellationToken))
                     items.Add(new AdminNotification(
+                        StableNotificationId("low-stock", reader.GetString(1)),
                         "low-stock",
                         $"موجودی {reader.GetString(0)} کم است.",
                         $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته",
@@ -1316,7 +1323,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 corporateOverdueFollowUps = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
 
             const string remindersSql = """
-                select company_name,assigned_to,next_follow_up_at
+                select id,company_name,assigned_to,next_follow_up_at
                 from corporate_requests
                 where status not in ('Finalized','Cancelled')
                   and next_follow_up_at is not null and next_follow_up_at<=now()
@@ -1327,14 +1334,16 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using var reminderReader = await reminders.ExecuteReaderAsync(cancellationToken);
             while (await reminderReader.ReadAsync(cancellationToken))
             {
-                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(2);
-                var assignedTo = reminderReader.IsDBNull(1) || string.IsNullOrWhiteSpace(reminderReader.GetString(1))
+                var requestId = reminderReader.GetGuid(0).ToString("N");
+                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(3);
+                var assignedTo = reminderReader.IsDBNull(2) || string.IsNullOrWhiteSpace(reminderReader.GetString(2))
                     ? "بدون مسئول"
-                    : reminderReader.GetString(1);
+                    : reminderReader.GetString(2);
                 items.Add(new AdminNotification(
+                    StableNotificationId("corporate-follow-up", requestId),
                     "corporate-follow-up",
                     "موعد پیگیری فروش سازمانی گذشته است.",
-                    $"{reminderReader.GetString(0)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
+                    $"{reminderReader.GetString(1)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
                     new AdminNavigationTarget("corporate")));
             }
         }
@@ -1342,11 +1351,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         if (awaitingPayment > 0)
             items.Insert(0, new AdminNotification(
                 "awaiting-payment",
+                "awaiting-payment",
                 $"{awaitingPayment} سفارش در انتظار پرداخت است.",
                 "نیازمند بررسی پنل سفارش‌ها",
                 new AdminNavigationTarget("orders", Filter: "AwaitingPayment")));
         if (recentOrders > 0)
             items.Insert(0, new AdminNotification(
+                "new-orders",
                 "new-orders",
                 $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.",
                 "مرور سفارش‌ها و وضعیت ارسال",
@@ -1717,6 +1728,7 @@ public sealed record AdminOrderStateCount(string State, int Count);
 public sealed record AdminPriceHistoryPoint(DateTimeOffset OccurredAt, string Kind, decimal Amount, string Reference);
 public sealed record AdminPriceHistorySku(string Sku, string ProductTitle, string VariantLabel);
 public sealed record AdminNotification(
+    string Id,
     string Type,
     string Title,
     string Detail,

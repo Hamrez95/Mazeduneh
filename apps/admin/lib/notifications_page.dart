@@ -7,9 +7,10 @@ import 'notification_tile.dart';
 import 'order_api.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key, this.api, this.onNavigate});
+  const NotificationsPage({super.key, this.api, this.onNavigate, this.initialNotificationId});
   final OrderApiClient? api;
   final ValueChanged<AdminNavigationIntent>? onNavigate;
+  final String? initialNotificationId;
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
@@ -63,12 +64,46 @@ class _NotificationsPageState extends State<NotificationsPage> {
     if (error != null && (data == null || requestStatusCode(error!) == 401 || requestStatusCode(error!) == 403)) {
       return AdminErrorState(error: error!, onRetry: load);
     }
-    final items = data?.items ?? const <AdminNotification>[];
-    if (items.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.notifications_none_rounded, title: 'فعلاً اعلان مهمی ندارید', detail: 'اعلان سفارش، موجودی یا پیگیری بعدی اینجا نمایش داده می‌شود.'));
+    final items = [...?data?.items];
+    if (items.isEmpty) {
+      if (widget.initialNotificationId != null) {
+        return const Center(child: AdminEmptyState(
+          icon: Icons.notifications_off_outlined,
+          title: 'این اعلان دیگر در صف فعال نیست.',
+          detail: 'برای مشاهدهٔ هشدارهای تازه، فهرست اعلان‌ها را دوباره بارگذاری کنید.',
+        ));
+      }
+      return const Center(child: AdminEmptyState(icon: Icons.notifications_none_rounded, title: 'فعلاً اعلان مهمی ندارید', detail: 'اعلان سفارش، موجودی یا پیگیری بعدی اینجا نمایش داده می‌شود.'));
+    }
+    final selectedIndex = items.indexWhere((item) => item.id == widget.initialNotificationId);
+    if (selectedIndex > 0) items.insert(0, items.removeAt(selectedIndex));
     return ListView.separated(
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, index) => Card(child: AdminNotificationTile(item: items[index], onNavigate: widget.onNavigate)),
+      itemBuilder: (_, index) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (index == 0 && widget.initialNotificationId != null && selectedIndex < 0)
+            const Card(child: ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text('این اعلان دیگر در صف فعال نیست.'),
+            )),
+          if (index == 0 && widget.initialNotificationId != null && selectedIndex >= 0)
+            const Padding(
+              padding: EdgeInsetsDirectional.only(start: 12, bottom: 6),
+              child: Text('اعلان بازشده از پیوند', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          if (index < items.length) Card(
+            shape: items[index].id == widget.initialNotificationId && widget.initialNotificationId != null
+                ? RoundedRectangleBorder(
+                    side: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+                    borderRadius: BorderRadius.circular(16),
+                  )
+                : null,
+            child: AdminNotificationTile(item: items[index], onNavigate: widget.onNavigate),
+          ),
+        ],
+      ),
     );
   }
 }

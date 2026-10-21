@@ -42,6 +42,19 @@ class AdminNotificationTile extends StatelessWidget {
         Text(toPersianDigits(item.detail), style: TextStyle(color: colors.onSurface)),
         if (item.type == 'critical')
           const Padding(padding: EdgeInsets.only(top: 5), child: Text('فوری')),
+        if (item.id.isNotEmpty && onNavigate != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: TextButton.icon(
+              style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+              onPressed: () => onNavigate!(AdminNavigationIntent(
+                module: AdminModule.notifications,
+                notificationId: item.id,
+              )),
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('جزئیات اعلان'),
+            ),
+          ),
         if (canNavigate)
           Padding(
             padding: const EdgeInsets.only(top: 6),

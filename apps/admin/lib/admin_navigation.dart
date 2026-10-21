@@ -78,6 +78,7 @@ class AdminNavigationIntent {
     this.orderFilter = AdminOrderFilter.all,
     this.orderId,
     this.productSlug,
+    this.notificationId,
     this.sku,
     this.batchCode,
     this.query,
@@ -89,6 +90,7 @@ class AdminNavigationIntent {
   final AdminOrderFilter orderFilter;
   final String? orderId;
   final String? productSlug;
+  final String? notificationId;
   final String? sku;
   final String? batchCode;
   final String? query;
@@ -102,6 +104,7 @@ class AdminNavigationIntent {
       other.orderFilter == orderFilter &&
       other.orderId == orderId &&
       other.productSlug == productSlug &&
+      other.notificationId == notificationId &&
       other.sku == sku &&
       other.batchCode == batchCode &&
       other.query == query &&
@@ -109,7 +112,7 @@ class AdminNavigationIntent {
       other.createdToUtcExclusive == createdToUtcExclusive;
 
   @override
-  int get hashCode => Object.hash(module, orderFilter, orderId, productSlug, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
+  int get hashCode => Object.hash(module, orderFilter, orderId, productSlug, notificationId, sku, batchCode, query, createdFromUtc, createdToUtcExclusive);
 
   factory AdminNavigationIntent.fromUri(Uri? uri) {
     final params = uri?.queryParameters ?? const <String, String>{};
@@ -119,6 +122,7 @@ class AdminNavigationIntent {
         : AdminOrderFilter.all;
     final orderId = _safeRouteToken(params['order']);
     final productSlug = _safeRouteToken(params['product']);
+    final notificationId = _safeRouteToken(params['notification']);
     final query = _safeSearchToken(params['q']);
     final sku = _safeRouteToken(params['sku']);
     final batchCode = _safeRouteToken(params['batch']);
@@ -130,6 +134,7 @@ class AdminNavigationIntent {
       orderFilter: filter,
       orderId: module == AdminModule.orders ? orderId : null,
       productSlug: module == AdminModule.products ? productSlug : null,
+      notificationId: module == AdminModule.notifications ? notificationId : null,
       query: module == AdminModule.orders ? query : null,
       sku: module == AdminModule.inventory ? sku : null,
       batchCode: module == AdminModule.inventory ? batchCode : null,
@@ -145,12 +150,14 @@ class AdminNavigationIntent {
     }
     final safeOrderId = _safeRouteToken(orderId);
     final safeProductSlug = _safeRouteToken(productSlug);
+    final safeNotificationId = _safeRouteToken(notificationId);
     final safeQuery = _safeSearchToken(query);
     final safeSku = _safeRouteToken(sku);
     final safeBatch = _safeRouteToken(batchCode);
     if (module == AdminModule.orders && safeOrderId != null) params['order'] = safeOrderId;
     if (module == AdminModule.orders && safeQuery != null) params['q'] = safeQuery;
     if (module == AdminModule.products && safeProductSlug != null) params['product'] = safeProductSlug;
+    if (module == AdminModule.notifications && safeNotificationId != null) params['notification'] = safeNotificationId;
     if (module == AdminModule.inventory && safeSku != null) params['sku'] = safeSku;
     if (module == AdminModule.inventory && safeBatch != null) params['batch'] = safeBatch;
     if (createdFromUtc != null && createdToUtcExclusive != null &&

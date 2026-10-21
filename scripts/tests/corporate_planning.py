@@ -198,6 +198,7 @@ with tempfile.TemporaryFile() as log:
         assert notifications['corporateOverdueFollowUps'] >= 1
         assert any(item['type'] == 'corporate-follow-up'
                    and 'ci-planning-fixture-3' in item['detail']
+                   and item['id'].startswith('corporate-follow-up_')
                    and item['target']['module'] == 'corporate'
                    for item in notifications['items'])
         assert request(ADMIN + '?needsPlanning=true&overdue=true', token=token)[0] == 400

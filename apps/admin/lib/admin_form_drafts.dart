@@ -30,7 +30,8 @@ String _fingerprint(String value) {
 
 String _draftKey(String form, String recordId) {
   final session = OwnerSession.instance;
-  final identity = '${session.storeId}\u0000${session.email?.toLowerCase() ?? ''}';
+  final identity =
+      '${session.storeId}\u0000${session.email?.toLowerCase() ?? ''}';
   return 'mazeduneh.admin.draft.v1.${_fingerprint(identity)}.'
       '${_fingerprint(form)}.${_fingerprint(recordId)}';
 }
@@ -55,7 +56,8 @@ Object? _safeValue(Object? value) {
   return null;
 }
 
-Map<String, dynamic> _safeValues(Map<String, dynamic> values) {
+/// Returns only non-sensitive, JSON-safe values suitable for a local draft.
+Map<String, dynamic> sanitizeAdminFormDraft(Map<String, dynamic> values) {
   final safe = _safeValue(values);
   if (safe is! Map) return {};
   return {
@@ -78,7 +80,7 @@ Map<String, dynamic>? readAdminFormDraft(String form, String recordId) {
       removeAdminBrowserValue(_draftKey(form, recordId));
       return null;
     }
-    return _safeValues(values);
+    return sanitizeAdminFormDraft(values);
   } catch (_) {
     removeAdminBrowserValue(_draftKey(form, recordId));
     return null;
@@ -90,14 +92,16 @@ void writeAdminFormDraft(
   String recordId,
   Map<String, dynamic> values,
 ) {
-  final safe = _safeValues(values);
+  final safe = sanitizeAdminFormDraft(values);
   if (safe.isEmpty) return;
   writeAdminBrowserValue(
     _draftKey(form, recordId),
-    jsonEncode({'updatedAt': DateTime.now().toUtc().toIso8601String(), 'values': safe}),
+    jsonEncode({
+      'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      'values': safe,
+    }),
   );
 }
 
 void clearAdminFormDraft(String form, String recordId) =>
     removeAdminBrowserValue(_draftKey(form, recordId));
-

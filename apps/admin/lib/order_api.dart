@@ -927,12 +927,14 @@ class AdminNavigationTarget {
 
 class AdminNotification {
   const AdminNotification({
+    required this.id,
     required this.type,
     required this.title,
     required this.detail,
     this.target,
   });
 
+  final String id;
   final String type;
   final String title;
   final String detail;
@@ -941,6 +943,7 @@ class AdminNotification {
   factory AdminNotification.fromJson(Map<String, dynamic> json) {
     final rawTarget = json['target'];
     return AdminNotification(
+      id: json['id'] as String? ?? '',
       type: json['type'] as String,
       title: json['title'] as String,
       detail: json['detail'] as String,
