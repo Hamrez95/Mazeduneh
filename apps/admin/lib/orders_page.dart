@@ -1076,7 +1076,7 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
             AdminColumn(
               'مبلغ',
-              (o) => Text(formatAdminMoney(o.payable, currency: o.currency)),
+              (o) => Text(formatAdminMoney(o.payable, currency: o.currency, locale: Localizations.localeOf(context))),
               compare: (a, b) => a.payable.compareTo(b.payable),
             ),
             AdminColumn(
@@ -1177,7 +1177,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     states[order.state] ?? order.state,
                   ),
                   Text(
-                    formatAdminMoney(order.payable, currency: order.currency),
+                    formatAdminMoney(order.payable, currency: order.currency, locale: Localizations.localeOf(context)),
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   if (next != null)
@@ -1744,7 +1744,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      formatAdminMoney(cost.amount, currency: detail.order.currency),
+                      formatAdminMoney(cost.amount, currency: detail.order.currency, locale: Localizations.localeOf(context)),
                       style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                     IconButton(
@@ -1829,7 +1829,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
               ),
               _detailValue(
                 'مبلغ',
-                formatAdminMoney(detail.payment!.amount, currency: detail.payment!.currency),
+                formatAdminMoney(detail.payment!.amount, currency: detail.payment!.currency, locale: Localizations.localeOf(context)),
               ),
               if (detail.payment!.reference != null)
                 _detailValue('شناسه پیگیری', detail.payment!.reference!),
@@ -1973,12 +1973,12 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
         ),
       ),
       Text(
-        '${formatPersianInteger(line.quantity)} × ${formatAdminMoney(line.unitPrice, currency: detail!.order.currency)}',
+        '${formatLocalizedInteger(line.quantity, Localizations.localeOf(context))} × ${formatAdminMoney(line.unitPrice, currency: detail!.order.currency, locale: Localizations.localeOf(context))}',
         style: const TextStyle(fontSize: 12, color: AdminColors.muted),
       ),
       const SizedBox(width: 12),
       Text(
-        formatAdminMoney(line.lineTotal, currency: detail!.order.currency),
+        formatAdminMoney(line.lineTotal, currency: detail!.order.currency, locale: Localizations.localeOf(context)),
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
     ],
@@ -2003,7 +2003,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
           ),
         ),
         Text(
-          formatAdminMoney(value, currency: currency),
+          formatAdminMoney(value, currency: currency, locale: Localizations.localeOf(context)),
           style: TextStyle(
             fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
             color: value < 0 ? AdminColors.coral : AdminColors.inkDeep,
@@ -2090,6 +2090,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
       }[value] ??
       value;
 }
+
 
 
 
