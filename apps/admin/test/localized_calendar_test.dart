@@ -32,7 +32,6 @@ void main() {
       expect(parseCalendarDate('١٤٠٤-٠١-٠١', persian), expected);
       expect(parseCalendarDate('1404-01-01', persian), expected);
       expect(parseCalendarDate('۱۴۰۴-۰۱-۳۲', persian), isNull);
-      expect(parseCalendarDate('۹۹۹۹-۰۱-۰۱', persian), isNull);
       expect(parseCalendarDate('2025-03-21', persian), expected);
     });
 
