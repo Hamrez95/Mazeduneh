@@ -1,3 +1,5 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mazeduneh_admin/formatters.dart';
@@ -15,6 +17,21 @@ void main() {
     expect(parsePersianInteger('۱۲ بسته'), isNull);
     expect(toLatinDigits('۰۹۱۲-۳۴۵ ۶۷۸۹'), '0912-345 6789');
     expect(toLatinDigits('+٩٨ (۹۱۲) ۳۴۵'), '+98 (912) 345');
+    expect(toPersianDigits('SKU KOO-250 · 09123456789'), 'SKU KOO-250 · ۰۹۱۲۳۴۵۶۷۸۹');
+    expect(toPersianDigits('شناسه 550e8400-e29b-41d4-a716-446655440000'), 'شناسه 550e8400-e29b-41d4-a716-446655440000');
+  });
+
+  test('localizes order money while preserving exact rial precision', () {
+    expect(formatAdminMoney(1234560), '۱۲۳٬۴۵۶ تومان');
+    expect(formatAdminMoney(1234565), '۱۲۳٬۴۵۶٫۵ تومان');
+    expect(formatAdminMoney(1234565, locale: const Locale('en', 'US')), '123,456.5 Toman');
+    expect(formatAdminMoney(123456, currency: 'USD', locale: const Locale('en', 'US')), '123,456 USD');
+  });
+
+  test('localized integer output follows Persian or English UI locale', () {
+    expect(formatLocalizedInteger(1234567, const Locale('fa')), '۱٬۲۳۴٬۵۶۷');
+    expect(formatLocalizedInteger(1234567, const Locale('en', 'US')), '1,234,567');
+    expect(toLocalizedDigits('تلفن ۱۲۳', const Locale('en', 'US')), 'تلفن 123');
   });
 
   test(
@@ -72,3 +89,4 @@ void main() {
     expect(parseTomanToRial('۱۲۳٫۴ تومان'), isNull);
   });
 }
+
