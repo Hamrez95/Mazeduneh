@@ -116,7 +116,12 @@ DateTime? parseCalendarDate(String? value, Locale locale) {
           .firstMatch(normalized);
       if (dashed != null) {
         final year = int.parse(dashed[1]!);
-        if (year >= 1200 && year <= 1600) {
+        final hasLocalizedDigits = text.runes.any(
+          (digit) =>
+              (digit >= 0x06f0 && digit <= 0x06f9) ||
+              (digit >= 0x0660 && digit <= 0x0669),
+        );
+        if (hasLocalizedDigits || (year >= 1200 && year <= 1600)) {
           return _validJalaliDate(
             year,
             int.parse(dashed[2]!),
@@ -169,7 +174,9 @@ DateTime? parseCalendarDate(String? value, Locale locale) {
 }
 
 DateTime? _validJalaliDate(int year, int month, int day) {
-  if (month < 1 ||
+  if (year < -61 ||
+      year >= 3178 ||
+      month < 1 ||
       month > 12 ||
       day < 1 ||
       day > _daysInJalaliMonth(year, month)) {
