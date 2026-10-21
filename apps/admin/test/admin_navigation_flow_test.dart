@@ -38,6 +38,38 @@ void main() {
     }
   });
 
+  test('direct order links restore safe record, filter, query and date range', () {
+    final intent = AdminNavigationIntent.fromUri(Uri.parse(
+      'https://admin.example.test/?module=orders&status=Processing&order=ord-42&'
+      'q=KOO-250&from=2026-10-01T00%3A00%3A00.000Z&to=2026-10-08T00%3A00%3A00.000Z',
+    ));
+
+    expect(intent.module, AdminModule.orders);
+    expect(intent.orderFilter, AdminOrderFilter.processing);
+    expect(intent.orderId, 'ord-42');
+    expect(intent.query, 'KOO-250');
+    expect(intent.createdFromUtc, DateTime.utc(2026, 10, 1));
+    expect(intent.createdToUtcExclusive, DateTime.utc(2026, 10, 8));
+    expect(
+      AdminNavigationIntent.fromUri(intent.toUri(Uri.parse('https://admin.example.test/'))),
+      intent,
+    );
+  });
+
+  test('direct product links restore the product and omit private searches', () {
+    final product = AdminNavigationIntent.fromUri(Uri.parse(
+      'https://admin.example.test/?module=products&product=akbari-pistachio',
+    ));
+    expect(product.module, AdminModule.products);
+    expect(product.productSlug, 'akbari-pistachio');
+
+    final unsafeSearch = AdminNavigationIntent.fromUri(Uri.parse(
+      'https://admin.example.test/?module=orders&status=Paid&q=09123456789',
+    ));
+    expect(unsafeSearch.orderFilter, AdminOrderFilter.paid);
+    expect(unsafeSearch.query, isNull);
+  });
+
   testWidgets('orders page applies the SKU sent by a product navigation intent', (tester) async {
     Uri? orderRequest;
     final api = OrderApiClient(
