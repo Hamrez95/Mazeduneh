@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 26515)
+Total output lines: 1746
+
 using System.Text.Json;
 using System.Text;
 using System.Security.Cryptography;
@@ -501,6 +504,12 @@ public static class OrderManagementModule
 
 public sealed class OrderManagementDatabase(IConfiguration configuration, ILogger<OrderManagementDatabase> logger, InventoryLedgerDatabase ledger)
 {
+    private static string StableNotificationId(string category, string key)
+    {
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return $"{category}_{Convert.ToHexString(digest.AsSpan(0, 12)).ToLowerInvariant()}";
+    }
+
     private readonly string? _connectionString = configuration.GetConnectionString("Catalog");
     public bool IsConfigured => !string.IsNullOrWhiteSpace(_connectionString);
 
@@ -620,436 +629,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         {
             Value = createdFrom is null ? DBNull.Value : createdFrom.Value
         });
-        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_to", NpgsqlTypes.NpgsqlDbType.TimestampTz)
-        {
-            Value = createdTo is null ? DBNull.Value : createdTo.Value
-        });
-        var result = new List<AdminOrderSummary>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            result.Add(new AdminOrderSummary(
-                reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-                reader.GetDecimal(5), reader.GetString(6), Enum.Parse<OrderState>(reader.GetString(7)),
-                reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<DateTimeOffset>(9), reader.GetInt32(10),
-                EmptyToNull(reader.GetString(11)), EmptyToNull(reader.GetString(12)), reader.GetBoolean(13)));
-        }
-        return result;
-    }
-
-    public async Task<AdminOrderDetail?> GetDetailAsync(Guid orderId, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        const string orderSql = """
-            select o.id,o.customer_name,o.mobile,o.province,o.city,o.address,o.postal_code,
-                   o.currency,o.subtotal,o.shipping,o.shipping_expense,o.discount,o.payable,
-                   o.tax_rate_percent,o.tax,o.shipping_method,o.shipping_carrier,o.tracking_code,o.shipped_at,
-                   o.state,o.created_at,o.reservation_expires_at,
-                   count(l.id)::int,coalesce(p.reference,''),coalesce(p.state,''),o.is_private
-            from checkout_orders o
-            left join checkout_order_lines l on l.order_id=o.id
-            left join payments p on p.order_id=o.id
-            where o.id=@id
-            group by o.id,p.reference,p.state;
-            """;
-        await using var orderCommand = new NpgsqlCommand(orderSql, connection);
-        orderCommand.Parameters.AddWithValue("id", orderId);
-        await using var reader = await orderCommand.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken)) return null;
-
-        var summary = new AdminOrderSummary(
-            reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
-            reader.GetDecimal(12), reader.GetString(7), Enum.Parse<OrderState>(reader.GetString(19)),
-            reader.GetFieldValue<DateTimeOffset>(20), reader.GetFieldValue<DateTimeOffset>(21), reader.GetInt32(22),
-            EmptyToNull(reader.GetString(23)), EmptyToNull(reader.GetString(24)), reader.GetBoolean(25));
-        var detail = new AdminOrderDetail(
-            summary, reader.GetString(5), reader.GetString(6), reader.GetDecimal(8), reader.GetDecimal(9),
-            reader.GetDecimal(10), reader.GetDecimal(11), reader.GetDecimal(14), reader.GetDecimal(13),
-            reader.GetString(15), reader.IsDBNull(16) ? null : EmptyToNull(reader.GetString(16)),
-            reader.IsDBNull(17) ? null : EmptyToNull(reader.GetString(17)),
-            reader.IsDBNull(18) ? null : reader.GetFieldValue<DateTimeOffset>(18),
-            Array.Empty<AdminOrderLine>(), Array.Empty<AdminOrderTransition>(), Array.Empty<AdminOrderNote>());
-        await reader.CloseAsync();
-
-        var lines = new List<AdminOrderLine>();
-        const string linesSql = "select product_title,sku,variant_label,quantity,unit_price,line_total from checkout_order_lines where order_id=@id order by id;";
-        await using (var command = new NpgsqlCommand(linesSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var lineReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await lineReader.ReadAsync(cancellationToken))
-                lines.Add(new AdminOrderLine(lineReader.GetString(0), lineReader.GetString(1), lineReader.GetString(2), lineReader.GetInt32(3), lineReader.GetDecimal(4), lineReader.GetDecimal(5)));
-        }
-
-        var transitions = new List<AdminOrderTransition>();
-        const string transitionsSql = "select state,actor,occurred_at,reason from checkout_order_transitions where order_id=@id order by occurred_at;";
-        await using (var command = new NpgsqlCommand(transitionsSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var transitionReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await transitionReader.ReadAsync(cancellationToken))
-                transitions.Add(new AdminOrderTransition(Enum.Parse<OrderState>(transitionReader.GetString(0)), transitionReader.GetString(1), transitionReader.GetFieldValue<DateTimeOffset>(2), transitionReader.GetString(3)));
-        }
-
-        var notes = new List<AdminOrderNote>();
-        const string notesSql = "select id,note,actor,created_at from order_internal_notes where order_id=@id order by created_at desc;";
-        await using (var command = new NpgsqlCommand(notesSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var noteReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await noteReader.ReadAsync(cancellationToken))
-                notes.Add(new AdminOrderNote(noteReader.GetGuid(0), noteReader.GetString(1), noteReader.GetString(2), noteReader.GetFieldValue<DateTimeOffset>(3)));
-        }
-
-        var internalCosts = new List<AdminOrderInternalCost>();
-        const string internalCostsSelectSql = "select id,title,amount,actor,created_at from order_internal_costs where order_id=@id order by created_at desc;";
-        await using (var command = new NpgsqlCommand(internalCostsSelectSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var costReader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await costReader.ReadAsync(cancellationToken))
-                internalCosts.Add(new AdminOrderInternalCost(costReader.GetGuid(0), costReader.GetString(1),
-                    costReader.GetDecimal(2), costReader.GetString(3), costReader.GetFieldValue<DateTimeOffset>(4)));
-        }
-
-        AdminPayment? payment = null;
-        const string paymentSql = "select provider,amount,currency,state,reference,created_at,completed_at from payments where order_id=@id;";
-        await using (var command = new NpgsqlCommand(paymentSql, connection))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var paymentReader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await paymentReader.ReadAsync(cancellationToken))
-                payment = new AdminPayment(paymentReader.GetString(0), paymentReader.GetDecimal(1), paymentReader.GetString(2), Enum.Parse<PaymentState>(paymentReader.GetString(3)), EmptyToNull(paymentReader.GetString(4)), paymentReader.GetFieldValue<DateTimeOffset>(5), paymentReader.IsDBNull(6) ? null : paymentReader.GetFieldValue<DateTimeOffset>(6));
-        }
-
-        return detail with { Lines = lines, Transitions = transitions, Notes = notes, InternalCosts = internalCosts, Payment = payment };
-    }
-
-    public async Task<AdminOrderInternalCost?> AddInternalCostAsync(Guid orderId, AdminOrderInternalCostInput input,
-        string actor, string requestId, string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        var id = Guid.NewGuid();
-        const string sql = """
-            insert into order_internal_costs(id,order_id,title,amount,actor,created_at)
-            select @id,@order_id,@title,@amount,@actor,now()
-            where exists(select 1 from checkout_orders where id=@order_id)
-            returning id,title,amount,actor,created_at;
-            """;
-        AdminOrderInternalCost? added = null;
-        await using (var command = new NpgsqlCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("id", id);
-            command.Parameters.AddWithValue("order_id", orderId);
-            command.Parameters.AddWithValue("title", input.Title.Trim());
-            command.Parameters.AddWithValue("amount", input.Amount);
-            command.Parameters.AddWithValue("actor", actor);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-                added = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
-        }
-        if (added is not null)
-            await audit.RecordAsync(actor, "order.internal-cost.added", "order", orderId.ToString("D"), null,
-                added, "هزینه داخلی و غیرقابل‌مشاهده برای مشتری ثبت شد.", requestId, cancellationToken, storeId);
-        return added;
-    }
-
-    public async Task<bool> RemoveInternalCostAsync(Guid orderId, Guid costId, string actor, string requestId,
-        string? storeId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return false;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        AdminOrderInternalCost? removed = null;
-        const string sql = "delete from order_internal_costs where id=@cost and order_id=@order returning id,title,amount,actor,created_at;";
-        await using (var command = new NpgsqlCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("cost", costId);
-            command.Parameters.AddWithValue("order", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (await reader.ReadAsync(cancellationToken))
-                removed = new AdminOrderInternalCost(reader.GetGuid(0), reader.GetString(1), reader.GetDecimal(2), reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
-        }
-        if (removed is not null)
-            await audit.RecordAsync(actor, "order.internal-cost.removed", "order", orderId.ToString("D"),
-                removed, null, "هزینه داخلی از محاسبات حذف شد.", requestId, cancellationToken, storeId);
-        return removed is not null;
-    }
-
-    public async Task<AdminOrderNote?> AddNoteAsync(Guid orderId, string note, string actor, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        const string sql = """
-            insert into order_internal_notes(id,order_id,note,actor,created_at)
-            select @id,@order_id,@note,@actor,now()
-            where exists(select 1 from checkout_orders where id=@order_id)
-            returning id,note,actor,created_at;
-            """;
-        await using var command = new NpgsqlCommand(sql, connection);
-        var id = Guid.NewGuid();
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("order_id", orderId);
-        command.Parameters.AddWithValue("note", note.Trim());
-        command.Parameters.AddWithValue("actor", actor);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken)
-            ? new AdminOrderNote(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), reader.GetFieldValue<DateTimeOffset>(3))
-            : null;
-    }
-
-    public async Task<AdminOrderDetail?> UpdateShippingAsync(
-        Guid orderId,
-        AdminShipmentUpdateInput input,
-        string actor,
-        string requestId,
-        AdminAuditLogDatabase audit,
-        CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return null;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        const string beforeSql = """
-            select shipping_carrier,tracking_code,shipping_expense,shipped_at
-            from checkout_orders where id=@id for update;
-            """;
-        AdminShippingAuditSnapshot before;
-        await using (var command = new NpgsqlCommand(beforeSql, connection, transaction))
-        {
-            command.Parameters.AddWithValue("id", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return null;
-            }
-            before = new AdminShippingAuditSnapshot(
-                reader.IsDBNull(0) ? null : reader.GetString(0),
-                reader.IsDBNull(1) ? null : reader.GetString(1),
-                reader.GetDecimal(2),
-                reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3));
-        }
-
-        const string sql = """
-            update checkout_orders
-            set shipping_carrier=@carrier, tracking_code=@tracking_code,
-                shipping_expense=case when @update_expense then @expense else shipping_expense end,
-                shipped_at=case when @tracking_code is not null and nullif(@tracking_code,'') is not null then coalesce(shipped_at,now()) else shipped_at end
-            where id=@id
-            returning shipped_at;
-            """;
-        DateTimeOffset? shippedAt;
-        await using (var command = new NpgsqlCommand(sql, connection, transaction))
-        {
-            command.Parameters.Add("carrier", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.Carrier?.Trim() ?? DBNull.Value;
-            command.Parameters.Add("tracking_code", NpgsqlTypes.NpgsqlDbType.Varchar).Value = (object?)input.TrackingCode?.Trim() ?? DBNull.Value;
-            command.Parameters.AddWithValue("expense", input.ActualShippingCost ?? 0m);
-            command.Parameters.AddWithValue("update_expense", input.UpdateActualShippingCost);
-            command.Parameters.AddWithValue("id", orderId);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            shippedAt = await reader.ReadAsync(cancellationToken) && !reader.IsDBNull(0)
-                ? reader.GetFieldValue<DateTimeOffset>(0)
-                : null;
-        }
-
-        var after = new AdminShippingAuditSnapshot(
-            input.Carrier?.Trim(),
-            input.TrackingCode?.Trim(),
-            input.UpdateActualShippingCost ? input.ActualShippingCost ?? 0m : before.actualShippingCost,
-            shippedAt);
-        await audit.RecordAsync(
-            connection, transaction, actor, "order.shipping-updated", "Order", orderId.ToString(),
-            before, after, input.Reason!.Trim(), requestId, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return await GetDetailAsync(orderId, cancellationToken);
-    }
-
-    public async Task<AdminDashboard> DashboardAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
-    {
-        if (!IsConfigured) return new AdminDashboard(0, 0, 0, 0, 0, 0, Array.Empty<LowStockItem>());
-        var end = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? (days == 1 ? new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero) : DateTimeOffset.UtcNow.AddDays(-days));
-        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((end - from).TotalDays), 1, 366);
-        const string orderSql = """
-            select
-              count(*) filter (where state='AwaitingPayment')::int,
-              count(*) filter (where state in ('Paid','Preparing'))::int,
-              count(*) filter (where state='Shipped')::int,
-              count(*) filter (where state='Delivered')::int,
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered')),0),
-              coalesce(sum(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0),
-              count(*) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to)::int,
-              coalesce(avg(payable) filter (where state in ('Paid','Preparing','Shipped','Delivered') and created_at >= @from and created_at < @to),0)
-            from checkout_orders;
-            """;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        int awaiting, processing, shipped, delivered;
-        int periodOrderCount;
-        decimal paidRevenue, periodRevenue, averageOrderValue;
-        await using (var command = new NpgsqlCommand(orderSql, connection))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", end);
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-        {
-            await reader.ReadAsync(cancellationToken);
-            awaiting = reader.GetInt32(0);
-            processing = reader.GetInt32(1);
-            shipped = reader.GetInt32(2);
-            delivered = reader.GetInt32(3);
-            paidRevenue = reader.GetDecimal(4);
-            periodRevenue = reader.GetDecimal(5);
-            periodOrderCount = reader.GetInt32(6);
-            averageOrderValue = reader.GetDecimal(7);
-        }
-        }
-
-        const string stockSql = """
-            select p.title,v.sku,v.display_label,v.available_packages
-            from product_variants v join products p on p.id=v.product_id
-            where v.available_packages <= 5
-            order by v.available_packages,p.title
-            limit 20;
-            """;
-        var lowStock = new List<LowStockItem>();
-        await using (var command = new NpgsqlCommand(stockSql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-                lowStock.Add(new LowStockItem(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
-
-        const string expirySql = """
-            select p.title,v.sku,v.display_label,b.batch_code,b.expires_at,b.remaining_packages
-            from inventory_batches b
-            join product_variants v on upper(v.sku)=upper(b.sku)
-            join products p on p.id=v.product_id
-            where b.remaining_packages > 0 and b.expires_at > now() and b.expires_at <= now() + interval '30 days'
-            order by b.expires_at,p.title,b.batch_code
-            limit 20;
-            """;
-        var expiringSoon = new List<ExpiringStockItem>();
-        await using (var command = new NpgsqlCommand(expirySql, connection))
-        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
-            while (await reader.ReadAsync(cancellationToken))
-                expiringSoon.Add(new ExpiringStockItem(
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetString(3),
-                    reader.GetFieldValue<DateTimeOffset>(4),
-                    reader.GetInt32(5)));
-
-        const string summarySql = """
-            select
-              (select count(*)::int from customers where created_at >= @from and created_at < @to),
-              (select count(*)::int from corporate_requests where status='New' and created_at >= @from and created_at < @to),
-              (select count(*)::int from checkout_orders where state in ('Cancelled','Expired') and created_at >= @from and created_at < @to);
-            """;
-        int newCustomers, corporateNewRequests, problemOrders;
-        await using (var command = new NpgsqlCommand(summarySql, connection))
-        {
-            command.Parameters.AddWithValue("from", from);
-            command.Parameters.AddWithValue("to", end);
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            await reader.ReadAsync(cancellationToken);
-            newCustomers = reader.GetInt32(0);
-            corporateNewRequests = reader.GetInt32(1);
-            problemOrders = reader.GetInt32(2);
-        }
-
-        return new AdminDashboard(awaiting, processing, shipped, delivered, paidRevenue, periodRevenue, lowStock, periodDays, periodOrderCount, periodRevenue, averageOrderValue, expiringSoon, newCustomers, corporateNewRequests, problemOrders);
-    }
-
-    public async Task<DashboardPreferences> GetDashboardPreferencesAsync(
-        string storeId, string role, string userKey, CancellationToken cancellationToken)
-    {
-        if (!IsConfigured) return DashboardPreferences.Default;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var userCommand = new NpgsqlCommand(
-            "select widgets from admin_dashboard_user_preferences where store_id=@store and role=@role and user_key=@userKey;", connection);
-        userCommand.Parameters.AddWithValue("store", storeId);
-        userCommand.Parameters.AddWithValue("role", role);
-        userCommand.Parameters.AddWithValue("userKey", userKey);
-        var userJson = await userCommand.ExecuteScalarAsync(cancellationToken) as string;
-        if (userJson is not null) return ParseDashboardPreferences(userJson);
-
-        await using var command = new NpgsqlCommand(
-            "select widgets from admin_dashboard_role_preferences where store_id=@store and role=@role;", connection);
-        command.Parameters.AddWithValue("store", storeId);
-        command.Parameters.AddWithValue("role", role);
-        var json = await command.ExecuteScalarAsync(cancellationToken) as string;
-        return json is null ? DashboardPreferences.Default : ParseDashboardPreferences(json);
-    }
-
-    private static DashboardPreferences ParseDashboardPreferences(string json)
-    {
-        try
-        {
-            var widgets = JsonSerializer.Deserialize<DashboardWidgetPreference[]>(json);
-            return DashboardPreferences.IsValid(widgets) ? new DashboardPreferences(widgets!) : DashboardPreferences.Default;
-        }
-        catch (JsonException)
-        {
-            return DashboardPreferences.Default;
-        }
-    }
-
-    public async Task<DashboardPreferences> SaveDashboardPreferencesAsync(
-        string storeId, string role, string userKey, string actor,
-        IReadOnlyList<DashboardWidgetPreference> widgets, CancellationToken cancellationToken)
-    {
-        var preferences = new DashboardPreferences(widgets.ToArray());
-        if (!IsConfigured) return preferences;
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = new NpgsqlCommand("""
-            insert into admin_dashboard_user_preferences (store_id,role,user_key,widgets,updated_by,updated_at)
-            values (@store,@role,@userKey,@widgets::jsonb,@actor,now())
-            on conflict (store_id,role,user_key) do update
-              set widgets=excluded.widgets,updated_by=excluded.updated_by,updated_at=excluded.updated_at;
-            """, connection);
-        command.Parameters.AddWithValue("store", storeId);
-        command.Parameters.AddWithValue("role", role);
-        command.Parameters.AddWithValue("userKey", userKey);
-        command.Parameters.AddWithValue("widgets", JsonSerializer.Serialize(widgets));
-        command.Parameters.AddWithValue("actor", actor);
-        await command.ExecuteNonQueryAsync(cancellationToken);
-        return preferences;
-    }
-
-    public async Task<AdminAnalytics> AnalyticsAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
-    {
-        if (!IsConfigured) return new AdminAnalytics(days, 0, 0, 0, 0, 0, 0);
-        var to = period?.To ?? DateTimeOffset.UtcNow;
-        var from = period?.From ?? to.AddDays(-days);
-        var periodDays = period is null ? days : Math.Clamp((int)Math.Ceiling((to - from).TotalDays), 1, 366);
-        await using var connection = new NpgsqlConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
-        const string orderSql = """
-            select count(*)::int, coalesce(sum(payable),0), coalesce(sum(tax),0),
-                   coalesce(sum(shipping_expense),0), coalesce(sum(shipping),0), coalesce(sum(discount),0),
-                   coalesce(sum((select sum(c.amount) from order_internal_costs c where c.order_id=checkout_orders.id)),0)
-            from checkout_orders
-            where created_at >= @from and created_at < @to and state in ('Paid','Preparing','Shipped','Delivered');
-            """;
-        int orderCount;
-        decimal revenue;
-        decimal tax;
-        decimal shippingExpense;
-        decimal shippingRevenue;
-        decimal discount;
-        decimal internalCosts;
-        await using (var command = new NpgsqlCommand(orderSql, connection, transaction))
+        command.Parameters.Add(new Npgsql.NpgsqlParameter("created_to", NpgsqlTypes.Np…6515 tokens truncated…))
         {
             command.Parameters.AddWithValue("from", from);
             command.Parameters.AddWithValue("to", to);
@@ -1298,6 +878,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
                 while (await reader.ReadAsync(cancellationToken))
                     items.Add(new AdminNotification(
+                        StableNotificationId("low-stock", reader.GetString(1)),
                         "low-stock",
                         $"موجودی {reader.GetString(0)} کم است.",
                         $"{reader.GetString(1)} · {reader.GetInt32(2)} بسته",
@@ -1316,7 +897,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                 corporateOverdueFollowUps = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
 
             const string remindersSql = """
-                select company_name,assigned_to,next_follow_up_at
+                select id,company_name,assigned_to,next_follow_up_at
                 from corporate_requests
                 where status not in ('Finalized','Cancelled')
                   and next_follow_up_at is not null and next_follow_up_at<=now()
@@ -1327,14 +908,16 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             await using var reminderReader = await reminders.ExecuteReaderAsync(cancellationToken);
             while (await reminderReader.ReadAsync(cancellationToken))
             {
-                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(2);
-                var assignedTo = reminderReader.IsDBNull(1) || string.IsNullOrWhiteSpace(reminderReader.GetString(1))
+                var requestId = reminderReader.GetGuid(0).ToString("N");
+                var dueAt = reminderReader.GetFieldValue<DateTimeOffset>(3);
+                var assignedTo = reminderReader.IsDBNull(2) || string.IsNullOrWhiteSpace(reminderReader.GetString(2))
                     ? "بدون مسئول"
-                    : reminderReader.GetString(1);
+                    : reminderReader.GetString(2);
                 items.Add(new AdminNotification(
+                    StableNotificationId("corporate-follow-up", requestId),
                     "corporate-follow-up",
                     "موعد پیگیری فروش سازمانی گذشته است.",
-                    $"{reminderReader.GetString(0)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
+                    $"{reminderReader.GetString(1)} · {assignedTo} · {dueAt:yyyy-MM-dd HH:mm} UTC",
                     new AdminNavigationTarget("corporate")));
             }
         }
@@ -1342,11 +925,13 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         if (awaitingPayment > 0)
             items.Insert(0, new AdminNotification(
                 "awaiting-payment",
+                "awaiting-payment",
                 $"{awaitingPayment} سفارش در انتظار پرداخت است.",
                 "نیازمند بررسی پنل سفارش‌ها",
                 new AdminNavigationTarget("orders", Filter: "AwaitingPayment")));
         if (recentOrders > 0)
             items.Insert(0, new AdminNotification(
+                "new-orders",
                 "new-orders",
                 $"{recentOrders} سفارش در ۲۴ ساعت اخیر ثبت یا پردازش شده.",
                 "مرور سفارش‌ها و وضعیت ارسال",
@@ -1717,6 +1302,7 @@ public sealed record AdminOrderStateCount(string State, int Count);
 public sealed record AdminPriceHistoryPoint(DateTimeOffset OccurredAt, string Kind, decimal Amount, string Reference);
 public sealed record AdminPriceHistorySku(string Sku, string ProductTitle, string VariantLabel);
 public sealed record AdminNotification(
+    string Id,
     string Type,
     string Title,
     string Detail,
