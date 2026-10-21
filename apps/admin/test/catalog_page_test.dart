@@ -152,6 +152,38 @@ void main() {
     }
   });
 
+  testWidgets('dirty product draft asks before leaving and honors stay/discard', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) => Scaffold(
+        body: TextButton(
+          onPressed: () => showDialog<void>(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const ProductDialog(canWriteCosts: true),
+          ),
+          child: const Text('open product form'),
+        ),
+      )),
+    ));
+    await tester.tap(find.text('open product form'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('create-product-title')), 'پیش‌نویس آزمایشی');
+
+    await tester.tap(find.text('انصراف'));
+    await tester.pumpAndSettle();
+    expect(find.text('تغییرات ذخیره نشده‌اند'), findsOneWidget);
+    await tester.tap(find.text('ماندن در فرم'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('create-product-title')), findsOneWidget);
+
+    await tester.tap(find.text('انصراف'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('دورریختن تغییرات'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('create-product-title')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('product gallery removes duplicates and supports primary selection', (tester) async {
     tester.view.physicalSize = const Size(900, 1200);
     tester.view.devicePixelRatio = 1;
