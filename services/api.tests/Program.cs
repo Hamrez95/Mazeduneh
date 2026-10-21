@@ -115,6 +115,7 @@ var adminPermissionRoutes = new (string Method, string Path, string Permission)[
     (HttpMethods.Get, "/api/v1/admin/orders/00000000-0000-0000-0000-000000000001/invoice", AdminPermissionCatalog.OrdersDocumentsRead),
     (HttpMethods.Get, "/api/v1/admin/dashboard", AdminPermissionCatalog.DashboardRead),
     (HttpMethods.Get, "/api/v1/admin/analytics/products", AdminPermissionCatalog.ReportsRead),
+    (HttpMethods.Get, "/api/v1/admin/analytics/products/export.csv", AdminPermissionCatalog.ReportsExport),
     (HttpMethods.Get, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryRead),
     (HttpMethods.Post, "/api/v1/admin/inventory/batches", AdminPermissionCatalog.InventoryWrite),
     (HttpMethods.Get, "/api/v1/admin/inventory/pricing/SKU", AdminPermissionCatalog.PricingRead),
@@ -164,6 +165,10 @@ Check(!AdminPermissionCatalog.Allows(unknownRolePrincipal, AdminPermissionCatalo
 Check(AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.PricingWrite), "Marketing manager lost price and promotion permissions");
 Check(!AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsRead) && !AdminPermissionCatalog.Allows(marketingManager, AdminPermissionCatalog.SettingsWrite), "Marketing manager can access tax or shipping settings");
 Check(AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsRead) && AdminPermissionCatalog.Allows(storeManager, AdminPermissionCatalog.SettingsWrite), "Store manager lost commerce settings access");
+var accountant = new AdminPrincipal("accountant@example.test", now.AddHours(1), "Accountant", AdminPermissionCatalog.Resolve("Accountant"), Guid.NewGuid(), Guid.NewGuid(), "default");
+var analyst = new AdminPrincipal("analyst@example.test", now.AddHours(1), "ReadOnlyAnalyst", AdminPermissionCatalog.Resolve("ReadOnlyAnalyst"), Guid.NewGuid(), Guid.NewGuid(), "default");
+Check(AdminPermissionCatalog.Allows(accountant, AdminPermissionCatalog.ReportsExport), "Accountant lost the reports export permission");
+Check(!AdminPermissionCatalog.Allows(analyst, AdminPermissionCatalog.ReportsExport), "Read-only analyst unexpectedly received reports export permission");
 var unknownAdminContext = new DefaultHttpContext();
 unknownAdminContext.Request.Method = HttpMethods.Get;
 unknownAdminContext.Request.Path = "/api/v1/admin/unknown-sensitive-operation";

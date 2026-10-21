@@ -509,6 +509,7 @@ public static class AdminPermissionCatalog
     public const string CustomersExport = "customers.export";
     public const string CustomersPiiRead = "customers.pii.read";
     public const string ReportsRead = "reports.read";
+    public const string ReportsExport = "reports.export";
     public const string CategoriesRead = "categories.read";
     public const string CategoriesWrite = "categories.write";
     public const string PricingRead = "pricing.read";
@@ -526,7 +527,7 @@ public static class AdminPermissionCatalog
     public static IReadOnlyList<string> Owner { get; } =
     [
         DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite,
-        InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead,
+        InventoryRead, InventoryWrite, CustomersRead, CustomersExport, CustomersPiiRead, ReportsRead, ReportsExport,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
         CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
@@ -535,7 +536,7 @@ public static class AdminPermissionCatalog
     [
         DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead,
         ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead,
-        CustomersPiiRead, CustomersExport, ReportsRead,
+        CustomersPiiRead, CustomersExport, ReportsRead, ReportsExport,
         CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead,
         CorporateWrite, ContentRead, ContentWrite, AuditRead, SettingsRead, SettingsWrite
     ];
@@ -547,10 +548,10 @@ public static class AdminPermissionCatalog
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Owner"] = Owner,
-            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsRead, SettingsWrite],
+            ["StoreManager"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersExport, OrdersDocumentsRead, ProductsRead, ProductsWrite, InventoryRead, InventoryWrite, CustomersRead, CustomersPiiRead, ReportsRead, ReportsExport, CategoriesRead, CategoriesWrite, PricingRead, PricingWrite, CorporateRead, CorporateWrite, ContentRead, ContentWrite, SettingsRead, SettingsWrite],
             ["SalesOperator"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead, CorporateRead],
             ["WarehouseOperator"] = [DashboardRead, ProductsRead, InventoryRead, InventoryWrite, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersPiiRead],
-            ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, PricingRead],
+            ["Accountant"] = [DashboardRead, OrdersRead, OrdersExport, ReportsRead, ReportsExport, PricingRead],
             ["CustomerSupport"] = [DashboardRead, OrdersRead, OrdersWrite, OrdersDocumentsRead, CustomersRead, CustomersPiiRead],
             ["CorporateSales"] = [DashboardRead, CorporateRead, CorporateWrite, CustomersRead, CustomersPiiRead],
             ["ContentManager"] = [DashboardRead, ProductsRead, ProductsWrite, CategoriesRead, CategoriesWrite, ContentRead, ContentWrite],
@@ -603,6 +604,7 @@ public static class AdminPermissionCatalog
         if (IsUnderPath(context, "/api/v1/admin/users")) return HttpMethods.IsGet(method) ? UsersRead : UsersWrite;
         if (IsUnderPath(context, "/api/v1/admin/audit-log")) return AuditRead;
         if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/orders/export.csv", StringComparison.OrdinalIgnoreCase)) return OrdersExport;
+        if (HttpMethods.IsGet(method) && path.Equals("/api/v1/admin/analytics/products/export.csv", StringComparison.OrdinalIgnoreCase)) return ReportsExport;
         if (IsOrderDocument(context)) return OrdersDocumentsRead;
         if (IsUnderPath(context, "/api/v1/admin/shipping/overdue")) return OrdersRead;
         if (IsUnderPath(context, "/api/v1/admin/orders")) return HttpMethods.IsGet(method) ? OrdersRead : OrdersWrite;

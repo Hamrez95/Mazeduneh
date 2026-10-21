@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text;
 using System.Security.Cryptography;
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -343,6 +344,41 @@ public static class OrderManagementModule
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ انتخابی نامعتبر است؛ تاریخ‌ها باید معتبر و حداکثر یک‌سال باشند."] });
             return Results.Ok(await database.ProductProfitabilityAsync(windowDays, cancellationToken, period));
         }).AddEndpointFilter<OwnerAuthorizationFilter>();
+
+        admin.MapGet("/analytics/products/export.csv", async (
+            int? days,
+            DateTimeOffset? from,
+            DateTimeOffset? to,
+            OrderManagementDatabase database,
+            CancellationToken cancellationToken) =>
+        {
+            var windowDays = days ?? 30;
+            if ((from is null && (windowDays is < 1 or > 365)) || !DashboardPeriod.TryCreate(from, to, DateTimeOffset.UtcNow, out var period))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["from"] = ["بازهٔ انتخابی نامعتبر است؛ تاریخ‌ها باید معتبر و حداکثر یک‌سال باشند."] });
+            var rows = await database.ProductProfitabilityAsync(windowDays, cancellationToken, period, maxRows: 5_000);
+            static string CsvText(string value)
+            {
+                var first = value.TrimStart();
+                var safe = first.Length > 0 && first[0] is '=' or '+' or '-' or '@' ? $"'{value}" : value;
+                return $"\"{safe.Replace("\"", "\"\"")}\"";
+            }
+            static string CsvNumber(string value) => $"\"{value}\"";
+            var builder = new StringBuilder("\uFEFFنام محصول,کد بسته,اندازه بسته,واحد پایه,تعداد بسته فروخته‌شده,مقدار فروش به واحد پایه,درآمد فروش (ریال),تخفیف (ریال),هزینه کل (ریال),سود پس از تخفیف (ریال)\r\n");
+            foreach (var row in rows)
+            {
+                builder.AppendJoin(',', new[]
+                {
+                    CsvText(row.ProductTitle), CsvText(row.Sku), CsvText(row.VariantLabel), CsvText(row.BaseUnit ?? string.Empty),
+                    CsvNumber(row.UnitsSold.ToString(CultureInfo.InvariantCulture)),
+                    CsvNumber(row.QuantitySold?.ToString(CultureInfo.InvariantCulture) ?? string.Empty),
+                    CsvNumber(row.Revenue.ToString(CultureInfo.InvariantCulture)), CsvNumber(row.Discount.ToString(CultureInfo.InvariantCulture)),
+                    CsvNumber(row.Cost.ToString(CultureInfo.InvariantCulture)), CsvNumber(row.GrossProfit.ToString(CultureInfo.InvariantCulture))
+                }).Append("\r\n");
+            }
+            return Results.File(Encoding.UTF8.GetBytes(builder.ToString()), "text/csv; charset=utf-8", "mazeduneh-product-sales.csv");
+        }).AddEndpointFilter<OwnerAuthorizationFilter>()
+          .AddEndpointFilter<StepUpAuthorizationFilter>()
+          .WithMetadata(new StepUpPermissionRequirement(AdminPermissionCatalog.ReportsExport));
 
         admin.MapGet("/analytics/price-history", async (
             string? sku,
@@ -1109,7 +1145,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
             merchandiseRevenue, discount, shippingRevenue, productCost, packagingCost, additionalCost, dailySales, orderStates, internalCosts);
     }
 
-    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null)
+    public async Task<IReadOnlyCollection<AdminProductProfitability>> ProductProfitabilityAsync(int days, CancellationToken cancellationToken, DashboardPeriod? period = null, int maxRows = 200)
     {
         if (!IsConfigured) return Array.Empty<AdminProductProfitability>();
         var to = period?.To ?? DateTimeOffset.UtcNow;
@@ -1140,7 +1176,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
                    product_cost,packaging_cost,additional_cost,quantity_sold,base_unit,allocated_internal_cost
             from grouped
             order by (revenue - discount - cost) desc, product_title
-            limit 200;
+            limit @limit;
             """;
 
         var rows = new List<AdminProductProfitability>();
@@ -1149,6 +1185,7 @@ public sealed class OrderManagementDatabase(IConfiguration configuration, ILogge
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("from", from);
         command.Parameters.AddWithValue("to", to);
+        command.Parameters.AddWithValue("limit", Math.Clamp(maxRows, 1, 5_000));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
