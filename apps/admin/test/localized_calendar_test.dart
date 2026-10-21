@@ -26,6 +26,15 @@ void main() {
       expect(parseCalendarDate('1404/01/01', persian), expected);
     });
 
+    test('parses dashed Jalali dates without confusing them with ISO dates', () {
+      final expected = DateTime(2025, 3, 21);
+      expect(parseCalendarDate('۱۴۰۴-۰۱-۰۱', persian), expected);
+      expect(parseCalendarDate('١٤٠٤-٠١-٠١', persian), expected);
+      expect(parseCalendarDate('1404-01-01', persian), expected);
+      expect(parseCalendarDate('۱۴۰۴-۰۱-۳۲', persian), isNull);
+      expect(parseCalendarDate('2025-03-21', persian), expected);
+    });
+
     test('accepts ISO dates in Persian fields for existing records', () {
       expect(parseCalendarDate('2025-03-21', persian), DateTime(2025, 3, 21));
     });
@@ -54,4 +63,5 @@ void main() {
     });
   });
 }
+
 
