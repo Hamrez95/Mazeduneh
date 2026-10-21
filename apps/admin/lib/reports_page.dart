@@ -9,6 +9,7 @@ import 'auth_session.dart';
 import 'formatters.dart';
 import 'localized_calendar.dart';
 import 'order_api.dart';
+import 'product_sales_rollup.dart';
 import 'store_timezone.dart';
 
 class ReportsPage extends StatefulWidget {
@@ -38,6 +39,7 @@ class _ReportsPageState extends State<ReportsPage> {
   int days = 30;
   String productQuery = '';
   int productPage = 0;
+  int productRollupPage = 0;
   DateTimeRange? selectedRange;
   bool loading = true;
   Object? error;
@@ -101,6 +103,7 @@ class _ReportsPageState extends State<ReportsPage> {
           profitability = result[1] as List<AdminProductProfitability>;
           priceHistorySkus = result[2] as List<AdminPriceHistorySku>;
           productPage = 0;
+          productRollupPage = 0;
           selectedPriceSku = priceHistorySkus.any((item) => item.sku == selectedPriceSku)
               ? selectedPriceSku
               : (priceHistorySkus.isEmpty ? null : priceHistorySkus.first.sku);
@@ -445,6 +448,15 @@ class _ReportsPageState extends State<ReportsPage> {
         .toList();
     final last = rows.isEmpty ? 0 : (rows.length - 1) ~/ 5;
     final page = productPage.clamp(0, last);
+    final rollups = rollUpProductSales(rows);
+    const rollupsPerPage = 8;
+    final lastRollupPage = rollups.isEmpty
+        ? 0
+        : (rollups.length - 1) ~/ rollupsPerPage;
+    final currentRollupPage = productRollupPage.clamp(0, lastRollupPage);
+    final visibleRollups = rollups
+        .skip(currentRollupPage * rollupsPerPage)
+        .take(rollupsPerPage);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -466,6 +478,7 @@ class _ReportsPageState extends State<ReportsPage> {
           onChanged: (value) => setState(() {
             productQuery = value;
             productPage = 0;
+            productRollupPage = 0;
           }),
           decoration: const InputDecoration(
             labelText: 'جست‌وجوی محصول یا بسته',
@@ -473,6 +486,18 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
         ),
         const SizedBox(height: 16),
+        _productSalesRollups(
+          visibleRollups,
+          page: currentRollupPage,
+          lastPage: lastRollupPage,
+          total: rollups.length,
+        ),
+        const SizedBox(height: 20),
+        const Text(
+          'سود و هزینه به تفکیک هر بسته',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AdminColors.heading),
+        ),
+        const SizedBox(height: 8),
         if (rows.isEmpty)
           const AdminEmptyState(
             icon: Icons.query_stats_rounded,
@@ -636,6 +661,90 @@ class _ReportsPageState extends State<ReportsPage> {
       ],
     );
   }
+
+  Widget _productSalesRollups(
+    Iterable<ProductSalesRollup> products, {
+    required int page,
+    required int lastPage,
+    required int total,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        'جمع فروش به تفکیک محصول',
+        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AdminColors.heading),
+      ),
+      const SizedBox(height: 4),
+      const Text(
+        'وزن همهٔ بسته‌های هر محصول با هم جمع شده و ترکیب اندازهٔ بسته‌ها جداگانه نمایش داده می‌شود.',
+        style: TextStyle(fontSize: 11, height: 1.7, color: AdminColors.muted),
+      ),
+      const SizedBox(height: 10),
+      if (total == 0)
+        const Text('در این بازه فروش محصولی ثبت نشده است.', style: TextStyle(color: AdminColors.muted)),
+      for (final product in products)
+        Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ExpansionTile(
+            key: ValueKey('product-sales-rollup-${product.productTitle}-${product.baseUnit}'),
+            title: Text(product.productTitle, style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(
+              '${_rollupQuantity(product)} · ${formatPersianInteger(product.packagesSold)} بسته · فروش پس از تخفیف ${formatToman(product.revenue - product.discount)} تومان',
+            ),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+            children: [
+              const Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text('ترکیب بسته‌های فروخته‌شده', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 6),
+              for (final variant in product.variants)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('${toPersianDigits(variant.label)} · ${variant.sku}', style: const TextStyle(fontSize: 11, color: AdminColors.muted))),
+                      Text('${formatPersianInteger(variant.packagesSold)} بسته', style: const TextStyle(fontSize: 11)),
+                      if (variant.quantitySold != null) ...[
+                        const SizedBox(width: 10),
+                        Text(_variantQuantity(variant.quantitySold!, product.baseUnit), style: const TextStyle(fontSize: 11, color: AdminColors.muted)),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      if (total > 0)
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('نمایش ${formatPersianInteger(page * 8 + 1)} تا ${formatPersianInteger((page * 8 + 8).clamp(0, total))} از ${formatPersianInteger(total)} محصول'),
+            TextButton(onPressed: page == 0 ? null : () => setState(() => productRollupPage = page - 1), child: const Text('قبلی')),
+            TextButton(onPressed: page == lastPage ? null : () => setState(() => productRollupPage = page + 1), child: const Text('بعدی')),
+          ],
+        ),
+    ],
+  );
+
+  String _rollupQuantity(ProductSalesRollup product) {
+    if (product.baseUnit == 'gram') {
+      final amount = formatPersianNumber(product.quantitySold / 1000, fractionDigits: 3);
+      return '${product.hasMissingQuantity ? 'حداقل ' : ''}$amount کیلوگرم${product.hasMissingQuantity ? ' · وزن بعضی سفارش‌های قدیمی ثبت نشده' : ''}';
+    }
+    if (product.baseUnit == 'count') {
+      return '${product.hasMissingQuantity ? 'حداقل ' : ''}${formatPersianInteger(product.quantitySold)} عدد';
+    }
+    return product.hasMissingQuantity
+        ? 'مقدار فروش برخی سفارش‌های قدیمی ثبت نشده'
+        : '${formatPersianNumber(product.quantitySold)} واحد';
+  }
+
+  String _variantQuantity(num quantity, String unit) => unit == 'gram'
+      ? '${formatPersianNumber(quantity / 1000, fractionDigits: 3)} کیلوگرم'
+      : '${formatPersianInteger(quantity)} عدد';
 
   num _productMargin(AdminProductProfitability item) {
     final netRevenue = item.revenue - item.discount;

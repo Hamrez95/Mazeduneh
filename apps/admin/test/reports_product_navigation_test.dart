@@ -58,6 +58,19 @@ void main() {
               'productCost': 240000,
               'packagingCost': 40000,
               'additionalCost': 20000,
+              'quantitySold': 500,
+              'baseUnit': 'gram',
+            },
+            {
+              'productTitle': 'پسته اکبری',
+              'sku': 'PI-AKB-500',
+              'variantLabel': '۵۰۰ گرم',
+              'unitsSold': 1,
+              'revenue': 400000,
+              'cost': 250000,
+              'grossProfit': 150000,
+              'quantitySold': 500,
+              'baseUnit': 'gram',
             },
           ]);
         }
@@ -110,9 +123,19 @@ void main() {
     }
 
     expect(find.text('پسته اکبری'), findsWidgets);
+    expect(find.text('جمع فروش به تفکیک محصول'), findsOneWidget);
+    expect(find.textContaining('کیلوگرم'), findsWidgets);
+    final rollup = find.byKey(const ValueKey('product-sales-rollup-پسته اکبری-gram'));
+    expect(rollup, findsOneWidget);
+    await tester.ensureVisible(rollup);
+    await tester.pumpAndSettle();
+    await tester.tap(rollup);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('PI-AKB-250'), findsWidgets);
+    expect(find.textContaining('PI-AKB-500'), findsWidgets);
     expect(find.textContaining('تفکیک هزینه'), findsOneWidget);
-    expect(find.textContaining('حاشیه سود'), findsOneWidget);
-    final inventoryAction = find.text('مشاهده در انبار');
+    expect(find.textContaining('حاشیه سود'), findsWidgets);
+    final inventoryAction = find.text('مشاهده در انبار').first;
     await tester.ensureVisible(inventoryAction);
     await tester.pumpAndSettle();
     await tester.tap(inventoryAction);
@@ -121,7 +144,7 @@ void main() {
     expect(destination?.sku, 'PI-AKB-250');
 
     destination = null;
-    final ordersAction = find.text('مشاهده سفارش‌ها');
+    final ordersAction = find.text('مشاهده سفارش‌ها').first;
     await tester.ensureVisible(ordersAction);
     await tester.pumpAndSettle();
     await tester.tap(ordersAction);
