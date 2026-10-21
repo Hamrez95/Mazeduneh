@@ -878,7 +878,11 @@ class _AdminShellState extends State<AdminShell> {
     ),
     AdminModule.notifications => AdminPermissionGate(
       permission: module.permission,
-      child: NotificationsPage(onNavigate: _navigate),
+      child: NotificationsPage(
+        key: ValueKey(navigation.notificationId),
+        onNavigate: _navigate,
+        initialNotificationId: navigation.notificationId,
+      ),
     ),
     AdminModule.customers => AdminPermissionGate(
       permission: module.permission,
