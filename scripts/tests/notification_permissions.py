@@ -104,15 +104,19 @@ with tempfile.TemporaryFile() as log:
         )
         assert low_stock_notice["target"]["module"] == "inventory"
         assert low_stock_notice["target"]["sku"] == INVENTORY_MARKER
+        assert low_stock_notice["id"].startswith("low-stock_")
         awaiting_notice = next(item for item in owner["items"] if item["type"] == "awaiting-payment")
+        assert awaiting_notice["id"] == "awaiting-payment"
         assert awaiting_notice["target"]["module"] == "orders"
         assert awaiting_notice["target"]["filter"] == "AwaitingPayment"
         recent_notice = next(item for item in owner["items"] if item["type"] == "new-orders")
+        assert recent_notice["id"] == "new-orders"
         assert recent_notice["target"]["module"] == "orders"
         corporate_notice = next(
             item for item in owner["items"]
             if item["type"] == "corporate-follow-up" and CORPORATE_MARKER in item["detail"]
         )
+        assert corporate_notice["id"].startswith("corporate-follow-up_")
         assert corporate_notice["target"]["module"] == "corporate"
         assert owner["corporateOverdueFollowUps"] >= 1
         assert request("/api/v1/admin/notifications")[0] == 401
