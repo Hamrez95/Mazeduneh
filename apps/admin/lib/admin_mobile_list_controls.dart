@@ -17,6 +17,7 @@ class AdminMobileListControls extends StatefulWidget {
     required this.onSearchChanged,
     required this.onPageChanged,
     required this.onPageSizeChanged,
+    this.showSearch = true,
   });
 
   final int totalItems;
@@ -27,6 +28,7 @@ class AdminMobileListControls extends StatefulWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<int> onPageChanged;
   final ValueChanged<int> onPageSizeChanged;
+  final bool showSearch;
 
   @override
   State<AdminMobileListControls> createState() =>
@@ -69,26 +71,28 @@ class _AdminMobileListControlsState extends State<AdminMobileListControls> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _search,
-          textInputAction: TextInputAction.search,
-          onChanged: widget.onSearchChanged,
-          decoration: InputDecoration(
-            prefixIcon: const Icon(Icons.search_rounded),
-            hintText: widget.searchHint,
-            suffixIcon: _search.text.isEmpty
-                ? null
-                : IconButton(
-                    tooltip: 'پاک‌کردن جست‌وجو',
-                    onPressed: () {
-                      _search.clear();
-                      widget.onSearchChanged('');
-                    },
-                    icon: const Icon(Icons.clear_rounded),
-                  ),
+        if (widget.showSearch) ...[
+          TextField(
+            controller: _search,
+            textInputAction: TextInputAction.search,
+            onChanged: widget.onSearchChanged,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search_rounded),
+              hintText: widget.searchHint,
+              suffixIcon: _search.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'پاک‌کردن جست‌وجو',
+                      onPressed: () {
+                        _search.clear();
+                        widget.onSearchChanged('');
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    ),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
