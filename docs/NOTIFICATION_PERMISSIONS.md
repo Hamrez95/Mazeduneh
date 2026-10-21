@@ -11,7 +11,7 @@ Issues #96 and #91. `GET /api/v1/admin/notifications` still requires an authenti
 | No session | 401 |
 | Session without `dashboard.read` | 403 |
 
-The JSON schema remains `{ awaitingPayment, lowStockItems, items: [{ type, title, detail }] }`. An unauthorized count is zero, not an estimate; clients should interpret it only in the context of their granted domains. Permissions are derived server-side; no request query/body can opt into hidden domains. Inventory titles/SKUs and order counts are not loaded for a caller without the corresponding read permission. Unknown future domains must add their own explicit permission projection.
+The response is `{ awaitingPayment, lowStockItems, items: [{ id, type, title, detail, target? }] }`. `id` is stable for the relevant queue item and may be used only to restore/highlight that item in the notification center. An unauthorized count is zero, not an estimate; clients should interpret it only in the context of their granted domains. Permissions are derived server-side; no request query/body can opt into hidden domains. Inventory titles/SKUs and order counts are not loaded for a caller without the corresponding read permission. Unknown future domains must add their own explicit permission projection.
 
 This is a read-only endpoint, so no mutation audit, before/after data or migration is needed. Sensitive writes keep their existing audit trail. Request completion uses the shared request-ID logging contract. No money or stock quantity is calculated in the client.
 
