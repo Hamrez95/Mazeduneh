@@ -52,10 +52,17 @@ void main() {
   });
 
   testWidgets('unknown notification type never guesses a route', (tester) async {
+    AdminNavigationIntent? destination;
     await tester.pumpWidget(harness(AdminNotificationTile(
-      item: const AdminNotification(id: 'future-provider-event', type: 'future-provider-event', title: 'اعلان', detail: 'توضیح'), onNavigate: (_) {},
+      item: const AdminNotification(id: 'future-provider-event', type: 'future-provider-event', title: 'اعلان', detail: 'توضیح'), onNavigate: (value) => destination = value,
     )));
-    expect(find.byType(TextButton), findsNothing);
+    expect(find.text('مشاهده بخش مرتبط'), findsNothing);
+    expect(find.text('جزئیات اعلان'), findsOneWidget);
+    await tester.tap(find.text('جزئیات اعلان'));
+    expect(destination, const AdminNavigationIntent(
+      module: AdminModule.notifications,
+      notificationId: 'future-provider-event',
+    ));
     expect(find.text('اعلان'), findsOneWidget);
   });
 
