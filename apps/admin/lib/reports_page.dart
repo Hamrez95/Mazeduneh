@@ -343,22 +343,40 @@ class _ReportsPageState extends State<ReportsPage> {
     child: Padding(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Expanded(child: Text('روند بهای خرید و قیمت فروش', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AdminColors.heading))),
-          if (priceHistorySkus.isNotEmpty) SizedBox(
-            width: 260,
-            child: DropdownButtonFormField<String>(
-              value: selectedPriceSku,
-              decoration: const InputDecoration(labelText: 'گونهٔ کالا'),
-              items: priceHistorySkus.map((item) => DropdownMenuItem(value: item.sku, child: Text('${item.productTitle} · ${item.variantLabel}', overflow: TextOverflow.ellipsis))).toList(),
-              onChanged: (sku) {
-                if (sku == null) return;
-                setState(() => selectedPriceSku = sku);
-                loadPriceHistory(sku);
-              },
-            ),
-          ),
-        ]),
+        LayoutBuilder(builder: (context, constraints) {
+          final selector = priceHistorySkus.isEmpty
+              ? null
+              : SizedBox(
+                  width: constraints.maxWidth < 620
+                      ? constraints.maxWidth
+                      : 260,
+                  child: DropdownButtonFormField<String>(
+                    value: selectedPriceSku,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'گونهٔ کالا'),
+                    items: priceHistorySkus.map((item) => DropdownMenuItem(
+                      value: item.sku,
+                      child: Text('${item.productTitle} · ${item.variantLabel}', overflow: TextOverflow.ellipsis),
+                    )).toList(),
+                    onChanged: (sku) {
+                      if (sku == null) return;
+                      setState(() => selectedPriceSku = sku);
+                      loadPriceHistory(sku);
+                    },
+                  ),
+                );
+          final title = const Text(
+            'روند بهای خرید و قیمت فروش',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AdminColors.heading),
+          );
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [title, if (selector != null) ...[const SizedBox(height: 10), selector]],
+            );
+          }
+          return Row(children: [Expanded(child: title), if (selector != null) selector]);
+        }),
         const SizedBox(height: 8),
         const Text('بهای خرید هر بسته از بچ‌های ثبت‌شده با قیمت فروش همان SKU مقایسه می‌شود. سوابق از زمان ثبت در سیستم در دسترس‌اند.', style: TextStyle(fontSize: 11, color: AdminColors.muted)),
         const SizedBox(height: 16),

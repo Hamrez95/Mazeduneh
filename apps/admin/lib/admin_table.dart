@@ -25,6 +25,12 @@ class AdminRecordTable<T> extends StatefulWidget {
     required this.columns,
     this.searchText,
     this.searchHint = 'جست‌وجو…',
+    this.searchQuery,
+    this.onSearchChanged,
+    this.pageIndex,
+    this.pageSizeValue,
+    this.onPageChanged,
+    this.onPageSizeChanged,
     this.actions = const [],
     this.onOpen,
     this.isSelected,
@@ -35,6 +41,14 @@ class AdminRecordTable<T> extends StatefulWidget {
   final List<AdminColumn<T>> columns;
   final String Function(T)? searchText;
   final String searchHint;
+  /// Optional state lifted to a responsive parent so table and card layouts
+  /// can keep the same query and page when the viewport crosses a breakpoint.
+  final String? searchQuery;
+  final ValueChanged<String>? onSearchChanged;
+  final int? pageIndex;
+  final int? pageSizeValue;
+  final ValueChanged<int>? onPageChanged;
+  final ValueChanged<int>? onPageSizeChanged;
   final List<Widget> actions;
   final ValueChanged<T>? onOpen;
   final bool Function(T)? isSelected;
@@ -56,6 +70,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
   @override
   void initState() {
     super.initState();
+    search.text = widget.searchQuery ?? '';
     final saved = readAdminFormDraft('table-pagination', _paginationKey);
     final savedPage = saved?['page'];
     final savedPageSize = saved?['pageSize'];
@@ -69,6 +84,37 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
     'page': page,
     'pageSize': pageSize,
   });
+
+  int get _effectivePage => widget.pageIndex ?? page;
+  int get _effectivePageSize => widget.pageSizeValue ?? pageSize;
+
+  void _setPage(int value) {
+    setState(() => page = value);
+    widget.onPageChanged?.call(value);
+    _persistPagination();
+  }
+
+  void _setPageSize(int value) {
+    setState(() {
+      pageSize = value;
+      page = 0;
+    });
+    widget.onPageSizeChanged?.call(value);
+    widget.onPageChanged?.call(0);
+    _persistPagination();
+  }
+
+  @override
+  void didUpdateWidget(covariant AdminRecordTable<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final externalQuery = widget.searchQuery;
+    if (externalQuery != null && search.text != externalQuery) {
+      search.value = TextEditingValue(
+        text: externalQuery,
+        selection: TextSelection.collapsed(offset: externalQuery.length),
+      );
+    }
+  }
   @override
   void dispose() {
     search.dispose();
@@ -77,7 +123,9 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final query = normalizeNumberDigits(search.text.trim().toLowerCase());
+    final query = normalizeNumberDigits(
+      (widget.searchQuery ?? search.text).trim().toLowerCase(),
+    );
     final rows = widget.records
         .where(
           (item) =>
@@ -94,10 +142,11 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
             widget.columns[sortColumn!].compare!(a, b) * (ascending ? 1 : -1),
       );
     }
-    final lastPage = rows.isEmpty ? 0 : (rows.length - 1) ~/ pageSize;
-    final current = page.clamp(0, lastPage);
-    final from = current * pageSize;
-    final shown = rows.skip(from).take(pageSize).toList();
+    final effectivePageSize = _effectivePageSize;
+    final lastPage = rows.isEmpty ? 0 : (rows.length - 1) ~/ effectivePageSize;
+    final current = _effectivePage.clamp(0, lastPage);
+    final from = current * effectivePageSize;
+    final shown = rows.skip(from).take(effectivePageSize).toList();
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -119,7 +168,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                     SizedBox(
                       width: 104,
                       child: DropdownButtonFormField<int>(
-                        initialValue: pageSize,
+                        initialValue: effectivePageSize,
                         isExpanded: true,
                         decoration: const InputDecoration(
                           contentPadding: EdgeInsets.symmetric(
@@ -127,7 +176,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                             vertical: 10,
                           ),
                         ),
-                        items: [10, 25, 50]
+                        items: [5, 10, 25, 50]
                             .map(
                               (n) => DropdownMenuItem(
                                 value: n,
@@ -135,11 +184,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                               ),
                             )
                             .toList(),
-                        onChanged: (value) => setState(() {
-                          pageSize = value ?? 10;
-                          page = 0;
-                          _persistPagination();
-                        }),
+                        onChanged: (value) => _setPageSize(value ?? 10),
                       ),
                     ),
                   ],
@@ -156,7 +201,12 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                             : 260,
                         child: TextField(
                           controller: search,
-                          onChanged: (_) => setState(() { page = 0; _persistPagination(); }),
+                          onChanged: (value) {
+                            setState(() => page = 0);
+                            widget.onSearchChanged?.call(value);
+                            widget.onPageChanged?.call(0);
+                            _persistPagination();
+                          },
                           decoration: InputDecoration(
                             hintText: widget.searchHint,
                             prefixIcon: const Icon(
@@ -257,7 +307,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ اول',
                       onPressed: current == 0
                           ? null
-                          : () => setState(() { page = 0; _persistPagination(); }),
+                          : () => _setPage(0),
                       icon: const Icon(
                         Icons.keyboard_double_arrow_right_rounded,
                         size: 20,
@@ -267,7 +317,7 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ قبل',
                       onPressed: current == 0
                           ? null
-                          : () => setState(() { page = current - 1; _persistPagination(); }),
+                          : () => _setPage(current - 1),
                       icon: const Icon(Icons.chevron_right_rounded, size: 20),
                     ),
                     Container(
@@ -287,14 +337,14 @@ class _AdminRecordTableState<T> extends State<AdminRecordTable<T>> {
                       tooltip: 'صفحهٔ بعد',
                       onPressed: current == lastPage
                           ? null
-                          : () => setState(() { page = current + 1; _persistPagination(); }),
+                          : () => _setPage(current + 1),
                       icon: const Icon(Icons.chevron_left_rounded, size: 20),
                     ),
                     IconButton(
                       tooltip: 'صفحهٔ آخر',
                       onPressed: current == lastPage
                           ? null
-                          : () => setState(() { page = lastPage; _persistPagination(); }),
+                          : () => _setPage(lastPage),
                       icon: const Icon(
                         Icons.keyboard_double_arrow_left_rounded,
                         size: 20,
