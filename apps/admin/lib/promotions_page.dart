@@ -579,21 +579,24 @@ class _PromotionEditorState extends State<_PromotionEditor> {
   ];
 
   double get editorFieldWidth =>
-      math.min(330, math.max(180, MediaQuery.sizeOf(context).width - 96));
+      math.min(330, math.max(160, MediaQuery.sizeOf(context).width - 150));
 
   Widget selection(
     String key,
     String label,
     List<({String value, String label})> choices,
-  ) => _MultiSelectField(
-    label: label,
-    choices: choices,
-    selected: csv(key),
-    loading: loadingChoices,
-    onChanged: (values) => setState(() {
-      field(key).text = values.join(', ');
-      preview = null;
-    }),
+  ) => SizedBox(
+    width: editorFieldWidth,
+    child: _MultiSelectField(
+      label: label,
+      choices: choices,
+      selected: csv(key),
+      loading: loadingChoices,
+      onChanged: (values) => setState(() {
+        field(key).text = values.join(', ');
+        preview = null;
+      }),
+    ),
   );
 
   void addSampleLine() {
@@ -893,9 +896,10 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     canPop: !_dirty || _closing,
     onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
     child: AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     title: Text(widget.item == null ? 'کوپن جدید' : 'ویرایش کوپن'),
     content: SizedBox(
-      width: 730,
+      width: math.min(730, MediaQuery.sizeOf(context).width - 80),
       child: SingleChildScrollView(
         child: Form(
           key: form,
@@ -922,6 +926,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
                     child: DropdownButtonFormField<String>(
                       key: const ValueKey('promotion-kind'),
                       initialValue: kind,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'نوع تخفیف'),
                       items: const [
                         DropdownMenuItem(
@@ -1285,10 +1290,11 @@ class _MultiSelectField extends StatelessWidget {
         final query = ValueNotifier('');
         final checked = selected.toSet();
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
           title: Text(label),
           content: SizedBox(
-            width: 520,
-            height: 460,
+            width: math.min(520, MediaQuery.sizeOf(context).width - 80),
+            height: math.min(460, MediaQuery.sizeOf(context).height - 200),
             child: Column(
               children: [
                 TextField(

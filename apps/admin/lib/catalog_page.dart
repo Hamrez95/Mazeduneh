@@ -6,6 +6,7 @@ import 'admin_state.dart';
 import 'admin_step_up_dialog.dart';
 import 'admin_theme.dart';
 import 'admin_table.dart';
+import 'admin_mobile_list_controls.dart';
 import 'admin_permissions.dart';
 import 'admin_navigation.dart';
 import 'admin_form_guard.dart';
@@ -35,6 +36,9 @@ class CatalogPageState extends State<CatalogPage> {
   Object? error;
   bool showDrafts = true;
   bool openedInitialProduct = false;
+  String productQuery = '';
+  int productPage = 0;
+  int productPageSize = 10;
 
   @override
   void initState() {
@@ -196,7 +200,10 @@ class CatalogPageState extends State<CatalogPage> {
             final draftsFilter = FilterChip(
               label: const Text('نمایش پیش‌نویس‌ها'),
               selected: showDrafts,
-              onSelected: (value) => setState(() => showDrafts = value),
+              onSelected: (value) => setState(() {
+                showDrafts = value;
+                productPage = 0;
+              }),
             );
             final refreshButton = IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded), tooltip: 'بارگذاری مجدد');
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -218,11 +225,41 @@ class CatalogPageState extends State<CatalogPage> {
     if (error != null) return AdminErrorState(error: error!, onRetry: load);
     final visible = showDrafts ? products : products.where((item) => item.isPublished).toList();
     if (visible.isEmpty) return const Center(child: AdminEmptyState(icon: Icons.inventory_2_outlined, title: 'محصولی پیدا نشد', detail: 'با تغییر فیلتر یا ثبت محصول جدید، فهرست را کامل کنید.'));
+    final query = normalizeNumberDigits(productQuery.trim().toLowerCase());
+    final filtered = visible.where((product) {
+      final haystack = normalizeNumberDigits(
+        '${product.title} ${product.category} ${product.origin} ${product.variants.map((variant) => variant.sku).join(' ')}'
+            .toLowerCase(),
+      );
+      return query.isEmpty || haystack.contains(query);
+    }).toList();
+    final lastPage = filtered.isEmpty
+        ? 0
+        : (filtered.length - 1) ~/ productPageSize;
+    final currentPage = productPage.clamp(0, lastPage);
+    final pageProducts = filtered
+        .skip(currentPage * productPageSize)
+        .take(productPageSize)
+        .toList();
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth >= 900 && MediaQuery.textScalerOf(context).scale(1) < 1.5) {
         num minPrice(Product product) => product.variants.isEmpty ? 0 : product.variants.map((v) => v.price).reduce((a, b) => a < b ? a : b);
         return SingleChildScrollView(child: AdminRecordTable<Product>(
-          records: visible, searchText: (p) => '${p.title} ${p.category} ${p.origin} ${p.variants.map((v) => v.sku).join(' ')}', searchHint: 'جست‌وجوی محصول…',
+          records: visible,
+          searchText: (p) => '${p.title} ${p.category} ${p.origin} ${p.variants.map((v) => v.sku).join(' ')}',
+          searchHint: 'جست‌وجوی محصول…',
+          searchQuery: productQuery,
+          onSearchChanged: (value) => setState(() {
+            productQuery = value;
+            productPage = 0;
+          }),
+          pageIndex: productPage,
+          pageSizeValue: productPageSize,
+          onPageChanged: (value) => setState(() => productPage = value),
+          onPageSizeChanged: (value) => setState(() {
+            productPageSize = value;
+            productPage = 0;
+          }),
           columns: [
             AdminColumn('محصول', (p) => AdminIdentityCell(title: p.title, subtitle: p.origin,
               leading: ClipRRect(borderRadius: BorderRadius.circular(4), child: p.primaryImage.trim().isEmpty
@@ -244,28 +281,63 @@ class CatalogPageState extends State<CatalogPage> {
         ));
       }
       final columns = constraints.maxWidth >= 1100 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
-      return GridView.builder(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: columns,
-          mainAxisExtent: constraints.maxWidth < 1100 ? 350 : 285,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-        ),
-        itemCount: visible.length,
-        itemBuilder: (_, index) {
-          final product = visible[index];
-          return ProductCard(
-            product,
-            publicationBusy: changingPublication.contains(product.slug),
-            onPublicationPressed: () => changePublication(product),
-            onEdit: OwnerSession.instance.can(AdminPermissions.productsWrite)
-                ? () => editProduct(product)
-                : null,
-            onVariantOrders: OwnerSession.instance.can(AdminPermissions.ordersRead)
-                ? (sku) => widget.onNavigate?.call(AdminNavigationIntent(module: AdminModule.orders, query: sku))
-                : null,
-          );
-        },
+      Widget productCard(Product product) => ProductCard(
+        product,
+        publicationBusy: changingPublication.contains(product.slug),
+        onPublicationPressed: () => changePublication(product),
+        onEdit: OwnerSession.instance.can(AdminPermissions.productsWrite)
+            ? () => editProduct(product)
+            : null,
+        onVariantOrders: OwnerSession.instance.can(AdminPermissions.ordersRead)
+            ? (sku) => widget.onNavigate?.call(
+                AdminNavigationIntent(module: AdminModule.orders, query: sku),
+              )
+            : null,
+      );
+      return Column(
+        children: [
+          AdminMobileListControls(
+            totalItems: filtered.length,
+            page: currentPage,
+            pageSize: productPageSize,
+            searchText: productQuery,
+            searchHint: 'جست‌وجوی محصول، دسته یا SKU',
+            onSearchChanged: (value) => setState(() {
+              productQuery = value;
+              productPage = 0;
+            }),
+            onPageChanged: (value) => setState(() => productPage = value),
+            onPageSizeChanged: (value) => setState(() {
+              productPageSize = value;
+              productPage = 0;
+            }),
+          ),
+          const SizedBox(height: 12),
+          if (filtered.isEmpty)
+            const Expanded(
+              child: Center(child: Text('محصولی با این جست‌وجو پیدا نشد.')),
+            )
+          else
+            Expanded(
+              child: constraints.maxWidth < 650
+                  ? ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      itemCount: pageProducts.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, index) => productCard(pageProducts[index]),
+                    )
+                  : GridView.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        mainAxisExtent: constraints.maxWidth < 1100 ? 350 : 285,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                      itemCount: pageProducts.length,
+                      itemBuilder: (_, index) => productCard(pageProducts[index]),
+                    ),
+            ),
+        ],
       );
     });
   }
@@ -308,7 +380,7 @@ class ProductCard extends StatelessWidget {
             ]),
             const SizedBox(height: 8),
             Text('${product.category} · ${product.origin}', style: const TextStyle(color: AdminColors.muted, fontSize: 11)),
-            const Spacer(),
+            const SizedBox(height: 12),
             Wrap(spacing: 5, runSpacing: 5, children: [
               for (final variant in product.variants)
                 if (onVariantOrders != null)
@@ -503,10 +575,11 @@ class _ProductDialogState extends State<ProductDialog> {
     canPop: !_dirty || _closing,
     onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
     child: AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     title: const Text('محصول جدید'),
     content: SizedBox(
       width: MediaQuery.sizeOf(context).width < 920
-          ? MediaQuery.sizeOf(context).width - 64
+          ? MediaQuery.sizeOf(context).width - 80
           : 820,
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -612,22 +685,19 @@ class _ProductDialogState extends State<ProductDialog> {
                 ),
                 const SizedBox(height: 14),
                 _formSection('تصاویر محصول', Icons.photo_library_outlined, [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: primaryImage,
-                          keyboardType: TextInputType.url,
-                          textDirection: TextDirection.ltr,
-                          onChanged: (_) => setState(() {}),
-                          decoration: const InputDecoration(
-                            labelText: 'تصویر اصلی',
-                            hintText: 'پیوند تصویر یا بارگذاری فایل',
-                          ),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final imageField = TextFormField(
+                        controller: primaryImage,
+                        keyboardType: TextInputType.url,
+                        textDirection: TextDirection.ltr,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'تصویر اصلی',
+                          hintText: 'پیوند تصویر یا بارگذاری فایل',
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
+                      );
+                      final uploadButton = OutlinedButton.icon(
                         onPressed: uploadingImage ? null : pickImage,
                         icon: uploadingImage
                             ? const SizedBox(
@@ -641,8 +711,27 @@ class _ProductDialogState extends State<ProductDialog> {
                         label: Text(
                           uploadingImage ? 'در حال آپلود' : 'انتخاب تصویر',
                         ),
-                      ),
-                    ],
+                      );
+                      if (constraints.maxWidth < 420) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            imageField,
+                            Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: uploadButton,
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: imageField),
+                          const SizedBox(width: 8),
+                          uploadButton,
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 10),
                   if (mediaError != null)
@@ -684,6 +773,8 @@ class _ProductDialogState extends State<ProductDialog> {
                       label: Text(
                         uploadingGallery
                             ? 'در حال بارگذاری تصاویر…'
+                            : MediaQuery.sizeOf(context).width < 400
+                            ? 'افزودن به گالری'
                             : 'بارگذاری تصاویر گالری',
                       ),
                     ),
@@ -777,11 +868,15 @@ class _ProductDialogState extends State<ProductDialog> {
                 children: [
                   Icon(icon, color: AdminColors.ink),
                   const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],

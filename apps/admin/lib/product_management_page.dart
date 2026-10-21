@@ -718,29 +718,48 @@ class _CreateProductDialogState extends State<_CreateProductDialog> {
         appBar: AppBar(
           title: Text(
             widget.initialProduct == null ? 'محصول جدید' : 'ویرایش محصول',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           leading: IconButton(
             onPressed: submitting ? null : () => Navigator.pop(context, false),
             icon: const Icon(Icons.close_rounded),
           ),
           actions: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: FilledButton.icon(
-                onPressed: submitting ? null : _submit,
-                icon: submitting
-                    ? const SizedBox.square(
-                        dimension: 17,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.save_rounded),
-                label: Text(
-                  widget.initialProduct == null
+            if (MediaQuery.sizeOf(context).width <= 380)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: IconButton.filledTonal(
+                  tooltip: widget.initialProduct == null
                       ? 'ذخیره پیش‌نویس'
                       : 'ذخیره تغییرات',
+                  onPressed: submitting ? null : _submit,
+                  icon: submitting
+                      ? const SizedBox.square(
+                          dimension: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: FilledButton.icon(
+                  onPressed: submitting ? null : _submit,
+                  icon: submitting
+                      ? const SizedBox.square(
+                          dimension: 17,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded),
+                  label: Text(
+                    widget.initialProduct == null
+                        ? 'ذخیره پیش‌نویس'
+                        : 'ذخیره تغییرات',
+                  ),
                 ),
               ),
-            ),
           ],
         ),
         body: Form(

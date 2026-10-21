@@ -48,6 +48,63 @@ void main() {
     expect(find.text('محصولی پیدا نشد'), findsOneWidget);
   });
 
+  testWidgets('catalog search and pagination survive card/table breakpoints', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 1000);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final records = List.generate(12, (index) {
+      final item = productJson(title: 'محصول ${index + 1}');
+      item['id'] = 'product-${index + 1}';
+      item['slug'] = 'product-${index + 1}';
+      final variant = Map<String, dynamic>.from(
+        (item['variants'] as List).single as Map,
+      )..['sku'] = 'SKU-${index + 1}';
+      item['variants'] = [variant];
+      return item;
+    });
+    final api = CatalogApiClient(
+      baseUrl: 'https://api.test',
+      client: MockClient((request) async => http.Response(
+        jsonEncode(request.url.path == '/api/v1/products/admin' ? records : []),
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      )),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: Scaffold(body: CatalogPage(api: api)),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('محصول 1'), findsOneWidget);
+    await tester.tap(find.byTooltip('صفحهٔ بعد'));
+    await tester.pumpAndSettle();
+    expect(find.text('محصول 11'), findsOneWidget);
+    tester.view.physicalSize = const Size(1024, 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('محصول 11'), findsOneWidget);
+    expect(find.text('محصول 1'), findsNothing);
+    expect(tester.takeException(), isNull);
+
+    final search = find.byType(TextField).first;
+    await tester.enterText(search, 'SKU-12');
+    await tester.pumpAndSettle();
+    expect(find.text('محصول 12'), findsOneWidget);
+    expect(find.text('محصول 1'), findsNothing);
+
+    for (final width in [320.0, 360.0, 390.0, 768.0, 900.0, 1024.0]) {
+      tester.view.physicalSize = Size(width, 1000);
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField).first, findsOneWidget);
+      expect(tester.widget<TextField>(find.byType(TextField).first).controller!.text, 'SKU-12');
+      expect(find.text('محصول 12'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'catalog layout at $width px');
+    }
+  });
+
   testWidgets('product cost input is limited to pricing writers', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: ProductDialog(canWriteCosts: false)),
@@ -72,6 +129,27 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('new product form stays usable at a 320 pixel viewport', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: ProductDialog(canWriteCosts: true)),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('create-product-title')), findsOneWidget);
+    expect(find.text('ذخیره پیش‌نویس'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    for (final width in [360.0, 390.0, 768.0]) {
+      tester.view.physicalSize = Size(width, 900);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'product form at $width px');
+    }
   });
 
   testWidgets('product gallery removes duplicates and supports primary selection', (tester) async {

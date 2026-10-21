@@ -117,7 +117,7 @@ class _AdminMobileListControlsState extends State<AdminMobileListControls> {
                         vertical: 7,
                       ),
                     ),
-                    items: [5, 10, 25]
+                    items: [5, 10, 25, 50]
                         .map(
                           (size) => DropdownMenuItem(
                             value: size,

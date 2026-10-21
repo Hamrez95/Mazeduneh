@@ -169,6 +169,33 @@ void main() {
     expect(find.textContaining('کمپین 11 · CODE-11'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('promotion editor fits a narrow phone viewport', (tester) async {
+    setMobileViewport(tester, const Size(320, 900));
+    final api = PromotionsApiClient(
+      client: MockClient((_) async => http.Response(
+        '[]',
+        200,
+        headers: {'content-type': 'application/json; charset=utf-8'},
+      )),
+      baseUrl: 'https://api.test',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: PromotionsPage(api: api)),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('کوپن جدید'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('کد انگلیسی؛ مثل WELCOME10'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    for (final width in [360.0, 390.0, 768.0]) {
+      tester.view.physicalSize = Size(width, 900);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'promotion form at $width px');
+    }
+  });
 }
 
 Map<String, dynamic> _order(String id, String state) => {

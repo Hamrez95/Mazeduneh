@@ -169,10 +169,11 @@ class _ProductEditDialogState extends State<ProductEditDialog> {
     canPop: !_dirty || _closing,
     onPopInvokedWithResult: (didPop, _) { if (!didPop) _requestClose(); },
     child: AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     title: const Text('ویرایش محصول'),
     content: SizedBox(
       width: MediaQuery.sizeOf(context).width < 920
-          ? MediaQuery.sizeOf(context).width - 48
+          ? MediaQuery.sizeOf(context).width - 80
           : 820,
       child: ConstrainedBox(
         constraints: BoxConstraints(
