@@ -1,11 +1,37 @@
+import 'dart:ui' show Locale;
+
 import 'package:flutter/services.dart';
 import 'store_timezone.dart';
 
 String toPersianDigits(Object? value) {
   final text = value?.toString() ?? '';
   const digits = '۰۱۲۳۴۵۶۷۸۹';
-  return text.replaceAllMapped(RegExp(r'[0-9]'), (match) => digits[int.parse(match.group(0)!)]);
+  // Keep technical tokens readable when this helper is used on mixed text.
+  // Phone numbers and ordinary quantities (which have no ASCII letters) are
+  // still localized, while SKU/UUID-like identifiers retain their API form.
+  final technicalTokens = RegExp(
+    r'[A-Za-z][A-Za-z0-9._/-]*[0-9][A-Za-z0-9._/-]*|(?=[0-9A-Fa-f-]{32,36}\b)(?=[0-9A-Fa-f-]*[A-Fa-f])[0-9A-Fa-f-]+',
+  );
+  final result = StringBuffer();
+  var offset = 0;
+  for (final token in technicalTokens.allMatches(text)) {
+    result.write(_persianizeNumericText(text.substring(offset, token.start), digits));
+    result.write(token.group(0));
+    offset = token.end;
+  }
+  result.write(_persianizeNumericText(text.substring(offset), digits));
+  return result.toString();
 }
+
+String _persianizeNumericText(String text, String digits) => text.replaceAllMapped(
+  RegExp(r'[0-9]'),
+  (match) => digits[int.parse(match.group(0)!)],
+);
+
+String toLocalizedDigits(Object? value, Locale locale) =>
+    locale.languageCode.toLowerCase() == 'fa'
+        ? toPersianDigits(value)
+        : toLatinDigits(value?.toString() ?? '');
 
 class PersianDigitsInputFormatter extends TextInputFormatter {
   const PersianDigitsInputFormatter();
@@ -165,6 +191,28 @@ String formatPersianNumber(num value, {int fractionDigits = 0}) {
   return toPersianDigits('$sign${_groupDigits(absolute)}$fraction');
 }
 
+String formatLocalizedInteger(num value, Locale locale) {
+  if (!value.isFinite) return toLocalizedDigits(value, locale);
+  final separator = locale.languageCode.toLowerCase() == 'fa' ? '٬' : ',';
+  final grouped = _groupDigits(value.abs().round().toString()).replaceAll('٬', separator);
+  final sign = value < 0 ? '-' : '';
+  return toLocalizedDigits('$sign$grouped', locale);
+}
+
+String formatLocalizedNumber(num value, Locale locale, {int fractionDigits = 0}) {
+  if (locale.languageCode.toLowerCase() == 'fa') {
+    return formatPersianNumber(value, fractionDigits: fractionDigits);
+  }
+  if (!value.isFinite) return value.toString();
+  final fixed = value.toStringAsFixed(fractionDigits);
+  final parts = fixed.split('.');
+  final integer = parts.first;
+  final sign = integer.startsWith('-') ? '-' : '';
+  final absolute = integer.replaceFirst('-', '');
+  final fraction = parts.length == 1 ? '' : '.${parts[1]}';
+  return '$sign${_groupDigits(absolute).replaceAll('٬', ',')}$fraction';
+}
+
 /// API amounts remain integer rials. Display the exact amount in tomans,
 /// including one decimal place when the rial amount is not divisible by ten.
 String formatToman(num rial) {
@@ -179,10 +227,17 @@ String formatToman(num rial) {
   return formatted;
 }
 
-String formatAdminMoney(num amount, {String currency = 'IRR'}) =>
-    currency.toUpperCase() == 'IRR'
-        ? '${formatToman(amount)} تومان'
-        : '${formatPersianNumber(amount)} $currency';
+String formatAdminMoney(num amount, {String currency = 'IRR', Locale locale = const Locale('fa')}) {
+  final persian = locale.languageCode.toLowerCase() == 'fa';
+  if (currency.toUpperCase() == 'IRR') {
+    final toman = amount / 10;
+    final exact = amount % 10 == 0
+        ? formatLocalizedInteger(toman, locale)
+        : formatLocalizedNumber(toman, locale, fractionDigits: 1);
+    return '$exact ${persian ? 'تومان' : 'Toman'}';
+  }
+  return '${formatLocalizedNumber(amount, locale)} ${currency.toUpperCase()}';
+}
 
 String formatPersianDate(DateTime value) {
   String two(int number) => number.toString().padLeft(2, '0');
@@ -196,4 +251,5 @@ String formatPersianDateTime(DateTime value) {
     '${local.year}/${two(local.month)}/${two(local.day)} ${two(local.hour)}:${two(local.minute)}',
   );
 }
+
 
