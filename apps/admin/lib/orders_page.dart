@@ -9,6 +9,7 @@ import 'admin_navigation.dart';
 import 'admin_state.dart';
 import 'admin_theme.dart';
 import 'admin_table.dart';
+import 'admin_mobile_list_controls.dart';
 import 'admin_step_up_dialog.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
@@ -315,6 +316,9 @@ class _OrdersPageState extends State<OrdersPage> {
   int overdueDays = 3;
   final searchController = TextEditingController();
   String searchQuery = '';
+  int orderPage = 0;
+  int orderPageSize = 10;
+  int overduePage = 0;
   Object? error;
   bool loading = true;
   bool exporting = false;
@@ -672,6 +676,7 @@ class _OrdersPageState extends State<OrdersPage> {
                             onSelected: (value) {
                               setState(() {
                                 overdueOnly = value;
+                                overduePage = 0;
                                 selectedOrders.clear();
                               });
                               load();
@@ -720,7 +725,10 @@ class _OrdersPageState extends State<OrdersPage> {
                                   .toList(),
                               onChanged: (value) {
                                 if (value == null) return;
-                                setState(() => selectedState = value);
+                                setState(() {
+                                  selectedState = value;
+                                  orderPage = 0;
+                                });
                                 _persistNavigation();
                                 load();
                               },
@@ -816,7 +824,10 @@ class _OrdersPageState extends State<OrdersPage> {
                     controller: searchController,
                     textInputAction: TextInputAction.search,
                     onSubmitted: (value) {
-                      setState(() => searchQuery = value.trim());
+                      setState(() {
+                        searchQuery = value.trim();
+                        orderPage = 0;
+                      });
                       _persistNavigation();
                       load();
                     },
@@ -829,7 +840,10 @@ class _OrdersPageState extends State<OrdersPage> {
                               tooltip: 'پاک‌کردن جست‌وجو',
                               onPressed: () {
                                 searchController.clear();
-                                setState(() => searchQuery = '');
+                                setState(() {
+                                  searchQuery = '';
+                                  orderPage = 0;
+                                });
                                 _persistNavigation();
                                 load();
                               },
@@ -860,11 +874,20 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
       );
     }
-    return ListView.separated(
-      itemCount: overdueShipments.length,
+    final responsive = MediaQuery.sizeOf(context).width < 1200 ||
+        MediaQuery.textScalerOf(context).scale(1) >= 1.5;
+    final lastPage = overdueShipments.isEmpty
+        ? 0
+        : (overdueShipments.length - 1) ~/ orderPageSize;
+    final page = overduePage.clamp(0, lastPage);
+    final visibleShipments = responsive
+        ? overdueShipments.skip(page * orderPageSize).take(orderPageSize).toList()
+        : overdueShipments;
+    final list = ListView.separated(
+      itemCount: visibleShipments.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, index) {
-        final shipment = overdueShipments[index];
+        final shipment = visibleShipments[index];
         return Card(
           child: InkWell(
             onTap: () => openDetail(shipment.toAdminOrder()),
@@ -940,6 +963,27 @@ class _OrdersPageState extends State<OrdersPage> {
         );
       },
     );
+    if (!responsive) return list;
+    return Column(
+      children: [
+        AdminMobileListControls(
+          totalItems: overdueShipments.length,
+          page: page,
+          pageSize: orderPageSize,
+          searchText: '',
+          searchHint: '',
+          showSearch: false,
+          onSearchChanged: (_) {},
+          onPageChanged: (value) => setState(() => overduePage = value),
+          onPageSizeChanged: (value) => setState(() {
+            orderPageSize = value;
+            overduePage = 0;
+          }),
+        ),
+        const SizedBox(height: 8),
+        Expanded(child: list),
+      ],
+    );
   }
 
   Widget _body() {
@@ -973,6 +1017,13 @@ class _OrdersPageState extends State<OrdersPage> {
       return SingleChildScrollView(
         child: AdminRecordTable<AdminOrder>(
           records: orders,
+          pageIndex: orderPage,
+          pageSizeValue: orderPageSize,
+          onPageChanged: (value) => setState(() => orderPage = value),
+          onPageSizeChanged: (value) => setState(() {
+            orderPageSize = value;
+            orderPage = 0;
+          }),
           onOpen: openDetail,
           isSelected: (order) => selectedOrders.contains(order.id),
           onSelectionChanged: bulkBusy
@@ -1051,11 +1102,17 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
       );
     }
-    return ListView.separated(
-      itemCount: orders.length,
+    final lastPage = orders.isEmpty ? 0 : (orders.length - 1) ~/ orderPageSize;
+    final currentPage = orderPage.clamp(0, lastPage);
+    final visibleOrders = orders
+        .skip(currentPage * orderPageSize)
+        .take(orderPageSize)
+        .toList();
+    final list = ListView.separated(
+      itemCount: visibleOrders.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (_, index) {
-        final order = orders[index];
+        final order = visibleOrders[index];
         final next = order.nextState;
         final busy = busyOrder == order.id;
         return Card(
@@ -1159,6 +1216,26 @@ class _OrdersPageState extends State<OrdersPage> {
           ),
         );
       },
+    );
+    return Column(
+      children: [
+        AdminMobileListControls(
+          totalItems: orders.length,
+          page: currentPage,
+          pageSize: orderPageSize,
+          searchText: '',
+          searchHint: '',
+          showSearch: false,
+          onSearchChanged: (_) {},
+          onPageChanged: (value) => setState(() => orderPage = value),
+          onPageSizeChanged: (value) => setState(() {
+            orderPageSize = value;
+            orderPage = 0;
+          }),
+        ),
+        const SizedBox(height: 8),
+        Expanded(child: list),
+      ],
     );
   }
 }

@@ -254,6 +254,11 @@ class _ReportsPageState extends State<ReportsPage> {
             : constraints.maxWidth >= 680
             ? 2
             : 1;
+        final metricHeight = constraints.maxWidth < 600
+            ? 188.0
+            : constraints.maxWidth < 900
+            ? 156.0
+            : 132.0;
         return ListView(
           key: const ValueKey('reports-content'),
           children: [
@@ -262,7 +267,8 @@ class _ReportsPageState extends State<ReportsPage> {
                 crossAxisCount: columns,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
-                mainAxisExtent: 132 * MediaQuery.textScalerOf(context).scale(1),
+                mainAxisExtent:
+                    metricHeight * MediaQuery.textScalerOf(context).scale(1),
               ),
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),

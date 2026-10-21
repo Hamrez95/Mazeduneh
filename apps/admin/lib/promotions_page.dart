@@ -223,6 +223,18 @@ class _PromotionsPageState extends State<PromotionsPage> {
             records: rows!.cast<Map<String, dynamic>>(),
             searchText: (r) => "${r['code']} ${(r['rule'] as Map)['name']}",
             searchHint: 'جست‌وجوی کمپین یا کوپن…',
+            searchQuery: promotionQuery,
+            onSearchChanged: (value) => setState(() {
+              promotionQuery = value;
+              promotionPage = 0;
+            }),
+            pageIndex: currentPage,
+            pageSizeValue: promotionPageSize,
+            onPageChanged: (value) => setState(() => promotionPage = value),
+            onPageSizeChanged: (value) => setState(() {
+              promotionPageSize = value;
+              promotionPage = 0;
+            }),
             columns: [
               AdminColumn(
                 'کمپین',
