@@ -10,6 +10,7 @@ abstract final class AdminPermissions {
   static const inventoryRead = 'inventory.read';
   static const inventoryWrite = 'inventory.write';
   static const reportsRead = 'reports.read';
+  static const reportsExport = 'reports.export';
   static const customersRead = 'customers.read';
   static const customersExport = 'customers.export';
   static const pricingRead = 'pricing.read';
@@ -31,6 +32,11 @@ abstract final class AdminPermissions {
         reportsRead,
         'گزارش‌ها',
         'مشاهده گزارش‌های کسب‌وکار.',
+      ),
+      AdminPermissionOption(
+        reportsExport,
+        'خروجی گزارش‌های مالی',
+        'دریافت فایل ریز فروش و هزینه با تأیید دوبارهٔ هویت.',
       ),
     ],
     'سفارش و مشتری': [

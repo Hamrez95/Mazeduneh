@@ -1,7 +1,9 @@
 import 'analytics_panels.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_state.dart';
+import 'admin_step_up_dialog.dart';
 import 'admin_theme.dart';
 import 'admin_navigation.dart';
 import 'admin_permissions.dart';
@@ -42,6 +44,7 @@ class _ReportsPageState extends State<ReportsPage> {
   int productRollupPage = 0;
   DateTimeRange? selectedRange;
   bool loading = true;
+  bool exporting = false;
   Object? error;
 
   @override
@@ -128,6 +131,30 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  Future<void> exportProductSales() async {
+    final token = await showAdminStepUpDialog(context);
+    if (token == null || !mounted) return;
+    setState(() => exporting = true);
+    try {
+      final bytes = await api.exportProductProfitabilityCsv(
+        stepUpToken: token,
+        days: days,
+        fromUtc: _fromUtc,
+        toUtcExclusive: _toUtcExclusive,
+      );
+      final opened = await launchUrl(
+        Uri.dataFromBytes(bytes, mimeType: 'text/csv', parameters: const {'charset': 'utf-8'}),
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened) throw OrderApiException('بازکردن فایل خروجی ممکن نشد.');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('خروجی فروش و هزینه‌ها آماده شد؛ بازهٔ انتخابی اعمال شده است.')));
+    } catch (exception) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(exception.toString())));
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(28),
@@ -155,6 +182,12 @@ class _ReportsPageState extends State<ReportsPage> {
                 ],
               ),
             ),
+            if (OwnerSession.instance.can(AdminPermissions.reportsExport))
+              IconButton(
+                onPressed: loading || exporting ? null : exportProductSales,
+                icon: exporting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.file_download_outlined),
+                tooltip: 'خروجی CSV گزارش فروش',
+              ),
             IconButton(
               onPressed: load,
               icon: const Icon(Icons.refresh_rounded),

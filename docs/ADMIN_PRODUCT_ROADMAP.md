@@ -201,7 +201,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #3 | Checkout/order/payment | P0 | Full-stack | XL | ناقص، پایه موجود |
 | #4 | Admin operations/PWA | P0 | Admin | XL | ناقص |
 | #5 | Inventory/FEFO/fulfillment | P0/P1 | Full-stack | XL | ناقص، ledger/batch موجود |
-| #6 | Reports/analytics | P1 | Analytics | L | revenue/cost/margin پایه، هزینه واقعی ارسال و سود تفکیکی محصول/Variant تکمیل؛ reconciliation/refund/cohort/export پیشرفته باقی |
+| #6 | Reports/analytics | P1 | Analytics | L | revenue/cost/margin پایه، هزینه واقعی ارسال، جمع فروش محصول/Variant و CSV امن ریز فروش تکمیل؛ reconciliation/refund/cohort و exportهای پیشرفته باقی |
 | #7 | Brand/content foundation | P1 | UX/Storefront | M | ناقص |
 | #8 | Production readiness | P0 | Infra/QA | L | باز، CI موجود |
 | #28 | Storefront discovery/product UX | P1 | Storefront | L | ناقص |
@@ -213,7 +213,7 @@ Migration افزایشی `admin-users/001-memberships` جدول عضویت‌ه�
 | #77 | Admin architecture/design system | P0 | Admin/UX | XL | ناقص |
 | #82 | Finance/batch/invoice completion | P0/P1 | Full-stack | L | بخش عمده موجود |
 | #91 | RBAC/audit/session | P0 | Security | L | ماتریس نقش/permission، Audit UI، session management، MFA شخصی با TOTP رمزگذاری‌شده و step-up تکمیل؛ بازبینی جامع‌تر IDOR/BOLA و پوشش همهٔ مرزهای داده باقی است |
-| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | KPI بازه‌ای، اولویت‌های عملیاتی و KPI سود خالص با انتقال به گزارش همان بازه تکمیل؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه تکمیل؛ داشبورد اجزای هزینه و اثر ارسال را برای بازهٔ انتخابی نمایش می‌دهد؛ reconciliation/refund و تحلیل‌های پیشرفته باقی است |
+| #92 | Operations dashboard/guided work | P0 | Full-stack/Admin | L | KPI بازه‌ای، اولویت‌های عملیاتی و KPI سود خالص با انتقال به گزارش همان بازه تکمیل؛ چیدمان اختصاصی هر کاربر با fallback نقش تکمیل؛ مسیر سفارش‌های SKU با حفظ بازه تکمیل؛ داشبورد اجزای هزینه و اثر ارسال را برای بازهٔ انتخابی نمایش می‌دهد؛ برگشت به داشبورد خودکار داده‌ها را تازه می‌کند؛ reconciliation/refund و تحلیل‌های پیشرفته باقی است |
 | #93 | Shipping/delivery operations | P1 | Full-stack | L | tracking و هزینهٔ واقعی موجود؛ فیلتر سفارش‌های تأخیردار تکمیل؛ مناطق، چندآدرسی و split shipment باقی |
 | #94 | CRM/segmentation/attribution | P1 | Full-stack | M | جدید |
 | #95 | Promotions/campaign engine | P1 | Full-stack | L | جدید |

@@ -162,6 +162,32 @@ void main() {
     }
   });
 
+  test('product sales export is step-up protected and preserves period boundaries', () async {
+    late http.Request captured;
+    final client = MockClient((request) async {
+      captured = request;
+      return http.Response.bytes(
+        [0xEF, 0xBB, 0xBF, 0x61],
+        200,
+        headers: {'content-type': 'text/csv; charset=utf-8'},
+      );
+    });
+    final from = DateTime.utc(2026, 1, 1);
+    final to = DateTime.utc(2027, 1, 1);
+    final bytes = await OrderApiClient(client: client, baseUrl: 'https://api.test')
+        .exportProductProfitabilityCsv(
+          stepUpToken: 'fresh-report-token',
+          fromUtc: from,
+          toUtcExclusive: to,
+        );
+
+    expect(captured.url.path, '/api/v1/admin/analytics/products/export.csv');
+    expect(captured.url.queryParameters['from'], from.toIso8601String());
+    expect(captured.url.queryParameters['to'], to.toIso8601String());
+    expect(captured.headers['x-admin-step-up'], 'fresh-report-token');
+    expect(bytes, [0xEF, 0xBB, 0xBF, 0x61]);
+  });
+
   test('exportOrdersCsv preserves active filters and authenticated download contract', () async {
     late http.Request captured;
     final client = MockClient((request) async {

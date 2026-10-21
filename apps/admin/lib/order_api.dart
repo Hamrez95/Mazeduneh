@@ -145,6 +145,22 @@ class OrderApiClient {
     return decoded.map((item) => AdminProductProfitability.fromJson(item as Map<String, dynamic>)).toList();
   }
 
+  Future<List<int>> exportProductProfitabilityCsv({required String stepUpToken, int days = 30, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
+    if ((fromUtc == null) != (toUtcExclusive == null)) {
+      throw ArgumentError('Both report date range boundaries are required.');
+    }
+    final query = fromUtc == null
+        ? {'days': '$days'}
+        : {'from': fromUtc.toUtc().toIso8601String(), 'to': toUtcExclusive!.toUtc().toIso8601String()};
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/analytics/products/export.csv').replace(queryParameters: query),
+      headers: {..._headers(), 'x-admin-step-up': stepUpToken},
+    );
+    _guard(response);
+    if (response.statusCode != 200) throw OrderApiException(_message(response), statusCode: response.statusCode);
+    return response.bodyBytes;
+  }
+
   Future<List<AdminPriceHistoryPoint>> fetchPriceHistory(String sku, {int days = 90, DateTime? fromUtc, DateTime? toUtcExclusive}) async {
     final query = <String, String>{
       'sku': sku,
