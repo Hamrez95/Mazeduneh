@@ -12,7 +12,7 @@ import 'package:mazeduneh_admin/notifications_page.dart';
 import 'package:mazeduneh_admin/notification_tile.dart';
 import 'package:mazeduneh_admin/order_api.dart';
 
-const notice = AdminNotification(type: 'awaiting-payment', title: '12 سفارش در انتظار پرداخت', detail: 'بررسی 2 سفارش', target: AdminNavigationTarget(module: 'orders', filter: 'AwaitingPayment'));
+const notice = AdminNotification(id: 'awaiting-payment', type: 'awaiting-payment', title: '12 سفارش در انتظار پرداخت', detail: 'بررسی 2 سفارش', target: AdminNavigationTarget(module: 'orders', filter: 'AwaitingPayment'));
 
 Widget harness(Widget child, {double textScale = 1}) => MaterialApp(
       builder: (context, child) => MediaQuery(
@@ -23,7 +23,7 @@ Widget harness(Widget child, {double textScale = 1}) => MaterialApp(
 
 http.Response notices({int status = 200, bool empty = false}) => http.Response(
       jsonEncode({'awaitingPayment': 12, 'lowStockItems': 0, 'items': empty ? [] : [
-        {'type': notice.type, 'title': notice.title, 'detail': notice.detail, 'target': {'module': 'orders', 'filter': 'AwaitingPayment'}},
+        {'id': notice.id, 'type': notice.type, 'title': notice.title, 'detail': notice.detail, 'target': {'module': 'orders', 'filter': 'AwaitingPayment'}},
       ]}), status, headers: {'content-type': 'application/json; charset=utf-8'},
     );
 
@@ -53,10 +53,27 @@ void main() {
 
   testWidgets('unknown notification type never guesses a route', (tester) async {
     await tester.pumpWidget(harness(AdminNotificationTile(
-      item: const AdminNotification(type: 'future-provider-event', title: 'اعلان', detail: 'توضیح'), onNavigate: (_) {},
+      item: const AdminNotification(id: 'future-provider-event', type: 'future-provider-event', title: 'اعلان', detail: 'توضیح'), onNavigate: (_) {},
     )));
     expect(find.byType(TextButton), findsNothing);
     expect(find.text('اعلان'), findsOneWidget);
+  });
+
+  testWidgets('notification detail action creates a restorable safe link', (tester) async {
+    AdminNavigationIntent? destination;
+    await tester.pumpWidget(harness(AdminNotificationTile(
+      item: notice,
+      onNavigate: (value) => destination = value,
+    )));
+
+    await tester.tap(find.text('جزئیات اعلان'));
+
+    expect(destination, const AdminNavigationIntent(
+      module: AdminModule.notifications,
+      notificationId: 'awaiting-payment',
+    ));
+    final uri = destination!.toUri(Uri.parse('https://admin.example.test/'));
+    expect(AdminNavigationIntent.fromUri(uri), destination);
   });
 
   testWidgets('restricted role sees the notice without a forbidden destination', (tester) async {
@@ -68,7 +85,7 @@ void main() {
   testWidgets('stock notice goes to inventory', (tester) async {
     AdminNavigationIntent? destination;
     await tester.pumpWidget(harness(AdminNotificationTile(
-      item: const AdminNotification(type: 'low-stock', title: 'موجودی کم', detail: '1 بسته', target: AdminNavigationTarget(module: 'inventory', sku: 'SKU-1', batchCode: 'B-1')),
+      item: const AdminNotification(id: 'low-stock_SKU-1', type: 'low-stock', title: 'موجودی کم', detail: '1 بسته', target: AdminNavigationTarget(module: 'inventory', sku: 'SKU-1', batchCode: 'B-1')),
       onNavigate: (value) => destination = value,
     )));
     await tester.tap(find.text('مشاهده موجودی'));
@@ -106,6 +123,7 @@ void main() {
   testWidgets('corporate follow-up notice opens the corporate queue', (tester) async {
     AdminNavigationIntent? destination;
     const corporate = AdminNotification(
+      id: 'corporate-follow-up_aabbcc',
       type: 'corporate-follow-up',
       title: 'موعد پیگیری فروش سازمانی گذشته است.',
       detail: 'شرکت نمونه · مسئول فروش · 2026-10-15 08:00 UTC',
@@ -141,6 +159,28 @@ void main() {
     expect(find.textContaining('اعلان‌های قبلی نمایش داده می‌شوند'), findsNothing);
     await tester.tap(find.text('مشاهده سفارش‌ها'));
     expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
+  });
+
+  testWidgets('direct notification link restores and highlights its alert', (tester) async {
+    final client = MockClient((_) async => http.Response(jsonEncode({
+      'awaitingPayment': 12,
+      'lowStockItems': 1,
+      'items': [
+        {'id': 'new-orders', 'type': 'new-orders', 'title': 'سفارش جدید', 'detail': 'مرور سفارش‌ها'},
+        {'id': notice.id, 'type': notice.type, 'title': notice.title, 'detail': notice.detail,
+          'target': {'module': 'orders', 'filter': 'AwaitingPayment'}},
+      ],
+    }), 200, headers: {'content-type': 'application/json; charset=utf-8'}));
+    await tester.pumpWidget(harness(NotificationsPage(
+      api: OrderApiClient(client: client, baseUrl: 'https://api.test'),
+      initialNotificationId: notice.id,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('اعلان بازشده از پیوند'), findsOneWidget);
+    expect(find.text('۱۲ سفارش در انتظار پرداخت'), findsOneWidget);
+    expect(find.text('سفارش جدید'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('forbidden refresh hides previously loaded notices', (tester) async {
