@@ -126,6 +126,7 @@ void main() {
 
     await tester.scrollUntilVisible(find.text('در انتظار پرداخت'), 350, maxScrolls: 20);
     await tester.pumpAndSettle();
+    expect(find.text('وضعیت فعلی · مستقل از بازه'), findsNWidgets(3));
     await tester.tap(find.text('در انتظار پرداخت'));
     expect(destination, const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment));
 

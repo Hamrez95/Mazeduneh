@@ -293,9 +293,9 @@ class _DashboardPageState extends State<DashboardPage> {
         if (can(AdminPermissions.ordersRead)) ...[
           MetricCard('تعداد سفارش بازه', formatPersianInteger(data.periodOrderCount), Icons.shopping_bag_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodOrdersIntent())),
           if (data.financialsVisible) MetricCard('میانگین ارزش سفارش', '${formatToman(data.averageOrderValue)} تومان', Icons.insights_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(_periodReportsIntent())),
-          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: AdminColors.warningSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
-          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: AdminColors.infoSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
-          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
+          MetricCard('در انتظار پرداخت', formatPersianInteger(data.awaitingPayment), Icons.schedule_rounded, tint: AdminColors.warningSoft, subtitle: 'وضعیت فعلی · مستقل از بازه', onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.awaitingPayment))),
+          MetricCard('در حال پردازش', formatPersianInteger(data.processing), Icons.inventory_2_rounded, tint: AdminColors.infoSoft, subtitle: 'وضعیت فعلی · مستقل از بازه', onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.processing))),
+          MetricCard('ارسال‌شده', formatPersianInteger(data.shipped), Icons.local_shipping_rounded, tint: AdminColors.dangerSoft, subtitle: 'وضعیت فعلی · مستقل از بازه', onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.shipped))),
           MetricCard('سفارش مشکل‌دار', formatPersianInteger(data.problemOrders), Icons.report_problem_outlined, tint: AdminColors.dangerSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.orders, orderFilter: AdminOrderFilter.problem))),
         ],
         if (can(AdminPermissions.customersRead)) MetricCard('مشتری جدید بازه', formatPersianInteger(data.newCustomers), Icons.person_add_alt_1_rounded, tint: AdminColors.successSoft, onTap: widget.onNavigate == null ? null : () => widget.onNavigate!(const AdminNavigationIntent(module: AdminModule.customers))),
@@ -999,11 +999,12 @@ class _DashboardPanel extends StatelessWidget {
 }
 
 class MetricCard extends StatelessWidget {
-  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft, this.onTap});
+  const MetricCard(this.title, this.value, this.icon, {super.key, this.tint = AdminColors.mintSoft, this.subtitle, this.onTap});
   final String title;
   final String value;
   final IconData icon;
   final Color tint;
+  final String? subtitle;
   final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1018,6 +1019,13 @@ class MetricCard extends StatelessWidget {
             CircleAvatar(backgroundColor: tint, foregroundColor: AdminColors.ink, child: Icon(icon)),
             const SizedBox(height: 12),
             Text(title, style: const TextStyle(color: AdminColors.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: const TextStyle(color: AdminColors.subtle, fontSize: 10),
+              ),
+            ],
             const SizedBox(height: 3),
             Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: AdminColors.inkDeep)),
           ])),
