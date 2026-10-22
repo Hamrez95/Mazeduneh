@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets/Fonts/Vazirmatn-Regular.ttf" LogicalName="Invoice.Font.Regular" />
+    <EmbeddedResource Include="Assets/Fonts/Vazirmatn-Bold.ttf" LogicalName="Invoice.Font.Bold" />
+    <EmbeddedResource Include="Assets/Fonts/OFL.txt" LogicalName="Invoice.Font.License" />
+    <EmbeddedResource Include="Assets/mazedoone-mark.svg" LogicalName="Invoice.Brand" />
     <PackageReference Include="Npgsql" Version="9.0.4" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.414.1" />
   </ItemGroup>
