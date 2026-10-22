@@ -9,7 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:catalog": "tsc --module commonjs --moduleResolution node --target es2022 --skipLibCheck --esModuleInterop --outDir .test-build app/catalog-state.ts app/api-catalog.ts && node --test tests/catalog-source.test.cjs",
-    "test:browser": "node tests/catalog-browser.cjs"
+    "test:browser": "node tests/catalog-browser.cjs && node tests/receipt-browser.cjs"
   },
   "dependencies": {
     "next": "16.2.11",

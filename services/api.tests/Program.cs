@@ -19,6 +19,7 @@ static void CheckZibalVerifyPayloads(SequenceHttpMessageHandler handler)
 static HttpResponseMessage JsonResponse(HttpStatusCode statusCode, string json) =>
     new(statusCode) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
 var now = DateTimeOffset.UtcNow;
+InvoiceFixture.Run();
 Check(DatabaseMigrationRunner.Checksum("select 1;\r\nselect 2;") == DatabaseMigrationRunner.Checksum("select 1;\nselect 2;"), "Migration checksum changed with platform line endings");
 Check(DatabaseMigrationRunner.Checksum("select 1;") != DatabaseMigrationRunner.Checksum("select 2;"), "Migration checksum ignored a real SQL edit");
 var promoRule = new PromotionInput("Welcome", "Percent", 10, true, now.AddDays(-1), now.AddDays(1));
