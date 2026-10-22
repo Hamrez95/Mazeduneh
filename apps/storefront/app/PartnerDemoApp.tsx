@@ -139,7 +139,7 @@ const products: Product[] = [
 const categories = ["همه", "مغزیجات", "میوه خشک", "تنقلات", "خوراکی سالم", "هدیه"];
 
 function money(value: number) {
-  return new Intl.NumberFormat("fa-IR").format(value);
+  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(value);
 }
 
 export default function PartnerDemoApp() {

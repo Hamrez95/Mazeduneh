@@ -220,4 +220,4 @@ export const demoProducts: DemoProduct[] = [
   },
 ];
 
-export { formatNumber as toman } from "../formatters";
+export { formatMoney as toman } from "../formatters";

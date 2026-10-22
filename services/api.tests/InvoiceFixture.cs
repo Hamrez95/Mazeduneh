@@ -12,7 +12,10 @@ internal static class InvoiceFixture
             "post", 5800001, 750000, 320000, 500000, 0, 0, 6050001, OrderState.Paid, created, created.AddMinutes(20), []);
         var html = InvoiceRenderer.Render(order);
         var decoded = WebUtility.HtmlDecode(html);
-        Check(decoded.Contains("۶۰۵,۰۰۰.۱") && decoded.Contains("۲۰۰,۰۰۰.۱") && decoded.Contains("۵۰,۰۰۰"), "Invoice rounded a fractional-toman amount or omitted the discount");
+        Check(decoded.Contains("۶۰۵,۰۰۰") && decoded.Contains("۲۰۰,۰۰۰") && !decoded.Contains("۶۰۵,۰۰۰.۱") && !decoded.Contains("۲۰۰,۰۰۰.۱") && decoded.Contains("۵۰,۰۰۰"), "Invoice did not display whole tomans or omitted the discount");
+        var halfway = WebUtility.HtmlDecode(InvoiceRenderer.Render(order with { Payable = 6050005 }));
+        Check(halfway.Contains("۶۰۵,۰۰۱"), "Invoice rounding differs from storefront and admin");
+        Check(order.Payable == 6050001 && order.Lines.First().UnitPrice == 2000001, "Display formatting changed order amounts");
         Check(decoded.Contains("۱۴۰۵/۰۸/۰۱") && decoded.Contains("۰۰:۳۰"), "Invoice date did not use Jalali date at Tehran midnight");
         Check(decoded.Contains("مبلغ پرداخت‌شده") && decoded.Contains("ممنون از خرید و اعتمادت"), "Paid invoice omitted confirmation or appreciation");
         Check(html.Contains("data:font/ttf;base64,") && !html.Contains("@import") && !html.Contains("<link"), "Downloaded invoice depends on an external font");

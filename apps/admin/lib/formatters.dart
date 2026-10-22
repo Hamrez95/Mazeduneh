@@ -213,9 +213,11 @@ String formatLocalizedNumber(num value, Locale locale, {int fractionDigits = 0})
   return '$sign${_groupDigits(absolute).replaceAll('٬', ',')}$fraction';
 }
 
-/// API amounts remain integer rials. Display the exact amount in tomans,
-/// including one decimal place when the rial amount is not divisible by ten.
-String formatToman(num rial) {
+/// Round display only; API values and accounting calculations remain unchanged.
+String formatToman(num rial) => formatPersianInteger(rial / 10);
+
+/// Editing existing values must retain their exact amount on an unrelated save.
+String formatTomanInput(num rial) {
   if (rial % 10 == 0) return formatPersianInteger(rial / 10);
   var formatted = formatPersianNumber(rial / 10, fractionDigits: 6);
   while (formatted.endsWith('۰')) {
@@ -231,9 +233,7 @@ String formatAdminMoney(num amount, {String currency = 'IRR', Locale locale = co
   final persian = locale.languageCode.toLowerCase() == 'fa';
   if (currency.toUpperCase() == 'IRR') {
     final toman = amount / 10;
-    final exact = amount % 10 == 0
-        ? formatLocalizedInteger(toman, locale)
-        : formatLocalizedNumber(toman, locale, fractionDigits: 1);
+    final exact = formatLocalizedInteger(toman, locale);
     return '$exact ${persian ? 'تومان' : 'Toman'}';
   }
   return '${formatLocalizedNumber(amount, locale)} ${currency.toUpperCase()}';
