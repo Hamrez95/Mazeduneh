@@ -25,7 +25,7 @@ public static class CustomerInvoice
         static string E(object? value) => WebUtility.HtmlEncode(value?.ToString() ?? string.Empty);
         static string Digits(string value) => string.Concat(value.Select(c => c is >= '0' and <= '9' ? (char)('۰' + c - '0') : c));
         static string Number(decimal value) => Digits(value.ToString("#,0.############################", CultureInfo.InvariantCulture));
-        static string Money(decimal rials) => Number(rials / 10m) + " <small>تومان</small>";
+        static string Money(decimal rials) => Number(decimal.Round(rials / 10m, 0, MidpointRounding.AwayFromZero)) + " <small>تومان</small>";
 
         var confirmed = order.State is OrderState.Paid or OrderState.Preparing or OrderState.Shipped or OrderState.Delivered;
         var state = order.State switch
@@ -90,7 +90,7 @@ public static class CustomerInvoice
                   <div class="details"><section><h2>خریدار</h2><strong>{{{E(order.CustomerName)}}}</strong><p>{{{E(order.Province)}}}، {{{E(order.City)}}}</p></section><section><h2>تحویل سفارش</h2><strong>{{{E(shippingMethod)}}}</strong><p>برای پیگیری، شناسهٔ سفارش را نزد خود نگه دار.</p></section></div>
                   <h2>انتخاب‌های خوشمزهٔ تو</h2>
                   <div class="table-wrap" role="region" aria-label="اقلام فاکتور" tabindex="0"><table><thead><tr><th>ردیف</th><th>محصول و بسته</th><th class="numeric">تعداد</th><th class="numeric">قیمت واحد</th><th class="numeric">جمع</th></tr></thead><tbody>{{{rows}}}</tbody></table></div>
-                  <div class="bottom"><p class="note">همهٔ مبلغ‌ها به تومان است.<br>قیمت و تخفیف این فاکتور مربوط به زمان ثبت سفارش است.</p><section class="totals" aria-label="خلاصهٔ مبالغ"><p><span>جمع کالاها</span><b>{{{Money(order.Subtotal)}}}</b></p><p class="discount"><span>تخفیف</span><b>{{{Money(order.Discount)}}}</b></p><p><span>هزینهٔ ارسال</span><b>{{{Money(order.Shipping)}}}</b></p><p><span>مالیات ({{{Number(order.TaxRatePercent)}}}٪)</span><b>{{{Money(order.Tax)}}}</b></p><p class="total"><span>{{{(confirmed ? "مبلغ پرداخت‌شده" : order.State == OrderState.AwaitingPayment ? "مبلغ قابل پرداخت" : "مبلغ سفارش")}}}</span><b>{{{Money(order.Payable)}}}</b></p></section></div>
+                  <div class="bottom"><p class="note">مبلغ‌ها برای نمایش به نزدیک‌ترین تومان گرد شده‌اند.<br>قیمت و تخفیف این فاکتور مربوط به زمان ثبت سفارش است.</p><section class="totals" aria-label="خلاصهٔ مبالغ"><p><span>جمع کالاها</span><b>{{{Money(order.Subtotal)}}}</b></p><p class="discount"><span>تخفیف</span><b>{{{Money(order.Discount)}}}</b></p><p><span>هزینهٔ ارسال</span><b>{{{Money(order.Shipping)}}}</b></p><p><span>مالیات ({{{Number(order.TaxRatePercent)}}}٪)</span><b>{{{Money(order.Tax)}}}</b></p><p class="total"><span>{{{(confirmed ? "مبلغ پرداخت‌شده" : order.State == OrderState.AwaitingPayment ? "مبلغ قابل پرداخت" : "مبلغ سفارش")}}}</span><b>{{{Money(order.Payable)}}}</b></p></section></div>
                   <footer><strong>{{{E(order.CustomerName)}}} عزیز، {{{(confirmed ? "ممنون از خرید و اعتمادت به مزه‌دونه!" : "ممنون که مزه‌دونه را انتخاب کردی.")}}}</strong><p>{{{closing}}}</p><small>با مهر، تیم مزه‌دونه</small></footer>
                 </div>
               </main>

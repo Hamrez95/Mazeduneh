@@ -456,12 +456,12 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     final promotionValue =
         (rule?['value'] as num? ?? 10) / (kind == 'Fixed' ? 10 : 1);
     field('value').text = kind == 'Fixed'
-        ? formatToman(rule?['value'] as num? ?? 0)
+        ? formatTomanInput(rule?['value'] as num? ?? 0)
         : toPersianDigits(promotionValue);
-    field('min').text = formatToman(rule?['minSubtotal'] as num? ?? 0);
+    field('min').text = formatTomanInput(rule?['minSubtotal'] as num? ?? 0);
     field('max').text = rule?['maxDiscount'] == null
         ? ''
-        : formatToman(rule!['maxDiscount'] as num);
+        : formatTomanInput(rule!['maxDiscount'] as num);
     field('uses').text = toPersianDigits(rule?['maxUses'] ?? '');
     field('skus').text = (rule?['skus'] as List? ?? []).join(', ');
     final parsedStart = DateTime.tryParse(rule?['startsAt'] as String? ?? '');
@@ -491,7 +491,7 @@ class _PromotionEditorState extends State<_PromotionEditor> {
     field('applications').text = '${rule?['maxApplications'] ?? ''}';
     field('bundlePrice').text = rule?['bundlePrice'] == null
         ? ''
-        : formatToman(rule!['bundlePrice'] as num);
+        : formatTomanInput(rule!['bundlePrice'] as num);
     bundleBasket.addAll(
       (rule?['bundleItems'] as List? ?? []).map(
         (item) => {

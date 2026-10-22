@@ -10,7 +10,10 @@ void main() {
     expect(formatPersianInteger(1234567), '۱٬۲۳۴٬۵۶۷');
     expect(formatPersianNumber(1234.5, fractionDigits: 1), '۱٬۲۳۴٫۵');
     expect(formatToman(1200000), '۱۲۰٬۰۰۰');
-    expect(formatToman(1234565), '۱۲۳٬۴۵۶٫۵');
+    expect(formatToman(1234565), '۱۲۳٬۴۵۷');
+    expect(formatToman(1234564), '۱۲۳٬۴۵۶');
+    expect(formatToman(-1234565), '-۱۲۳٬۴۵۷');
+    expect(formatTomanInput(1234565), '۱۲۳٬۴۵۶٫۵');
     expect(parseTomanToRial('۱۲۳٬۴۵۶٫۵'), 1234565);
     expect(parsePersianNumber('۱٬۲۳۴٫۵'), 1234.5);
     expect(parsePersianNumber('١٬٢٣٤٫٥'), 1234.5);
@@ -21,10 +24,10 @@ void main() {
     expect(toPersianDigits('شناسه 550e8400-e29b-41d4-a716-446655440000'), 'شناسه 550e8400-e29b-41d4-a716-446655440000');
   });
 
-  test('localizes order money while preserving exact rial precision', () {
+  test('displays whole-toman order money in both locales', () {
     expect(formatAdminMoney(1234560), '۱۲۳٬۴۵۶ تومان');
-    expect(formatAdminMoney(1234565), '۱۲۳٬۴۵۶٫۵ تومان');
-    expect(formatAdminMoney(1234565, locale: const Locale('en', 'US')), '123,456.5 Toman');
+    expect(formatAdminMoney(1234565), '۱۲۳٬۴۵۷ تومان');
+    expect(formatAdminMoney(1234565, locale: const Locale('en', 'US')), '123,457 Toman');
     expect(formatAdminMoney(123456, currency: 'USD', locale: const Locale('en', 'US')), '123,456 USD');
   });
 

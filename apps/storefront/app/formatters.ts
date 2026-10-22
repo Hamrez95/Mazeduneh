@@ -16,10 +16,14 @@ export function rialsToTomans(rials: number) {
   return Number.isFinite(rials) ? rials / 10 : 0;
 }
 
+// Round only at the presentation boundary; never feed this back into pricing.
+const wholeMoney = new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 });
+export function formatMoney(tomans: number) {
+  return wholeMoney.format(Number.isFinite(tomans) ? tomans : 0);
+}
+
 export function formatRialsAsTomans(rials: number) {
-  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 1 }).format(
-    rialsToTomans(rials),
-  );
+  return formatMoney(rialsToTomans(rials));
 }
 
 export function toPersianDigits(value: string | number) {

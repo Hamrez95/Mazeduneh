@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL = 'https://catalog.test';
 const { initialCatalog, catalogSuccess, catalogFailure } = require('../.test-build/catalog-state.js');
 const { mapApiProduct, fetchLiveProducts, fetchLiveCategories } = require('../.test-build/api-catalog.js');
-const { formatRialsAsTomans } = require('../.test-build/formatters.js');
+const { formatRialsAsTomans, formatMoney, formatNumber, rialsToTomans } = require('../.test-build/formatters.js');
 const preview = [{ id: 'preview-only' }];
 
 test('configured API never uses preview products while loading, empty or failed', () => {
@@ -37,8 +37,14 @@ test('adapter uses server SKU, prices and stock, and retains sold-out variants/p
   assert.equal(mapApiProduct({ ...source, isPublished: false }), null);
   assert.equal(source.variants[0].sku, 'ADMIN-250');
 });
-test('rial totals keep the tenth-of-a-toman fraction in Persian storefront text', () => {
-  assert.equal(formatRialsAsTomans(1234565), '۱۲۳٬۴۵۶٫۵');
+test('money displays whole tomans while calculations retain original rial precision', () => {
+  assert.equal(formatRialsAsTomans(1234565), '۱۲۳٬۴۵۷');
+  assert.equal(formatRialsAsTomans(1234564), '۱۲۳٬۴۵۶');
+  assert.equal(formatRialsAsTomans(-1234565), '‎−۱۲۳٬۴۵۷');
+  assert.equal(formatRialsAsTomans(0), '۰');
+  assert.equal(formatMoney(123456.5), '۱۲۳٬۴۵۷');
+  assert.equal(rialsToTomans(1234565), 123456.5);
+  assert.equal(formatNumber(1.25), '۱٫۲۵'); // Weights/percentages retain decimals.
 });
 test('catalog fetch rejects server errors, respects empty results and active categories', async () => {
   const old = global.fetch;

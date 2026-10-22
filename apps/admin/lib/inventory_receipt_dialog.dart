@@ -46,9 +46,9 @@ class _BatchDialogState extends State<BatchDialog> {
   }
 
   void _setVariantCostDefaults(ProductVariant variant) {
-    fields['cost']!.text = formatToman(variant.costPrice);
-    fields['packaging']!.text = formatToman(variant.packagingCost);
-    fields['additional']!.text = formatToman(variant.additionalCost);
+    fields['cost']!.text = formatTomanInput(variant.costPrice);
+    fields['packaging']!.text = formatTomanInput(variant.packagingCost);
+    fields['additional']!.text = formatTomanInput(variant.additionalCost);
   }
 
   ProductVariant get selectedVariant => widget.products
