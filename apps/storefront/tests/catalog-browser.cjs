@@ -7,7 +7,7 @@ const api = 'http://127.0.0.1:5998';
 const product = (slug, title, stock = 3) => ({ id: slug, slug, title, category: 'دسته پنل', origin: 'ایران',
   currency: 'IRR', unitType: 'Weight', isPublished: true, description: 'توضیح ثبت‌شده در پنل',
   variants: [{ sku: slug.toUpperCase(), quantity: 250, displayLabel: '۲۵۰ گرم', price: 321000, availablePackages: stock }] });
-const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--hostname', '127.0.0.1', '--port', '3098'], {
+const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', ...(process.platform === 'win32' ? ['--webpack'] : []), '--hostname', '127.0.0.1', '--port', '3098'], {
   env: { ...process.env, NEXT_PUBLIC_MAZEDUNEH_API_URL: api, NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL: api,
     MAZEDUNEH_STATIC_EXPORT: 'false', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
 });

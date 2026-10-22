@@ -111,21 +111,30 @@ DateTime? parseCalendarDate(String? value, Locale locale) {
   if (usesJalaliCalendar(locale)) {
     // Keep pasted ISO dates usable for existing records; the field itself is
     // always displayed in the Solar Hijri calendar.
-    if (text.contains('-'))
+    if (text.contains('-')) {
+      final dashed = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$')
+          .firstMatch(normalized);
+      if (dashed != null) {
+        final year = int.parse(dashed[1]!);
+        if (year >= 1200 && year <= 1600) {
+          return _validJalaliDate(
+            year,
+            int.parse(dashed[2]!),
+            int.parse(dashed[3]!),
+          );
+        }
+      }
       return _parseGregorian(normalized.replaceAll('/', '-'));
+    }
     final match = RegExp(
       r'^(\d{1,4})[/.](\d{1,2})[/.](\d{1,2})$',
     ).firstMatch(normalized);
     if (match == null) return null;
-    final year = int.parse(match[1]!);
-    final month = int.parse(match[2]!);
-    final day = int.parse(match[3]!);
-    if (month < 1 ||
-        month > 12 ||
-        day < 1 ||
-        day > _daysInJalaliMonth(year, month))
-      return null;
-    return _jalaliToGregorian(year, month, day);
+    return _validJalaliDate(
+      int.parse(match[1]!),
+      int.parse(match[2]!),
+      int.parse(match[3]!),
+    );
   }
 
   if (text.contains('/')) {
@@ -157,6 +166,18 @@ DateTime? parseCalendarDate(String? value, Locale locale) {
     );
   }
   return _parseGregorian(normalized.replaceAll('/', '-'));
+}
+
+DateTime? _validJalaliDate(int year, int month, int day) {
+  if (year < -61 ||
+      year >= 3178 ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > _daysInJalaliMonth(year, month)) {
+    return null;
+  }
+  return _jalaliToGregorian(year, month, day);
 }
 
 Future<DateTime?> showLocalizedDatePicker({
@@ -467,3 +488,4 @@ DateTime _julianDayToGregorian(int julianDay) {
   final year = 100 * b + d - 4800 + m ~/ 10;
   return DateTime(year, month, day);
 }
+
