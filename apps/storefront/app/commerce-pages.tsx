@@ -81,7 +81,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     add(selectedProduct);
     setCartFeedback(`${selectedProduct.packageLabel} به سبد خرید اضافه شد.`);
   }
-  const gallery = getProductArtworkGallery(product);
+  const gallery = getProductArtworkGallery(product, { live });
   const [activeImage, setActiveImage] = useState(gallery[0]);
   useEffect(() => setActiveImage(gallery[0]), [product.id]);
 
@@ -90,9 +90,9 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     <div className={styles.detailLayout}>
       <div className={`${styles.detailVisual} ${styles[product.accent]}`}>
         <div className={styles.detailImageStage}>
-          <ProductArtwork product={product} hero src={activeImage} />
+          <ProductArtwork product={product} hero src={activeImage} live={live} />
         </div>
-        <div className={styles.detailGallery} aria-label={`تصاویر ${product.title}`}>
+        {gallery.length > 1 && <div className={styles.detailGallery} aria-label={`تصاویر ${product.title}`}>
           {gallery.map((image, index) => (
             <button
               key={image}
@@ -105,7 +105,7 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
               <img src={image} alt="" loading={index === 0 ? "eager" : "lazy"} />
             </button>
           ))}
-        </div>
+        </div>}
       </div>
       <div className={styles.detailInfo}>
         <div className={styles.breadcrumbs}><a href="/">خانه</a> ← <a href="/shop">فروشگاه</a> ← <a href={`/shop?category=${encodeURIComponent(product.category)}`}>{product.category}</a></div>
