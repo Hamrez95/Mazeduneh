@@ -559,20 +559,6 @@ class _AdminShellState extends State<AdminShell> {
               ),
             ),
           ),
-          const Tooltip(
-            message: 'فارسی · تقویم شمسی',
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Icon(Icons.translate_rounded, size: 21),
-            ),
-          ),
-          const Tooltip(
-            message: 'تم تیره',
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Icon(Icons.dark_mode_outlined, size: 21),
-            ),
-          ),
           PopupMenuButton<AdminModule>(
             tooltip: 'میان‌برها',
             icon: const Icon(Icons.dashboard_customize_outlined),
