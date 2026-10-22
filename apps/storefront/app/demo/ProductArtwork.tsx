@@ -24,26 +24,36 @@ function imageFor(product: DemoProduct) {
   return product.primaryImage || imageByArt[product.art];
 }
 
-export function getProductArtworkGallery(product: DemoProduct) {
-  const primary = imageFor(product);
+export function getProductArtworkGallery(
+  product: DemoProduct,
+  { live = false }: { live?: boolean } = {},
+) {
+  const primary = live ? product.primaryImage?.trim() ?? "" : imageFor(product);
   const managedGallery = product.galleryImages ?? [];
-  // Products loaded from the live catalog must show only their own media. The
-  // artwork gallery is a demo fallback and should never leak into live products.
-  const fallbackGallery = managedGallery.length || product.primaryImage?.trim()
+  // Demo artwork is illustrative. A live catalog product must never inherit
+  // sample photos just because it has no uploaded media of its own.
+  const fallbackGallery = live || managedGallery.length || product.primaryImage?.trim()
     ? []
     : galleryByArt[product.art] ?? [];
-  return Array.from(new Set([primary, ...managedGallery, ...(managedGallery.length ? [] : fallbackGallery)]));
+  return Array.from(new Set([primary, ...managedGallery, ...fallbackGallery].filter(Boolean)));
 }
 
 export function ProductArtwork({
   product,
   hero = false,
   src,
+  live = false,
 }: {
   product: DemoProduct;
   hero?: boolean;
   src?: string;
+  live?: boolean;
 }) {
+  if (live && !src && !product.primaryImage?.trim()) {
+    return <div className={styles.missingProductImage} role="img" aria-label={`تصویر ${product.title} ثبت نشده`}>
+      <span>تصویری ثبت نشده</span>
+    </div>;
+  }
   return (
     <img
       className={hero ? styles.heroProductImage : styles.productImage}

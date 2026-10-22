@@ -718,6 +718,17 @@
   object-position: center;
   display: block;
 }
+.missingProductImage {
+  width: min(78%, 320px);
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(38, 72, 62, .28);
+  border-radius: 18px;
+  color: #687a71;
+  background: rgba(255, 255, 255, .48);
+  font-size: 13px;
+}
 @media (max-width: 760px) {
   .detailImageStage { min-height: 360px; height: 360px; }
   .detailImageStage :global(img) { padding: 8px 12px; }
