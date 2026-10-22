@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import CorporateSalesLanding from "../corporate-sales-page";
 
 export const metadata: Metadata = {
-  title: "فروش سازمانی و هدایای مناسبتی | مزه‌دونه",
-  description: "ساخت پک‌های هدیه سازمانی خوش‌طعم و اختصاصی مزه‌دونه برای تیم‌ها و سازمان‌ها.",
+  title: "هدیه سازمانی و خرید آجیل سازمانی | مزه‌دونه",
+  description: "برای هدیه به کارکنان، مشتریان و پذیرایی سازمانی، ترکیب آجیل و مغزیجات متناسب با تعداد و بودجهٔ خود پیشنهاد بگیرید. درخواست بدون ثبت‌نام و پرداخت.",
 };
 
 export default function CorporateSalesPage() {
