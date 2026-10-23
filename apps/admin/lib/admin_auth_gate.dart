@@ -6,6 +6,7 @@ import 'admin_theme.dart';
 import 'auth_api.dart';
 import 'auth_session.dart';
 import 'formatters.dart';
+import 'admin_google_sign_in.dart';
 
 class AdminAuthGate extends StatefulWidget {
   const AdminAuthGate({
@@ -200,6 +201,12 @@ class _AdminLoginPageState extends State<_AdminLoginPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          AdminGoogleSignIn(
+            api: widget.api,
+            onAuthenticated: () {
+              if (mounted) setState(() => error = null);
+            },
+          ),
           TextFormField(
             controller: email,
             autofocus: true,
@@ -332,10 +339,10 @@ class _InvitationPageState extends State<_InvitationPage> {
   @override
   Widget build(BuildContext context) => _AuthScaffold(
     eyebrow: 'دعوت همکار',
-    title: accepted ? 'حساب شما فعال شد' : 'ساخت رمز عبور',
+    title: accepted ? 'حساب شما فعال شد' : 'فعال‌سازی دعوت',
     detail: accepted
         ? 'اکنون می‌توانید با ایمیل دعوت‌شده وارد پنل شوید.'
-        : 'یک رمز عبور قوی انتخاب کنید تا دعوت شما فعال شود.',
+        : 'با گوگل ادامه دهید یا برای حساب دعوت‌شده رمز عبور بسازید.',
     child: accepted
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -356,6 +363,11 @@ class _InvitationPageState extends State<_InvitationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                AdminGoogleSignIn(
+                  api: widget.api,
+                  invitationToken: token,
+                  onAuthenticated: widget.onAccepted,
+                ),
                 TextFormField(
                   controller: password,
                   autofocus: true,

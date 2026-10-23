@@ -276,6 +276,9 @@ $apiEnv=@{
   Payments__SandboxEnabled='true';'Cors__AllowedOrigins__0'=$webUrl;'Cors__AllowedOrigins__1'=$adminUrl
   Media__RootPath=(Join-Path $localRoot 'media')
 }
+if(-not [string]::IsNullOrWhiteSpace($env:MAZEDUNEH_GOOGLE_CLIENT_ID)){
+  $apiEnv.Google__ClientId=$env:MAZEDUNEH_GOOGLE_CLIENT_ID.Trim()
+}
 $build=Join-Path $root '.local-dev/build/api'
 function Run-WithEnv([string]$file,[string[]]$arguments,[hashtable]$environment) {
   $p=Start-Process -FilePath $file -ArgumentList $arguments -WorkingDirectory $root -Environment $environment -NoNewWindow -Wait -PassThru

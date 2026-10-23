@@ -63,6 +63,20 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             alter table admin_users add column if not exists totp_pending_expires_at timestamptz null;
             alter table admin_users add column if not exists totp_enabled_at timestamptz null;
             """, cancellationToken);
+        await DatabaseMigrationRunner.ApplyAsync(connection, "admin-users", "006-google-sign-in", """
+            alter table admin_users add column if not exists google_subject varchar(255) null;
+            create unique index if not exists ux_admin_users_google_subject
+                on admin_users(store_id,google_subject) where google_subject is not null;
+            create table if not exists admin_google_login_challenges (
+                challenge_id uuid primary key,
+                nonce_hash bytea not null,
+                created_at timestamptz not null default now(),
+                expires_at timestamptz not null,
+                used_at timestamptz null
+            );
+            create index if not exists ix_admin_google_login_challenges_expiry
+                on admin_google_login_challenges(expires_at);
+            """, cancellationToken);
         logger.LogInformation("Admin user membership schema is ready.");
     }
 
@@ -305,6 +319,160 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             ReadPermissions(role, reader.IsDBNull(10) ? null : reader.GetString(10)), reader.GetFieldValue<DateTimeOffset>(6), reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), true);
     }
 
+    public async Task<Guid> CreateGoogleLoginChallengeAsync(string nonce, CancellationToken cancellationToken)
+    {
+        var challengeId = Guid.NewGuid();
+        var nonceHash = HashGoogleNonce(nonce);
+        await using var connection = await OpenAsync(cancellationToken);
+        await using (var cleanup = new NpgsqlCommand(
+            "delete from admin_google_login_challenges where expires_at < now()-interval '1 day';", connection))
+            await cleanup.ExecuteNonQueryAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            insert into admin_google_login_challenges(challenge_id,nonce_hash,expires_at)
+            values(@challenge_id,@nonce_hash,now()+interval '10 minutes');
+            """, connection);
+        command.Parameters.AddWithValue("challenge_id", challengeId);
+        command.Parameters.AddWithValue("nonce_hash", nonceHash);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        return challengeId;
+    }
+
+    public async Task<bool> IsGoogleLoginChallengeValidAsync(Guid challengeId, string nonce, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select nonce_hash from admin_google_login_challenges
+            where challenge_id=@challenge_id and used_at is null and expires_at>now();
+            """, connection);
+        command.Parameters.AddWithValue("challenge_id", challengeId);
+        var value = await command.ExecuteScalarAsync(cancellationToken);
+        return value is byte[] expected && CryptographicOperations.FixedTimeEquals(expected, HashGoogleNonce(nonce));
+    }
+
+    public async Task<bool> ConsumeGoogleLoginChallengeAsync(Guid challengeId, string nonce, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            update admin_google_login_challenges set used_at=now()
+            where challenge_id=@challenge_id and nonce_hash=@nonce_hash and used_at is null and expires_at>now()
+            returning challenge_id;
+            """, connection);
+        command.Parameters.AddWithValue("challenge_id", challengeId);
+        command.Parameters.AddWithValue("nonce_hash", HashGoogleNonce(nonce));
+        return await command.ExecuteScalarAsync(cancellationToken) is Guid;
+    }
+
+    public async Task<AdminUserSummary?> FindActiveByEmailAsync(string email, string? storeId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,
+                   password_hash is not null,permissions_json::text
+            from admin_users where store_id=@store_id and email=@email and is_active=true;
+            """, connection);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<AdminUserSummary?> FindActiveByGoogleSubjectAsync(string subject, string? storeId, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,
+                   password_hash is not null,permissions_json::text
+            from admin_users where store_id=@store_id and google_subject=@subject and is_active=true;
+            """, connection);
+        command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+        command.Parameters.AddWithValue("subject", subject);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<AdminUserSummary?> FindPendingInvitationAsync(string token, string email, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured || string.IsNullOrWhiteSpace(token) || token.Length > 128) return null;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            select id,store_id,email,display_name,role,is_active,created_at,deactivated_at,
+                   password_hash is not null,permissions_json::text
+            from admin_users
+            where invitation_token_hash=@token_hash and invitation_expires_at>now()
+              and is_active=true and password_hash is null and lower(email)=@email;
+            """, connection);
+        command.Parameters.AddWithValue("token_hash", HashToken(token));
+        command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<bool> LinkGoogleIdentityAsync(Guid userId, string? storeId, string email, string subject, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var connection = await OpenAsync(cancellationToken);
+            await using var command = new NpgsqlCommand("""
+                update admin_users set google_subject=@subject
+                where id=@user_id and store_id=@store_id and email=@email and is_active=true
+                  and password_hash is not null and (google_subject is null or google_subject=@subject)
+                returning id;
+                """, connection);
+            command.Parameters.AddWithValue("subject", subject);
+            command.Parameters.AddWithValue("user_id", userId);
+            command.Parameters.AddWithValue("store_id", NormalizeStoreId(storeId));
+            command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+            return await command.ExecuteScalarAsync(cancellationToken) is Guid;
+        }
+        catch (PostgresException exception) when (exception.SqlState == "23505")
+        {
+            return false;
+        }
+    }
+
+    public async Task<AdminUserSummary?> AcceptInvitationWithGoogleAsync(
+        string token, string email, string subject, string requestId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
+    {
+        if (!IsConfigured || string.IsNullOrWhiteSpace(token) || token.Length > 128) return null;
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            AdminUserSummary? accepted = null;
+            await using (var command = new NpgsqlCommand("""
+                update admin_users
+                set google_subject=@subject,invitation_token_hash=null,invitation_expires_at=null
+                where invitation_token_hash=@token_hash and invitation_expires_at>now()
+                  and is_active=true and password_hash is null and lower(email)=@email
+                  and (google_subject is null or google_subject=@subject)
+                returning id,store_id,email,display_name,role,is_active,created_at,deactivated_at,
+                          password_hash is not null,permissions_json::text;
+                """, connection, transaction))
+            {
+                command.Parameters.AddWithValue("subject", subject);
+                command.Parameters.AddWithValue("token_hash", HashToken(token));
+                command.Parameters.AddWithValue("email", email.Trim().ToLowerInvariant());
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken)) accepted = Read(reader);
+            }
+            if (accepted is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
+            }
+            await audit.RecordAsync(connection, transaction, accepted.Email, "admin-user.invitation-accepted-google", "AdminUser", accepted.Id.ToString(),
+                new { InvitationPending = true }, new { InvitationPending = false, GoogleConnected = true, accepted.StoreId, accepted.Role },
+                "پذیرش دعوت مدیر با حساب گوگل", requestId, cancellationToken, accepted.StoreId);
+            await transaction.CommitAsync(cancellationToken);
+            return accepted;
+        }
+        catch (PostgresException exception) when (exception.SqlState == "23505")
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return null;
+        }
+    }
+
     public async Task<bool> AcceptInvitationAsync(string token, string password, string requestId, AdminAuditLogDatabase audit, CancellationToken cancellationToken)
     {
         if (!IsConfigured || !IsValidPassword(password) || string.IsNullOrWhiteSpace(token) || token.Length > 128) return false;
@@ -356,7 +524,7 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
             insert into admin_user_sessions(session_id,user_id,store_id,created_at,expires_at)
             select @session_id,id,store_id,now(),@expires_at
             from admin_users where id=@user_id and store_id=@store_id and is_active=true
-              and (password_hash is not null or role='Owner');
+              and (password_hash is not null or google_subject is not null or role='Owner');
             """, connection);
         command.Parameters.AddWithValue("session_id", sessionId);
         command.Parameters.AddWithValue("user_id", userId);
@@ -584,6 +752,9 @@ public sealed class AdminUsersDatabase(IConfiguration configuration, ILogger<Adm
     private const int PasswordHashBytes = 32;
 
     public static bool IsValidPassword(string? password) => password is { Length: >= 12 and <= 128 };
+
+    private static byte[] HashGoogleNonce(string nonce) =>
+        SHA256.HashData(Encoding.UTF8.GetBytes(nonce));
 
     private static string CreateInvitationToken() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
