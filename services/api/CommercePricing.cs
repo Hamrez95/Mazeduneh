@@ -19,17 +19,26 @@ public sealed record CommerceSettingsRequest(decimal TaxRatePercent, IReadOnlyCo
     public Dictionary<string, string[]> Validate()
     {
         var errors = new Dictionary<string, string[]>();
-        if (TaxRatePercent is < 0 or > 100) errors[nameof(TaxRatePercent)] = ["نرخ مالیات باید بین صفر تا ۱۰۰ درصد باشد."];
+        if (TaxRatePercent is < 0 or > 100 || TaxRatePercent != decimal.Round(TaxRatePercent, 4)) errors[nameof(TaxRatePercent)] = ["نرخ مالیات باید بین صفر تا ۱۰۰ درصد و با حداکثر چهار رقم اعشار باشد."];
         if (ShippingMethods is null || ShippingMethods.Count == 0)
         {
             errors[nameof(ShippingMethods)] = ["حداقل یک روش ارسال لازم است."];
             return errors;
         }
+        if (ShippingMethods.Count > 30 || ShippingMethods.Any(item => item is null))
+        {
+            errors[nameof(ShippingMethods)] = ["حداکثر ۳۰ روش ارسال با اطلاعات کامل مجاز است."];
+            return errors;
+        }
 
         var duplicates = ShippingMethods
-            .Where(item => string.IsNullOrWhiteSpace(item.Code))
+            .Where(item => string.IsNullOrWhiteSpace(item.Code) || item.Code.Trim().Length > 40)
             .ToArray();
-        if (duplicates.Length > 0) errors["ShippingMethods.Code"] = ["کد روش ارسال الزامی است."];
+        if (duplicates.Length > 0)
+        {
+            errors["ShippingMethods.Code"] = ["کد روش ارسال باید بین ۱ تا ۴۰ نویسه باشد."];
+            return errors;
+        }
 
         var repeated = ShippingMethods
             .GroupBy(item => item.Code.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -40,9 +49,10 @@ public sealed record CommerceSettingsRequest(decimal TaxRatePercent, IReadOnlyCo
         for (var index = 0; index < ShippingMethods.Count; index++)
         {
             var item = ShippingMethods.ElementAt(index);
-            if (item.Price < 0) errors[$"ShippingMethods[{index}].Price"] = ["هزینه ارسال نمی‌تواند منفی باشد."];
-            if (item.FreeAbove < 0) errors[$"ShippingMethods[{index}].FreeAbove"] = ["حداقل خرید ارسال رایگان نمی‌تواند منفی باشد."];
-            if (item.InternalCost < 0) errors[$"ShippingMethods[{index}].InternalCost"] = ["هزینه عملیاتی ارسال نمی‌تواند منفی باشد."];
+            if (string.IsNullOrWhiteSpace(item.Title) || item.Title.Length > 120) errors[$"ShippingMethods[{index}].Title"] = ["عنوان روش ارسال باید بین ۱ تا ۱۲۰ نویسه باشد."];
+            if (!MoneyAmount.IsNonNegative(item.Price)) errors[$"ShippingMethods[{index}].Price"] = ["هزینه ارسال معتبر نیست."];
+            if (!MoneyAmount.IsNonNegative(item.FreeAbove)) errors[$"ShippingMethods[{index}].FreeAbove"] = ["حداقل خرید ارسال رایگان معتبر نیست."];
+            if (!MoneyAmount.IsNonNegative(item.InternalCost)) errors[$"ShippingMethods[{index}].InternalCost"] = ["هزینه عملیاتی ارسال معتبر نیست."];
         }
         return errors;
     }

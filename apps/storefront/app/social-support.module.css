@@ -1,0 +1,4 @@
+.links { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 15px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 14px; text-decoration: none; font: inherit; font-weight: 650; cursor: pointer; }
+.link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.link:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }

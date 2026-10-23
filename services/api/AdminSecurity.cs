@@ -1328,7 +1328,7 @@ public sealed class ProductPriceStepUpAuthorizationFilter(ProductCatalog catalog
     public ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         var request = context.Arguments.OfType<UpdateProductRequest>().FirstOrDefault();
-        if (request is null ||
+        if (request is null || request.Validate().Count > 0 ||
             !context.HttpContext.Request.RouteValues.TryGetValue("slug", out var routeSlug) ||
             catalog.FindBySlug(routeSlug?.ToString() ?? string.Empty) is not { } existing)
             return next(context);

@@ -4,7 +4,26 @@ process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL = 'https://catalog.test';
 const { initialCatalog, catalogSuccess, catalogFailure } = require('../.test-build/catalog-state.js');
 const { mapApiProduct, fetchLiveProducts, fetchLiveCategories } = require('../.test-build/api-catalog.js');
 const { formatRialsAsTomans, formatMoney, formatNumber, rialsToTomans } = require('../.test-build/formatters.js');
+const { parseCommerceSettings, estimateCommerce } = require('../.test-build/commerce-settings.js');
 const preview = [{ id: 'preview-only' }];
+
+test('shipping and tax follow live rial settings, selected method and exact free-shipping threshold', () => {
+  const settings = parseCommerceSettings({ taxRatePercent: 9.5, shippingMethods: [
+    { code: 'post', title: 'پست', price: 321000, freeAbove: 9000000, isActive: true },
+    { code: 'pickup', title: 'تحویل حضوری', price: 0, freeAbove: 0, isActive: true },
+    { code: 'disabled', title: 'غیرفعال', price: 1, freeAbove: 0, isActive: false },
+  ] });
+  assert.equal(estimateCommerce(580000, settings).shipping, 32100);
+  assert.equal(estimateCommerce(580000, settings).tax, 55100);
+  assert.equal(estimateCommerce(580000, settings).total, 667200);
+  assert.equal(estimateCommerce(899999.9, settings).shipping, 32100);
+  assert.equal(estimateCommerce(900000, settings).shipping, 0);
+  assert.equal(estimateCommerce(580000, settings, 'pickup').total, 635100);
+  assert.equal(estimateCommerce(580000, settings, 'disabled'), null);
+  assert.equal(estimateCommerce(580000, null), null);
+  assert.equal(parseCommerceSettings({ taxRatePercent: 101, shippingMethods: [] }), null);
+  assert.equal(parseCommerceSettings({ taxRatePercent: 10, shippingMethods: [{ code: 'post', title: 'bad', price: -1, freeAbove: 0, isActive: true }] }), null);
+});
 
 test('configured API never uses preview products while loading, empty or failed', () => {
   assert.deepEqual(initialCatalog(true, preview, ['همه', 'نمونه']).products, []);

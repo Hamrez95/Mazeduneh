@@ -14,7 +14,14 @@ builder.Logging.AddJsonConsole(options =>
     options.TimestampFormat = "O";
 });
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
-    context.ProblemDetails.Extensions["requestId"] = context.HttpContext.TraceIdentifier);
+{
+    context.ProblemDetails.Extensions["requestId"] = context.HttpContext.TraceIdentifier;
+    if (context.ProblemDetails.Status == StatusCodes.Status400BadRequest)
+    {
+        context.ProblemDetails.Title = "اطلاعات درخواست معتبر نیست.";
+        context.ProblemDetails.Detail = "نوع و مقدار فیلدها را بررسی کنید و دوباره تلاش کنید.";
+    }
+});
 builder.Services.AddSingleton<ApiHealthProbe>();
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -43,7 +50,14 @@ builder.Services.AddCorporateSales();
 
 var app = builder.Build();
 app.UseMiddleware<RequestObservabilityMiddleware>();
-app.UseExceptionHandler();
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    // JSON binding errors (for example a fractional package count) are client
+    // errors even when development mode throws BadHttpRequestException.
+    StatusCodeSelector = exception => exception is BadHttpRequestException requestError
+        ? requestError.StatusCode
+        : StatusCodes.Status500InternalServerError,
+});
 app.UseHttpsRedirection();
 app.UseCors("Storefront");
 app.UseRateLimiter();

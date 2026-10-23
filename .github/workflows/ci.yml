@@ -68,6 +68,8 @@ jobs:
         run: dotnet restore services/api/Mazeduneh.Api.csproj
       - name: Build
         run: dotnet build services/api/Mazeduneh.Api.csproj --configuration Release --no-restore
+      - name: Build integration fixture harness before starting API processes
+        run: dotnet build services/api.tests/Mazeduneh.Api.Tests.csproj --configuration Release
       - name: Database migration, staging recovery, and seed-separation contract
         shell: bash
         run: |
@@ -709,6 +711,9 @@ jobs:
 
       - name: Coupons, concurrent usage, immutable totals and sandbox payment
         run: python3 scripts/tests/promotions.py
+
+      - name: Checkout totals, payment and accounting contract
+        run: python3 scripts/tests/checkout_pricing.py
 
       - name: Inventory receipt validation units
         run: dotnet run --project services/api.tests/Mazeduneh.Api.Tests.csproj --configuration Release

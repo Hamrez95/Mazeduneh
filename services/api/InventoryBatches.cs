@@ -27,9 +27,9 @@ public sealed record InventoryBatchRequest(
         if (string.IsNullOrWhiteSpace(BatchCode)) errors[nameof(BatchCode)] = ["کد بچ الزامی است."];
         if (ReceivedPackages is <= 0 or > 1_000_000) errors[nameof(ReceivedPackages)] = ["تعداد دریافتی باید بین ۱ و ۱ میلیون باشد."];
         if (ExpiresAt <= ProducedAt) errors[nameof(ExpiresAt)] = ["تاریخ انقضا باید بعد از تاریخ تولید باشد."];
-        if (CostPrice is < 0 or > 1_000_000_000_000m) errors[nameof(CostPrice)] = ["قیمت خرید باید بین صفر و ۱ تریلیون ریال باشد."];
-        if (PackagingCost is < 0 or > 1_000_000_000_000m) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی باید بین صفر و ۱ تریلیون ریال باشد."];
-        if (AdditionalCost is < 0 or > 1_000_000_000_000m) errors[nameof(AdditionalCost)] = ["هزینه جانبی باید بین صفر و ۱ تریلیون ریال باشد."];
+        if (!MoneyAmount.IsNonNegative(CostPrice)) errors[nameof(CostPrice)] = ["قیمت خرید باید بین صفر و یک‌هزار میلیارد ریال و با حداکثر دو رقم اعشار باشد."];
+        if (!MoneyAmount.IsNonNegative(PackagingCost)) errors[nameof(PackagingCost)] = ["هزینه بسته‌بندی معتبر نیست."];
+        if (!MoneyAmount.IsNonNegative(AdditionalCost)) errors[nameof(AdditionalCost)] = ["هزینه جانبی معتبر نیست."];
         if (BatchCode?.Trim().Length > 80) errors[nameof(BatchCode)] = ["کد بچ حداکثر ۸۰ کاراکتر است."];
         if (string.IsNullOrWhiteSpace(Supplier)) errors[nameof(Supplier)] = ["نام تأمین‌کننده الزامی است."];
         if (Supplier?.Trim().Length > 200) errors[nameof(Supplier)] = ["نام تأمین‌کننده حداکثر ۲۰۰ کاراکتر است."];

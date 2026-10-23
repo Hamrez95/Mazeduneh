@@ -1,9 +1,12 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { DemoProduct } from "./demo/catalog";
 import { rialsToTomans } from "./formatters";
+import { API_BASE } from "./api-catalog";
+import { defaultShippingMethod, estimateCommerce, parseCommerceSettings, previewCommerceSettings, type PublicCommerceSettings } from "./commerce-settings";
+import { useCatalog } from "./catalog-context";
 
 export type CartLine = DemoProduct & { quantity: number };
 type CartValue = {
@@ -13,6 +16,12 @@ type CartValue = {
   subtotal: number;
   shipping: number;
   total: number;
+  tax: number;
+  commerce: PublicCommerceSettings | null;
+  pricingReady: boolean;
+  pricingLoading: boolean;
+  freeShippingLimit: number | null;
+  refreshPricing: () => void;
   add: (product: DemoProduct) => void;
   change: (key: string, delta: number) => void;
   remove: (key: string) => void;
@@ -21,8 +30,6 @@ type CartValue = {
 
 const CartContext = createContext<CartValue | null>(null);
 const storageKey = "mazedooneh-cart-v1";
-const freeShippingLimit = 1_500_000;
-const shippingFee = 75_000;
 
 function normalizeStoredCart(value: unknown): CartLine[] {
   if (!Array.isArray(value)) return [];
@@ -31,13 +38,16 @@ function normalizeStoredCart(value: unknown): CartLine[] {
     const item = line as Record<string, unknown>;
     if (typeof item.id === "string" && typeof item.title === "string") {
       const quantity = Number(item.quantity);
-      return Number.isFinite(quantity) && quantity > 0 ? [{ ...item, quantity } as CartLine] : [];
+      const price = Number(item.price);
+      const stock = Number(item.stock);
+      return Number.isSafeInteger(quantity) && quantity > 0 && Number.isFinite(price) && price >= 0 && Number.isSafeInteger(stock) && stock >= 0
+        ? [{ ...item, quantity, price, stock } as CartLine] : [];
     }
     if (typeof item.sku === "string" && typeof item.productTitle === "string") {
       const quantity = Number(item.quantity);
       const unitPrice = Number(item.unitPrice);
       const stock = Number(item.maxQuantity);
-      if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || !Number.isFinite(stock)) return [];
+      if (!Number.isSafeInteger(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isSafeInteger(stock) || stock < 0) return [];
       const variantLabel = typeof item.variantLabel === "string" ? item.variantLabel : "بستهٔ انتخابی";
       return [{
         id: typeof item.productSlug === "string" && item.productSlug ? item.productSlug : item.sku,
@@ -60,8 +70,39 @@ function normalizeStoredCart(value: unknown): CartLine[] {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { products, status: catalogStatus } = useCatalog();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [ready, setReady] = useState(false);
+  const [commerce, setCommerce] = useState<PublicCommerceSettings | null>(API_BASE ? null : previewCommerceSettings);
+  const [pricingLoading, setPricingLoading] = useState(Boolean(API_BASE));
+  const pricingRequest = useRef<AbortController | null>(null);
+  const refreshPricing = useCallback(() => {
+    if (!API_BASE) return;
+    pricingRequest.current?.abort();
+    const controller = new AbortController();
+    pricingRequest.current = controller;
+    setPricingLoading(true);
+    fetch(`${API_BASE}/api/v1/commerce/shipping-methods`, { cache: "no-store", signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error("commerce-settings");
+        const settings = parseCommerceSettings(await response.json());
+        if (!settings) throw new Error("commerce-settings");
+        if (!controller.signal.aborted) setCommerce(settings);
+      })
+      .catch(() => { if (!controller.signal.aborted) setCommerce(null); })
+      .finally(() => { if (!controller.signal.aborted) setPricingLoading(false); });
+  }, []);
+
+  useEffect(() => {
+    refreshPricing();
+    window.addEventListener("focus", refreshPricing);
+    window.addEventListener("online", refreshPricing);
+    return () => {
+      pricingRequest.current?.abort();
+      window.removeEventListener("focus", refreshPricing);
+      window.removeEventListener("online", refreshPricing);
+    };
+  }, [refreshPricing]);
 
   useEffect(() => {
     const readStoredCart = () => {
@@ -75,27 +116,62 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setReady(true);
     };
     readStoredCart();
+    const syncOtherTab = (event: StorageEvent) => {
+      if (event.key === storageKey || event.key === null) readStoredCart();
+    };
     window.addEventListener("mazeduneh-cart-updated", readStoredCart);
-    return () => window.removeEventListener("mazeduneh-cart-updated", readStoredCart);
+    window.addEventListener("storage", syncOtherTab);
+    return () => {
+      window.removeEventListener("mazeduneh-cart-updated", readStoredCart);
+      window.removeEventListener("storage", syncOtherTab);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!ready || catalogStatus !== "live") return;
+    setCart(current => {
+      let changed = false;
+      const updated = current.map(line => {
+        const product = products.find(item => item.id === line.id);
+        const variant = product?.variants?.find(item => item.sku === line.sku);
+        const stock = variant?.stock ?? (line.sku ? 0 : product?.stock ?? 0);
+        const price = variant?.price ?? line.price;
+        if (price === line.price && stock === line.stock) return line;
+        changed = true;
+        return { ...line, price, stock };
+      });
+      return changed ? updated : current;
+    });
+  }, [ready, products, catalogStatus]);
 
   useEffect(() => {
     if (ready) window.localStorage.setItem(storageKey, JSON.stringify(cart));
   }, [cart, ready]);
 
-  const clear = useCallback(() => setCart([]), []);
+  const clear = useCallback(() => {
+    window.localStorage.removeItem(storageKey);
+    setCart([]);
+  }, []);
 
   const value = useMemo<CartValue>(() => {
     const count = cart.reduce((sum, line) => sum + line.quantity, 0);
     const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
-    const shipping = subtotal === 0 || subtotal >= freeShippingLimit ? 0 : shippingFee;
+    const estimate = estimateCommerce(subtotal, commerce);
+    const shipping = estimate?.shipping ?? 0;
+    const method = defaultShippingMethod(commerce);
     return {
       cart,
       ready,
       count,
       subtotal,
       shipping,
-      total: subtotal + shipping,
+      total: estimate?.total ?? subtotal,
+      tax: estimate?.tax ?? 0,
+      commerce,
+      pricingReady: Boolean(estimate) && !pricingLoading,
+      pricingLoading,
+      freeShippingLimit: method && method.freeAbove > 0 ? method.freeAbove / 10 : null,
+      refreshPricing,
       add(product) {
         if (!ready || product.stock <= 0) return;
         setCart((current) => {
@@ -105,19 +181,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
           const found = current.find(matchesProduct);
           if (!found) return [...current, { ...product, quantity: 1 }];
           return current.map((line) => matchesProduct(line)
-            ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) }
+            ? { ...line, ...product, quantity: Math.min(line.quantity + 1, product.stock) }
             : line);
         });
       },
       change(key, delta) {
         setCart((current) => current
-          .map((line) => (line.sku ?? line.id) === key ? { ...line, quantity: Math.max(0, Math.min(line.quantity + delta, line.stock)) } : line)
+          .map((line) => (line.sku ?? line.id) === key ? { ...line, quantity: delta > 0 ? Math.max(line.quantity, Math.min(line.quantity + delta, line.stock)) : Math.max(0, line.quantity + delta) } : line)
           .filter((line) => line.quantity > 0));
       },
       remove(key) { setCart((current) => current.filter((line) => (line.sku ?? line.id) !== key)); },
       clear,
     };
-  }, [cart, clear, ready]);
+  }, [cart, clear, ready, commerce, pricingLoading, refreshPricing]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

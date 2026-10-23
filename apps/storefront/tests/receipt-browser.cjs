@@ -63,7 +63,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
           intentRequests++;
           await route.fulfill({ status: 503, headers, body: JSON.stringify({ message: 'درگاه موقتاً در دسترس نیست.' }) });
         } else {
-          const body = path.endsWith('/shipping-methods') ? { shippingMethods: [] }
+          const body = path.endsWith('/shipping-methods') ? { taxRatePercent: 0, shippingMethods: [{ code: 'post', title: 'پست', price: 750000, freeAbove: 15000000, isActive: true }] }
             : path.endsWith('/coupon-preview') ? { discount: 0, shipping: 750000, tax: 0, payable: 6050001 } : [];
           await route.fulfill({ headers, body: JSON.stringify(body) });
         }

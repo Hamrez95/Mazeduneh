@@ -173,7 +173,7 @@ public static class OrderManagementModule
             var errors = new Dictionary<string, string[]>();
             if (string.IsNullOrWhiteSpace(input.Title) || input.Title.Trim().Length > 160)
                 errors[nameof(input.Title)] = ["عنوان هزینه باید بین ۱ تا ۱۶۰ نویسه باشد."];
-            if (input.Amount is <= 0 or > 1_000_000_000_000)
+            if (input.Amount <= 0 || !MoneyAmount.IsNonNegative(input.Amount))
                 errors[nameof(input.Amount)] = ["مبلغ هزینه باید بیشتر از صفر و حداکثر یک‌هزار میلیارد ریال باشد."];
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             var principal = (AdminPrincipal?)context.Items["AdminPrincipal"];
