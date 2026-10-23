@@ -144,9 +144,9 @@ async function ready() {
       }
       await page.goto(origin + '/contact');
       assert.ok(await page.getByRole('link', { name: 'تلگرام', exact: true }).count() >= 2);
-      assert.ok(await page.getByRole('link', { name: 'باز کردن بله', exact: true }).count() >= 2);
+      assert.ok(await page.getByRole('link', { name: 'بله', exact: true }).count() >= 2);
       assert.equal(await page.getByRole('link', { name: 'تلگرام', exact: true }).first().getAttribute('href'), 'https://t.me/+9893339870210');
-      assert.equal(await page.getByRole('link', { name: 'باز کردن بله', exact: true }).first().getAttribute('href'), 'https://web.bale.ai/');
+      assert.equal(await page.getByRole('link', { name: 'بله', exact: true }).first().getAttribute('href'), 'https://ble.ir/mazeduneh');
       assert.equal(/09339870210|۰۹۳۳۹۸۷۰۲۱۰|9893339870210/.test(await page.locator('body').innerText()), false, 'support number must never be displayed');
       assert.equal(await page.getByRole('dialog').count(), 0);
       records = [];

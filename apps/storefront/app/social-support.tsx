@@ -1,7 +1,7 @@
 import styles from "./social-support.module.css";
 
 export const telegramSupportUrl = "https://t.me/+9893339870210";
-const baleSupportUrl = process.env.NEXT_PUBLIC_MAZEDUNEH_BALE_SUPPORT_URL || "https://web.bale.ai/";
+export const baleSupportUrl = "https://ble.ir/mazeduneh";
 
 function MessageIcon({ telegram = false }: { telegram?: boolean }) {
   return <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -12,6 +12,6 @@ function MessageIcon({ telegram = false }: { telegram?: boolean }) {
 export function SocialSupport() {
   return <div className={styles.links} aria-label="پیام به مزه‌دونه">
     <a className={styles.link} href={telegramSupportUrl} target="_blank" rel="noopener noreferrer"><MessageIcon telegram />تلگرام</a>
-    <a className={styles.link} href={baleSupportUrl} target="_blank" rel="noopener noreferrer"><MessageIcon />{process.env.NEXT_PUBLIC_MAZEDUNEH_BALE_SUPPORT_URL ? "بله" : "باز کردن بله"}</a>
+    <a className={styles.link} href={baleSupportUrl} target="_blank" rel="noopener noreferrer"><MessageIcon />بله</a>
   </div>;
 }
