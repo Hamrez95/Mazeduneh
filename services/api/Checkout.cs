@@ -236,6 +236,7 @@ public sealed record CheckoutRequest(string CustomerName, string Mobile, string 
         if (string.IsNullOrWhiteSpace(PostalCode)) errors[nameof(PostalCode)] = ["کدپستی الزامی است."];
         if (string.IsNullOrWhiteSpace(ShippingMethod)) errors[nameof(ShippingMethod)] = ["روش ارسال را انتخاب کنید."];
         if (Lines is null || Lines.Count == 0) errors[nameof(Lines)] = ["سبد خرید خالی است."];
+        else if (Lines.Any(line => line is null)) errors[nameof(Lines)] = ["اطلاعات ردیف‌های سبد معتبر نیست."];
         else
         {
             if (Lines.Count > 30) errors[nameof(Lines)] = ["حداکثر ۳۰ ردیف کالا مجاز است."];

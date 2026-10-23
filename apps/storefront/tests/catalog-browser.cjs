@@ -41,6 +41,7 @@ async function ready() {
       page.on('pageerror', (error) => errors.push(error.message));
       let records = [product('live-nut', 'پسته پنل'), product('live-almond', 'بادام پنل', 0)];
       let orderRequests = 0;
+      let lastCheckout = null;
       records[0].variants[0].price = 2000000;
       records[0].variants.push({ sku: 'LIVE-NUT-500', quantity: 500, displayLabel: '۵۰۰ گرم', price: 3800000, availablePackages: 2 });
       let failing = false;
@@ -48,13 +49,14 @@ async function ready() {
         const path = new URL(route.request().url()).pathname;
         if (path === '/api/v1/checkout/orders') {
           orderRequests++;
+          lastCheckout = route.request().postDataJSON();
           await delay(500);
           await route.fulfill({ status: 201, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
             body: JSON.stringify({ id: 'order-test', receiptToken: 'receipt-test', payable: 8250000, tax: 0, shipping: 750000, shippingMethod: 'post', state: 'AwaitingPayment', reservationExpiresAt: '2026-10-20T12:00:00Z' }) });
           return;
         }
         const body = path.endsWith('/categories') ? (records.length ? [{ name: 'دسته پنل', isActive: true }] : [])
-          : path.endsWith('/shipping-methods') ? { shippingMethods: [{ code: 'post', title: 'پست', price: 75000, freeAbove: 1500000, isActive: true }] }
+          : path.endsWith('/shipping-methods') ? { taxRatePercent: 9.5, shippingMethods: [{ code: 'post', title: 'پست', price: 321000, freeAbove: 9000000, isActive: true }, { code: 'pickup', title: 'تحویل حضوری', price: 0, freeAbove: 0, isActive: true }] }
           : path.endsWith('/coupon-preview') ? { discount: 0, shipping: 750000, tax: 0, payable: 8250000 }
           : path.endsWith('/products') ? records : records.find((item) => path.endsWith('/' + item.slug));
         await route.fulfill({ status: failing ? 503 : body ? 200 : 404,
@@ -118,19 +120,34 @@ async function ready() {
         assert.equal(await page.getByText('بررسی پیشنهادهای خودکار', { exact: true }).count(), 0);
         assert.equal(await page.getByText('ارسال پستی برای این مرحله در نظر گرفته شده است.', { exact: true }).count(), 0);
         await page.getByLabel('نام و نام خانوادگی').fill('مشتری آزمایشی');
-        await page.getByLabel('شماره موبایل').fill('09120000000');
+        await page.getByLabel('شماره موبایل').fill('۰۹۱۲۰۰۰۰۰۰۰');
+        assert.equal(await page.getByLabel('شماره موبایل').evaluate(el => el.checkValidity()), true);
         await page.getByLabel('استان').selectOption({ label: 'تهران' });
         await page.getByLabel('شهر').fill('تهران');
         await page.getByLabel('نشانی کامل').fill('خیابان نمونه، پلاک ۱');
         await page.getByLabel('روش ارسال').selectOption('post');
-        await page.getByLabel('کد پستی').fill('1234567890');
+        await page.getByLabel('کد پستی').fill('۱۲۳۴۵۶۷۸۹۰');
         const submitButton = page.getByRole('button', { name: /ثبت سفارش و بررسی مبلغ نهایی/ });
         await submitButton.click();
         await page.getByRole('heading', { name: /سفارش ثبت شد/ }).waitFor();
         assert.equal(orderRequests, 1, 'one active checkout submission creates one order');
+        assert.equal(lastCheckout.mobile, '09120000000');
+        assert.equal(lastCheckout.postalCode, '1234567890');
       }
 
 
+      for (const route of ['/contact', '/returns', '/privacy', '/terms', '/profile', '/shipping']) {
+        await page.goto(origin + route);
+        await page.getByRole('heading', { level: 1 }).waitFor();
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${route} overflow at ${width}`);
+        assert.equal(await page.locator('a[href^="tel:"], a[href^="mailto:"]').count(), 0);
+      }
+      await page.goto(origin + '/contact');
+      await page.getByRole('button', { name: 'بله', exact: true }).first().click();
+      await page.getByRole('dialog').waitFor();
+      assert.equal(await page.getByLabel('شمارهٔ مزه‌دونه در بله').first().inputValue(), '09339870210');
+      await page.keyboard.press('Escape');
+      assert.equal(await page.getByRole('dialog').count(), 0);
       records = [];
       await page.goto(origin);
       await page.getByText('محصولی در این دسته پیدا نشد.', { exact: true }).waitFor();

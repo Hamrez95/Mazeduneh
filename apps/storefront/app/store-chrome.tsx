@@ -7,6 +7,7 @@ import { ProductArtwork } from "./demo/ProductArtwork";
 import { useCart } from "./cart-context";
 import styles from "./store-pages.module.css";
 import { useCatalog } from "./catalog-context";
+import { SocialSupport } from "./social-support";
 
 function CartGlyph() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
@@ -27,7 +28,7 @@ export function BrandLogo({ light = false }: { light?: boolean }) {
 
 export function StoreHeader() {
   const { categories: catalogCategories } = useCatalog();
-  const { count, ready } = useCart();
+  const { count, ready, freeShippingLimit, pricingReady } = useCart();
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const router = useRouter();
@@ -37,7 +38,7 @@ export function StoreHeader() {
   }
   return (
     <>
-      <div className={styles.announcement}>ارسال رایگان برای سفارش‌های بالای ۱٬۵۰۰٬۰۰۰ تومان <span>·</span> آماده‌سازی تازه و روزانه</div>
+      <div className={styles.announcement}>{pricingReady && freeShippingLimit ? `ارسال رایگان از ${toman(freeShippingLimit)} تومان با روش ارسال پیش‌فرض` : "خوش‌خوراکِ هر روز"} <span>·</span> آماده‌سازی تازه و روزانه</div>
       <header className={styles.siteHeader}>
         <BrandLogo />
         <button className={styles.menuToggle} type="button" aria-expanded={menuOpen} aria-label={menuOpen ? "بستن فهرست" : "باز کردن فهرست"} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? "×" : "☰"}</button>
@@ -52,7 +53,7 @@ export function StoreHeader() {
         </nav>
         <div className={styles.headerActions}>
           <form className={styles.search} onSubmit={search} role="search"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="دنبال چه مزه‌ای هستی؟" aria-label="جست‌وجوی محصولات" /><button aria-label="جست‌وجو">⌕</button></form>
-          <a href="/profile" className={styles.accountLink} aria-label="حساب کاربری"><UserGlyph /><em>حساب کاربری</em></a>
+          <a href="/profile" className={styles.accountLink} aria-label="پیگیری سفارش"><UserGlyph /><em>پیگیری سفارش</em></a>
           <a href="/cart" className={styles.cartLink} aria-label={ready ? `سبد خرید، ${count} کالا` : "در حال بارگذاری سبد خرید"}><span className={styles.cartGlyph}><CartGlyph /></span><em>سبد خرید</em><b>{ready ? toman(count) : "…"}</b></a>
         </div>
       </header>
@@ -68,8 +69,8 @@ export function StoreFooter() {
     <div className={styles.footerMain}>
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a>{catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`}>{name}</a>)}</div>
-      <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">تماس با ما</a></div>
-      <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><span>پشتیبانی: هر روز، ۹ تا ۱۸</span><span>نسخهٔ نمایشی؛ سفارش و پرداخت واقعی فعال نیست.</span></div>
+      <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">پیام به مزه‌دونه</a><a href="/privacy">حریم خصوصی</a><a href="/terms">شرایط خرید</a></div>
+      <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><SocialSupport /></div>
     </div>
     <div className={styles.copyright}>© مزه‌دونه · خوش‌خوراکِ هر روز</div>
   </footer>;

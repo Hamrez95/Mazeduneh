@@ -70,25 +70,29 @@ public sealed record CreateProductRequest(string Title, string Slug, string Cate
         if (string.IsNullOrWhiteSpace(Slug)) errors[nameof(Slug)] = ["شناسه آدرس محصول الزامی است."];
         if (string.IsNullOrWhiteSpace(Category)) errors[nameof(Category)] = ["دسته‌بندی محصول الزامی است."];
         if (string.IsNullOrWhiteSpace(Origin)) errors[nameof(Origin)] = ["مبدأ یا برند محصول الزامی است."];
-        if (string.IsNullOrWhiteSpace(Currency)) errors[nameof(Currency)] = ["واحد پول الزامی است."];
-        if (!Enum.TryParse<ProductUnitType>(UnitType, true, out _)) errors[nameof(UnitType)] = ["نوع واحد باید Weight یا Count باشد."];
+        if (!string.Equals(Currency?.Trim(), "IRR", StringComparison.OrdinalIgnoreCase)) errors[nameof(Currency)] = ["مبالغ کالا باید با واحد ریال (IRR) ثبت شوند."];
+        if (!Enum.TryParse<ProductUnitType>(UnitType, true, out var parsedUnit) || !Enum.IsDefined(parsedUnit)) errors[nameof(UnitType)] = ["نوع واحد باید Weight یا Count باشد."];
         if (Variants is null || Variants.Count == 0) { errors[nameof(Variants)] = ["حداقل یک بسته قابل فروش الزامی است."]; return errors; }
+        if (Variants.Any(item => item is null)) { errors[nameof(Variants)] = ["اطلاعات بسته‌ها نباید خالی باشد."]; return errors; }
         var duplicates = Variants.Where(item => !string.IsNullOrWhiteSpace(item.Sku)).GroupBy(item => item.Sku.Trim(), StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
         if (duplicates.Length > 0) errors["Variants.Sku"] = [$"کدهای کالا تکراری هستند: {string.Join("، ", duplicates)}"];
         for (var index = 0; index < Variants.Count; index++)
         {
             var item = Variants.ElementAt(index);
-            if (string.IsNullOrWhiteSpace(item.Sku)) errors[$"Variants[{index}].Sku"] = ["کد کالا الزامی است."];
+            if (string.IsNullOrWhiteSpace(item.Sku) || item.Sku.Trim().Length > 100) errors[$"Variants[{index}].Sku"] = ["کد کالا باید بین ۱ تا ۱۰۰ نویسه باشد."];
             if (string.IsNullOrWhiteSpace(item.DisplayLabel)) errors[$"Variants[{index}].DisplayLabel"] = ["عنوان بسته الزامی است."];
-            if (item.Quantity <= 0) errors[$"Variants[{index}].Quantity"] = ["مقدار بسته باید بیشتر از صفر باشد."];
-            if (item.Price < 0) errors[$"Variants[{index}].Price"] = ["قیمت نمی‌تواند منفی باشد."];
+            if (item.Quantity <= 0 || item.Quantity >= 1_000_000_000m || item.Quantity != decimal.Round(item.Quantity, 3)
+                || (parsedUnit == ProductUnitType.Count && item.Quantity != decimal.Truncate(item.Quantity)))
+                errors[$"Variants[{index}].Quantity"] = ["مقدار بسته معتبر نیست؛ تعداد باید عدد کامل و وزن حداکثر سه رقم اعشار باشد."];
+            if (!MoneyAmount.IsNonNegative(item.Price)) errors[$"Variants[{index}].Price"] = ["قیمت معتبر نیست؛ مبلغ ریالی باید غیرمنفی، حداکثر یک‌هزار میلیارد و با حداکثر دو رقم اعشار باشد."];
             if (item.AvailablePackages < 0) errors[$"Variants[{index}].AvailablePackages"] = ["موجودی نمی‌تواند منفی باشد."];
-            if (item.CostPrice < 0) errors[$"Variants[{index}].CostPrice"] = ["قیمت تمام‌شده نمی‌تواند منفی باشد."];
-            if (item.PackagingCost < 0) errors[$"Variants[{index}].PackagingCost"] = ["هزینه بسته‌بندی نمی‌تواند منفی باشد."];
-            if (item.AdditionalCost < 0) errors[$"Variants[{index}].AdditionalCost"] = ["هزینه جانبی نمی‌تواند منفی باشد."];
+            if (!MoneyAmount.IsNonNegative(item.CostPrice)) errors[$"Variants[{index}].CostPrice"] = ["قیمت تمام‌شده معتبر نیست."];
+            if (!MoneyAmount.IsNonNegative(item.PackagingCost)) errors[$"Variants[{index}].PackagingCost"] = ["هزینه بسته‌بندی معتبر نیست."];
+            if (!MoneyAmount.IsNonNegative(item.AdditionalCost)) errors[$"Variants[{index}].AdditionalCost"] = ["هزینه جانبی معتبر نیست."];
         }
         return errors;
     }
+
 }
 
 public sealed record CreateProductVariantRequest(string Sku, decimal Quantity, string DisplayLabel, decimal Price, int AvailablePackages, decimal CostPrice = 0, decimal PackagingCost = 0, decimal AdditionalCost = 0);

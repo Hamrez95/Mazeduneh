@@ -50,7 +50,7 @@ def start_api(permissions=None):
                         'email': os.environ['Admin__Email'], 'password': 'Mazeduneh-CI-Owner-Password!'})
                     assert status == 200
                     return process, login['accessToken']
-            except (URLError, TimeoutError):
+            except (URLError, TimeoutError, ConnectionError):
                 pass
             time.sleep(1)
         raise AssertionError('Privacy test API did not become ready')
@@ -211,7 +211,7 @@ with tempfile.TemporaryFile() as log:
                 status, processing_orders = request('/api/v1/admin/orders?state=Processing&q=' + order_id, token=token)
                 assert status == 200 and len(processing_orders) == 1 and processing_orders[0]['state'] == 'Preparing'
         subprocess.run(['dotnet', 'run', '--project', 'services/api.tests/Mazeduneh.Api.Tests.csproj',
-                        '--configuration', 'Release', '--', '--backdate-privacy-shipment', order_id],
+                        '--configuration', 'Release', '--no-build', '--', '--backdate-privacy-shipment', order_id],
                        cwd=ROOT, env=dict(os.environ, MAZEDUNEH_TEST_FIXTURES='true'), check=True)
         assert any(row['id'] == order_id for row in request('/api/v1/admin/shipping/overdue', token=token)[1])
         for endpoint in [path + '/invoice', path + '/packing-slip']:

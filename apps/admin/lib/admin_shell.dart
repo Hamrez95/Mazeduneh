@@ -485,10 +485,12 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   Widget _countPill(int count, {bool compact = false}) => Container(
-    constraints: BoxConstraints(
-      minWidth: compact ? 17 : 22,
-      minHeight: compact ? 17 : 20,
-    ),
+    // A ListTile trailing child gets a loose full-width constraint. Bound the
+    // badge so its alignment cannot consume the navigation label's width.
+    width: (count > 99 ? 36.0 : count > 9 ? 30.0 : 22.0) *
+        MediaQuery.textScalerOf(context).scale(10) / 10,
+    height: (compact ? 18.0 : 22.0) *
+        MediaQuery.textScalerOf(context).scale(10) / 10,
     padding: EdgeInsets.symmetric(horizontal: compact ? 4 : 6, vertical: 1),
     alignment: Alignment.center,
     decoration: BoxDecoration(
