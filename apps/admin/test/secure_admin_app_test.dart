@@ -148,6 +148,9 @@ void main() {
   testWidgets('login reveals a TOTP field only after the server requests MFA', (tester) async {
     var sawCode = false;
     await pumpApp(tester, MockClient((request) async {
+      if (request.url.path.endsWith('/google/config')) {
+        return http.Response('{"enabled":false}', 200);
+      }
       if (request.url.path.endsWith('/session')) return identity();
       if (request.url.path.endsWith('/login')) {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
@@ -164,11 +167,13 @@ void main() {
     expect(find.text('کد تأیید دومرحله‌ای'), findsNothing);
     await tester.enterText(find.byType(TextFormField).at(0), 'owner@example.test');
     await tester.enterText(find.byType(TextFormField).at(1), 'password');
+    await tester.ensureVisible(find.text('ورود به پنل'));
     await tester.tap(find.text('ورود به پنل'));
     await tester.pumpAndSettle();
     expect(find.text('کد تأیید دومرحله‌ای'), findsOneWidget);
 
     await tester.enterText(find.byType(TextFormField).at(2), '123456');
+    await tester.ensureVisible(find.text('ورود به پنل'));
     await tester.tap(find.text('ورود به پنل'));
     await tester.pumpAndSettle();
     expect(sawCode, isTrue);
@@ -182,8 +187,14 @@ void main() {
       await pumpApp(
         tester,
         MockClient(
-          (request) async =>
-              request.url.path.endsWith('/login') ? login() : validation.future,
+          (request) async {
+            if (request.url.path.endsWith('/google/config')) {
+              return http.Response('{"enabled":false}', 200);
+            }
+            return request.url.path.endsWith('/login')
+                ? login()
+                : validation.future;
+          },
         ),
       );
       await tester.enterText(
