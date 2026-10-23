@@ -8,6 +8,9 @@ const nextConfig = {
   images: {
     unoptimized: process.env.MAZEDUNEH_STATIC_EXPORT === 'true',
   },
+  // Keep Next.js development status indicators out of the storefront UI.
+  // Build and runtime errors remain visible in the browser overlay.
+  devIndicators: false,
   poweredByHeader: false,
 };
 
