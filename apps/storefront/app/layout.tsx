@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   },
   description:
     "فروشگاه آنلاین آجیل، خشکبار، میوه خشک و هدیه‌های خوش‌طعم با انتخاب شفاف و ارسال مطمئن.",
+  other: {
+    enamad: "23492933",
+  },
   openGraph: {
     type: "website",
     locale: "fa_IR",
