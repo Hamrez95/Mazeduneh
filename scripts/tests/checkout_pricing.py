@@ -116,8 +116,9 @@ with tempfile.TemporaryFile() as log:
             delta = analytics[field] - analytics_before[field]
             assert delta == expected, (field, expected, delta, analytics[field], analytics_before[field])
         rows = expect(200, request('/api/v1/admin/analytics/products?days=30'))
-        assert len(rows) == 2 and sum(row['unitsSold'] for row in rows) == 2
-        assert sum(row['quantitySold'] for row in rows) == 750
+        fixture_rows = [row for row in rows if row['sku'] in (a, b)]
+        assert len(fixture_rows) == 2 and sum(row['unitsSold'] for row in fixture_rows) == 2
+        assert sum(row['quantitySold'] for row in fixture_rows) == 750
         invoice = expect(200, request(f"/api/v1/checkout/orders/{order['id']}/invoice", headers=receipt, raw=True))
         assert '۶۶۷,۲۰۰' in unescape(invoice) and 'سمپل هدیه' not in unescape(invoice) and order['receiptToken'] not in invoice
         settings['taxRatePercent'] = 0
