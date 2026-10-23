@@ -15,6 +15,24 @@ class AuthApiException implements Exception {
   String toString() => message;
 }
 
+class AdminGoogleAuthConfig {
+  const AdminGoogleAuthConfig({required this.enabled, this.clientId});
+  final bool enabled;
+  final String? clientId;
+}
+
+class AdminGoogleAuthChallenge {
+  const AdminGoogleAuthChallenge({required this.id, required this.nonce});
+  final String id;
+  final String nonce;
+}
+
+class AdminGoogleLoginResult {
+  const AdminGoogleLoginResult({required this.status, this.email});
+  final String status;
+  final String? email;
+}
+
 class AuthApiClient {
   AuthApiClient({http.Client? client, String? baseUrl, String? storeId})
     : _client = client ?? http.Client(),
@@ -53,9 +71,134 @@ class AuthApiClient {
 
     final body =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    await _establishSession(
+      body,
+      emailFallback: email.trim(),
+      revision: revision,
+    );
+  }
+
+  Future<AdminGoogleAuthConfig> googleAuthConfig() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/admin/auth/google/config'),
+    );
+    if (response.statusCode != 200) {
+      throw AuthApiException(
+        _googleMessage(response),
+        statusCode: response.statusCode,
+      );
+    }
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    return AdminGoogleAuthConfig(
+      enabled: body['enabled'] == true,
+      clientId: body['clientId'] as String?,
+    );
+  }
+
+  Future<AdminGoogleAuthChallenge> createGoogleAuthChallenge() async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/auth/google/challenge'),
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+      body: '{}',
+    );
+    if (response.statusCode != 200) {
+      throw AuthApiException(
+        _googleMessage(response),
+        statusCode: response.statusCode,
+      );
+    }
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final id = body['challengeId'] as String?;
+    final nonce = body['nonce'] as String?;
+    if (id == null || nonce == null || id.isEmpty || nonce.isEmpty) {
+      throw AuthApiException('آماده‌سازی ورود با گوگل کامل نشد.');
+    }
+    return AdminGoogleAuthChallenge(id: id, nonce: nonce);
+  }
+
+  Future<AdminGoogleLoginResult> loginWithGoogle({
+    required String credential,
+    required String challengeId,
+    String? password,
+    String? mfaCode,
+  }) async {
+    OwnerSession.instance.clear();
+    final revision = OwnerSession.instance.revision;
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/auth/google/login'),
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+      body: jsonEncode({
+        'credential': credential,
+        'challengeId': challengeId,
+        'storeId': storeId,
+        if (password != null && password.isNotEmpty) 'password': password,
+        if (mfaCode != null && mfaCode.trim().isNotEmpty)
+          'mfaCode': _asciiDigits(mfaCode.trim()),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw AuthApiException(
+        _googleMessage(response),
+        statusCode: response.statusCode,
+      );
+    }
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final status = body['status'] as String?;
+    if (status == 'link_required') {
+      return AdminGoogleLoginResult(
+        status: status!,
+        email: body['email'] as String?,
+      );
+    }
+    if (status != 'authenticated')
+      throw AuthApiException('پاسخ ورود گوگل کامل نیست.');
+    await _establishSession(body, emailFallback: '', revision: revision);
+    return const AdminGoogleLoginResult(status: 'authenticated');
+  }
+
+  Future<void> acceptInvitationWithGoogle({
+    required String credential,
+    required String challengeId,
+    required String invitationToken,
+    String? mfaCode,
+  }) async {
+    OwnerSession.instance.clear();
+    final revision = OwnerSession.instance.revision;
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/admin/auth/google/accept-invite'),
+      headers: const {'content-type': 'application/json; charset=utf-8'},
+      body: jsonEncode({
+        'credential': credential,
+        'challengeId': challengeId,
+        'invitationToken': invitationToken,
+        if (mfaCode != null && mfaCode.trim().isNotEmpty)
+          'mfaCode': _asciiDigits(mfaCode.trim()),
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw AuthApiException(
+        _googleMessage(response),
+        statusCode: response.statusCode,
+      );
+    }
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (body['status'] != 'authenticated')
+      throw AuthApiException('پذیرش دعوت با گوگل کامل نشد.');
+    await _establishSession(body, emailFallback: '', revision: revision);
+  }
+
+  Future<void> _establishSession(
+    Map<String, dynamic> body, {
+    required String emailFallback,
+    required int revision,
+  }) async {
     final token = body['accessToken'] as String?;
     final expiresAtRaw = body['expiresAt'] as String?;
-    final ownerEmail = body['email'] as String? ?? email.trim();
+    final ownerEmail = body['email'] as String? ?? emailFallback;
     final role = body['role'] as String? ?? 'Owner';
     final permissions = _stringList(body['permissions']);
     final loginStoreId = body['storeId'] as String? ?? 'default';
@@ -69,7 +212,7 @@ class AuthApiClient {
       );
     }
 
-    // Do not publish provisional credentials or build protected pages until validated.
+    // Keep the token provisional until the API confirms the issued session.
     final identity = await _readSession(token);
     final authenticatedStoreId = identity['storeId'] as String?;
     if (authenticatedStoreId == null || authenticatedStoreId != storeId) {
@@ -82,8 +225,9 @@ class AuthApiClient {
     if (expiry == null || !expiry.isAfter(DateTime.now().toUtc())) {
       throw AuthApiException('نشست دریافتی معتبر نیست.');
     }
-    if (OwnerSession.instance.revision != revision)
+    if (OwnerSession.instance.revision != revision) {
       throw AuthApiException('درخواست ورود پایان یافته است؛ دوباره تلاش کنید.');
+    }
     OwnerSession.instance.establish(
       accessToken: token,
       expiresAt: expiry,
@@ -346,6 +490,25 @@ class AuthApiClient {
   static String _normalizeStoreId(String value) {
     final normalizedStoreId = value.trim();
     return normalizedStoreId.isEmpty ? 'default' : normalizedStoreId;
+  }
+
+  String _googleMessage(http.Response response) {
+    if (response.statusCode == 428) return 'کد تأیید دومرحله‌ای را وارد کنید.';
+    if (response.statusCode == 429)
+      return 'تلاش‌های ورود زیاد بود؛ کمی بعد دوباره امتحان کنید.';
+    try {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      if (body is Map<String, dynamic> && body['message'] is String) {
+        final message = (body['message'] as String).trim();
+        if (message.isNotEmpty) return message;
+      }
+      if (body is Map<String, dynamic> && body['detail'] is String) {
+        final detail = (body['detail'] as String).trim();
+        if (detail.isNotEmpty) return detail;
+      }
+    } catch (_) {}
+    if (response.statusCode == 401) return 'پاسخ گوگل یا رمز حساب صحیح نیست.';
+    return _message(response);
   }
 
   String _message(http.Response response) {

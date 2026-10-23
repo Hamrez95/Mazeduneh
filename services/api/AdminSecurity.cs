@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
+using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading.RateLimiting;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
 
@@ -24,6 +27,20 @@ public static class AdminSecurityExtensions
             options.AddFixedWindowLimiter("admin-login", limiter =>
             {
                 limiter.PermitLimit = 5;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+                limiter.AutoReplenishment = true;
+            });
+            options.AddFixedWindowLimiter("admin-google-login", limiter =>
+            {
+                limiter.PermitLimit = 5;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+                limiter.AutoReplenishment = true;
+            });
+            options.AddFixedWindowLimiter("admin-google-challenge", limiter =>
+            {
+                limiter.PermitLimit = 20;
                 limiter.Window = TimeSpan.FromMinutes(1);
                 limiter.QueueLimit = 0;
                 limiter.AutoReplenishment = true;
@@ -107,6 +124,131 @@ public static class AdminSecurityExtensions
             });
         })
         .RequireRateLimiting("admin-login")
+        .WithTags("Admin Auth");
+
+        endpoints.MapGet("/api/v1/admin/auth/google/config", (IConfiguration configuration, AdminUsersDatabase users) =>
+        {
+            var clientId = GetGoogleClientId(configuration, users);
+            return Results.Ok(new { enabled = clientId is not null, clientId });
+        })
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/google/challenge", async Task<IResult> (
+            IConfiguration configuration, AdminUsersDatabase users, CancellationToken cancellationToken) =>
+        {
+            if (GetGoogleClientId(configuration, users) is null) return GoogleAuthNotConfigured();
+            var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+                .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+            var challengeId = await users.CreateGoogleLoginChallengeAsync(nonce, cancellationToken);
+            return Results.Ok(new { challengeId, nonce });
+        })
+        .RequireRateLimiting("admin-google-challenge")
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/google/login", async Task<IResult> (
+            AdminGoogleLoginRequest request, IConfiguration configuration, AdminTokenService tokens,
+            AdminUsersDatabase users, CancellationToken cancellationToken) =>
+        {
+            var clientId = GetGoogleClientId(configuration, users);
+            if (clientId is null) return GoogleAuthNotConfigured();
+            if (!tokens.CanIssueTokens) return AdminTokenSigningUnavailable();
+            var validation = await ValidateGoogleIdentityAsync(request.Credential, clientId, cancellationToken);
+            if (validation.Failure is not null) return validation.Failure;
+            var identity = validation.Identity!;
+            if (request.ChallengeId == Guid.Empty ||
+                !await users.IsGoogleLoginChallengeValidAsync(request.ChallengeId, identity.Nonce, cancellationToken))
+                return GoogleChallengeInvalid();
+
+            var storeId = string.IsNullOrWhiteSpace(request.StoreId) ? "default" : request.StoreId.Trim();
+            if (storeId.Length > 120) return GoogleCredentialInvalid();
+            if (tokens.IsConfigured && storeId == "default" &&
+                string.Equals(identity.Email, tokens.OwnerEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                var ownerUserId = await users.FindOwnerMembershipIdAsync(tokens.OwnerEmail, cancellationToken);
+                if (ownerUserId is null)
+                    return Results.Problem(title: "نشست مدیر اصلی آماده نیست.", detail: "پیش از ورود، عضویت مدیر اصلی را با مرحلهٔ seed-admin ایجاد کنید.", statusCode: StatusCodes.Status503ServiceUnavailable);
+                var ownerMfaEnabled = (await users.GetMfaStatusAsync(ownerUserId.Value, "default", cancellationToken)).Enabled;
+                var ownerMfaFailure = ownerMfaEnabled
+                    ? await GetMembershipMfaFailureAsync(users, ownerUserId.Value, "default", request.MfaCode, cancellationToken)
+                    : await GetMfaFailureAsync(tokens, users, tokens.ConfiguredRole, request.MfaCode, cancellationToken);
+                if (ownerMfaFailure is not null) return ownerMfaFailure;
+                if (!await users.ConsumeGoogleLoginChallengeAsync(request.ChallengeId, identity.Nonce, cancellationToken))
+                    return GoogleChallengeInvalid();
+                var mfaVerified = ownerMfaEnabled || tokens.IsMfaRequiredForRole(tokens.ConfiguredRole);
+                var owner = tokens.Issue(identity.Email, ownerUserId, mfaVerified);
+                await users.CreateSessionAsync(ownerUserId.Value, "default", owner.SessionId, owner.ExpiresAt, cancellationToken);
+                return GoogleAuthenticated(owner, tokens.OwnerEmail, "default", mfaVerified);
+            }
+
+            var member = await users.FindActiveByGoogleSubjectAsync(identity.Subject, storeId, cancellationToken);
+            var linkGoogleAfterMfa = false;
+            if (member is null)
+            {
+                var candidate = await users.FindActiveByEmailAsync(identity.Email, storeId, cancellationToken);
+                if (candidate is null)
+                    return Results.Json(new { message = "این حساب دسترسی پنل ندارد؛ از مدیر فروشگاه دعوت بگیرید.", code = "admin_account_not_allowed" }, statusCode: StatusCodes.Status403Forbidden);
+                if (!candidate.HasPassword)
+                    return Results.Json(new { message = "برای ساخت حساب، لینک دعوتی را که از مدیر فروشگاه گرفته‌اید باز کنید.", code = "admin_invitation_required" }, statusCode: StatusCodes.Status403Forbidden);
+                if (string.IsNullOrEmpty(request.Password))
+                    return Results.Ok(new { status = "link_required", email = candidate.Email });
+                member = await users.AuthenticateAsync(identity.Email, request.Password, storeId, cancellationToken);
+                if (member is null) return Results.Unauthorized();
+                linkGoogleAfterMfa = true;
+            }
+
+            var memberMfaEnabled = (await users.GetMfaStatusAsync(member.Id, member.StoreId, cancellationToken)).Enabled;
+            var memberMfaFailure = memberMfaEnabled
+                ? await GetMembershipMfaFailureAsync(users, member.Id, member.StoreId, request.MfaCode, cancellationToken)
+                : await GetMfaFailureAsync(tokens, users, member.Role, request.MfaCode, cancellationToken);
+            if (memberMfaFailure is not null) return memberMfaFailure;
+            if (!await users.ConsumeGoogleLoginChallengeAsync(request.ChallengeId, identity.Nonce, cancellationToken))
+                return GoogleChallengeInvalid();
+            if (linkGoogleAfterMfa &&
+                !await users.LinkGoogleIdentityAsync(member.Id, member.StoreId, member.Email, identity.Subject, cancellationToken))
+                return Results.Json(new { message = "این حساب گوگل قبلاً به یک حساب دیگر وصل شده است.", code = "google_account_already_linked" }, statusCode: StatusCodes.Status409Conflict);
+            var memberMfaVerified = memberMfaEnabled || tokens.IsMfaRequiredForRole(member.Role);
+            var issued = tokens.Issue(member, memberMfaVerified);
+            await users.CreateSessionAsync(member.Id, member.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
+            return GoogleAuthenticated(issued, member.Email, member.StoreId, memberMfaVerified);
+        })
+        .RequireRateLimiting("admin-google-login")
+        .WithTags("Admin Auth");
+
+        endpoints.MapPost("/api/v1/admin/auth/google/accept-invite", async Task<IResult> (
+            AdminGoogleInvitationRequest request, IConfiguration configuration, AdminTokenService tokens,
+            AdminUsersDatabase users, AdminAuditLogDatabase audit, HttpContext context, CancellationToken cancellationToken) =>
+        {
+            var clientId = GetGoogleClientId(configuration, users);
+            if (clientId is null) return GoogleAuthNotConfigured();
+            if (!tokens.CanIssueTokens) return AdminTokenSigningUnavailable();
+            var validation = await ValidateGoogleIdentityAsync(request.Credential, clientId, cancellationToken);
+            if (validation.Failure is not null) return validation.Failure;
+            var identity = validation.Identity!;
+            if (request.ChallengeId == Guid.Empty ||
+                !await users.IsGoogleLoginChallengeValidAsync(request.ChallengeId, identity.Nonce, cancellationToken))
+                return GoogleChallengeInvalid();
+            var invitation = await users.FindPendingInvitationAsync(request.InvitationToken, identity.Email, cancellationToken);
+            if (invitation is null)
+                return Results.Json(new { message = "دعوت معتبر نیست، منقضی شده یا با ایمیل گوگل شما هم‌خوانی ندارد.", code = "invalid_admin_invitation" }, statusCode: StatusCodes.Status400BadRequest);
+
+            var invitationMfaEnabled = (await users.GetMfaStatusAsync(invitation.Id, invitation.StoreId, cancellationToken)).Enabled;
+            var invitationMfaFailure = invitationMfaEnabled
+                ? await GetMembershipMfaFailureAsync(users, invitation.Id, invitation.StoreId, request.MfaCode, cancellationToken)
+                : await GetMfaFailureAsync(tokens, users, invitation.Role, request.MfaCode, cancellationToken);
+            if (invitationMfaFailure is not null) return invitationMfaFailure;
+            if (!await users.ConsumeGoogleLoginChallengeAsync(request.ChallengeId, identity.Nonce, cancellationToken))
+                return GoogleChallengeInvalid();
+            var accepted = await users.AcceptInvitationWithGoogleAsync(
+                request.InvitationToken, identity.Email, identity.Subject, context.TraceIdentifier, audit, cancellationToken);
+            if (accepted is null)
+                return Results.Json(new { message = "این دعوت قبلاً استفاده شده یا به حساب گوگل دیگری متصل است.", code = "admin_invitation_conflict" }, statusCode: StatusCodes.Status409Conflict);
+
+            var mfaVerified = invitationMfaEnabled || tokens.IsMfaRequiredForRole(accepted.Role);
+            var issued = tokens.Issue(accepted, mfaVerified);
+            await users.CreateSessionAsync(accepted.Id, accepted.StoreId, issued.SessionId, issued.ExpiresAt, cancellationToken);
+            return GoogleAuthenticated(issued, accepted.Email, accepted.StoreId, mfaVerified);
+        })
+        .RequireRateLimiting("admin-google-login")
         .WithTags("Admin Auth");
 
         endpoints.MapGet("/api/v1/admin/auth/mfa", async Task<IResult> (
@@ -475,6 +617,102 @@ public static class AdminSecurityExtensions
         detail: "برای جلوگیری از استفادهٔ دوبارهٔ کد، اتصال دیتابیس مدیران و migrationهای آن لازم است.",
         statusCode: StatusCodes.Status503ServiceUnavailable);
 
+    private static string? GetGoogleClientId(IConfiguration configuration, AdminUsersDatabase users)
+    {
+        if (!users.IsConfigured) return null;
+        var clientId = configuration["Google:ClientId"]?.Trim();
+        return string.IsNullOrWhiteSpace(clientId) ? null : clientId;
+    }
+
+    private static IResult GoogleAuthNotConfigured() => Results.Problem(
+        title: "ورود با گوگل هنوز فعال نشده است.",
+        detail: "شناسهٔ کلاینت Google و پایگاه‌دادهٔ کاربران مدیران باید پیکربندی شوند؛ ورود با ایمیل در دسترس است.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static IResult GoogleChallengeInvalid() => Results.Json(
+        new { message = "درخواست ورود گوگل منقضی شده یا قبلاً استفاده شده است؛ دوباره تلاش کنید.", code = "invalid_google_challenge" },
+        statusCode: StatusCodes.Status400BadRequest);
+
+    private static IResult GoogleCredentialInvalid() => Results.Json(
+        new { message = "پاسخ گوگل تأیید نشد؛ دوباره تلاش کنید.", code = "invalid_google_credential" },
+        statusCode: StatusCodes.Status401Unauthorized);
+
+    private static IResult AdminTokenSigningUnavailable() => Results.Problem(
+        title: "ورود مدیر پیکربندی نشده است.",
+        detail: "کلید امضای پایدار نشست مدیر باید تنظیم شود.",
+        statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static IResult GoogleAuthenticated(IssuedAdminToken issued, string email, string storeId, bool mfaVerified) => Results.Ok(new
+    {
+        status = "authenticated",
+        accessToken = issued.Token,
+        tokenType = "Bearer",
+        expiresAt = issued.ExpiresAt,
+        role = issued.Role,
+        permissions = issued.Permissions,
+        email,
+        storeId,
+        mfaVerified
+    });
+
+    private static async Task<(GoogleAdminIdentity? Identity, IResult? Failure)> ValidateGoogleIdentityAsync(
+        string? credential, string clientId, CancellationToken cancellationToken)
+    {
+        if (credential is null || credential.Length is < 50 or > 12_000)
+            return (null, GoogleCredentialInvalid());
+        cancellationToken.ThrowIfCancellationRequested();
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(credential,
+                new GoogleJsonWebSignature.ValidationSettings { Audience = [clientId] });
+        }
+        catch (InvalidJwtException)
+        {
+            return (null, GoogleCredentialInvalid());
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return (null, Results.Problem(
+                title: "ورود گوگل در دسترس نیست.",
+                detail: "تأیید هویت گوگل انجام نشد؛ کمی بعد دوباره تلاش کنید.",
+                statusCode: StatusCodes.Status503ServiceUnavailable));
+        }
+
+        var subject = payload.Subject?.Trim();
+        var email = payload.Email?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(subject) || subject.Length > 255 || subject.Any(character => character > 127 || char.IsControl(character)) ||
+            !payload.EmailVerified || email is null || email.Length > 320 ||
+            !MailAddress.TryCreate(email, out var parsedEmail) || !string.Equals(parsedEmail.Address, email, StringComparison.OrdinalIgnoreCase))
+            return (null, GoogleCredentialInvalid());
+
+        var nonce = ReadGoogleNonce(credential);
+        if (string.IsNullOrWhiteSpace(nonce) || nonce.Length > 512)
+            return (null, GoogleCredentialInvalid());
+        return (new GoogleAdminIdentity(subject, email, nonce), null);
+    }
+
+    private static string? ReadGoogleNonce(string credential)
+    {
+        var parts = credential.Split('.');
+        if (parts.Length != 3 || string.IsNullOrWhiteSpace(parts[1])) return null;
+        var payload = parts[1].Replace('-', '+').Replace('_', '/');
+        payload += new string('=', (4 - payload.Length % 4) % 4);
+        try
+        {
+            using var document = JsonDocument.Parse(Convert.FromBase64String(payload));
+            return document.RootElement.TryGetProperty("nonce", out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+        }
+        catch (FormatException) { return null; }
+        catch (JsonException) { return null; }
+    }
+
     private static string? ResolveMembershipStore(HttpContext context, string? requestedStoreId)
     {
         var principal = context.Items["AdminPrincipal"] as AdminPrincipal;
@@ -486,6 +724,9 @@ public static class AdminSecurityExtensions
 
 public sealed record AdminLoginRequest(string Email, string Password, string? StoreId = null, string? MfaCode = null);
 public sealed record AdminInviteAcceptRequest(string Token, string Password);
+public sealed record AdminGoogleLoginRequest(string? Credential, Guid ChallengeId, string? StoreId = null, string? Password = null, string? MfaCode = null);
+public sealed record AdminGoogleInvitationRequest(string? Credential, Guid ChallengeId, string InvitationToken, string? MfaCode = null);
+public sealed record GoogleAdminIdentity(string Subject, string Email, string Nonce);
 public sealed record AdminStepUpRequest(string Password, string? MfaCode = null);
 public sealed record AdminMfaEnrollmentRequest(string Password, string? MfaCode = null);
 public sealed record AdminMfaCodeRequest(string MfaCode);

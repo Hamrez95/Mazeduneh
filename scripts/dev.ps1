@@ -473,6 +473,9 @@ if ($startApi) {
     Payments__SandboxEnabled = 'true'
     ConnectionStrings__Catalog = 'Host=127.0.0.1;Port=5432;Database=mazeduneh;Username=mazeduneh;Password=mazeduneh_local_only'
   }
+  if (-not [string]::IsNullOrWhiteSpace($env:MAZEDUNEH_GOOGLE_CLIENT_ID)) {
+    $apiEnvironment.Google__ClientId = $env:MAZEDUNEH_GOOGLE_CLIENT_ID.Trim()
+  }
   $apiProjectDirectory = Join-Path $RunRoot 'services/api'
   Write-Host 'Applying local database migrations, then explicitly seeding the local admin and demo catalog...' -ForegroundColor Cyan
   $databaseSetup = Start-Process -FilePath $dotnetExecutable `

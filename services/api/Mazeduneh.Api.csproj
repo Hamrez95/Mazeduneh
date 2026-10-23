@@ -13,5 +13,6 @@
     <EmbeddedResource Include="Assets/mazedoone-mark.svg" LogicalName="Invoice.Brand" />
     <PackageReference Include="Npgsql" Version="9.0.4" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.414.1" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
   </ItemGroup>
 </Project>
