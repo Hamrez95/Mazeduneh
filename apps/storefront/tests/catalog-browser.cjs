@@ -143,10 +143,11 @@ async function ready() {
         assert.equal(await page.locator('a[href^="tel:"], a[href^="mailto:"]').count(), 0);
       }
       await page.goto(origin + '/contact');
-      await page.getByRole('button', { name: 'بله', exact: true }).first().click();
-      await page.getByRole('dialog').waitFor();
-      assert.equal(await page.getByLabel('شمارهٔ مزه‌دونه در بله').first().inputValue(), '09339870210');
-      await page.keyboard.press('Escape');
+      assert.ok(await page.getByRole('link', { name: 'تلگرام', exact: true }).count() >= 2);
+      assert.ok(await page.getByRole('link', { name: 'باز کردن بله', exact: true }).count() >= 2);
+      assert.equal(await page.getByRole('link', { name: 'تلگرام', exact: true }).first().getAttribute('href'), 'https://t.me/+9893339870210');
+      assert.equal(await page.getByRole('link', { name: 'باز کردن بله', exact: true }).first().getAttribute('href'), 'https://web.bale.ai/');
+      assert.equal(/09339870210|۰۹۳۳۹۸۷۰۲۱۰|9893339870210/.test(await page.locator('body').innerText()), false, 'support number must never be displayed');
       assert.equal(await page.getByRole('dialog').count(), 0);
       records = [];
       await page.goto(origin);

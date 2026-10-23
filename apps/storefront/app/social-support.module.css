@@ -1,14 +1,4 @@
-.support { display: grid; gap: 12px; color: inherit; }
-.support small { line-height: 1.9; }
 .links { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 15px; color: inherit; background: transparent; border: 1px solid currentColor; border-radius: 14px; text-decoration: none; font: inherit; font-weight: 650; cursor: pointer; }
 .link:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
-.link:focus-visible, .dialog button:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
-.dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid #dce4db; border-radius: 24px; color: #20564a; background: #fffdf8; font-family: inherit; box-shadow: 0 24px 80px #102f2833; }
-.dialog::backdrop { background: #102f2880; }
-.dialogHeading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.dialogHeading h2 { margin: 0; font-size: 1.15rem; }
-.dialogHeading button { border: 0; background: transparent; font: inherit; font-size: 1.6rem; color: inherit; min-width: 44px; min-height: 44px; cursor: pointer; }
-.dialog p { line-height: 1.9; }
-.dialog input { box-sizing: border-box; width: 100%; padding: 12px; font: inherit; color: inherit; border: 1px solid #bacdc3; border-radius: 12px; margin-bottom: 16px; text-align: center; }
-.copyStatus { display: block; margin-top: 16px; font-size: .85rem; line-height: 1.8; }
+.link:focus-visible { outline: 3px solid currentColor; outline-offset: 4px; }
