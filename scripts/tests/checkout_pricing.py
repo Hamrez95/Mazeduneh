@@ -77,6 +77,10 @@ with tempfile.TemporaryFile() as log:
         expect(200, request('/api/v1/admin/commerce/settings', 'PUT', settings, proof))
         public_settings = expect(200, request('/api/v1/commerce/shipping-methods'))
         assert public_settings['taxRatePercent'] == 9.5 and 'internalCost' not in json.dumps(public_settings)
+        # Earlier contracts in this workflow also create paid orders in the same
+        # disposable database. Compare this fixture's contribution instead of
+        # assuming the shared report starts empty.
+        analytics_before = expect(200, request('/api/v1/admin/analytics?days=30'))
         lines = [{'sku': a, 'quantity': 1}, {'sku': b, 'quantity': 1}]
         for method, shipping, payable in [('post', 321000, 6672000), ('pickup', 0, 6351000)]:
             quote = expect(200, request('/api/v1/checkout/coupon-preview', 'POST', {'code': '', 'shippingMethod': method, 'lines': lines}))
@@ -109,7 +113,8 @@ with tempfile.TemporaryFile() as log:
                 ('productCost', 3000000), ('packagingCost', 250000), ('additionalCost', 100000),
                 ('shippingRevenue', 321000), ('shippingExpense', 111000), ('tax', 551000),
                 ('orderInternalCosts', 50000), ('netProfit', 2610000)]:
-            assert analytics[field] == expected, (field, expected, analytics[field])
+            delta = analytics[field] - analytics_before[field]
+            assert delta == expected, (field, expected, delta, analytics[field], analytics_before[field])
         rows = expect(200, request('/api/v1/admin/analytics/products?days=30'))
         assert len(rows) == 2 and sum(row['unitsSold'] for row in rows) == 2
         assert sum(row['quantitySold'] for row in rows) == 750

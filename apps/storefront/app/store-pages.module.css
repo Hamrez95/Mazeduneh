@@ -32,7 +32,9 @@
 .categoryList { display:flex; flex-wrap:wrap; gap:8px; }
 .categoryList button { min-height:38px; padding:0 15px; border:1px solid #e0e5dc; border-radius:999px; color:#65776e; background:#fff; font:inherit; font-size:11px; cursor:pointer; }
 .categoryList button[aria-pressed="true"] { border-color:var(--forest); color:#fff; background:var(--forest); }
-.sortSelect { min-height:38px; padding:0 12px; border:1px solid #e0e5dc; border-radius:11px; color:#56675c; background:white; font:inherit; font-size:11px; }
+.sortSelect { min-height:42px; padding:0 13px; display:inline-flex; align-items:center; gap:9px; border:1px solid #e0e5dc; border-radius:12px; color:#56675c; background:white; font-family:"Vazirmatn",Tahoma,sans-serif; font-size:12px; line-height:1.5; white-space:nowrap; }
+.sortSelect select { min-width:98px; min-height:34px; padding:0 10px; border:1px solid #dce4da; border-radius:9px; appearance:none; color:#31584a; background-color:#f7faf5; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2331584a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:left 9px center; font-family:"Vazirmatn",Tahoma,sans-serif; font-size:12px; font-weight:600; line-height:1.5; cursor:pointer; }
+.sortSelect select:focus-visible { outline:3px solid rgba(244,125,54,.28); outline-offset:2px; }
 .resultCount { margin-bottom:15px; color:#879189; font-size:11px; }
 .productGrid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px; }
 .productCard { min-width:0; overflow:hidden; border:1px solid #e7e9e2; border-radius:23px; background:#fff; box-shadow:0 12px 32px rgba(45,65,48,.045); transition:transform .2s,box-shadow .2s; }
