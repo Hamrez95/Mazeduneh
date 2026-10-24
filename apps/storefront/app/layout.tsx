@@ -27,6 +27,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
+      <head>
+        <script
+          id="enamad-verification-compat"
+          type="text/plain"
+          dangerouslySetInnerHTML={{
+            __html: '<meta name="enamad" content ="23492933"/>',
+          }}
+        />
+      </head>
       <body><CatalogProvider><CartProvider>{children}</CartProvider></CatalogProvider></body>
     </html>
   );
