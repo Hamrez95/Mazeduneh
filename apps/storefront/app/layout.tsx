@@ -24,9 +24,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
-      <head>
-        <meta name="enamad" content="23492933" />
-      </head>
+      <head
+        dangerouslySetInnerHTML={{
+          __html: '<meta name="enamad" content="23492933" />',
+        }}
+      />
       <body><CatalogProvider><CartProvider>{children}</CartProvider></CatalogProvider></body>
     </html>
   );
