@@ -63,7 +63,7 @@ async function ready() {
           headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
           body: JSON.stringify(failing ? { message: 'offline' } : body ?? {}) });
       });
-      await page.goto(origin);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: 'پسته پنل', exact: true }).waitFor();
       assert.equal(await page.getByRole('heading', { name: 'پسته اکبری ممتاز', exact: true }).count(), 0);
       await page.getByRole('heading', { name: 'بادام پنل', exact: true }).waitFor();
@@ -84,9 +84,9 @@ async function ready() {
       await page.keyboard.press('Enter');
       await page.getByText(/اتصال قطع شده؛ آخرین محصولات/).waitFor({ state: 'hidden' });
 
-      await page.goto(origin + '/shop');
+      await page.goto(origin + '/shop', { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: records[0].title, exact: true }).waitFor();
-      await page.goto(origin + '/product/live-nut');
+      await page.goto(origin + '/product/live-nut', { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: records[0].title, exact: true }).waitFor();
       await page.getByRole('heading', { name: 'بادام پنل', exact: true }).waitFor();
       assert.equal(await page.getByText('پسته اکبری ممتاز', { exact: true }).count(), 0);
@@ -102,7 +102,7 @@ async function ready() {
       await page.getByRole('option', { name: /۲۵۰ گرم/ }).click();
       assert.match(await selectedPrice.textContent(), /۲۰۰٬۰۰۰/);
       await page.getByRole('button', { name: 'افزودن به سبد خرید', exact: true }).click();
-      await page.goto(origin + '/cart');
+      await page.goto(origin + '/cart', { waitUntil: 'domcontentloaded' });
       await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
       await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
       await page.reload();
@@ -111,7 +111,7 @@ async function ready() {
       assert.equal(await page.getByText('سبد خرید خالی است', { exact: true }).count(), 0);
 
       if (width === 360) {
-        await page.goto(origin + '/checkout');
+        await page.goto(origin + '/checkout', { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: 'اطلاعات تحویل سفارش', exact: true }).waitFor();
         const summary = await page.getByRole('heading', { name: 'مرور سفارش', exact: true }).boundingBox();
         const submit = await page.getByRole('button', { name: /ثبت سفارش و بررسی مبلغ نهایی/ }).boundingBox();
@@ -137,12 +137,12 @@ async function ready() {
 
 
       for (const route of ['/contact', '/returns', '/privacy', '/terms', '/profile', '/shipping']) {
-        await page.goto(origin + route);
+        await page.goto(origin + route, { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { level: 1 }).waitFor();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${route} overflow at ${width}`);
         assert.equal(await page.locator('a[href^="tel:"], a[href^="mailto:"]').count(), 0);
       }
-      await page.goto(origin + '/contact');
+      await page.goto(origin + '/contact', { waitUntil: 'domcontentloaded' });
       assert.ok(await page.getByRole('link', { name: 'تلگرام', exact: true }).count() >= 2);
       assert.ok(await page.getByRole('link', { name: 'بله', exact: true }).count() >= 2);
       assert.equal(await page.getByRole('link', { name: 'تلگرام', exact: true }).first().getAttribute('href'), 'https://t.me/+9893339870210');
@@ -150,7 +150,7 @@ async function ready() {
       assert.equal(/09339870210|۰۹۳۳۹۸۷۰۲۱۰|9893339870210/.test(await page.locator('body').innerText()), false, 'support number must never be displayed');
       assert.equal(await page.getByRole('dialog').count(), 0);
       records = [];
-      await page.goto(origin);
+      await page.goto(origin, { waitUntil: 'domcontentloaded' });
       await page.getByText('محصولی در این دسته پیدا نشد.', { exact: true }).waitFor();
       assert.equal(await page.getByRole('article').count(), 0);
       failing = true;
