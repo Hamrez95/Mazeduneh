@@ -1,4 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Estedad:wght@500;600;700;800;900&family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Regular.ab0cb8309c00.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Medium.78bdbd01a2aa.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 500 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Bold.b5f02576d9c0.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-ExtraBold.46789531ac71.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 800 900;
+  font-display: swap;
+}
 
 :root {
   --green-900: #174f43;
@@ -41,7 +68,7 @@ button { border: 0; cursor: pointer; }
 .detailInfo h1,
 .detailTabs h2,
 .footer strong {
-  font-family: "Estedad", "Vazirmatn", Tahoma, sans-serif;
+  font-family: "Vazirmatn", Tahoma, sans-serif;
 }
 .shell { width: min(1180px, calc(100% - 40px)); margin-inline: auto; }
 .announcement { background: var(--green-800); color: white; text-align: center; padding: 7px 16px; font-size: 0.82rem; }
