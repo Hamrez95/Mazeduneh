@@ -12,9 +12,6 @@ export const metadata: Metadata = {
   },
   description:
     "فروشگاه آنلاین آجیل، خشکبار، میوه خشک و هدیه‌های خوش‌طعم با انتخاب شفاف و ارسال مطمئن.",
-  other: {
-    enamad: "23492933",
-  },
   openGraph: {
     type: "website",
     locale: "fa_IR",
@@ -28,13 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
       <head>
-        <script
-          id="enamad-verification-compat"
-          type="text/plain"
-          dangerouslySetInnerHTML={{
-            __html: '<meta name="enamad" content ="23492933"/>',
-          }}
-        />
+        <meta name="enamad" content="23492933" />
       </head>
       <body><CatalogProvider><CartProvider>{children}</CartProvider></CatalogProvider></body>
     </html>
