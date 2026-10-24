@@ -70,7 +70,12 @@ export function StoreFooter() {
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a>{catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`}>{name}</a>)}</div>
       <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">پیام به مزه‌دونه</a><a href="/privacy">حریم خصوصی</a><a href="/terms">شرایط خرید</a></div>
-      <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><SocialSupport /></div>
+      <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><SocialSupport />
+        <section className={styles.trustSealCard} aria-label="نماد اعتماد الکترونیکی">
+          <span className={styles.trustSealLabel}>خریدی امن و مطمئن</span>
+          <div className={styles.trustSealMarkup} dangerouslySetInnerHTML={{ __html: "<a referrerpolicy='origin' target='_blank' href='https://trustseal.enamad.ir/?id=8329471&Code=xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc'><img referrerpolicy='origin' src='https://trustseal.enamad.ir/logo.aspx?id=8329471&Code=xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc' alt='' style='cursor:pointer' code='xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc'></a>" }} />
+        </section>
+      </div>
     </div>
     <div className={styles.copyright}>© مزه‌دونه · خوش‌خوراکِ هر روز</div>
   </footer>;
