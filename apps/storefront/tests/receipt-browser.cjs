@@ -71,7 +71,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       const page = await context.newPage();
       page.on('pageerror', error => errors.push(error.message));
       const callback = outcome => `${origin}/checkout?orderId=${id}&payment=${outcome}`;
-      await page.goto(callback('success'));
+      await page.goto(callback('success'), { waitUntil: 'domcontentloaded' });
       await page.getByText('وضعیت پرداخت هنوز قطعی نیست.', { exact: false }).waitFor();
       assert.equal(await page.getByRole('heading', { name: /خریدت کامل شد/ }).count(), 0, 'success URL alone must not claim payment');
       assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('mazedooneh-cart-v1'))).length, 1);
@@ -90,23 +90,23 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
       assert.equal(invoiceRequests, 1);
       await page.screenshot({ path: `.test-results/receipt-${width}.png`, fullPage: true });
       state = 'Preparing';
-      await page.reload();
+      await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText('در حال آماده‌سازی', { exact: true }).waitFor();
       assert.equal(await page.getByRole('heading', { name: /خریدت کامل شد/ }).count(), 1);
       for (const [nextState, heading] of [['Cancelled', 'این سفارش لغو شده است.'], ['Expired', 'مهلت پرداخت این سفارش تمام شده است.']]) {
         state = nextState;
-        await page.goto(callback('review'));
+        await page.goto(callback('review'), { waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: heading, exact: true }).waitFor();
         assert.equal(await page.getByText('مبلغ پرداخت‌شده', { exact: true }).count(), 0);
       }
       await page.evaluate(({ saved }) => { sessionStorage.setItem('mazedooneh-checkout-receipt-v1', JSON.stringify(saved)); }, { saved });
-      await page.goto(callback('failed'));
+      await page.goto(callback('failed'), { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: /پرداختت تأیید نشد/ }).waitFor();
       await page.getByRole('button', { name: 'ادامهٔ پرداخت', exact: true }).click();
       await page.getByText('درگاه موقتاً در دسترس نیست.', { exact: true }).waitFor();
       if (width === 360) {
         await page.evaluate(() => localStorage.setItem('mazedooneh-cart-v1', JSON.stringify([{ id: 'cookie', title: 'کوکی پروتئینی', sku: 'COOKIE-250', price: 200000.1, quantity: 1, stock: 3 }])));
-        await page.goto(origin + '/checkout');
+        await page.goto(origin + '/checkout', { waitUntil: 'domcontentloaded' });
         await page.getByLabel('نام و نام خانوادگی').fill(saved.name);
         await page.getByLabel('شماره موبایل').fill('09120000000');
         await page.getByLabel('استان').selectOption({ label: 'تهران' });
@@ -119,7 +119,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(intentRequests, before, 'replayed paid order must not start another payment');
         assert.ok(page.url().includes('payment=success'), 'confirmed receipt must survive reload');
         state = 'Paid';
-        await page.reload();
+        await page.reload({ waitUntil: 'domcontentloaded' });
         await page.getByRole('heading', { name: /خریدت کامل شد/ }).waitFor();
       }
       assert.deepEqual(errors, []);
