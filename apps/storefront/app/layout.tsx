@@ -7,7 +7,7 @@ import { CatalogProvider } from "./catalog-context";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://mazeduneh-storefront.vercel.app"),
   title: {
-    default: "مزه‌دونه | خوش‌خوراکِ هر روز",
+    default: "23492933",
     template: "%s | مزه‌دونه",
   },
   description:
