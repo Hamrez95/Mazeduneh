@@ -105,7 +105,7 @@ async function ready() {
       await page.goto(origin + '/cart', { waitUntil: 'domcontentloaded' });
       await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
       await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
-      await page.reload();
+      await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText('۵۰۰ گرم', { exact: true }).waitFor();
       await page.getByText('۲۵۰ گرم', { exact: true }).waitFor();
       assert.equal(await page.getByText('سبد خرید خالی است', { exact: true }).count(), 0);
@@ -154,7 +154,7 @@ async function ready() {
       await page.getByText('محصولی در این دسته پیدا نشد.', { exact: true }).waitFor();
       assert.equal(await page.getByRole('article').count(), 0);
       failing = true;
-      await page.reload();
+      await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText(/محصولات دریافت نشد/).waitFor();
       assert.equal(await page.getByRole('article').count(), 0);
       assert.deepEqual(errors, []);
