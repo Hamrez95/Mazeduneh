@@ -22,15 +22,29 @@ jobs:
         with:
           node-version: 24
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
+      - name: Save resolved dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-dependency-lock
+          path: apps/storefront/package-lock.json
+      - name: Audit production JavaScript dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Type check
         run: npm run typecheck
       - name: Catalog source contract
         run: npm run test:catalog
+      - name: Production release configuration contract
+        run: npm run test:release
+      - name: Local launcher dependency cache contract
+        shell: pwsh
+        run: ../../scripts/tests/storefront-dependencies.ps1
       - name: Install browser for catalog integration
         run: npx playwright install --with-deps chromium
       - name: Live catalog browser integration
         run: npm run test:browser
+      - name: Production product routes and metadata timeout
+        run: npm run test:production
       - name: Production static preview build
         run: npm run build
         env:
@@ -758,7 +772,7 @@ jobs:
       - name: Test
         run: flutter test
       - name: Build active admin web
-        run: flutter build web --release --target lib/secure_main.dart
+        run: flutter build web --release --no-web-resources-cdn --target lib/secure_main.dart
       - name: Upload web artifact
         uses: actions/upload-artifact@v4
         with:

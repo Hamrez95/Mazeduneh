@@ -12,7 +12,7 @@ const saved = { name: 'سارا رضایی', orderId: id, receiptToken: token, p
   subtotal: 5800001, discount: 500000, state: 'AwaitingPayment', expiresAt: '2030-10-22T12:00:00Z', lines };
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', ...(process.platform === 'win32' ? ['--webpack'] : []), '--hostname', '127.0.0.1', '--port', '3097'], {
   env: { ...process.env, NEXT_PUBLIC_MAZEDUNEH_API_URL: api, NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL: api,
-    MAZEDUNEH_STATIC_EXPORT: 'false', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+    MAZEDUNEH_STATIC_EXPORT: 'false', NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: 'false', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = '';
 server.stdout.on('data', b => { log = (log + b).slice(-6000); });

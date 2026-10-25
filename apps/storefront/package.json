@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test:release": "node --test tests/release-config.test.cjs",
+    "test:production": "node tests/production-routes.cjs",
     "test:catalog": "tsc --module commonjs --moduleResolution node --target es2022 --skipLibCheck --esModuleInterop --outDir .test-build app/catalog-state.ts app/api-catalog.ts app/commerce-settings.ts && node --test tests/catalog-source.test.cjs",
     "test:browser": "node tests/catalog-browser.cjs && node tests/receipt-browser.cjs"
   },
   "dependencies": {
-    "next": "16.2.11",
+    "next": "16.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

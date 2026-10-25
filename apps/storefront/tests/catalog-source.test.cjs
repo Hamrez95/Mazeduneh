@@ -1,11 +1,21 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL = 'https://catalog.test';
+process.env.NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE = 'false';
 const { initialCatalog, catalogSuccess, catalogFailure } = require('../.test-build/catalog-state.js');
 const { mapApiProduct, fetchLiveProducts, fetchLiveCategories } = require('../.test-build/api-catalog.js');
 const { formatRialsAsTomans, formatMoney, formatNumber, rialsToTomans } = require('../.test-build/formatters.js');
 const { parseCommerceSettings, estimateCommerce } = require('../.test-build/commerce-settings.js');
 const preview = [{ id: 'preview-only' }];
+
+test('explicit demo mode overrides a configured API without changing live mode', () => {
+  const { execFileSync } = require('node:child_process');
+  const command = "process.stdout.write(require('./.test-build/api-catalog.js').API_BASE)";
+  for (const [mode, expected] of [['true', ''], ['false', 'https://catalog.test']]) {
+    assert.equal(execFileSync(process.execPath, ['-e', command], { encoding: 'utf8',
+      env: { ...process.env, NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: mode } }), expected);
+  }
+});
 
 test('shipping and tax follow live rial settings, selected method and exact free-shipping threshold', () => {
   const settings = parseCommerceSettings({ taxRatePercent: 9.5, shippingMethods: [

@@ -1,3 +1,8 @@
+import { storefrontReleaseErrors } from './release-config.mjs';
+
+const releaseErrors = storefrontReleaseErrors(process.env);
+if (releaseErrors.length) throw new Error(`Storefront configuration:\n${releaseErrors.join('\n')}`);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: process.env.MAZEDUNEH_STATIC_EXPORT === 'true'
