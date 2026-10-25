@@ -9,6 +9,7 @@ import styles from "./store-pages.module.css";
 import { useCatalog } from "./catalog-context";
 import { SocialSupport } from "./social-support";
 import { ProductCartControl } from "./product-cart-control";
+import { EnamadSeal } from "./enamad-seal";
 
 function CartGlyph() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
@@ -72,10 +73,7 @@ export function StoreFooter() {
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a>{catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`}>{name}</a>)}</div>
         <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">پیام به مزه‌دونه</a><a href="/privacy">حریم خصوصی</a><a href="/terms">شرایط خرید</a></div>
       <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><SocialSupport />
-          <section className={styles.trustSealCard} aria-label="نماد اعتماد الکترونیکی">
-            <span className={styles.trustSealLabel}>خریدی امن و مطمئن</span>
-            <div className={styles.trustSealMarkup} dangerouslySetInnerHTML={{ __html: "<a referrerpolicy='origin' target='_blank' href='https://trustseal.enamad.ir/?id=8329471&Code=xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc'><img referrerpolicy='origin' loading='lazy' decoding='async' fetchpriority='low' width='60' height='60' src='https://trustseal.enamad.ir/logo.aspx?id=8329471&Code=xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc' alt='نماد اعتماد الکترونیکی مزه‌دونه' style='cursor:pointer' code='xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc'></a>" }} />
-          </section>
+          <EnamadSeal />
         </div>
     </div>
     <div className={styles.copyright}>© مزه‌دونه · خوش‌خوراکِ هر روز</div>
