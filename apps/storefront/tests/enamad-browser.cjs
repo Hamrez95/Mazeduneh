@@ -44,7 +44,17 @@ const fixture = '<svg xmlns="http://www.w3.org/2000/svg" width="125" height="136
         if (mode === 'failure') return route.fulfill({ status: 503, body: 'unavailable' });
         return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: mode === 'tiny' ? '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' : fixture });
       });
-      await page.goto(origin + '/contact', { waitUntil: 'domcontentloaded' });
+      await page.goto(origin + '/', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => [...document.querySelectorAll('section[aria-labelledby="hero-title"] img')].every(i => i.complete && i.naturalWidth > 0));
+      const heroImages = page.locator('section[aria-labelledby="hero-title"] img');
+      assert.equal(await heroImages.count(), 3);
+      for (const image of await heroImages.all()) {
+        assert.match(await image.evaluate(i => i.currentSrc), /\/products\/responsive\/.*\.320\.[a-f0-9]{12}\.webp$/);
+        assert.ok(Number(await image.getAttribute('width')) > 0);
+        assert.ok(Number(await image.getAttribute('height')) > 0);
+      }
+      assert.equal(await heroImages.last().getAttribute('fetchpriority'), 'high');
+      await page.locator('section[aria-labelledby="hero-title"]').screenshot({ path: `.test-results/responsive-hero-${width}.png` });
       const seal = page.getByRole('region', { name: 'نماد اعتماد الکترونیکی', exact: true });
       await seal.scrollIntoViewIfNeeded();
       await page.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor();
@@ -75,11 +85,13 @@ const fixture = '<svg xmlns="http://www.w3.org/2000/svg" width="125" height="136
       await context.close();
       if (width === 360) {
         // A fresh document avoids reusing the previous successfully decoded tiny image.
-        const pendingContext = await browser.newContext({ viewport: { width, height: 900 } });
+        const pendingContext = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 2 });
         await pendingContext.route(url => url.origin === 'https://trustseal.enamad.ir' && url.pathname === '/logo.aspx', () => {});
         const pendingPage = await pendingContext.newPage();
         pendingPage.on('pageerror', error => errors.push(error.message));
-        await pendingPage.goto(origin + '/contact', { waitUntil: 'domcontentloaded' });
+        await pendingPage.goto(origin + '/', { waitUntil: 'domcontentloaded' });
+        await pendingPage.waitForFunction(() => [...document.querySelectorAll('section[aria-labelledby="hero-title"] img')].every(i => i.complete && i.naturalWidth > 0));
+        assert.match(await pendingPage.locator('section[aria-labelledby="hero-title"] img').last().evaluate(i => i.currentSrc), /\.512\.[a-f0-9]{12}\.webp$/);
         await pendingPage.getByRole('region', { name: 'نماد اعتماد الکترونیکی', exact: true }).scrollIntoViewIfNeeded();
         await pendingPage.getByText('در حال دریافت تصویر نماد…', { exact: true }).waitFor();
         await pendingPage.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor({ timeout: 20000 });

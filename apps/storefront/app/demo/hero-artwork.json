@@ -1,0 +1,20 @@
+{
+  "/products/dragon-box-new.webp": {
+    "src": "/products/responsive/dragon-box-new.320.daf0aeea3126.webp",
+    "srcSet": "/products/responsive/dragon-box-new.320.daf0aeea3126.webp 320w, /products/responsive/dragon-box-new.512.8c04781ade99.webp 512w",
+    "width": 1536,
+    "height": 1024
+  },
+  "/products/almond-pouch-new.webp": {
+    "src": "/products/responsive/almond-pouch-new.320.32011bba6f5a.webp",
+    "srcSet": "/products/responsive/almond-pouch-new.320.32011bba6f5a.webp 320w, /products/responsive/almond-pouch-new.512.27e4fc9791f3.webp 512w",
+    "width": 1024,
+    "height": 1536
+  },
+  "/products/pistachio-pouch-new.webp": {
+    "src": "/products/responsive/pistachio-pouch-new.320.aa2a7cde49a3.webp",
+    "srcSet": "/products/responsive/pistachio-pouch-new.320.aa2a7cde49a3.webp 320w, /products/responsive/pistachio-pouch-new.512.c1346b3315a5.webp 512w",
+    "width": 1024,
+    "height": 1536
+  }
+}
