@@ -15,10 +15,6 @@ function CartGlyph() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
 }
 
-function ContactGlyph() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-2.5 2v-5A7.5 7.5 0 1 1 20 11.5Z" /><path d="M8 11.5h8M8 14.5h5" /></svg>;
-}
-
 export function BrandLogo({ light = false }: { light?: boolean }) {
   return (
     <a className={`${styles.brand} ${light ? styles.brandLight : ""}`} href="/" aria-label="مزه‌دونه، صفحهٔ اصلی">
@@ -55,7 +51,6 @@ export function StoreHeader() {
         </nav>
         <div className={styles.headerActions}>
           <form className={styles.search} onSubmit={search} role="search"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="دنبال چه مزه‌ای هستی؟" aria-label="جست‌وجوی محصولات" /><button aria-label="جست‌وجو">⌕</button></form>
-          <a href="/contact" className={styles.accountLink} aria-label="تماس با مزه‌دونه"><ContactGlyph /><em>تماس با ما</em></a>
           <a href="/cart" className={styles.cartLink} aria-label={ready ? `سبد خرید، ${count} کالا` : "در حال بارگذاری سبد خرید"}><span className={styles.cartGlyph}><CartGlyph /></span><em>سبد خرید</em><b>{ready ? toman(count) : "…"}</b></a>
         </div>
       </header>
