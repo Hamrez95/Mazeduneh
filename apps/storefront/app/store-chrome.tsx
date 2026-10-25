@@ -8,6 +8,7 @@ import { useCart } from "./cart-context";
 import styles from "./store-pages.module.css";
 import { useCatalog } from "./catalog-context";
 import { SocialSupport } from "./social-support";
+import { ProductCartControl } from "./product-cart-control";
 
 function CartGlyph() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 4.5h2l1.8 10.2h9.8l2-7.2H6.2" /><circle cx="9" cy="19" r="1.35" /><circle cx="17" cy="19" r="1.35" /></svg>;
@@ -82,7 +83,6 @@ export function StoreFooter() {
 }
 
 export function ProductCard({ product }: { product: DemoProduct }) {
-  const { add, ready } = useCart();
   return <article className={styles.productCard}>
     <a className={`${styles.productVisual} ${styles[product.accent]}`} href={`/product/${product.id}`} aria-label={`دیدن جزئیات ${product.title}`}>
       {product.badge && <span className={styles.badge}>{product.badge}</span>}
@@ -93,7 +93,7 @@ export function ProductCard({ product }: { product: DemoProduct }) {
       <small>{product.category} <span>·</span> {product.packageLabel}</small>
       <a href={`/product/${product.id}`}><h3>{product.title}</h3></a>
       <p>{product.subtitle}</p>
-      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><button type="button" onClick={() => add(product)} disabled={!ready || product.stock <= 0} aria-label={`افزودن ${product.title} به سبد`}>{!ready ? "در حال آماده‌سازی" : product.stock > 0 ? "افزودن" : "ناموجود"} <b>+</b></button></div>
+      <div className={styles.productBuy}><strong>{toman(product.price)} <small>تومان</small></strong><ProductCartControl product={product} /></div>
     </div>
   </article>;
 }
