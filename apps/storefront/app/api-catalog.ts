@@ -41,7 +41,7 @@ export type ApiProduct = {
   earliestAvailableExpiryAt?: string;
 };
 
-export const API_BASE = (
+export const API_BASE = process.env.NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE === 'true' ? '' : (
   process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim()
   || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim()
   || ""

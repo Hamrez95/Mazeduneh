@@ -26,8 +26,8 @@ Do not promote while any field above is missing. Keep staging and production cre
 
 ## Before staging deployment
 
-1. Open a pull request into `dev`; require the Storefront, API, Admin Flutter, Graphify, and Production container images checks to pass.
-2. Promote the reviewed integration state to `main` through a pull request. Record the exact merge SHA and its green CI run.
+1. Open a feature pull request into the protected default branch `main`; require the Storefront, API, Admin Flutter, Graphify, Production container images, and partner demo checks to pass. `dev` can be used for optional integration work.
+2. Record the exact merge SHA and its green CI run. Use the latest [launch checklist](LAUNCH_CHECKLIST_2026-10-25.md) for evidence and remaining server gates.
 3. Build the Storefront with the staging API URL, demo mode disabled, and staging Admin/site URLs. Build Admin with the same staging API origin. These public URLs are build inputs, not secrets.
 4. Configure API secrets only in the staging host's secret manager. Use a non-production PostgreSQL database, a separate S3-compatible bucket, staging CORS origins, a unique Admin credential, and Zibal sandbox settings. Never enable the sandbox provider as the production payment provider.
 5. Confirm the staging database starts from an empty state and records its applied migrations. Review seed behavior before using any production database; never use local reset or demo seed commands against production data.
@@ -71,3 +71,13 @@ The release owner records **GO** only after all staging rows pass, alerts reach 
 - Readiness and safe request-correlation behavior are documented in [`API_READINESS.md`](API_READINESS.md) and [`API_OBSERVABILITY.md`](API_OBSERVABILITY.md).
 
 Until a host, staging database, staging bucket, and alert destination are provisioned, the staging, restore, live payment, and rollback rows are **not verified** and issue #100 remains open.
+
+## Production configuration preflight
+
+Load the reviewed environment into the process through the host secret manager, then run `node scripts/release-preflight.mjs` from the repository root. It validates public HTTPS origins, API/demo/static mode, owner authentication/MFA, CORS, media persistence and disabled sandbox payment, without printing values or changing data. After the merchant is issued, run the same command with `--payments` to check the real merchant and exact callback/return origins and paths. A successful configuration check does not replace staging acceptance.
+
+The non-secret [environment template](production.env.example) lists the required names. Store the completed copy outside Git. Node also supports `node --env-file=/private/release.env scripts/release-preflight.mjs --payments`; .NET services still need the same settings loaded by the host. The planned API/Admin subdomains in the template do not represent provisioned services.
+
+Build the actual Storefront server with `MAZEDUNEH_RELEASE_BUILD=true`, `NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE=false` and the public API/site/Admin origins. For the container build pass `--build-arg MAZEDUNEH_RELEASE_BUILD=true` as well as the public origins. Keep `MAZEDUNEH_STATIC_EXPORT` unset. The current Cloudflare Pages static preview is not the live commerce server: newly published product slugs need the Next.js server. The public Pages preview can remain available until the approved server cutover.
+
+Build Admin using `lib/secure_main.dart` and `--no-web-resources-cdn` so Flutter rendering resources are served with the application. The production Admin image enables gzip for JavaScript, CSS, JSON, SVG and WebAssembly. Keep the API and Admin on the same reviewed release as the Storefront.

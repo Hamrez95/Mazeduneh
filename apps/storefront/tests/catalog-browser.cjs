@@ -9,7 +9,7 @@ const product = (slug, title, stock = 3) => ({ id: slug, slug, title, category: 
   variants: [{ sku: slug.toUpperCase(), quantity: 250, displayLabel: '۲۵۰ گرم', price: 321000, availablePackages: stock }] });
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', ...(process.platform === 'win32' ? ['--webpack'] : []), '--hostname', '127.0.0.1', '--port', '3098'], {
   env: { ...process.env, NEXT_PUBLIC_MAZEDUNEH_API_URL: api, NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL: api,
-    MAZEDUNEH_STATIC_EXPORT: 'false', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+    MAZEDUNEH_STATIC_EXPORT: 'false', NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE: 'false', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
 });
 let log = '';
 server.stdout.on('data', (b) => { log = (log + b).slice(-6000); });
