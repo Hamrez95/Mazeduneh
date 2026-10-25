@@ -39,10 +39,10 @@ export function EnamadSeal() {
 
   return <section ref={cardRef} className={styles.card} aria-label="نماد اعتماد الکترونیکی" data-state={state}>
     <span className={styles.label}>اینماد مزه‌دونه</span>
-    <a className={styles.link} href={profileUrl} target="_blank" rel="noopener" referrerPolicy="origin" aria-label="مشاهدهٔ شناسنامهٔ مزه‌دونه در سایت رسمی اینماد (پنجرهٔ جدید)">
+    <a className={styles.link} href={profileUrl} target="_blank" referrerPolicy="origin" aria-label="مشاهدهٔ شناسنامهٔ مزه‌دونه در سایت رسمی اینماد (پنجرهٔ جدید)">
       <span className={styles.imageStage}>
         <img key={attempt} ref={imageRef} className={`${styles.image} ${state === "ready" ? styles.ready : ""}`}
-          src={attempt ? `${imageUrl}&_retry=${attempt}` : imageUrl} alt="نماد اعتماد الکترونیکی مزه‌دونه" aria-hidden={state !== "ready"} width={125} height={136}
+          src={imageUrl} alt="نماد اعتماد الکترونیکی مزه‌دونه" aria-hidden={state !== "ready"} width={125} height={136}
           referrerPolicy="origin" loading="lazy" decoding="async" fetchPriority="low" {...{ code }}
           onLoad={event => checkImage(event.currentTarget)} onError={() => setState("unavailable")} />
         {state !== "ready" && <span className={styles.placeholder}>
@@ -52,6 +52,6 @@ export function EnamadSeal() {
       </span>
       <span className={styles.verify}>مشاهدهٔ شناسنامهٔ رسمی <span aria-hidden="true">↗</span></span>
     </a>
-    {state === "unavailable" && <button className={styles.retry} type="button" onClick={() => { setState("loading"); setAttempt(Date.now()); }}>تلاش دوباره برای تصویر</button>}
+    {state === "unavailable" && <button className={styles.retry} type="button" onClick={() => { setState("loading"); setAttempt(current => current + 1); }}>تلاش دوباره برای تصویر</button>}
   </section>;
 }

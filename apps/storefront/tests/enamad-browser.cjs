@@ -39,9 +39,9 @@ const fixture = '<svg xmlns="http://www.w3.org/2000/svg" width="125" height="136
         const parameters = new URL(route.request().url()).searchParams;
         assert.equal(parameters.get('id'), '8329471');
         assert.equal(parameters.get('Code'), 'xq46ZqyHRQtv0ZGlrkmnEj6fFhmX7Zxc');
+        assert.equal(route.request().url(), profile.replace('/?', '/logo.aspx?'));
         referer = route.request().headers().referer;
         if (mode === 'failure') return route.fulfill({ status: 503, body: 'unavailable' });
-        if (mode === 'pending') return; // Exercise a hung external image without contacting eNamad.
         return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: mode === 'tiny' ? '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>' : fixture });
       });
       await page.goto(origin + '/contact', { waitUntil: 'domcontentloaded' });
@@ -50,7 +50,7 @@ const fixture = '<svg xmlns="http://www.w3.org/2000/svg" width="125" height="136
       await page.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor();
       const link = seal.getByRole('link');
       assert.equal(await link.getAttribute('href'), profile);
-      assert.equal(await link.getAttribute('rel'), 'noopener');
+      assert.equal(await link.getAttribute('rel'), null);
       assert.equal(await link.getAttribute('referrerpolicy'), 'origin');
       assert.equal(await seal.locator('img').getAttribute('referrerpolicy'), 'origin');
       const foreground = await seal.locator('a > span').first().evaluate(node => getComputedStyle(node).backgroundColor);
@@ -71,14 +71,21 @@ const fixture = '<svg xmlns="http://www.w3.org/2000/svg" width="125" height="136
       await seal.scrollIntoViewIfNeeded();
       await page.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor();
       assert.equal(await seal.locator('img').evaluate(image => image.naturalWidth), 1);
-      if (width === 360) {
-        mode = 'pending';
-        await seal.getByRole('button', { name: 'تلاش دوباره برای تصویر', exact: true }).click();
-        await page.getByText('در حال دریافت تصویر نماد…', { exact: true }).waitFor();
-        await page.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor({ timeout: 20000 });
-      }
       assert.deepEqual(errors, []);
       await context.close();
+      if (width === 360) {
+        // A fresh document avoids reusing the previous successfully decoded tiny image.
+        const pendingContext = await browser.newContext({ viewport: { width, height: 900 } });
+        await pendingContext.route(url => url.origin === 'https://trustseal.enamad.ir' && url.pathname === '/logo.aspx', () => {});
+        const pendingPage = await pendingContext.newPage();
+        pendingPage.on('pageerror', error => errors.push(error.message));
+        await pendingPage.goto(origin + '/contact', { waitUntil: 'domcontentloaded' });
+        await pendingPage.getByRole('region', { name: 'نماد اعتماد الکترونیکی', exact: true }).scrollIntoViewIfNeeded();
+        await pendingPage.getByText('در حال دریافت تصویر نماد…', { exact: true }).waitFor();
+        await pendingPage.getByText('تصویر نماد فعلاً در دسترس نیست', { exact: true }).waitFor({ timeout: 20000 });
+        await pendingContext.close();
+      }
+      assert.deepEqual(errors, []);
     }
     console.log('eNamad browser: official URLs/referrer, visible white image surface, failure/timeout/tiny-image fallback and retry recovery passed at 360/1280. Image fixtures do not certify external eNamad availability.');
   } finally {
