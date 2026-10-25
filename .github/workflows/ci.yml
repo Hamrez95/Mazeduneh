@@ -23,6 +23,13 @@ jobs:
           node-version: 24
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Refresh patched source map dependency
+        run: npm update source-map-js --no-audit --no-fund
+      - name: Save resolved dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-dependency-lock
+          path: apps/storefront/package-lock.json
       - name: Audit production JavaScript dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Type check
@@ -31,6 +38,9 @@ jobs:
         run: npm run test:catalog
       - name: Production release configuration contract
         run: npm run test:release
+      - name: Local launcher dependency cache contract
+        shell: pwsh
+        run: ../../scripts/tests/storefront-dependencies.ps1
       - name: Install browser for catalog integration
         run: npx playwright install --with-deps chromium
       - name: Live catalog browser integration

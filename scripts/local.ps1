@@ -14,6 +14,8 @@ New-Item -ItemType Directory -Force $localRoot,$runtime,(Join-Path $root '.local
 $rootKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($root).ToLowerInvariant()))).Substring(0,12).ToLowerInvariant()
 $stateFile = Join-Path $localRoot "processes-$rootKey.json"
 $adminBuildMarkerFile = Join-Path $localRoot "admin-build-$rootKey.sha256"
+$storefrontDependenciesMarkerFile = Join-Path $localRoot "storefront-dependencies-$rootKey.sha256"
+. (Join-Path $PSScriptRoot 'storefront-dependencies.ps1')
 $portsFile = Join-Path $localRoot 'ports.json'
 $secretsFile = Join-Path $localRoot 'credentials.json'
 $pgRoot = Join-Path $runtime 'postgresql-17.11-5'
@@ -162,7 +164,9 @@ if($Action -in @('stop','restart')) {
 }
 $adminSourceFingerprint = $null
 $adminBuildCurrent = $false
+$storefrontDependenciesCurrent = $false
 if(-not $SkipBuild) {
+  $storefrontDependenciesCurrent = Test-StorefrontDependenciesCurrent (Join-Path $root 'apps/storefront') $storefrontDependenciesMarkerFile
   $adminSourceFingerprint = Get-AdminSourceFingerprint
   if(Test-Path $adminBuildMarkerFile) {
     try {$adminBuildCurrent = (Get-Content $adminBuildMarkerFile -Raw).Trim() -ceq $adminSourceFingerprint} catch {}
@@ -172,7 +176,7 @@ if($Action -eq 'start') {
   $runningWebPort=Find-ReadyRootPort 3000 100 'apps/storefront'
   $runningAdminPort=Find-ReadyRootPort 8080 100 'serve-admin.cjs'
   $runningApiPort=Find-ReadyApiPort 5080 100
-  if($runningWebPort -and $runningAdminPort -and $runningApiPort -and ($SkipBuild -or $adminBuildCurrent)) {
+  if($runningWebPort -and $runningAdminPort -and $runningApiPort -and ($SkipBuild -or ($adminBuildCurrent -and $storefrontDependenciesCurrent))) {
     $webPort=$runningWebPort;$adminPort=$runningAdminPort;$apiPort=$runningApiPort
     Set-Urls
     Save-Ports
@@ -181,10 +185,10 @@ if($Action -eq 'start') {
     exit
   }
   if($runningWebPort -and $runningAdminPort -and $runningApiPort -and -not $SkipBuild) {
-    Write-Host 'The running apps are healthy, but the admin build is out of date. Rebuilding from the current source...' -ForegroundColor Cyan
+    Write-Host 'Application sources or storefront dependencies changed. Updating the local apps...' -ForegroundColor Cyan
   }
 }
-if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl) -and (Test-PortProcessFromRoot $webPort 'apps/storefront') -and (Test-PortProcessFromRoot $adminPort 'serve-admin.cjs') -and ($SkipBuild -or $adminBuildCurrent)) {
+if((Check-Ready "$apiUrl/health/ready" $true) -and (Check-Ready $webUrl) -and (Check-Ready $adminUrl) -and (Test-PortProcessFromRoot $webPort 'apps/storefront') -and (Test-PortProcessFromRoot $adminPort 'serve-admin.cjs') -and ($SkipBuild -or ($adminBuildCurrent -and $storefrontDependenciesCurrent))) {
   Write-Host "Mazeduneh is already healthy: $webUrl and $adminUrl"
   if(-not $NoBrowser){Start-Process $webUrl;Start-Process $adminUrl}
   exit
@@ -288,7 +292,14 @@ if(-not $SkipBuild) {
   & $dotnet build (Join-Path $root 'services/api/Mazeduneh.Api.csproj') -c Release -o $build --nologo
   if($LASTEXITCODE -ne 0){throw 'API build failed.'}
   Push-Location (Join-Path $root 'apps/storefront')
-  try {if(-not(Test-Path node_modules/next)){& $npm ci --no-audit --no-fund;if($LASTEXITCODE -ne 0){throw 'Storefront dependency setup failed.'}}} finally {Pop-Location}
+  try {
+    if(-not $storefrontDependenciesCurrent) {
+      & $npm ci --no-audit --no-fund
+      if($LASTEXITCODE -ne 0){throw 'Storefront dependency setup failed.'}
+      $fingerprint = Get-StorefrontDependencyFingerprint (Join-Path $root 'apps/storefront')
+      [IO.File]::WriteAllText($storefrontDependenciesMarkerFile,$fingerprint,[Text.Encoding]::ASCII)
+    }
+  } finally {Pop-Location}
   Push-Location (Join-Path $root 'apps/admin')
   $previousPubHostedUrl=$env:PUB_HOSTED_URL
   $previousFlutterStorageUrl=$env:FLUTTER_STORAGE_BASE_URL
