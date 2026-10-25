@@ -50,6 +50,7 @@ jobs:
           name: storefront-browser-screenshots
           path: apps/storefront/.test-results/*.png
           if-no-files-found: ignore
+          include-hidden-files: true
       - name: Production product routes and metadata timeout
         run: npm run test:production
       - name: Production static preview build

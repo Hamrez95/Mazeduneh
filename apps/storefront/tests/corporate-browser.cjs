@@ -79,7 +79,7 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       await page.getByRole('button', { name: 'برای این مناسبت پیشنهاد می‌خواهم ←', exact: true }).first().click();
       assert.equal(await page.locator('[name="occasion"]').inputValue(), 'قدردانی از همکاران');
       await page.locator('input[name="customerName"]').fill('خریدار آزمایشی');
-      assert.equal(await page.getByText('یک هدیهٔ خوش‌طعم، با بودجهٔ شما', { exact: true }).isVisible(), false, 'Floating CTA must not obscure the form');
+      await page.getByText('یک هدیهٔ خوش‌طعم، با بودجهٔ شما', { exact: true }).waitFor({ state: 'hidden', timeout: 5000 });
       await page.locator('input[name="companyName"]').fill('سازمان آزمایشی');
       await page.locator('input[name="mobile"]').fill('۰۹۱۲۱۱۱۱۱۱۱');
       await page.locator('input[name="city"]').fill('تهران');
@@ -88,6 +88,12 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       await page.locator('#request select').last().selectOption('TEAM');
       await page.getByText('بودجهٔ تقریبی کل: ۱۰٬۰۰۰٬۰۰۰ تومان', { exact: true }).waitFor();
       await page.locator('#request details summary').click();
+      const logoInput = page.getByLabel('انتخاب تصویر لوگو', { exact: true });
+      await page.getByText('تصویری انتخاب نشده است', { exact: true }).waitFor();
+      await logoInput.setInputFiles({ name: 'نشان-سازمان.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=', 'base64') });
+      await page.getByText('نشان-سازمان.png', { exact: true }).waitFor();
+      await page.getByRole('button', { name: 'حذف فایل انتخاب‌شده', exact: true }).click();
+      assert.equal(await logoInput.evaluate(input => input.files.length), 0);
       await page.locator('#request textarea').fill('بسته‌بندی با کارت قدردانی');
       if (width === 390 || width === 1440) await page.locator('#request').screenshot({ path: `.test-results/corporate-request-${width}.png` });
       const submit = page.getByRole('button', { name: 'درخواست پیشنهاد و هماهنگی', exact: true });
