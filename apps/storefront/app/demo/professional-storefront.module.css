@@ -117,7 +117,7 @@
 .page button,
 .page .brand strong,
 .page .footerBrand strong {
-  font-family: "Estedad", "Vazirmatn", Tahoma, sans-serif;
+  font-family: "Vazirmatn", Tahoma, sans-serif;
 }
 .page button:focus-visible,
 .page a:focus-visible,
@@ -218,7 +218,7 @@
   box-shadow: 0 0 0 48px rgba(15,96,78,.03), 0 0 0 96px rgba(15,96,78,.022);
 }
 .hero h1 {
-  font-family: "Estedad", "Vazirmatn", Tahoma, sans-serif;
+  font-family: "Vazirmatn", Tahoma, sans-serif;
   font-weight: 900;
   letter-spacing: -5px;
 }
@@ -267,7 +267,7 @@
   .productVisual { height: 178px; }
   .productImageLink { padding: 10px 12px 12px; }
 }
-.productBody h3 { font-family: "Estedad", "Vazirmatn", Tahoma, sans-serif; font-weight: 800; }
+.productBody h3 { font-family: "Vazirmatn", Tahoma, sans-serif; font-weight: 800; }
 .addToCart { min-height: 45px; border-radius: 14px; background: var(--orange); box-shadow: 0 9px 17px rgba(244,125,54,.17); }
 .specialOffer { border-radius: 28px; background: var(--forest); }
 .specialOffer button { border-radius: 15px; background: var(--orange); }
