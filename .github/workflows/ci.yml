@@ -43,6 +43,13 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Live catalog browser integration
         run: npm run test:browser
+      - name: Save synthetic browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-browser-screenshots
+          path: apps/storefront/.test-results/*.png
+          if-no-files-found: ignore
       - name: Production product routes and metadata timeout
         run: npm run test:production
       - name: Production static preview build

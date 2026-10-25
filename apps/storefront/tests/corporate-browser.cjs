@@ -32,6 +32,7 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
+      page.on('console', message => { if (/hydration|hydrated|didn't match/i.test(message.text())) errors.push(message.text()); });
       let submitted;
       let fail = true;
       await context.route('https://trustseal.enamad.ir/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" />' }));
@@ -49,9 +50,12 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       });
       await page.goto(origin + '/corporate-sales', { waitUntil: 'domcontentloaded' });
       await page.getByRole('heading', { name: 'پیشنهاد مخصوص سازمان شما', exact: true }).waitFor();
+      await page.locator('#request select').last().getByRole('option', { name: 'بستهٔ همکاران', exact: true }).waitFor({ state: 'attached' });
       await page.evaluate(async () => { await document.fonts.ready; for (const image of document.querySelectorAll('main img')) { image.loading = 'eager'; await image.decode(); } });
       assert.equal(await page.locator('header').count(), 1);
       assert.equal(await page.locator('footer').count(), 1);
+      assert.equal(await page.locator('head meta[name="enamad"]').count(), 1);
+      assert.equal(await page.locator('head meta[name="enamad"]').getAttribute('content'), '23492933');
       assert.equal(await page.locator('footer a[href="/privacy"]').count(), 1);
       assert.equal(await page.locator('footer a[href*="trustseal.enamad.ir"]').count(), 1);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), true, `overflow at ${width}`);
@@ -75,6 +79,7 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       await page.getByRole('button', { name: 'برای این مناسبت پیشنهاد می‌خواهم ←', exact: true }).first().click();
       assert.equal(await page.locator('[name="occasion"]').inputValue(), 'قدردانی از همکاران');
       await page.locator('input[name="customerName"]').fill('خریدار آزمایشی');
+      assert.equal(await page.getByText('یک هدیهٔ خوش‌طعم، با بودجهٔ شما', { exact: true }).isVisible(), false, 'Floating CTA must not obscure the form');
       await page.locator('input[name="companyName"]').fill('سازمان آزمایشی');
       await page.locator('input[name="mobile"]').fill('۰۹۱۲۱۱۱۱۱۱۱');
       await page.locator('input[name="city"]').fill('تهران');
@@ -87,7 +92,8 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       if (width === 390 || width === 1440) await page.locator('#request').screenshot({ path: `.test-results/corporate-request-${width}.png` });
       const submit = page.getByRole('button', { name: 'درخواست پیشنهاد و هماهنگی', exact: true });
       await submit.click();
-      await page.getByRole('alert').waitFor();
+      try { await page.locator('#request').getByRole('alert').waitFor({ timeout: 10000 }); }
+      catch (error) { await page.screenshot({ path: `.test-results/corporate-submit-error-${width}.png`, fullPage: true }); throw new Error(`Submit at ${width}: ${await page.locator('#request').innerText()}; payload=${JSON.stringify(submitted)}; ${error}`); }
       assert.equal(await page.locator('input[name="companyName"]').inputValue(), 'سازمان آزمایشی');
       fail = false;
       await submit.click();
@@ -100,6 +106,12 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
       assert.deepEqual(errors, []);
       await page.getByRole('button', { name: 'بازگشت', exact: true }).click();
       await page.waitForURL(origin + '/shop');
+      if (width === 390) {
+        await page.locator('footer a[href="/corporate-sales"]').click();
+        await page.waitForURL(origin + '/corporate-sales');
+        await page.getByRole('button', { name: 'بازگشت', exact: true }).click();
+        await page.waitForURL(origin + '/shop');
+      }
       await context.close();
     }
     console.log('Corporate browser: shared chrome, Persian fonts/word spacing, contained images, mobile navigation, back fallback and request retry/toman conversion passed at 320/360/390/768/1024/1440.');
