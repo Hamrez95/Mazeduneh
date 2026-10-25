@@ -1,5 +1,6 @@
 import type { DemoProduct, ProductArt } from "./catalog";
 import styles from "./professional-storefront.module.css";
+import heroArtwork from "./hero-artwork.json";
 
 const imageByArt: Record<ProductArt, string> = {
   pistachio: "/products/pistachio-pouch-new.webp",
@@ -54,10 +55,15 @@ export function ProductArtwork({
       <span>تصویری ثبت نشده</span>
     </div>;
   }
+  const source = src ?? imageFor(product);
+  // Keep full-size detail images and merchant-managed media unchanged.
+  const responsive = !hero ? heroArtwork[source as keyof typeof heroArtwork] : undefined;
   return (
     <img
+      {...responsive}
       className={hero ? styles.heroProductImage : styles.productImage}
-      src={src ?? imageFor(product)}
+      src={responsive?.src ?? source}
+      sizes={responsive ? "(max-width: 700px) 45vw, (max-width: 980px) 30vw, 280px" : undefined}
       alt={`تصویرسازی ${product.title}`}
       loading={hero ? "eager" : "lazy"}
       decoding="async"
