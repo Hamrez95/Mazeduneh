@@ -51,7 +51,7 @@
 .productInfo h3 { margin:7px 0 4px; color:#2e4539; font-size:15px; }
 .productInfo > a { text-decoration:none; }
 .productInfo p { min-height:38px; margin:0; color:#849087; font-size:10px; line-height:1.9; }
-.productBuy { margin-top:13px; padding-top:12px; display:flex; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid #eef0eb; }
+.productBuy { margin-top:13px; padding-top:12px; display:grid; align-items:center; gap:10px; border-top:1px solid #eef0eb; }
 .productBuy > strong { color:#3f6e60; font-size:15px; white-space:nowrap; }
 .productBuy > strong small { font-size:9px; font-weight:500; }
 .productBuy button { min-height:36px; padding:0 10px; display:flex; align-items:center; gap:7px; border-radius:11px; color:white; background:var(--forest); font:inherit; font-size:10px; font-weight:800; cursor:pointer; }

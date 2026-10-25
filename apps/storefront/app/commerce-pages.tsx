@@ -15,6 +15,7 @@ import { paymentIsConfirmed, type CheckoutReceipt, type ReceiptLine } from "./or
 import { defaultShippingMethod, estimateCommerce } from "./commerce-settings";
 import { SocialSupport } from "./social-support";
 import { GuestOrders } from "./guest-orders";
+import { ProductCartControl } from "./product-cart-control";
 
 export function CatalogPage() {
   const { products: catalogProducts } = useCatalog();
@@ -65,8 +66,6 @@ function productFacts(product: DemoProduct) {
 }
 
 export function ProductPage({ product, live = false }: { product: DemoProduct; live?: boolean }) {
-  const { add, ready } = useCart();
-  const [cartFeedback, setCartFeedback] = useState("");
   const variants = product.variants?.length
     ? product.variants
     : [{ sku: product.sku ?? `${product.id}-preview`, packageLabel: product.packageLabel, price: product.price, stock: product.stock }];
@@ -80,10 +79,6 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
     price: selectedVariant.price,
     stock: selectedVariant.stock,
   };
-  function addSelectedProduct() {
-    add(selectedProduct);
-    setCartFeedback(`${selectedProduct.packageLabel} به سبد خرید اضافه شد.`);
-  }
   const gallery = getProductArtworkGallery(product, { live });
   const [activeImage, setActiveImage] = useState(gallery[0]);
   useEffect(() => setActiveImage(gallery[0]), [product.id]);
@@ -127,15 +122,14 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
               role="option"
               aria-selected={variant.sku === selectedVariant.sku}
               className={variant.sku === selectedVariant.sku ? styles.variantOptionActive : styles.variantOption}
-              onClick={() => { setSelectedSku(variant.sku); setCartFeedback(""); }}
+              onClick={() => setSelectedSku(variant.sku)}
             >
               <span>{variant.packageLabel}</span>
               <small>{toman(variant.price)} تومان · {formatInventory(variant.stock)}</small>
             </button>
           ))}
         </div>
-        <div className={styles.detailBuy}><button type="button" disabled={!ready || selectedProduct.stock <= 0} onClick={addSelectedProduct}>{ready ? "افزودن به سبد خرید" : "در حال آماده‌سازی سبد…"}</button><a href="/cart">رفتن به سبد</a></div>
-        {cartFeedback && <p className={styles.cartFeedback} role="status" aria-live="polite">✓ {cartFeedback} <a href="/cart">مشاهدهٔ سبد</a></p>}
+        <div className={styles.detailBuy}><ProductCartControl product={selectedProduct} detail /><a href="/cart">رفتن به سبد</a></div>
         <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
         {(product.ingredients || product.allergens?.length || product.storageInstructions || (product.nutritionFacts && Object.keys(product.nutritionFacts).length) || product.shelfLifeDays || product.earliestAvailableExpiryAt) && (
           <section className={styles.foodDetails} aria-labelledby="food-details-title">

@@ -9,6 +9,12 @@ import { defaultShippingMethod, estimateCommerce, parseCommerceSettings, preview
 import { useCatalog } from "./catalog-context";
 
 export type CartLine = DemoProduct & { quantity: number };
+
+export function cartLineMatchesProduct(line: CartLine, product: DemoProduct) {
+  return product.sku
+    ? line.sku === product.sku || (!line.sku && line.id === product.id && line.packageLabel === product.packageLabel)
+    : line.id === product.id && line.packageLabel === product.packageLabel;
+}
 type CartValue = {
   cart: CartLine[];
   ready: boolean;
@@ -175,9 +181,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       add(product) {
         if (!ready || product.stock <= 0) return;
         setCart((current) => {
-          const matchesProduct = (line: CartLine) => product.sku
-            ? line.sku === product.sku || (!line.sku && line.id === product.id && line.packageLabel === product.packageLabel)
-            : line.id === product.id && line.packageLabel === product.packageLabel;
+          const matchesProduct = (line: CartLine) => cartLineMatchesProduct(line, product);
           const found = current.find(matchesProduct);
           if (!found) return [...current, { ...product, quantity: 1 }];
           return current.map((line) => matchesProduct(line)
