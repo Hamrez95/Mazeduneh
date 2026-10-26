@@ -214,11 +214,14 @@
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:22px}
 .idea {
+  display:flex;
+  flex-direction:column;
   border:1px solid var(--line);
   border-radius:22px;
   overflow:hidden;
   background:#fff}
 .ideaImage {
+  flex-shrink:0;
   height:255px;
   background:#eee8d8;
   position:relative;
@@ -257,7 +260,12 @@
   font-size:12px;
   line-height:1.9}
 .ideaCopy {
+  display:flex;
+  flex-direction:column;
+  flex:1;
   padding:22px}
+.ideaCopy p {
+  flex:1}
 .idea h3 {
   margin:0 0 10px;
   font-size:19px}
