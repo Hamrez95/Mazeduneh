@@ -8,14 +8,16 @@ import { formatMoney, formatRialsAsTomans, toPersianDigits } from "./formatters"
 import styles from "./corporate-sales-page.module.css";
 import storeStyles from "./store-pages.module.css";
 import { StoreHeader, StoreFooter } from "./store-chrome";
+import creativeArtwork from "./corporate-creative-artwork.json";
 
 const phone = process.env.NEXT_PUBLIC_CORPORATE_PHONE?.trim() || "";
 const whatsapp = (process.env.NEXT_PUBLIC_CORPORATE_WHATSAPP || "").replace(/\D/g, "");
 const occasions = ["قدردانی از همکاران", "یلدا", "نوروز", "هدیه به مشتریان", "رویداد و همایش", "پذیرایی و مصرف روزانه", "سایر"];
-const ideas = [
-  { title: "برای همکارهای دوست‌داشتنی", label: "قدردانی از همکاران", image: "/products/gift-box.webp", text: "یک ترکیب خوش‌طعم برای قدردانی از آدم‌هایی که هر روز کنار شما هستند." },
-  { title: "برای یک مناسبت به‌یادماندنی", label: "یلدا", image: "/products/gift-boxes-new.webp", text: "آجیل و خوراکی‌های مناسب هدیه؛ ترکیب و بسته‌بندی را با هم هماهنگ می‌کنیم." },
-  { title: "برای روزهای کاری خوشمزه‌تر", label: "پذیرایی و مصرف روزانه", image: "/products/one-kilo-box-packaging.webp", text: "مغزیجات و میان‌وعده برای جلسات، پذیرایی یا مصرف تیم شما." },
+type GiftIdea = { title: string; label: string; image: string; srcSet?: string; width?: number; height?: number; alt: string; text: string; creative?: boolean };
+const ideas: GiftIdea[] = [
+  { title: "هدیه‌ای که به بازی دوز تبدیل می‌شود", label: "قدردانی از همکاران", ...creativeArtwork["tic-tac-toe"], alt: "طرح پیشنهادی جعبهٔ مزه‌دونه، خوراکی‌ها و بازی دوز بعد از مصرف", text: "آجیل و میان‌وعده، همراه با یک بازی جمع‌وجور برای وقت استراحت همکاران؛ هدیه‌ای که بعد از آخرین دانه هم می‌ماند.", creative: true },
+  { title: "هدیه‌ای برای شروع گفت‌وگو", label: "رویداد و همایش", ...creativeArtwork.origami, alt: "طرح پیشنهادی جعبهٔ مزه‌دونه و اوریگامی گفت‌وگو، در حالت باز و تاشده", text: "بسته‌ای با اوریگامی بازیگوش؛ یک برگه که بعد از مصرف خوراکی‌ها، بهانهٔ گپ‌وگفت همکاران می‌شود.", creative: true },
+  { title: "برای روزهای کاری خوشمزه‌تر", label: "پذیرایی و مصرف روزانه", image: "/products/one-kilo-box-packaging.webp", alt: "ایدهٔ بستهٔ مغزیجات و میان‌وعده برای پذیرایی سازمانی", text: "مغزیجات و میان‌وعده برای جلسات، پذیرایی یا مصرف تیم شما." },
 ];
 const faqs = [
   ["هنوز نمی‌دانیم چه بسته‌ای انتخاب کنیم؛ چه کار کنیم؟", "تعداد تقریبی و بودجهٔ دلخواه را بفرستید و گزینهٔ «برای انتخاب راهنمایی می‌خواهم» را نگه دارید. برای پیشنهاد ترکیب مناسب با شما هماهنگ می‌کنیم."],
@@ -65,8 +67,14 @@ export default function CorporateSalesLanding() {
   const quantity = Number(latin(form.orderQuantity));
   const budget = Number(latin(form.budget));
   const selected = catalog.find(p => p.code === form.packageCode);
-  const choose = (occasion?: string, code?: string) => {
-    setForm(current => ({ ...current, ...(occasion ? { occasion } : {}), packageCode: code ?? current.packageCode }));
+  const choose = (occasion?: string, code?: string, creativeIdea?: string) => {
+    setForm(current => {
+      const note = creativeIdea ? `ایدهٔ بسته‌بندی موردنظر: ${creativeIdea}` : "";
+      const description = note && !current.description.includes(note) ? [current.description, note].filter(Boolean).join("\n") : current.description;
+      return { ...current, ...(occasion ? { occasion } : {}), packageCode: code ?? current.packageCode,
+        customPackaging: current.customPackaging || Boolean(creativeIdea),
+        description: description.length <= 3000 ? description : current.description };
+    });
     document.getElementById("request")?.scrollIntoView({ behavior: "auto", block: "start" });
     formRef.current?.querySelector<HTMLInputElement>('input[name="customerName"]')?.focus({ preventScroll: true });
   };
@@ -108,7 +116,7 @@ export default function CorporateSalesLanding() {
     <nav className={styles.sectionNavigation} aria-label="راهنمای فروش سازمانی"><a href="#packages">بسته‌ها و ایده‌ها</a><a href="#process">مراحل سفارش</a><a href="#request">دریافت پیشنهاد <span aria-hidden="true">←</span></a></nav>
     <section className={styles.hero}><div className={styles.heroCopy}><span className={styles.kicker}>هدایای سازمانی · آجیل و مغزیجات · میان‌وعده</span><h1>قدردانی شما، <em>با طعمِ یک حال خوب.</em></h1><p>برای همکاران، مشتریان و مهمان‌های سازمانتان، هدیه‌ای خوش‌طعم انتخاب کنید. ترکیب و بسته‌بندی را متناسب با بودجهٔ شما پیشنهاد می‌دهیم.</p><div className={styles.heroActions}><a href="#request" className={styles.primary}>برای سازمانم پیشنهاد می‌خواهم <span aria-hidden="true">←</span></a><a href="#packages" className={styles.secondary}>دیدن بسته‌ها و ایده‌ها <span aria-hidden="true">↓</span></a></div><p className={styles.reassurance}>بدون نیاز به ثبت‌نام یا پرداخت؛ جزئیات را با هم هماهنگ می‌کنیم.</p></div><figure className={styles.heroProduct}><div className={styles.heroArtwork}><span className={styles.heroBlob} /><img src="/organization/mazeduneh-gift-box.webp" alt="نمونهٔ چیدمان جعبهٔ هدیهٔ مزه‌دونه" width={1536} height={1024} fetchPriority="high" /></div><figcaption className={styles.imageLabel}>ایدهٔ چیدمان؛ ترکیب نهایی با انتخاب شما</figcaption></figure></section>
     <div className={styles.benefits}><div><b>متناسب با بودجه</b><span>تعداد و بودجهٔ هر بسته، نقطهٔ شروع ماست.</span></div><div><b>با هویت سازمان شما</b><span>امکان بررسی لوگو، کارت و بسته‌بندی اختصاصی.</span></div><div><b>شفاف، قبل از تأیید</b><span>ترکیب، مبلغ و زمان تحویل را هماهنگ می‌کنیم.</span></div></div>
-    <section className={styles.section} id="packages"><div className={styles.sectionIntro}><div><span className={styles.kicker}>از اینجا انتخاب را شروع کنید</span><h2>برای چه کسی خوشمزگی می‌فرستید؟</h2></div><p>این‌ها ایده‌اند؛ لازم نیست همین حالا محتویات نهایی را انتخاب کنید.</p></div><div className={styles.ideaGrid}>{ideas.map(item => <article className={styles.idea} key={item.label}><div className={styles.ideaImage}><img src={item.image} alt={`ایدهٔ بسته‌بندی ${item.title}`} loading="lazy" /><span>ایدهٔ هدیه</span></div><div className={styles.ideaCopy}><h3>{item.title}</h3><p>{item.text}</p><button type="button" onClick={() => choose(item.label)}>برای این مناسبت پیشنهاد می‌خواهم ←</button></div></article>)}</div>
+    <section className={styles.section} id="packages"><div className={styles.sectionIntro}><div><span className={styles.kicker}>از یک پذیرایی ساده تا یک یادگاری خوش‌طعم</span><h2>هدایای خلاقانه، متناسب با سازمان شما</h2></div><p>امکان طراحی و بررسی تأمین بسته‌های خلاقانه، با توجه به تعداد، بودجه و زمان تحویل شما.</p></div><div className={styles.ideaGrid}>{ideas.map(item => <article className={styles.idea} key={item.label}><div className={`${styles.ideaImage} ${item.creative ? styles.creativeImage : ""}`}><img src={item.image} srcSet={item.srcSet} sizes={item.srcSet ? "(max-width: 700px) calc(100vw - 48px), 380px" : undefined} width={item.width} height={item.height} alt={item.alt} loading="lazy" decoding="async" /><span>{item.creative ? "طرح پیشنهادی خلاقانه" : "ایدهٔ هدیه"}</span></div><div className={styles.ideaCopy}><h3>{item.title}</h3><p>{item.text}</p><button type="button" onClick={() => choose(item.label, undefined, item.creative ? item.title : undefined)}>برای این ایده پیشنهاد می‌خواهم ←</button></div></article>)}</div><p className={styles.creativeNote}>تصاویر بسته‌های خلاقانه، طرح پیشنهادی‌اند؛ امکان تولید، هزینه و زمان تحویل پیش از تأیید سفارش با شما هماهنگ می‌شود.</p>
     {catalog.length > 0 && <div className={styles.livePackages}><h3>بسته‌های قابل درخواست</h3><p>قیمت پایهٔ هر بسته؛ هزینه و شرایط نهایی پس از بررسی درخواست مشخص می‌شود.</p><div className={styles.catalogGrid}>{catalog.map(item => <article key={item.code}><h4>{item.name}</h4>{item.description && <p>{item.description}</p>}{!!item.items?.length && <ul>{item.items.map((entry, index) => <li key={index}>{entry.name} · {toPersianDigits(entry.quantity)} {entry.unit}</li>)}</ul>}<strong>{formatRialsAsTomans(item.unitPrice)} <small>تومان / هر بسته</small></strong><button type="button" onClick={() => choose(undefined, item.code)}>انتخاب {item.name} ←</button></article>)}</div></div>}
     {catalogState === "loading" && <p role="status">در حال دریافت بسته‌های فروشگاه…</p>}{catalogState === "error" && <p className={styles.catalogNote}>فهرست بسته‌ها فعلاً در دسترس نیست؛ همچنان می‌توانید درخواست پیشنهاد اختصاصی بفرستید.</p>}</section>
     <section className={styles.process} id="process"><div><span className={styles.kicker}>یک مسیر روشن تا تحویل</span><h2>شما نیازتان را بگویید؛<br />ترکیب مناسب را با هم پیدا می‌کنیم.</h2><a href="#request" className={styles.processLink}>شروع درخواست ←</a></div><ol>{[["نیاز شما", "تعداد، مناسبت و بودجهٔ تقریبی را مشخص می‌کنید."],["پیشنهاد ما", "برای ترکیب، بسته‌بندی، قیمت و زمان تحویل هماهنگ می‌کنیم."],["تأیید و آماده‌سازی", "پس از توافق، سفارش نهایی و ارسال برنامه‌ریزی می‌شود."]].map(([title, copy], i) => <li key={title}><span>{toPersianDigits(i + 1)}</span><div><h3>{title}</h3><p>{copy}</p></div></li>)}</ol></section>

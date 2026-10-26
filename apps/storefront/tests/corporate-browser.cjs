@@ -76,7 +76,7 @@ const headers = { 'access-control-allow-origin': '*', 'access-control-allow-head
         await page.getByRole('navigation', { name: 'ناوبری فروشگاه' }).getByRole('link', { name: 'همهٔ محصولات', exact: true }).waitFor({ state: 'visible' });
         await page.getByRole('button', { name: 'بستن فهرست', exact: true }).first().click();
       }
-      await page.getByRole('button', { name: 'برای این مناسبت پیشنهاد می‌خواهم ←', exact: true }).first().click();
+      await page.getByRole('button', { name: 'برای این ایده پیشنهاد می‌خواهم ←', exact: true }).first().click();
       assert.equal(await page.locator('[name="occasion"]').inputValue(), 'قدردانی از همکاران');
       await page.locator('input[name="customerName"]').fill('خریدار آزمایشی');
       await page.getByText('یک هدیهٔ خوش‌طعم، با بودجهٔ شما', { exact: true }).waitFor({ state: 'hidden', timeout: 5000 });

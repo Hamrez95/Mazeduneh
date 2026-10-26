@@ -1,0 +1,14 @@
+{
+  "origami": {
+    "image": "/organization/creative/origami.640.00e11eea60ff.webp",
+    "srcSet": "/organization/creative/origami.640.00e11eea60ff.webp 640w, /organization/creative/origami.1024.d2eff5d81328.webp 1024w",
+    "width": 1024,
+    "height": 512
+  },
+  "tic-tac-toe": {
+    "image": "/organization/creative/tic-tac-toe.640.272466bbbffa.webp",
+    "srcSet": "/organization/creative/tic-tac-toe.640.272466bbbffa.webp 640w, /organization/creative/tic-tac-toe.1024.454049942ff4.webp 1024w",
+    "width": 1024,
+    "height": 512
+  }
+}
