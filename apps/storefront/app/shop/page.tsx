@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CatalogPage } from "../commerce-pages";
+import { pageMetadata } from "../seo";
 
-export const metadata: Metadata = { title: "همهٔ محصولات", description: "آجیل، میوه خشک، لواشک و شیرینی‌های مزه‌دونه را ببین و انتخاب کن." };
+export const metadata: Metadata = pageMetadata("/shop", "خرید آجیل و میان‌وعده", "محصولات منتشرشدهٔ مزه‌دونه، بسته‌ها و قیمت هر انتخاب را ببین و مقایسه کن.");
 export default function ShopRoute() { return <CatalogPage />; }

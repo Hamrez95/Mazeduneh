@@ -46,6 +46,7 @@ export function StoreHeader() {
             <button aria-label="جست‌وجو">جست‌وجو</button>
           </form>
           <a href="/shop" onClick={() => setMenuOpen(false)}>همهٔ محصولات</a>
+          <a href="/gifts" onClick={() => setMenuOpen(false)}>راهنمای انتخاب هدیه</a>
           {catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`} onClick={() => setMenuOpen(false)}>{name}</a>)}
           <a href="/about" onClick={() => setMenuOpen(false)}>داستان ما</a>
         </nav>
@@ -66,7 +67,7 @@ export function StoreFooter() {
     <div className={styles.footerMain}>
       <div><BrandLogo light /><p>یک مشت خوراکی خوش‌طعم برای لحظه‌های کوچک روزمره؛ تازه، ساده و باحوصله آماده‌شده.</p></div>
       <div><strong>خرید</strong><a href="/shop">همهٔ محصولات</a>{catalogCategories.slice(0, 3).map((name) => <a key={name} href={`/shop?category=${encodeURIComponent(name)}`}>{name}</a>)}</div>
-        <div><strong>راهنما</strong><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">پیام به مزه‌دونه</a><a href="/privacy">حریم خصوصی</a><a href="/terms">شرایط خرید</a></div>
+        <div><strong>راهنما</strong><a href="/gifts">راهنمای انتخاب هدیه</a><a href="/shipping">روش و زمان ارسال</a><a href="/returns">بازگشت و پیگیری</a><a href="/faq">پرسش‌های پرتکرار</a><a href="/corporate-sales">فروش سازمانی</a><a href="/contact">پیام به مزه‌دونه</a><a href="/privacy">حریم خصوصی</a><a href="/terms">شرایط خرید</a></div>
       <div><strong>مزه‌دونه</strong><a href="/about">دربارهٔ ما</a><SocialSupport />
           <EnamadSeal />
         </div>

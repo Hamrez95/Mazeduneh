@@ -9,8 +9,8 @@ import { catalogFailure, catalogSuccess, initialCatalog, type CatalogState } fro
 type CatalogValue = CatalogState & { refresh: () => void };
 const CatalogContext = createContext<CatalogValue | null>(null);
 
-export function CatalogProvider({ children }: { children: ReactNode }) {
-  const [catalog, setCatalog] = useState(() => initialCatalog(Boolean(API_BASE), demoProducts, categories));
+export function CatalogProvider({ children, initialState }: { children: ReactNode; initialState?: CatalogState }) {
+  const [catalog, setCatalog] = useState(() => initialState ?? initialCatalog(Boolean(API_BASE), demoProducts, categories));
   const request = useRef<AbortController | null>(null);
   const generation = useRef(0);
   const refresh = useCallback(() => {

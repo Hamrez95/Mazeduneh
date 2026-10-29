@@ -836,3 +836,7 @@
     grid-auto-columns: 58px;
   }
 }
+.connectionNotice { padding: 12px 24px; background: #fff2d9; color: #694a1b; font-size: 13px; text-align: center; }
+.purchaseHelp { display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px; margin:16px 0 22px; color:#536458; font-size:13px; line-height:1.9; }
+.purchaseHelp a { text-decoration:underline; text-underline-offset:4px; padding-block:8px; }
+@media(max-width:760px) { .detailBuy { position:sticky; bottom:12px; z-index:5; padding:12px; border:1px solid #d8dfd6; border-radius:18px; background:#fffdf8; box-shadow:0 8px 25px #174f431a; }.variantChoices button { min-height:48px; }.purchaseHelp a { min-height:44px; display:inline-flex; align-items:center; } }

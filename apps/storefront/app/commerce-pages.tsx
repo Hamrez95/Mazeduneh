@@ -59,7 +59,8 @@ function productFacts(product: DemoProduct) {
   const details = Object.entries(product.specifications ?? {})
     .filter(([label]) => label !== "مبدأ")
     .slice(0, 3);
-  const weight = product.netWeight && product.netWeightUnit
+  // Product-level weight may differ from a selected package in a multi-SKU item.
+  const weight = (product.variants?.length ?? 0) <= 1 && product.netWeight && product.netWeightUnit
     ? [["وزن خالص", toPersianDigits(product.netWeight) + " " + toPersianDigits(product.netWeightUnit)]]
     : [];
   return [["مبدأ", product.origin], ...weight, ...details] as Array<[string, string]>;
@@ -114,13 +115,24 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
         <div className={styles.rating} aria-label="بدون امتیاز ثبت‌شده">☆☆☆☆☆ <span>هنوز امتیاز تأییدشده‌ای ثبت نشده</span></div>
         <div className={styles.detailPrice} role="status" aria-label="قیمت بستهٔ انتخاب‌شده" aria-live="polite" aria-atomic="true">{toman(selectedProduct.price)} <small>تومان</small></div>
         <p className={styles.variantTitle}>بستهٔ قابل انتخاب</p>
-        <div className={styles.variantChoices} role="listbox" aria-label="انتخاب بسته">
+        <div className={styles.variantChoices} role="listbox" aria-label="انتخاب بسته" onKeyDown={event => {
+          const direction = event.key === "ArrowDown" || event.key === "ArrowLeft" ? 1
+            : event.key === "ArrowUp" || event.key === "ArrowRight" ? -1 : 0;
+          if (!direction && event.key !== "Home" && event.key !== "End") return;
+          event.preventDefault();
+          const current = variants.findIndex(variant => variant.sku === selectedVariant.sku);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? variants.length - 1
+            : (current + direction + variants.length) % variants.length;
+          setSelectedSku(variants[next].sku);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();
+        }}>
           {variants.map((variant) => (
             <button
               key={variant.sku}
               type="button"
               role="option"
               aria-selected={variant.sku === selectedVariant.sku}
+              tabIndex={variant.sku === selectedVariant.sku ? 0 : -1}
               className={variant.sku === selectedVariant.sku ? styles.variantOptionActive : styles.variantOption}
               onClick={() => setSelectedSku(variant.sku)}
             >
@@ -130,12 +142,13 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
           ))}
         </div>
         <div className={styles.detailBuy}><ProductCartControl product={selectedProduct} detail /><a href="/cart">رفتن به سبد</a></div>
+        <div className={styles.purchaseHelp}><span>قیمت برای {selectedVariant.packageLabel} است.</span><a href="/shipping">روش و هزینهٔ ارسال</a><a href="/returns">شرایط بازگشت و پیگیری</a></div>
         <div className={styles.facts}>{productFacts(product).map(([label, value]) => <div className={styles.fact} key={label}><small>{toPersianDigits(label)}</small><b>{toPersianDigits(value)}</b></div>)}</div>
         {(product.ingredients || product.allergens?.length || product.storageInstructions || (product.nutritionFacts && Object.keys(product.nutritionFacts).length) || product.shelfLifeDays || product.earliestAvailableExpiryAt) && (
           <section className={styles.foodDetails} aria-labelledby="food-details-title">
             <h2 id="food-details-title">اطلاعات خوراکی و نگهداری</h2>
             {product.ingredients && <div><h3>مواد تشکیل‌دهنده</h3><p>{product.ingredients}</p></div>}
-            {product.allergens?.length ? <div><h3>آلرژن‌ها</h3><p>{product.allergens.join("، ")}</p></div> : null}
+            {product.allergens?.length ? <div><h3>مواد حساسیت‌زا</h3><p>{product.allergens.join("، ")}</p></div> : null}
             {product.nutritionFacts && Object.keys(product.nutritionFacts).length > 0 && <div><h3>ارزش غذایی</h3><dl>{Object.entries(product.nutritionFacts).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{toPersianDigits(value)}</dd></div>)}</dl></div>}
             {product.storageInstructions && <div><h3>نحوه نگهداری</h3><p>{product.storageInstructions}</p></div>}
             {product.shelfLifeDays ? <div><h3>تاریخ و ماندگاری</h3><p>{toPersianDigits(product.expiryLabel || "best-before")} · {toPersianDigits(product.shelfLifeDays)} روز از تاریخ تولید، تاریخ دقیق روی بسته ثبت می‌شود.</p></div> : null}
@@ -156,10 +169,10 @@ export function ProductPage({ product, live = false }: { product: DemoProduct; l
   </main>;
 }
 
-export function LiveProductPage({ slug }: { slug: string }) {
-  const fallback = API_BASE ? undefined : demoProducts.find((item) => item.id === slug);
+export function LiveProductPage({ slug, initialProduct }: { slug: string; initialProduct?: DemoProduct }) {
+  const fallback = initialProduct ?? (API_BASE ? undefined : demoProducts.find((item) => item.id === slug));
   const [product, setProduct] = useState<DemoProduct | undefined>(fallback);
-  const [live, setLive] = useState(false);
+  const [live, setLive] = useState(Boolean(initialProduct));
   const [loading, setLoading] = useState(Boolean(API_BASE));
   const [error, setError] = useState(false);
 
@@ -175,7 +188,8 @@ export function LiveProductPage({ slug }: { slug: string }) {
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setProduct(undefined);
+        // Preserve the server-rendered snapshot on a refresh failure. Checkout
+        // still requires live server validation and never trusts this snapshot.
         setError(true);
       })
       .finally(() => setLoading(false));
@@ -188,7 +202,7 @@ export function LiveProductPage({ slug }: { slug: string }) {
   if (!product) {
     return <ShopShell kicker="محصول پیدا نشد" title="این محصول در کاتالوگ موجود نیست." description="ممکن است محصول از فروش خارج شده باشد یا نشانی آن اشتباه باشد."><section className={styles.content}><a className={styles.primaryAction} href="/shop">بازگشت به فروشگاه</a></section></ShopShell>;
   }
-  return <ProductPage product={product} live={live} />;
+  return <>{error && <div role="status" className={styles.connectionNotice}>به‌روزرسانی اطلاعات انجام نشد؛ قیمت و موجودی هنگام ثبت سفارش دوباره بررسی می‌شوند.</div>}<ProductPage product={product} live={live} /></>;
 }
 
 export function CartPage() {

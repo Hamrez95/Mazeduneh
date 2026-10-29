@@ -1,5 +1,3 @@
-"use client";
-
 import type { DemoProduct, ProductArt } from "./demo/catalog";
 import { rialsToTomans, toPersianDigits } from "./formatters";
 
