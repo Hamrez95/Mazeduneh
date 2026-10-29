@@ -1,41 +1,32 @@
-import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { demoProducts } from "../../demo/catalog";
 import { LiveProductPage } from "../../commerce-pages";
+import { mapApiProduct } from "../../api-catalog";
+import { readPublishedProduct, hasServerCatalog } from "../../server-catalog";
+import { breadcrumbs, JsonLd, pageMetadata, productStructuredData } from "../../seo";
 
 export function generateStaticParams() {
-  const apiConfigured = process.env.NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE !== 'true' && Boolean(
-    process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim()
-    || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim(),
-  );
-  return apiConfigured ? [] : demoProducts.map((product) => ({ slug: product.id }));
+  return hasServerCatalog ? [] : demoProducts.map(product => ({ slug: product.id }));
 }
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const apiBase = process.env.NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE === 'true' ? '' : (process.env.MAZEDUNEH_API_INTERNAL_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL?.trim() || process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL?.trim() || "").replace(/\/$/, "");
-  const fallback = apiBase ? undefined : demoProducts.find((item) => item.id === slug);
-  if (apiBase) {
-    try {
-      // Metadata can use ISR; live price/stock still come from the uncached client API.
-      // A no-store fetch here turns an on-demand SSG route dynamic and causes a production 500.
-      const response = await fetch(apiBase + "/api/v1/products/" + encodeURIComponent(slug), { next: { revalidate: 60 }, signal: AbortSignal.timeout(3000) });
-      if (response.ok) {
-        const product = await response.json() as { title?: string; seoTitle?: string; seoDescription?: string; shortDescription?: string };
-        return {
-          title: product.seoTitle || product.title || fallback?.title || "محصول",
-          description: product.seoDescription || product.shortDescription || fallback?.subtitle || "محصول مزه‌دونه",
-        };
-      }
-    } catch {
-      // Keep an unavailable metadata API from delaying the product page indefinitely.
-    }
-  }
-  return { title: fallback?.seoTitle || fallback?.title || (apiBase ? "محصول" : "محصول پیدا نشد"), description: fallback?.seoDescription || fallback?.subtitle || (apiBase ? "اطلاعات محصول مزه‌دونه" : "محصول موردنظر پیدا نشد.") };
+  const { product } = await readPublishedProduct(slug);
+  const preview = hasServerCatalog ? undefined : demoProducts.find(p => p.id === slug);
+  return pageMetadata(`/product/${encodeURIComponent(slug)}`, product?.seoTitle || product?.title || preview?.seoTitle || preview?.title || "محصول",
+    product?.seoDescription || product?.shortDescription || preview?.subtitle || "اطلاعات محصول مزه‌دونه", hasServerCatalog && Boolean(product));
 }
+
 export default async function ProductRoute({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const product = demoProducts.find((item) => item.id === slug);
-  const preview = process.env.NEXT_PUBLIC_MAZEDUNEH_DEMO_MODE === 'true' || (!process.env.MAZEDUNEH_API_INTERNAL_URL && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_URL && !process.env.NEXT_PUBLIC_MAZEDUNEH_API_BASE_URL);
-  if (!product && preview) notFound();
-  return <LiveProductPage slug={slug} />;
+  const { product, missing } = await readPublishedProduct(slug);
+  const preview = demoProducts.find(p => p.id === slug);
+  if (missing || (!hasServerCatalog && !preview)) notFound();
+  const initialProduct = product ? mapApiProduct(product) ?? undefined : undefined;
+  const structured = product ? productStructuredData(product) : undefined;
+  return <>
+    {structured && <JsonLd data={structured} />}
+    {product && <JsonLd data={breadcrumbs([{ name: "خانه", path: "/" }, { name: "فروشگاه", path: "/shop" }, { name: product.title, path: `/product/${encodeURIComponent(slug)}` }])} />}
+    <LiveProductPage key={slug} slug={slug} initialProduct={initialProduct} />
+  </>;
 }

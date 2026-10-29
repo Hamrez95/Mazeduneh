@@ -49,6 +49,17 @@ export default function CorporateSalesLanding() {
   const fileRef = useRef<HTMLInputElement>(null);
   const requestRef = useRef<HTMLElement>(null);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const occasion = params.get("occasion") || "";
+    const rawBudget = params.get("budget") || "";
+    const budgetValue = Number(rawBudget);
+    const validBudget = /^\d{1,15}$/.test(rawBudget) && Number.isSafeInteger(budgetValue * 10) && budgetValue > 0;
+    setForm(current => ({ ...current,
+      ...(occasions.includes(occasion) ? { occasion } : {}),
+      ...(validBudget ? { budget: toPersianDigits(rawBudget) } : {}),
+    }));
+  }, []);
+  useEffect(() => {
     const observer = new IntersectionObserver(([entry]) => setRequestVisible(entry.isIntersecting));
     if (requestRef.current) observer.observe(requestRef.current);
     return () => observer.disconnect();

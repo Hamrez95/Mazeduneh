@@ -13,8 +13,12 @@ const env = { ...process.env, MAZEDUNEH_STATIC_EXPORT: 'false', MAZEDUNEH_DOCKER
 const fixture = http.createServer((request, response) => {
   if (request.url === '/api/v1/products/slow-metadata') return;
   response.writeHead(200, { 'content-type': 'application/json' });
-  response.end(JSON.stringify({ title: 'Fresh production product', seoTitle: 'Production route fixture',
-    seoDescription: 'A product slug that did not exist in preview at build time.' }));
+  const product = { id: 'production-fixture', slug: 'fresh-after-build', title: 'Fresh production product',
+    seoTitle: 'Production route fixture', category: 'Fixture', origin: '', currency: 'IRR',
+    isPublished: true, unitType: 'Weight', variants: [{ sku: 'FIXTURE-250', quantity: 250,
+      baseUnit: 'g', displayLabel: '۲۵۰ گرم', price: 2000000, availablePackages: 2 }],
+    seoDescription: 'A product slug that did not exist in preview at build time.' };
+  response.end(JSON.stringify(request.url === '/api/v1/products' ? [product] : product));
 });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 let server;
