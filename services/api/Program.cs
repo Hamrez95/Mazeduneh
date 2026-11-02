@@ -6,6 +6,7 @@ var databaseCommands = args.Where(argument => argument is "--migrate" or "--seed
     .ToHashSet(StringComparer.Ordinal);
 var builderArguments = args.Where(argument => !databaseCommands.Contains(argument)).ToArray();
 var builder = WebApplication.CreateBuilder(builderArguments);
+builder.Services.AddTrustedIngress(builder.Configuration);
 builder.Logging.AddJsonConsole(options =>
 {
     // Framework request scopes contain raw paths; keep them out of console logs.
@@ -49,6 +50,7 @@ builder.Services.AddSingleton<PromotionDatabase>();
 builder.Services.AddCorporateSales();
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 app.UseMiddleware<RequestObservabilityMiddleware>();
 app.UseExceptionHandler(new ExceptionHandlerOptions
 {

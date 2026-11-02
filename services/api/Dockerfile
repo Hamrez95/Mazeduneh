@@ -11,4 +11,6 @@ ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 COPY --from=build /app/publish .
+RUN mkdir -p /var/lib/mazeduneh/media && chown -R $APP_UID:$APP_UID /var/lib/mazeduneh
+USER $APP_UID
 ENTRYPOINT ["dotnet", "Mazeduneh.Api.dll"]

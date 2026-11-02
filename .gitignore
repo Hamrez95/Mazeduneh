@@ -50,3 +50,5 @@ graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/.graphify_version
 graphify-out/graph.html
+# Generated knowledge graph stays local; source instructions and pinned bootstrap are tracked.
+graphify-out/
