@@ -30,5 +30,7 @@ ENV PORT=8080
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+RUN chown -R node:node /app
+USER node
 EXPOSE 8080
 CMD ["node", "server.js"]
